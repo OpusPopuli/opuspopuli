@@ -63,6 +63,18 @@ export class EmbeddingsService {
   }
 
   /**
+   * Fail startup when the configured provider cannot actually serve
+   * embeddings. A no-op for providers that have nothing to verify.
+   *
+   * Callers put this in `onModuleInit` next to the embedding-width assertions,
+   * so every way of being wrong about embeddings is caught at the same moment:
+   * wrong width, wrong column, and now a model that was never pulled.
+   */
+  async assertProviderReady(): Promise<void> {
+    await this.provider.assertReady?.();
+  }
+
+  /**
    * Get provider information
    */
   getProviderInfo() {

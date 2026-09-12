@@ -179,6 +179,9 @@ export class RetrievalService implements OnModuleInit {
       );
     }
 
+    // A pulled model is as much a precondition as a matching width (#1156).
+    await this.embeddings.assertProviderReady();
+
     for (const table of ['documents', 'propositions']) {
       await assertVectorColumnWidth(
         this.db,

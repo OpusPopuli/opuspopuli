@@ -31,6 +31,7 @@ describe('RetrievalService', () => {
   let embeddings: {
     getEmbeddingsForQuery: jest.Mock;
     getProviderInfo: jest.Mock;
+    assertProviderReady: jest.Mock;
   };
   let metrics: { recordPetitionRetrieval: jest.Mock };
 
@@ -60,6 +61,7 @@ describe('RetrievalService', () => {
         model: VERIFICATION_CALIBRATION.model,
         dimensions: EMBEDDING_DIMENSIONS,
       }),
+      assertProviderReady: jest.fn().mockResolvedValue(undefined),
     };
     metrics = { recordPetitionRetrieval: jest.fn() };
 
@@ -196,6 +198,42 @@ describe('RetrievalService', () => {
    * directions, so a threshold applied to a model it was not measured against
    * makes no judgement at all.
    */
+  /**
+   * Every way of being wrong about embeddings should be caught at boot, in one
+   * place: wrong provider width, wrong column width, and a model that was never
+   * pulled. The last was rehearsed against a real daemon — the service starts
+   * clean and then fails per row with a 404, behind a green health check.
+   */
+  describe('startup checks (#1156)', () => {
+    const columnWidth = (width: number) =>
+      db.$queryRaw.mockResolvedValue([{ width }]);
+
+    it('verifies the provider can actually serve embeddings', async () => {
+      columnWidth(EMBEDDING_DIMENSIONS);
+
+      await service.onModuleInit();
+
+      expect(embeddings.assertProviderReady).toHaveBeenCalled();
+    });
+
+    it('refuses to start when the model is not available', async () => {
+      columnWidth(EMBEDDING_DIMENSIONS);
+      embeddings.assertProviderReady.mockRejectedValue(
+        new Error(
+          'Ollama model "nomic-embed-text-v2-moe:latest" is not installed',
+        ),
+      );
+
+      await expect(service.onModuleInit()).rejects.toThrow(/not installed/);
+    });
+
+    it('refuses to start when the column width disagrees', async () => {
+      columnWidth(384);
+
+      await expect(service.onModuleInit()).rejects.toThrow(/is vector\(384\)/);
+    });
+  });
+
   describe('calibration gate (#1156)', () => {
     beforeEach(() => {
       embeddings.getProviderInfo.mockReturnValue({

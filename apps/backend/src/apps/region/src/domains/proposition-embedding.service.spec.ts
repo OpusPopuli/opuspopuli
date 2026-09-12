@@ -23,6 +23,7 @@ describe('PropositionEmbeddingService', () => {
   let embeddings: {
     getEmbeddingsForQuery: jest.Mock;
     getProviderInfo: jest.Mock;
+    assertProviderReady: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -37,6 +38,9 @@ describe('PropositionEmbeddingService', () => {
         dimensions: EMBEDDING_DIMENSIONS,
         model: 'nomic-embed-text-v2-moe:latest',
       }),
+      // Startup also verifies the model is actually pulled (#1156); a missing
+      // one otherwise surfaces per row as a 404 behind a healthy service.
+      assertProviderReady: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({

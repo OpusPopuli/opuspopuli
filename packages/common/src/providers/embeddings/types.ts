@@ -51,6 +51,24 @@ export interface IEmbeddingProvider {
    * Provider name for logging
    */
   getName(): string;
+
+  /**
+   * Fail at startup if the provider cannot actually serve embeddings.
+   *
+   * Optional because "ready" means nothing for an in-process provider: it
+   * downloads its model on first use, so an absent model is a slow first call,
+   * not a misconfiguration. A remote provider is different — a model that was
+   * never pulled is a DEPLOY mistake that will never self-heal, and without
+   * this it surfaces only as a per-row failure at embed time, behind a healthy
+   * health check.
+   *
+   * Implementations must distinguish "reachable but not configured correctly"
+   * from "unreachable". The first should throw; the second should not, because
+   * a daemon that is briefly down recovers on its own and the circuit breaker
+   * already handles it — turning that into a refusal to boot converts a
+   * transient blip into a crash loop.
+   */
+  assertReady?(): Promise<void>;
 }
 
 /**

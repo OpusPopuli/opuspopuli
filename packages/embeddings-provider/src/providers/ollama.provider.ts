@@ -55,6 +55,12 @@ function normalizeModelName(model: string): string {
   return model.trim().toLowerCase().split(":")[0];
 }
 
+/** `foo` and `foo:latest` are the same model to Ollama; compare them that way. */
+function withDefaultTag(model: string): string {
+  const name = model.trim().toLowerCase();
+  return name.includes(":") ? name : `${name}:latest`;
+}
+
 function dimensionsForModel(model: string): number {
   const dimensions = MODEL_DIMENSIONS[normalizeModelName(model)];
   if (dimensions === undefined) {
@@ -288,6 +294,68 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
 
       return embeddings;
     });
+  }
+
+  /**
+   * Refuse to start when the configured model is not on the daemon.
+   *
+   * Without this, a stack deployed before `ollama pull` runs starts clean and
+   * reports healthy: the width assertion passes, because MODEL_DIMENSIONS says
+   * 768 and the columns are 768 — nothing there knows whether the weights
+   * exist. The failure lands per row at embed time as `HTTP 404: model "X" not
+   * found`, and the only trace is `failed=N` in a sync summary. Rehearsed
+   * against a real daemon (#1156): it fails safe — existing vectors are
+   * untouched — but quietly, which is the half worth fixing.
+   *
+   * ── Missing model vs unreachable daemon ──────────────────────────────────
+   *
+   * Only the first is fatal. A model that was never pulled is a deploy mistake
+   * that will never fix itself, so booting is pointless. A daemon that does not
+   * answer may be restarting, and the circuit breaker already handles that at
+   * runtime; refusing to boot would turn a thirty-second blip into a crash
+   * loop. So an unreachable daemon warns and continues.
+   *
+   * (The same distinction the pre-push hook draws between "the audit found
+   * something" and "the audit could not run" — conflating them is what teaches
+   * people to bypass the gate.)
+   */
+  async assertReady(): Promise<void> {
+    let installed: string[];
+
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/tags`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as { models?: { name?: string }[] };
+      installed = (data.models ?? [])
+        .map((m) => m.name)
+        .filter((n): n is string => typeof n === "string");
+    } catch (error) {
+      // Not fatal — see above.
+      this.logger.warn(
+        `Could not reach Ollama at ${this.baseUrl} to verify model ` +
+          `"${this.model}" (${(error as Error).message}). Starting anyway: an ` +
+          `unreachable daemon may be restarting, and the circuit breaker covers ` +
+          `it. If embeddings then fail with a 404, the model was never pulled.`,
+      );
+      return;
+    }
+
+    // Ollama treats a bare name as `:latest`, so `nomic-embed-text-v2-moe` and
+    // `nomic-embed-text-v2-moe:latest` are the same model. Comparing raw
+    // strings would reject a correctly-pulled model over a tag spelling.
+    const want = withDefaultTag(this.model);
+    if (installed.some((name) => withDefaultTag(name) === want)) {
+      this.logger.log(`Ollama model "${this.model}" is available`);
+      return;
+    }
+
+    throw new Error(
+      `Ollama model "${this.model}" is not installed on ${this.baseUrl}. ` +
+        `Pull it before starting this service:\n\n    ollama pull ${this.model.split(":")[0]}\n\n` +
+        `Installed: ${installed.length > 0 ? installed.join(", ") : "(none)"}.`,
+    );
   }
 
   /**

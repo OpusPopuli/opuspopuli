@@ -233,6 +233,72 @@ describe("OllamaEmbeddingProvider", () => {
     });
   });
 
+  describe("assertReady", () => {
+    const tags = (names: string[]) => ({
+      ok: true,
+      json: () => Promise.resolve({ models: names.map((name) => ({ name })) }),
+    });
+
+    it("passes when the configured model is installed", async () => {
+      mockFetch.mockResolvedValueOnce(tags(["nomic-embed-text-v2-moe:latest"]));
+
+      await expect(provider.assertReady()).resolves.toBeUndefined();
+      expect(mockFetch).toHaveBeenCalledWith("http://localhost:11434/api/tags");
+    });
+
+    // Ollama treats a bare name as `:latest`. Comparing raw strings would
+    // reject a correctly-pulled model over a tag spelling — and the resulting
+    // "not installed" error would send an operator to re-pull a model they
+    // already have.
+    it("matches a bare configured name against a tagged installed one", async () => {
+      const bare = new OllamaEmbeddingProvider(
+        undefined,
+        "nomic-embed-text-v2-moe",
+      );
+      mockFetch.mockResolvedValueOnce(tags(["nomic-embed-text-v2-moe:latest"]));
+
+      await expect(bare.assertReady()).resolves.toBeUndefined();
+    });
+
+    // The deploy mistake this exists for: production had no embedding model at
+    // all, and without this the stack starts healthy and fails per row.
+    it("throws when the model was never pulled, naming the remedy", async () => {
+      mockFetch.mockResolvedValueOnce(tags(["qwen3.5:9b"]));
+
+      await expect(provider.assertReady()).rejects.toThrow(
+        /ollama pull nomic-embed-text-v2-moe/,
+      );
+    });
+
+    it("reports what IS installed, so the operator can see the typo", async () => {
+      mockFetch.mockResolvedValueOnce(tags(["mxbai-embed-large:latest"]));
+
+      await expect(provider.assertReady()).rejects.toThrow(
+        /Installed: mxbai-embed-large:latest/,
+      );
+    });
+
+    /**
+     * An unreachable daemon must NOT block startup.
+     *
+     * A model that was never pulled never fixes itself, so refusing to boot is
+     * right. A daemon that does not answer may simply be restarting, and the
+     * circuit breaker already covers that at runtime — refusing to boot would
+     * turn a thirty-second blip into a crash loop across every service.
+     */
+    it("does not block startup when the daemon is unreachable", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+      await expect(provider.assertReady()).resolves.toBeUndefined();
+    });
+
+    it("does not block startup on a non-OK tags response", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+
+      await expect(provider.assertReady()).resolves.toBeUndefined();
+    });
+  });
+
   describe("circuit breaker", () => {
     it("should provide circuit breaker health", () => {
       const health = provider.getCircuitBreakerHealth();

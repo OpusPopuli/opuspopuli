@@ -38,6 +38,11 @@ export class PropositionEmbeddingService implements OnModuleInit {
       );
     }
 
+    // A width that agrees everywhere still embeds nothing if the model was
+    // never pulled. Rehearsed (#1156): the service starts clean and fails per
+    // row with a 404 at embed time, behind a green health check.
+    await this.embeddings.assertProviderReady();
+
     // The third leg: the column itself. Provider and constant agreeing with
     // each other is exactly what an old image does during a width migration,
     // while every write throws against a column of the other width.

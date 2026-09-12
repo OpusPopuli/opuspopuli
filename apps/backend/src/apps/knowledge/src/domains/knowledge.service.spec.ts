@@ -81,32 +81,52 @@ describe('KnowledgeService', () => {
    * embedding written after a mismatch is unusable.
    */
   describe('vector width assertion at boot (#1150)', () => {
-    it('starts when the provider and store agree', () => {
+    it('starts when the provider and store agree', async () => {
       embeddingsService.getProviderInfo = jest
         .fn()
         .mockReturnValue({ dimensions: 384 });
 
-      expect(() => knowledgeService.onModuleInit()).not.toThrow();
+      await expect(knowledgeService.onModuleInit()).resolves.toBeUndefined();
     });
 
-    it('refuses to start when they disagree', () => {
+    it('refuses to start when they disagree', async () => {
       embeddingsService.getProviderInfo = jest
         .fn()
         .mockReturnValue({ dimensions: 768 });
 
-      expect(() => knowledgeService.onModuleInit()).toThrow(
+      await expect(knowledgeService.onModuleInit()).rejects.toThrow(
         /768-dimension vectors but the vector store expects 384/,
       );
     });
 
     // The message has to say what to do, not just that something is wrong:
     // the fix is re-embedding the corpus, not editing a number until it boots.
-    it('says a width change needs re-embedding, not a config edit', () => {
+    it('says a width change needs re-embedding, not a config edit', async () => {
       embeddingsService.getProviderInfo = jest
         .fn()
         .mockReturnValue({ dimensions: 1536 });
 
-      expect(() => knowledgeService.onModuleInit()).toThrow(/re-embedding/);
+      await expect(knowledgeService.onModuleInit()).rejects.toThrow(
+        /re-embedding/,
+      );
+    });
+
+    /**
+     * The other way the knowledge path can be wrong at boot (#1156): widths
+     * that agree perfectly while the model was never pulled, which otherwise
+     * shows up as a 404 per embed call behind a healthy service.
+     */
+    it('refuses to start when the model is not available', async () => {
+      embeddingsService.getProviderInfo = jest
+        .fn()
+        .mockReturnValue({ dimensions: 384 });
+      embeddingsService.assertProviderReady = jest
+        .fn()
+        .mockRejectedValue(new Error('model "x" is not installed'));
+
+      await expect(knowledgeService.onModuleInit()).rejects.toThrow(
+        /not installed/,
+      );
     });
   });
 
