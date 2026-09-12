@@ -43,9 +43,11 @@ import { XenovaEmbeddingProvider } from "./providers/xenova.provider.js";
             const ollamaUrl =
               configService.get<string>("embeddings.ollama.url") ||
               "http://localhost:11434";
+            // v2-moe. Plain `nomic-embed-text` is v1.5, a different model
+            // that scores 0/14 on our corpus — see eval-harness.
             const ollamaModel =
               configService.get<string>("embeddings.ollama.model") ||
-              "nomic-embed-text";
+              "nomic-embed-text-v2-moe:latest";
 
             return new OllamaEmbeddingProvider(ollamaUrl, ollamaModel);
 

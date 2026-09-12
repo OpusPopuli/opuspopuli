@@ -20,11 +20,11 @@ export type FetchFunction = (
  * Ollama Embedding Provider (OSS)
  *
  * Uses Ollama for local embedding generation.
- * Models: nomic-embed-text, mxbai-embed-large, etc.
+ * Models: nomic-embed-text-v2-moe (multilingual, 768d), mxbai-embed-large.
  *
  * Setup:
  * 1. Install Ollama: https://ollama.ai
- * 2. Pull model: ollama pull nomic-embed-text
+ * 2. Pull model: ollama pull nomic-embed-text-v2-moe
  * 3. Run: ollama serve (default port 11434)
  */
 @Injectable()
@@ -38,7 +38,9 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
 
   constructor(baseUrl?: string, model?: string, fetchFn?: FetchFunction) {
     this.baseUrl = baseUrl || "http://localhost:11434";
-    this.model = model || "nomic-embed-text";
+    // Defaults to v2-moe. Plain `nomic-embed-text` is v1.5 and is NOT an
+    // equivalent: it measures 0/14 on this corpus (see eval-harness).
+    this.model = model || "nomic-embed-text-v2-moe:latest";
     // nomic-embed-text: 768 dimensions
     // mxbai-embed-large: 1024 dimensions
     this.dimensions = model === "mxbai-embed-large" ? 1024 : 768;

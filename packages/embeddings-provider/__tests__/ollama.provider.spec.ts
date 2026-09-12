@@ -23,7 +23,7 @@ describe("OllamaEmbeddingProvider", () => {
     jest.clearAllMocks();
     provider = new OllamaEmbeddingProvider(
       "http://localhost:11434",
-      "nomic-embed-text",
+      "nomic-embed-text-v2-moe:latest",
     );
   });
 
@@ -31,7 +31,12 @@ describe("OllamaEmbeddingProvider", () => {
     it("should initialize with default values", () => {
       const defaultProvider = new OllamaEmbeddingProvider();
       expect(defaultProvider.getName()).toBe("Ollama");
-      expect(defaultProvider.getModelName()).toBe("nomic-embed-text");
+      // Guards the default, not just the plumbing: plain `nomic-embed-text`
+      // is v1.5 and measures 0/14 on our corpus (eval-harness). A silent
+      // revert to it would degrade retrieval with nothing erroring.
+      expect(defaultProvider.getModelName()).toBe(
+        "nomic-embed-text-v2-moe:latest",
+      );
       expect(defaultProvider.getDimensions()).toBe(768);
     });
 
