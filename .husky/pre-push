@@ -105,11 +105,24 @@ fi
 if command -v trivy >/dev/null 2>&1; then
   echo ""
   echo "Running Trivy filesystem scan..."
-  trivy fs . --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --quiet 2>&1
+  # --exit-code 1: without it Trivy exits 0 whatever it finds, so the check
+  # below was unreachable and this gate had never blocked a push in its life.
+  #
+  # --ignorefile: Trivy only auto-detects a plain `.trivyignore`, so without
+  # this the repo's `.trivyignore.yaml` is never read — the same trap already
+  # fixed in ci.yml (`trivyignores:`). The two flags have to land together:
+  # --exit-code alone would block every push on advisories we have assessed and
+  # accepted (maplibre CVE-2026-85061, unfixable on 5.x per #1187), which is
+  # precisely how a gate teaches people to reach for --no-verify.
+  trivy fs . --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --quiet \
+    --exit-code 1 --ignorefile .trivyignore.yaml 2>&1
   TRIVY_EXIT=$?
   if [ $TRIVY_EXIT -ne 0 ]; then
     printf '\nPush blocked: HIGH or CRITICAL CVEs found by Trivy.\n'
     printf 'Run /op-security for a full breakdown and fix guidance.\n'
+    printf 'If the finding is unfixable and unreachable, add it to\n'
+    printf '.trivyignore.yaml WITH a justification and a removal condition —\n'
+    printf 'see the maplibre entry for the shape.\n'
     exit 1
   fi
 else
