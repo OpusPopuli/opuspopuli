@@ -44,6 +44,30 @@ x-backend-env: &backend-env
   SMTP_PORT: "2500"
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
   FRONTEND_URL: http://localhost:3300
+  # Embeddings — bound here even though these stacks run the in-process
+  # provider, because the agreement was previously implicit.
+  #
+  # Nothing set these, so the stack resolved to three separate code defaults
+  # that happened to agree on 768. That is the shape of every embedding bug
+  # this repo has had: correct by coincidence, and silent when the coincidence
+  # ends. `VECTORDB_DIMENSIONS` is the sharp one — it only applies when the
+  # knowledge-RAG table is CREATED, so a disagreement surfaces as a runtime
+  # insert failure with no startup signal, unlike a column-width mismatch,
+  # which now refuses to boot.
+  #
+  # Default stays xenova: CI has no Ollama daemon, so these stacks cannot
+  # exercise the production provider. A developer running this stack against
+  # their own daemon can switch with one variable instead of editing this file:
+  #
+  #   EMBEDDINGS_PROVIDER=ollama docker compose -f docker-compose-integration.yml up -d
+  #
+  # v2-moe, never the bare `nomic-embed-text` — that name is v1.5, a different
+  # model scoring 0/14 on the real corpus, and it fails silently (#1231).
+  EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-xenova}
+  EMBEDDINGS_OLLAMA_URL: ${EMBEDDINGS_OLLAMA_URL:-http://host.docker.internal:11434}
+  EMBEDDINGS_OLLAMA_MODEL: ${EMBEDDINGS_OLLAMA_MODEL:-nomic-embed-text-v2-moe:latest}
+  # Must equal EMBEDDING_DIMENSIONS in @opuspopuli/common (768 since #1156).
+  VECTORDB_DIMENSIONS: ${VECTORDB_DIMENSIONS:-768}
 
 # Docker's json-file driver defaults to NO rotation and NO size cap, so container
 # logs grow without bound. On the us-ca production node on 2026-08-13 that was
