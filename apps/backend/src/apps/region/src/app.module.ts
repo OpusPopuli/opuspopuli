@@ -34,23 +34,13 @@ import {
 import { DbModule } from 'src/db/db.module';
 import { AuditModule } from 'src/common/audit/audit.module';
 import { CaslModule } from 'src/permissions/casl.module';
-import { HealthModule } from 'src/common/health';
+import {
+  HealthModule,
+  parseRssThreshold,
+  BULK_WORKLOAD_RSS_THRESHOLD,
+} from 'src/common/health';
 import { MetricsModule } from 'src/common/metrics';
 import { SecretsModule } from '@opuspopuli/secrets-provider';
-
-/**
- * Parse a positive integer byte count from an env var; fall back to
- * `defaultBytes` if absent or invalid. Used by the HealthModule config
- * below to override the in-process default RSS threshold per deployment.
- */
-function parseRssThreshold(
-  raw: string | undefined,
-  defaultBytes: number,
-): number {
-  if (!raw) return defaultBytes;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultBytes;
-}
 
 /**
  * Region App Module
@@ -99,7 +89,7 @@ function parseRssThreshold(
       hasDatabase: true,
       memoryRssThreshold: parseRssThreshold(
         process.env.MEMORY_RSS_THRESHOLD_BYTES,
-        3 * 1024 * 1024 * 1024,
+        BULK_WORKLOAD_RSS_THRESHOLD,
       ),
     }),
     MetricsModule.forRoot({ serviceName: 'region-service' }),

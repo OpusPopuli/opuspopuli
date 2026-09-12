@@ -30,3 +30,7 @@ export { HealthModule, HealthModuleOptions } from './health.module';
 export { HealthController } from './health.controller';
 export { DatabaseHealthIndicator } from './indicators/database.health';
 export { MemoryHealthIndicator } from './indicators/memory.health';
+export {
+  parseRssThreshold,
+  BULK_WORKLOAD_RSS_THRESHOLD,
+} from './rss-threshold';
