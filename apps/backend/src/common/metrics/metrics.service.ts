@@ -295,6 +295,12 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     outcome:
       | 'verified'
       | 'unverified'
+      // A match was found but the similarity threshold does not belong to the
+      // running embedding model, so no verification judgement is made (#1156).
+      // Separate from 'unverified' on purpose: that is a verdict, this is the
+      // absence of one, and conflating them hides a dark feature in a number
+      // that looks like it is working.
+      | 'uncalibrated'
       | 'skipped_low_ocr_confidence'
       | 'skipped_no_text'
       | 'skipped_empty_corpus'

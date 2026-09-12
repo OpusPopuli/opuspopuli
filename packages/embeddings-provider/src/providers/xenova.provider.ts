@@ -7,11 +7,13 @@ import { IEmbeddingProvider, EmbeddingError } from "@opuspopuli/common";
  * Uses Xenova/Transformers.js for fully in-process embedding generation.
  * No external services required - runs entirely in Node.js.
  *
- * Models: Xenova/all-MiniLM-L6-v2, Xenova/bge-small-en-v1.5, etc.
+ * Models: Xenova/bge-base-en-v1.5 (default, 768d), Xenova/all-mpnet-base-v2
+ * (768d). The 384d models (all-MiniLM-L6-v2, bge-small-en-v1.5) no longer fit
+ * the schema — see EMBEDDING_DIMENSIONS in @opuspopuli/common.
  *
  * Setup:
  * 1. npm install @xenova/transformers
- * 2. First run will download model (~25MB for all-MiniLM-L6-v2)
+ * 2. First run will download model (~110MB for bge-base-en-v1.5)
  * 3. Models are cached locally for subsequent runs
  *
  * Advantages:
@@ -34,8 +36,18 @@ export class XenovaEmbeddingProvider implements IEmbeddingProvider {
   private initialized = false;
 
   constructor(model?: string) {
-    // Default to all-MiniLM-L6-v2 (384 dimensions, ~25MB, great for general use)
-    this.model = model || "Xenova/all-MiniLM-L6-v2";
+    // bge-base-en-v1.5 (768 dimensions, ~110MB).
+    //
+    // Was all-MiniLM-L6-v2 at 384. After the #1156 cutover EMBEDDING_DIMENSIONS
+    // is 768 and every selectable provider must produce that width, so MiniLM
+    // would now trip the startup assertion rather than quietly working.
+    //
+    // This default must stay in step with `embeddings.xenova.model` in
+    // config-provider. Two defaults for one model is how the Ollama provider
+    // ended up disagreeing with its own config (#1231), and a divergence here
+    // is invisible: whichever construction path a caller happens to use wins,
+    // and the fixture generator uses this one.
+    this.model = model || "Xenova/bge-base-en-v1.5";
 
     // Set dimensions based on model
     // Common models:

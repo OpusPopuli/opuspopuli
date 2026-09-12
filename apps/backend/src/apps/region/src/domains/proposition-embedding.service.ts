@@ -1,5 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import {
+  DbService,
+  assertVectorColumnWidth,
+} from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
 import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
 import { createHash } from 'node:crypto';
@@ -24,7 +27,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
    * EMBEDDINGS_PROVIDER to a different-width model needs a migration, and this
    * is what says so at the moment it matters.
    */
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     const actual = this.embeddings.getProviderInfo().dimensions;
     if (actual !== EMBEDDING_DIMENSIONS) {
       throw new Error(
@@ -34,6 +37,16 @@ export class PropositionEmbeddingService implements OnModuleInit {
           `in @opuspopuli/common.`,
       );
     }
+
+    // The third leg: the column itself. Provider and constant agreeing with
+    // each other is exactly what an old image does during a width migration,
+    // while every write throws against a column of the other width.
+    await assertVectorColumnWidth(
+      this.db,
+      'propositions',
+      'embedding',
+      EMBEDDING_DIMENSIONS,
+    );
   }
 
   private readonly logger = new Logger(PropositionEmbeddingService.name, {
@@ -93,6 +106,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
     embedded: number;
     unchanged: number;
     failed: number;
+    duplicateSources: number;
   }> {
     const propositions = await this.db.proposition.findMany({
       where: { deletedAt: null },
@@ -109,6 +123,16 @@ export class PropositionEmbeddingService implements OnModuleInit {
     let unchanged = 0;
     let failed = 0;
 
+    // Which measures share an embedding source, tracked across the whole run.
+    //
+    // 25-0004A1 and 25-0005A1 are byte-identical in `title + summary` — two
+    // filings of the same initiative. Identical text embeds to identical
+    // vectors under any encoder, so retrieval cannot separate them and the
+    // ranking between them is arbitrary. That is not a bug to fix here (they
+    // really are the same text) but it must not be invisible: a retrieval miss
+    // on one of a duplicate pair looks like a model failure until you know.
+    const sourceOwners = new Map<string, string[]>();
+
     for (const p of propositions) {
       const source = PropositionEmbeddingService.embeddingSource(p);
 
@@ -121,6 +145,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
       }
 
       const hash = PropositionEmbeddingService.sourceHash(source);
+      sourceOwners.set(hash, [...(sourceOwners.get(hash) ?? []), p.externalId]);
 
       // Also re-embeds when the vector is missing but the hash is somehow
       // present — a half-written row from an interrupted run should heal on
@@ -135,7 +160,12 @@ export class PropositionEmbeddingService implements OnModuleInit {
         // and returns an array, and this column holds exactly one vector. The
         // source is short by design, so there is nothing to chunk.
         const vector = await this.embeddings.getEmbeddingsForQuery(source);
-        await this.writeVector(p.id, vector, hash);
+        await this.writeVector(
+          p.id,
+          vector,
+          hash,
+          this.embeddings.getProviderInfo().model,
+        );
         embedded++;
       } catch (error) {
         // Per-row isolation: one measure with unusual text must not abort the
@@ -147,11 +177,27 @@ export class PropositionEmbeddingService implements OnModuleInit {
       }
     }
 
+    const duplicates = [...sourceOwners.values()].filter(
+      (ids) => ids.length > 1,
+    );
+    for (const ids of duplicates) {
+      this.logger.warn(
+        `Identical embedding source across ${ids.length} measures: ${ids.join(', ')} — ` +
+          `their vectors are identical and the ranking between them is arbitrary`,
+      );
+    }
+
     this.logger.log(
-      `Proposition embeddings: scanned=${propositions.length} embedded=${embedded} unchanged=${unchanged} failed=${failed}`,
+      `Proposition embeddings: scanned=${propositions.length} embedded=${embedded} unchanged=${unchanged} failed=${failed} duplicateSources=${duplicates.length}`,
     );
 
-    return { scanned: propositions.length, embedded, unchanged, failed };
+    return {
+      scanned: propositions.length,
+      embedded,
+      unchanged,
+      failed,
+      duplicateSources: duplicates.length,
+    };
   }
 
   private async hasVector(id: string): Promise<boolean> {
@@ -180,6 +226,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
     id: string,
     vector: number[],
     hash: string,
+    model: string,
   ): Promise<void> {
     if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSIONS) {
       throw new Error(
@@ -196,6 +243,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
       UPDATE propositions
       SET embedding = ${literal}::vector,
           embedding_source_hash = ${hash},
+          embedding_model = ${model},
           updated_at = NOW()
       WHERE id = ${id}
     `;

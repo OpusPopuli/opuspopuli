@@ -43,6 +43,13 @@ export {
 export { DbService } from "./db.service.js";
 export { RelationalDbModule } from "./db.module.js";
 
+// pgvector column-width introspection — the third leg of the embedding-width
+// startup assertion (#1156).
+export {
+  readVectorColumnWidth,
+  assertVectorColumnWidth,
+} from "./vector-column-width.js";
+
 // Re-export Prisma types for convenience
 // This allows consumers to import Prisma types from this package
 export { Prisma, PrismaClient } from "@prisma/client";

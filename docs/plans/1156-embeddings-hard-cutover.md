@@ -37,9 +37,12 @@ Consequently:
 - **#1156 prerequisite 2 (the dimension-map ternary) stands** and is in scope.
 - **#1156 prerequisite 3 (task prefixes) stands** as configurable, default off —
   measured as within noise on this corpus.
-- `MIN_VERIFIED_SIMILARITY = 0.50` recalibration is **out of scope**: it guards
-  `documents.embedding`, which is 0/10 in production (#1220). A path that has
-  never run cannot regress. Recalibration belongs to making #1074 work.
+- ~~`MIN_VERIFIED_SIMILARITY = 0.50` recalibration is **out of scope**~~ —
+  **WRONG, corrected 2026-09-11 by measurement. See §C.1.** The reasoning was
+  "a path that has never run cannot regress", which is true of production
+  behaviour and false of the constant: 0.50 is a MiniLM-space number, and under
+  both replacement models it is wrong — in opposite directions. Slice C binds
+  the threshold to its model and fails closed.
 
 ## 1. Facts established by reading the code (2026-09-11)
 
@@ -191,6 +194,48 @@ C ship together.
 **Ops precondition:** `ollama pull nomic-embed-text-v2-moe` on the node (957 MB).
 Production currently has **no** embedding model — its only one was the stale v1.5,
 removed 2026-09-11. The cutover fails closed without this.
+
+### C.1 The threshold was not out of scope — measured 2026-09-11
+
+Regenerating the petition-retrieval fixture under the new model produced this,
+on the four-document control corpus:
+
+| | correct match | best **wrong** match | unfiled scan's best |
+| --- | --- | --- | --- |
+| MiniLM-384 (what 0.50 was calibrated on) | 0.9703 | 0.3876 | **0.3876** → rejected |
+| bge-base-768 | 0.9723 | 0.6951 | **0.7577** → **would verify** |
+
+The integration negative control demonstrated it rather than predicting it:
+
+```
+Retrieval for document …: best=TEST-NC-0001 similarity=0.7577 verified=true
+```
+
+A well-formed initiative **that was never filed** came back `verified`, with a
+`DocumentProposition` link written (`confidence: 0.7577, linkSource:
+auto_retrieval`) — the platform telling a citizen their petition *is* a
+specific measure, wrongly. bge's space is compressed upward (everything lands
+0.62–0.97), so 0.50 separates nothing. Under nomic, which is what production
+will run, correct matches score 0.4–0.5 (#1156) and the same constant is too
+strict instead, verifying almost nothing.
+
+**Decision (owner, 2026-09-11): fail closed, keep the feature dark.** The
+threshold now travels with the model it was measured against
+(`VERIFICATION_CALIBRATION`), and when the running model is not that one the
+service returns the match with `verified: false` and `uncalibrated: true`, logs
+a warning, and records a distinct `uncalibrated` metric outcome — deliberately
+not counted as `unverified`, because that is a verdict and this is the absence
+of one. No link is written.
+
+What this costs: petition verification stays dark. It already was — 0/10 in
+production (#1220) — and an `unverified` scan still gets its analysis, just not
+a claim about *which* measure it is. Recalibration needs real petitions
+re-photographed (scan images are never persisted, by design), so it is its own
+piece of work, not a number to invent from four synthetic fixtures. The
+rejected alternative was a provisional per-model threshold (~0.90 for bge from
+the table above) — rested on 2 synthetic scans where 0.50 rested on 9 real
+photographs, and would have left nomic, the model production actually runs,
+entirely unmeasured.
 
 ### ~~D — Follow-up release: drop the legacy `vector(384)` columns~~ — **deleted**
 

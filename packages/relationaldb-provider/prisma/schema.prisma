@@ -951,7 +951,16 @@ model Document {
   analysis Json?
 
   // Embeddings for similarity search (pgvector)
-  embedding Unsupported("vector(384)")?
+  //
+  // 768 since the nomic-embed-text-v2-moe cutover (#1156). Width is fixed by
+  // EMBEDDING_DIMENSIONS in @opuspopuli/common and changing it needs a
+  // migration — see 20260911180000_embeddings_768_cutover.
+  embedding Unsupported("vector(768)")?
+
+  /// Model that produced `embedding`. Half of the staleness key: the hash says
+  /// the text is unchanged, this says the encoder is — and a corpus embedded by
+  /// two different models is otherwise undetectable by query.
+  embeddingModel String? @map("embedding_model") @db.VarChar(80)
 
   // Privacy-preserving scan location (PostGIS)
   // Coordinates are fuzzed to ~100m accuracy before storage
@@ -1149,7 +1158,11 @@ model Proposition {
   /// to the measure it actually is, instead of the substring match in
   /// linking.service.ts. HNSW + vector_cosine_ops index; see the
   /// 20260828000000_proposition_embeddings migration for why not IVFFlat.
-  embedding Unsupported("vector(384)")?
+  /// 768 since the nomic-embed-text-v2-moe cutover (#1156).
+  embedding Unsupported("vector(768)")?
+
+  /// Model that produced `embedding` — see Document.embeddingModel.
+  embeddingModel String? @map("embedding_model") @db.VarChar(80)
 
   /// SHA-256 of the fullText that produced `embedding`. Proposition sync runs
   /// often and fullText rarely changes; without this every sync would re-embed
@@ -1660,6 +1673,21 @@ model Bill {
   /// indexes (`bills_search_vector_idx`, trigram `bills_bill_number_trgm_idx`)
   /// live in the migration (Prisma can't express GIN indexes).
   searchVector Unsupported("tsvector")? @map("search_vector")
+
+  /// Semantic retrieval vector — the other half of hybrid search (#1156,
+  /// epic #1152). Greenfield at 768: unlike propositions and documents this
+  /// column has no 384 history. HNSW + vector_cosine_ops, built from empty;
+  /// the index lives in 20260911180000_embeddings_768_cutover because Prisma
+  /// cannot express HNSW, which also means `prisma db push` drops it (#1168).
+  embedding Unsupported("vector(768)")?
+
+  /// Model that produced `embedding` — see Document.embeddingModel.
+  embeddingModel String? @map("embedding_model") @db.VarChar(80)
+
+  /// SHA-256 of the exact text that was embedded. 5019 rows and a nightly
+  /// sync: without this every run re-embeds the whole corpus to produce
+  /// identical vectors.
+  embeddingSourceHash String? @map("embedding_source_hash")
 
   author             Representative?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
   coAuthors          BillCoAuthor[]

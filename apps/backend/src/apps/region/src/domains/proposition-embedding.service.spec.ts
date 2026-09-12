@@ -33,9 +33,10 @@ describe('PropositionEmbeddingService', () => {
     };
     embeddings = {
       getEmbeddingsForQuery: jest.fn().mockResolvedValue(vector()),
-      getProviderInfo: jest
-        .fn()
-        .mockReturnValue({ dimensions: EMBEDDING_DIMENSIONS }),
+      getProviderInfo: jest.fn().mockReturnValue({
+        dimensions: EMBEDDING_DIMENSIONS,
+        model: 'nomic-embed-text-v2-moe:latest',
+      }),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -223,14 +224,50 @@ describe('PropositionEmbeddingService', () => {
    * width the test author assumed, which is exactly what happened here.
    */
   describe('provider/column width assertion', () => {
-    it('refuses to start when the provider width does not match the columns', () => {
+    /** The column-width probe; `embedMissing` uses $queryRaw for its own reads. */
+    const columnWidth = (width: number | null) =>
+      db.$queryRaw.mockResolvedValue(width === null ? [] : [{ width }]);
+
+    beforeEach(() => columnWidth(EMBEDDING_DIMENSIONS));
+
+    it('refuses to start when the provider width does not match the columns', async () => {
       embeddings.getProviderInfo.mockReturnValue({ dimensions: 1536 });
 
-      expect(() => service.onModuleInit()).toThrow(/requires a migration/);
+      await expect(service.onModuleInit()).rejects.toThrow(
+        /requires a migration/,
+      );
     });
 
-    it('starts when they agree', () => {
-      expect(() => service.onModuleInit()).not.toThrow();
+    /**
+     * The failure the two-way check could not see (#1156 §4.1).
+     *
+     * An old image carries provider 384 AND constant 384, so it agrees with
+     * itself and boots — against a column the migration already widened to
+     * 768. Every write then throws per row and every similarity query throws,
+     * while the service reports healthy. Reading the column is what turns that
+     * deploy window into a refusal to start.
+     */
+    it('refuses to start when the COLUMN is a different width', async () => {
+      columnWidth(384);
+
+      await expect(service.onModuleInit()).rejects.toThrow(
+        /propositions\.embedding is vector\(384\)/,
+      );
+    });
+
+    it('starts when provider, constant and column all agree', async () => {
+      await expect(service.onModuleInit()).resolves.toBeUndefined();
+    });
+
+    /**
+     * A database whose migrations have not run has no column to check, and a
+     * service that refuses to boot against one cannot be the thing that runs
+     * them.
+     */
+    it('starts when the column does not exist yet', async () => {
+      columnWidth(null);
+
+      await expect(service.onModuleInit()).resolves.toBeUndefined();
     });
   });
 });

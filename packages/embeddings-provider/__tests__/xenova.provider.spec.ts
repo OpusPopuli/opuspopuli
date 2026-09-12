@@ -32,8 +32,13 @@ describe("XenovaEmbeddingProvider", () => {
   describe("constructor", () => {
     it("should initialize with default model", () => {
       expect(provider.getName()).toBe("Xenova");
-      expect(provider.getModelName()).toBe("Xenova/all-MiniLM-L6-v2");
-      expect(provider.getDimensions()).toBe(384);
+      // bge-base-en-v1.5 since the #1156 cutover, and the WIDTH is the part
+      // that must not regress: EMBEDDING_DIMENSIONS is 768, so a default that
+      // drifts back to a 384 model does not degrade quietly — it stops the
+      // service booting. This asserts the default itself, not just that one
+      // exists, because a silent revert is the failure being guarded.
+      expect(provider.getModelName()).toBe("Xenova/bge-base-en-v1.5");
+      expect(provider.getDimensions()).toBe(768);
     });
 
     it("should set correct dimensions for mpnet-base model", () => {
@@ -77,7 +82,7 @@ describe("XenovaEmbeddingProvider", () => {
       expect(result).toEqual([0.1, 0.2, 0.3].map((v) => expect.closeTo(v, 5)));
       expect(mockPipeline).toHaveBeenCalledWith(
         "feature-extraction",
-        "Xenova/all-MiniLM-L6-v2",
+        "Xenova/bge-base-en-v1.5",
       );
       expect(mockPipelineFn).toHaveBeenCalledWith("test query", {
         pooling: "mean",

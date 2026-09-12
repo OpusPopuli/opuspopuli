@@ -38,6 +38,28 @@ export const embeddingsConfig = registerAs("embeddings", () => ({
     ),
   },
   xenova: {
-    model: process.env.EMBEDDINGS_XENOVA_MODEL || "Xenova/all-MiniLM-L6-v2",
+    // The zero-setup path, and it stays the DEFAULT on purpose: a fresh clone
+    // has to run without an Ollama server and a 957 MB model pull. Production
+    // selects ollama explicitly.
+    //
+    // bge-base-en-v1.5, not all-MiniLM-L6-v2, because after the #1156 cutover
+    // EMBEDDING_DIMENSIONS is 768 and every selectable provider must produce
+    // that width — MiniLM's 384 would trip the startup assertion.
+    //
+    // Chosen by measurement over the real proposition corpus, not by width
+    // alone (eval-harness, 2026-09-11):
+    //
+    //                                        overall        EN            ES
+    //   bge-base-en-v1.5                   21/22 .977   13/14 m=.112  8/8 m=.061
+    //   all-mpnet-base-v2                  17/22 .850   13/14 m=.210  4/8 m=.033
+    //   paraphrase-multilingual-mpnet-v2   18/22 .902   10/14 m=.163  8/8 m=.211
+    //
+    // bge matches nomic's top-1 and MRR exactly. Its Spanish MARGIN is thin at
+    // 0.061 — nomic clears by 0.223 — so its ES successes are closer to lucky
+    // than to robust, which is precisely the critique that disqualified MiniLM
+    // (0.036). Stated plainly because a fallback whose Spanish quietly degrades
+    // is worse than one documented as weaker: THE ZERO-SETUP PATH IS NOT ES
+    // PARITY. Run the region on ollama + nomic for that.
+    model: process.env.EMBEDDINGS_XENOVA_MODEL || "Xenova/bge-base-en-v1.5",
   },
 }));
