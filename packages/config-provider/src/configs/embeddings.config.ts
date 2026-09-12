@@ -22,6 +22,20 @@ export const embeddingsConfig = registerAs("embeddings", () => ({
     // measure looks like every other. See packages/eval-harness.
     model:
       process.env.EMBEDDINGS_OLLAMA_MODEL || "nomic-embed-text-v2-moe:latest",
+    // The model card's `search_document:` / `search_query:` prefixes. Off by
+    // default because they were measured, not assumed: 8/8 correct both ways
+    // on the proposition corpus, mean margin 0.160 prefixed vs 0.168
+    // unprefixed — within noise (#1156, 2026-09-10). Configurable so the
+    // question can be re-opened by the eval harness rather than by argument.
+    taskPrefixes: process.env.EMBEDDINGS_OLLAMA_TASK_PREFIXES === "true",
+    // Texts per /api/embed call. Batching measured ~5x faster than the
+    // per-call endpoint it replaced (672ms vs 3393ms over 64 corpus-shaped
+    // texts, warm); the bound keeps a thousands-of-rows backfill from becoming
+    // one unmeasured request.
+    batchSize: Number.parseInt(
+      process.env.EMBEDDINGS_OLLAMA_BATCH_SIZE || "64",
+      10,
+    ),
   },
   xenova: {
     model: process.env.EMBEDDINGS_XENOVA_MODEL || "Xenova/all-MiniLM-L6-v2",
