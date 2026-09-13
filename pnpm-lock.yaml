@@ -775,6 +775,9 @@ importers:
       '@opuspopuli/embeddings-provider':
         specifier: workspace:*
         version: link:../embeddings-provider
+      '@opuspopuli/ocr-provider':
+        specifier: workspace:*
+        version: link:../ocr-provider
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

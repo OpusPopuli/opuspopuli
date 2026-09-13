@@ -8,10 +8,12 @@
   "scripts": {
     "eval:retrieval": "tsx src/retrieval-eval.ts",
     "eval:baseline": "tsx src/retrieval-eval.ts --provider xenova",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:ocr": "tsx src/ocr-eval.ts"
   },
   "dependencies": {
-    "@opuspopuli/embeddings-provider": "workspace:*"
+    "@opuspopuli/embeddings-provider": "workspace:*",
+    "@opuspopuli/ocr-provider": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

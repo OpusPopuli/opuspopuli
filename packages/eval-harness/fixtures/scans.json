@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "ocr-scan",
+  "corpus": "corpus-propositions.json",
+  "items": [
+    {
+      "id": "0007A1-full-frame",
+      "gold": "25-0007A1",
+      "image": "scanned-proposition.jpeg",
+      "notes": "as captured: clipboard, desk and pen visible outside the paper \u2014 what production sends when edge detection is not confident"
+    },
+    {
+      "id": "0007A1-cropped",
+      "gold": "25-0007A1",
+      "image": "scanned-proposition-cropped.jpeg",
+      "notes": "cropped to the paper (63% of the frame kept) \u2014 what production sends when the deskew-crop fires"
+    }
+  ]
+}

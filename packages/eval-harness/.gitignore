@@ -1,1 +1,5 @@
 results/
+
+# Tesseract language data, downloaded at runtime by tesseract.js (~15MB).
+eng.traineddata
+*.traineddata

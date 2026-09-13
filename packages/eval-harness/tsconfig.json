@@ -6,12 +6,16 @@
     "lib": ["ES2022"],
     "strict": true,
     "noEmit": true,
+    // detect-probe imports the frontend's detector by relative path with an
+    // explicit .ts extension, which is what tsx resolves at runtime. Safe only
+    // because noEmit is set above — nothing here is compiled and shipped.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/dom-shim.d.ts"],
   "exclude": ["node_modules", "results"]
 }
