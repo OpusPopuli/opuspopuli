@@ -161,6 +161,7 @@ export class DocumentsResolver {
       input.data,
       input.mimeType,
       input.documentType,
+      input.capture,
     );
   }
 

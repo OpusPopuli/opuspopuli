@@ -17,9 +17,30 @@ import { createHash } from 'node:crypto';
 import { IFileConfig } from 'src/config';
 import { MetricsService } from 'src/common/metrics';
 import { ExtractTextResult } from '../dto/ocr.dto';
-import { ProcessScanResult } from '../dto/scan.dto';
+import { CaptureMetricsInput, ProcessScanResult } from '../dto/scan.dto';
 import { FileService } from './file.service';
 import { scrubSignatureBlock } from './signature-scrub';
+
+/**
+ * Map the client's detection reading onto the `documents` columns, or to no
+ * columns at all when it is absent (#1049).
+ *
+ * Spreading `{}` leaves every column NULL, which is the point: a client that
+ * does not report is distinguishable from a detector that found nothing. Zeros
+ * would be indistinguishable from a genuine total-failure reading, and would
+ * quietly drag down any average computed over the column.
+ */
+function captureColumns(capture?: CaptureMetricsInput) {
+  if (!capture) return {};
+  return {
+    captureDetectionConfidence: capture.detectionConfidence,
+    captureCoverage: capture.coverage,
+    captureSharpness: capture.sharpness,
+    captureCropFired: capture.cropFired,
+    captureFrameWidth: capture.frameWidth,
+    captureFrameHeight: capture.frameHeight,
+  };
+}
 
 /**
  * Scan Service
@@ -72,6 +93,7 @@ export class ScanService {
     data: string,
     mimeType: string,
     documentType: DocumentType = DocumentType.petition,
+    capture?: CaptureMetricsInput,
   ): Promise<ProcessScanResult> {
     const startTime = Date.now();
     this.logger.log(
@@ -94,6 +116,7 @@ export class ScanService {
         checksum,
         status: 'text_extraction_started',
         type: documentType,
+        ...captureColumns(capture),
       },
     });
 

@@ -61,21 +61,38 @@ jest.mock("@/lib/hooks/useGeolocation", () => ({
 }));
 
 // Mock child components to simplify testing
+// Detection reading the mock viewfinder reports alongside its captured frame.
+const MOCK_METRICS = {
+  detectionConfidence: 0.91,
+  coverage: 0.72,
+  sharpness: 128.5,
+  cropFired: true,
+  frameWidth: 1920,
+  frameHeight: 1080,
+};
+
+// Reassign to make the NEXT mock capture report a different reading, so a
+// test can tell which capture's metrics came out the other end.
+let nextMetrics = MOCK_METRICS;
+
 jest.mock("@/components/camera/CameraViewfinder", () => ({
   CameraViewfinder: ({
     onCapture,
   }: {
-    onCapture: (imageData: ImageData) => void;
+    onCapture: (imageData: ImageData, metrics: typeof MOCK_METRICS) => void;
   }) => (
     <div data-testid="camera-viewfinder">
       <button
         onClick={() =>
-          onCapture({
-            data: new Uint8ClampedArray(4),
-            width: 100,
-            height: 100,
-            colorSpace: "srgb",
-          } as ImageData)
+          onCapture(
+            {
+              data: new Uint8ClampedArray(4),
+              width: 100,
+              height: 100,
+              colorSpace: "srgb",
+            } as ImageData,
+            nextMetrics,
+          )
         }
       >
         Mock Capture
@@ -142,6 +159,7 @@ describe("CameraCapture", () => {
   const mockOnConfirm = jest.fn();
 
   beforeEach(() => {
+    nextMetrics = MOCK_METRICS;
     jest.clearAllMocks();
     mockPermissionState = "prompt";
     mockError = null;
@@ -308,10 +326,11 @@ describe("CameraCapture", () => {
       await user.click(screen.getByRole("button", { name: "Allow Location" }));
 
       expect(mockRequestLocation).toHaveBeenCalled();
-      expect(mockOnConfirm).toHaveBeenCalledWith(expect.any(Object), {
-        latitude: 37.7749,
-        longitude: -122.4194,
-      });
+      expect(mockOnConfirm).toHaveBeenCalledWith(
+        expect.any(Object),
+        { latitude: 37.7749, longitude: -122.4194 },
+        MOCK_METRICS,
+      );
     });
 
     it("should call onConfirm without location when skip clicked", async () => {
@@ -325,7 +344,11 @@ describe("CameraCapture", () => {
       await user.click(screen.getByRole("button", { name: "Use Photo" }));
       await user.click(screen.getByRole("button", { name: "Skip Location" }));
 
-      expect(mockOnConfirm).toHaveBeenCalledWith(expect.any(Object), undefined);
+      expect(mockOnConfirm).toHaveBeenCalledWith(
+        expect.any(Object),
+        undefined,
+        MOCK_METRICS,
+      );
     });
 
     it("should pass geolocation state to LocationPrompt", async () => {
@@ -359,7 +382,54 @@ describe("CameraCapture", () => {
       await user.click(screen.getByRole("button", { name: "Use Photo" }));
       await user.click(screen.getByRole("button", { name: "Allow Location" }));
 
-      expect(mockOnConfirm).toHaveBeenCalledWith(expect.any(Object), undefined);
+      expect(mockOnConfirm).toHaveBeenCalledWith(
+        expect.any(Object),
+        undefined,
+        MOCK_METRICS,
+      );
+    });
+
+    /**
+     * After a retake the metrics must describe the frame that was KEPT (#1049).
+     *
+     * The failure this guards against is silent and self-selecting: if a stale
+     * reading came out the far end, every retaken scan — exactly the population
+     * we are instrumenting to understand — would be filed under the detection
+     * numbers of a capture the user rejected.
+     *
+     * Scope, honestly: this pins the metrics to the LATEST capture. It does
+     * not exercise `handleRetake`'s `setCaptureMetrics(null)` — verified by
+     * deleting that line, which leaves this test green. Nothing can observe it
+     * today, because after a retake `capturedImage` is null and both confirm
+     * handlers early-return, so no confirm is reachable without a fresh
+     * capture overwriting the metrics anyway. The reset stays as
+     * correct-by-construction pairing, not as behaviour under test.
+     */
+    it("reports the retaken frame's metrics, not the discarded one's", async () => {
+      const user = userEvent.setup();
+      mockPermissionState = "granted";
+
+      const retaken = {
+        ...MOCK_METRICS,
+        detectionConfidence: 0.44,
+        cropFired: false,
+      };
+
+      render(<CameraCapture onConfirm={mockOnConfirm} />);
+
+      await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      await user.click(screen.getByRole("button", { name: "Retake" }));
+
+      nextMetrics = retaken;
+      await user.click(screen.getByRole("button", { name: "Mock Capture" }));
+      await user.click(screen.getByRole("button", { name: "Use Photo" }));
+      await user.click(screen.getByRole("button", { name: "Skip Location" }));
+
+      expect(mockOnConfirm).toHaveBeenCalledWith(
+        expect.any(Object),
+        undefined,
+        retaken,
+      );
     });
   });
 });

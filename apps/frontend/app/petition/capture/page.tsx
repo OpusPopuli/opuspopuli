@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { CameraCapture } from "@/components/camera";
+import type { CaptureMetrics } from "@/lib/vision/capture-metrics";
 
 /**
  * Convert ImageData (raw pixels from camera) to a base64-encoded JPEG string.
@@ -33,6 +34,7 @@ export default function PetitionCapturePage() {
     (
       imageData: ImageData,
       location?: { latitude: number; longitude: number },
+      metrics?: CaptureMetrics,
     ) => {
       try {
         const base64 = imageDataToBase64(imageData);
@@ -44,6 +46,17 @@ export default function PetitionCapturePage() {
           );
         } else {
           sessionStorage.removeItem("petition-scan-location");
+        }
+        // Detection telemetry rides the same sessionStorage hop as the image
+        // (#1049). Always write or clear, never leave the previous scan's
+        // reading behind for the next one to pick up and misreport.
+        if (metrics) {
+          sessionStorage.setItem(
+            "petition-scan-capture",
+            JSON.stringify(metrics),
+          );
+        } else {
+          sessionStorage.removeItem("petition-scan-capture");
         }
         router.push("/petition/results");
       } catch (error) {

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useCamera } from "@/lib/hooks/useCamera";
 import { useLightingAnalysis } from "@/lib/hooks/useLightingAnalysis";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
+import type { CaptureMetrics } from "@/lib/vision/capture-metrics";
 import { CameraPermission } from "./CameraPermission";
 import { CameraViewfinder } from "./CameraViewfinder";
 import { CapturePreview } from "./CapturePreview";
@@ -15,6 +16,7 @@ interface CameraCaptureProps {
   onConfirm: (
     imageData: ImageData,
     location?: { latitude: number; longitude: number },
+    metrics?: CaptureMetrics,
   ) => void;
   onCancel?: () => void;
 }
@@ -28,6 +30,11 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
     camera.permissionState === "granted" ? "capture" : "permission",
   );
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
+  // Held alongside the image so a retake replaces both together — stale
+  // metrics describing a discarded frame would be worse than none (#1049).
+  const [captureMetrics, setCaptureMetrics] = useState<CaptureMetrics | null>(
+    null,
+  );
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -37,8 +44,9 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
   }, [camera]);
 
   const handleCapture = useCallback(
-    (imageData: ImageData) => {
+    (imageData: ImageData, metrics: CaptureMetrics) => {
       setCapturedImage(imageData);
+      setCaptureMetrics(metrics);
       lighting.stopContinuousAnalysis();
       setStep("preview");
     },
@@ -47,6 +55,11 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
 
   const handleRetake = useCallback(() => {
     setCapturedImage(null);
+    // Paired with the image on purpose. Unobservable today — after a retake
+    // `capturedImage` is null and both confirm handlers early-return, so no
+    // stale reading can escape — but the two must move together, and this is
+    // the cheaper half of that invariant to keep than to re-derive later.
+    setCaptureMetrics(null);
     setStep("capture");
   }, []);
 
@@ -64,16 +77,17 @@ export function CameraCapture({ onConfirm, onCancel }: CameraCaptureProps) {
         coords
           ? { latitude: coords.latitude, longitude: coords.longitude }
           : undefined,
+        captureMetrics ?? undefined,
       );
     } finally {
       setIsProcessing(false);
     }
-  }, [capturedImage, geolocation, onConfirm]);
+  }, [capturedImage, captureMetrics, geolocation, onConfirm]);
 
   const handleSkipLocation = useCallback(() => {
     if (!capturedImage) return;
-    onConfirm(capturedImage, undefined);
-  }, [capturedImage, onConfirm]);
+    onConfirm(capturedImage, undefined, captureMetrics ?? undefined);
+  }, [capturedImage, captureMetrics, onConfirm]);
 
   const handleToggleTorch = useCallback(async () => {
     const next = !torchEnabled;

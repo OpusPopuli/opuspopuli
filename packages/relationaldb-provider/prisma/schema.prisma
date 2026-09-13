@@ -962,6 +962,26 @@ model Document {
   /// two different models is otherwise undetectable by query.
   embeddingModel String? @map("embedding_model") @db.VarChar(80)
 
+  /// What the on-device detector decided about the captured frame (#1049).
+  /// Numbers only — no pixels, no text, nothing that narrows down what was
+  /// photographed, and it must stay that way: a petition page carries the
+  /// names and addresses of people who are not our users.
+  ///
+  /// Nullable throughout. NULL means "not reported" (an older client, or a
+  /// non-camera upload) and is deliberately distinct from a zero reading,
+  /// which would mean the detector ran and found nothing.
+  captureDetectionConfidence Float?   @map("capture_detection_confidence")
+  captureCoverage            Float?   @map("capture_coverage")
+  captureSharpness           Float?   @map("capture_sharpness")
+  /// Did the deskew-crop fire, or did capture fall back to the whole frame?
+  /// The eval harness measured full frame at rank 6 and cropped at rank 1 on
+  /// the same photograph and OCR engine, so this bit alone separates a good
+  /// scan from a bad one.
+  captureCropFired           Boolean? @map("capture_crop_fired")
+  /// Actual video-frame size, which is not the resolution the app requests.
+  captureFrameWidth          Int?     @map("capture_frame_width")
+  captureFrameHeight         Int?     @map("capture_frame_height")
+
   // Privacy-preserving scan location (PostGIS)
   // Coordinates are fuzzed to ~100m accuracy before storage
   // See #290, #296 for details

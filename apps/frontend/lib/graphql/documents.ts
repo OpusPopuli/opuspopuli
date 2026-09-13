@@ -24,10 +24,24 @@ export interface SetDocumentLocationResult {
   fuzzedLocation?: GeoLocation;
 }
 
+/**
+ * What the on-device detector decided about the captured frame (#1049).
+ * Numbers only — never pixels or text. See lib/vision/capture-metrics.ts.
+ */
+export interface CaptureMetricsInput {
+  detectionConfidence: number;
+  coverage: number;
+  sharpness: number;
+  cropFired: boolean;
+  frameWidth: number;
+  frameHeight: number;
+}
+
 export interface ProcessScanInput {
   data: string;
   mimeType: string;
   documentType?: string;
+  capture?: CaptureMetricsInput;
 }
 
 export interface ProcessScanResult {
