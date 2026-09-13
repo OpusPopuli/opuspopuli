@@ -80,6 +80,37 @@ export interface RAGParams {
 }
 
 /**
+ * Which OCR transcription instruction to serve.
+ *
+ * Not cosmetic — the two exist because two kinds of model need different
+ * amounts of asking, and using the wrong one measurably degrades the output:
+ *
+ * - `general` — a general vision-language model (qwen2.5vl and similar). Gets
+ *   explicit rules, including a prohibition on summarising, because without
+ *   them such a model will happily return a helpful précis of a ballot measure
+ *   instead of the measure's own words.
+ * - `document` — a model already fine-tuned on document transcription
+ *   (olmOCR and similar). Gets one sentence. These models transcribe without
+ *   being asked at length, and a long instruction mostly gives them room to
+ *   editorialise; anything added in the model's own words is text the source
+ *   document does not contain.
+ */
+export type OcrTranscriptionVariant = "general" | "document";
+
+/**
+ * Parameters for an OCR transcription prompt (opuspopuli#1234, #1049).
+ *
+ * There is no text parameter, and that is the point: the image travels in the
+ * model request's own `images` array rather than through template
+ * interpolation, so the prompt is a static instruction. That is precisely why
+ * these were easy to leave inline in the eval harness and easy to forget —
+ * nothing about the call site made them look like prompts.
+ */
+export interface OcrTranscriptionParams {
+  variant: OcrTranscriptionVariant;
+}
+
+/**
  * Parameters for civics-extraction prompt — produces a structured
  * `CivicsBlock` with verbatim source text + plain-language rewrites
  * from a region's official civic-process pages.

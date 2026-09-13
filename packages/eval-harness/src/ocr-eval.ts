@@ -30,35 +30,26 @@
  * compares. Every instance of that row is evidence the gate measures the wrong
  * quantity.
  *
- * ── The inline prompts below, and why they are still here ────────────────
+ * ── Where the vision-model instructions come from ────────────────────────
  *
- * This repo's rule is that prompt text lives exclusively in `prompt-service`,
- * never inline, not even temporarily. Three OCR instructions in this file
- * break that rule, deliberately and visibly, and this note is the price.
+ * From `prompt-service`, over the same client every other consumer uses. They
+ * were briefly inline here, with a written exemption arguing that a harness
+ * produces no citizen-facing output and so breaks no attestation chain. The
+ * owner overruled it: every prompt belongs in the database. That is the
+ * stronger position, and the reason is visible in this file's own results —
+ * the whole point of the eval is to decide whether a VLM belongs in the scan
+ * path, so a prompt measured here and a prompt shipped there being different
+ * strings would make the measurement worthless at the exact moment it was
+ * cited.
  *
- * The rule's stated rationale (#1143) is attestation: every AI output a
- * citizen sees must be able to prove which versioned, hashed, published prompt
- * produced it. Nothing here produces a citizen-facing output. The harness
- * writes a score to a local JSON file; no row, no explanation and no analysis
- * derives from these strings, so there is no attestation chain to break.
+ * Every run records `promptName`, `promptHash` and `promptVersion` in its
+ * results JSON, so any number this harness produces can be traced to the
+ * exact instruction that produced it.
  *
- * What they actually are is experiment parameters — varied per run, alongside
- * temperature and repeat_penalty, to find out whether a VLM belongs in the
- * scan path at all. Seeding versioned prompts for engines we have already
- * rejected (olmOCR confabulates, Molmo crashes the runner) would put dead
- * prompts in a public, attested registry to serve a measurement that argued
- * against using them.
- *
- * THE CONDITION, which matters more than the exemption:
- *
- *   If the VLM path ships, its production prompt comes from prompt-service —
- *   and this harness must then be re-pointed at that exact prompt and re-run
- *   before the numbers are quoted as evidence for the decision.
- *
- * Otherwise the eval measures one prompt and production runs another, and
- * "qwen2.5vl retrieves at rank 1" becomes a claim about a string nobody
- * shipped. Tracked so it cannot be forgotten between the experiment and the
- * rollout.
+ * There is no inline fallback, by design. `getOcrTranscriptionPrompt` throws
+ * when the template is not seeded rather than degrading to a default, so a
+ * missing seed is a loud failure rather than a quiet measurement of the wrong
+ * thing. If it throws, seed the prompts (`pnpm db:seed-prompts`).
  *
  * Usage:
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine tesseract
@@ -67,6 +58,8 @@
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine text   # replay stored OCR
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { PromptClientService } from "@opuspopuli/prompt-client";
+import { DbService } from "@opuspopuli/relationaldb-provider";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -124,9 +117,19 @@ interface OcrOut {
   ms: number;
 }
 
+/** A prompt as served by prompt-service, with what makes it attributable. */
+interface OcrPrompt {
+  name: string;
+  text: string;
+  hash: string;
+  version: string;
+}
+
 interface OcrBackend {
   name: string;
   model: string;
+  /** Present for model-driven backends; absent for tesseract and replay. */
+  prompt?: OcrPrompt;
   run(item: ScanItem): Promise<OcrOut>;
 }
 
@@ -236,6 +239,48 @@ async function tesseractBackend(): Promise<OcrBackend> {
 }
 
 /**
+ * Fetch an OCR instruction from prompt-service, with its attestation.
+ *
+ * Instantiates `PromptClientService` directly rather than through Nest DI —
+ * this is a script, not an application — but goes through the SAME client the
+ * services use, so it resolves templates by the same chain (remote cache →
+ * remote fetch → DB) and cannot drift from what production would receive.
+ *
+ * Throws when the template is missing. See the header: a silent default here
+ * would measure a prompt nobody published.
+ */
+async function loadOcrPrompt(
+  variant: "general" | "document",
+): Promise<OcrPrompt> {
+  const db = new DbService();
+  try {
+    // Same env vars the services read. With PROMPT_SERVICE_URL unset the
+    // client resolves from the local database, which is the normal way to run
+    // this harness — the templates still come from prompt-service, via its
+    // seed, rather than from a string in this file.
+    const client = new PromptClientService(db, {
+      promptServiceUrl: process.env.PROMPT_SERVICE_URL,
+      promptServiceApiKey: process.env.PROMPT_SERVICE_API_KEY,
+      hmacNodeId: process.env.PROMPT_SERVICE_NODE_ID,
+    });
+    const { promptText, promptHash, promptVersion } =
+      await client.getOcrTranscriptionPrompt({ variant });
+
+    return {
+      name:
+        variant === "document"
+          ? "ocr-transcription-document"
+          : "ocr-transcription",
+      text: promptText,
+      hash: promptHash,
+      version: promptVersion,
+    };
+  } finally {
+    await db.$disconnect().catch(() => undefined);
+  }
+}
+
+/**
  * A vision model reading the page directly.
  *
  * `qwen3.6:35b-a3b` already runs on the node as `LLM_MODEL` and reports
@@ -244,11 +289,12 @@ async function tesseractBackend(): Promise<OcrBackend> {
  * retrieval the measure's own words, and a model that helpfully paraphrases
  * would score well here while destroying the thing being measured.
  */
-function ollamaVisionBackend(model: string): OcrBackend {
+function ollamaVisionBackend(model: string, prompt: OcrPrompt): OcrBackend {
   const url = process.env.EMBEDDINGS_OLLAMA_URL ?? "http://localhost:11434";
   return {
     name: "ollama-vision",
     model,
+    prompt,
     run: async (item) => {
       const b64 = readFileSync(scanPath(item)).toString("base64");
       const started = Date.now();
@@ -257,10 +303,7 @@ function ollamaVisionBackend(model: string): OcrBackend {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          prompt:
-            "Transcribe all readable text from this photograph of a document, " +
-            "verbatim and in reading order. Do not summarise, explain, or add " +
-            "commentary. If a region is illegible, skip it rather than guessing.",
+          prompt: prompt.text,
           images: [b64],
           stream: false,
           // 1400, not 4096: a 7B VLM generating 4096 tokens of a dense legal
@@ -304,11 +347,12 @@ function ollamaVisionBackend(model: string): OcrBackend {
  * instruction mostly gives it room to editorialise, and anything it adds in its
  * own words is text the measure does not contain.
  */
-function olmocrBackend(model: string): OcrBackend {
+function olmocrBackend(model: string, prompt: OcrPrompt): OcrBackend {
   const url = process.env.EMBEDDINGS_OLLAMA_URL ?? "http://localhost:11434";
   return {
     name: "olmocr",
     model,
+    prompt,
     run: async (item) => {
       const b64 = readFileSync(scanPath(item)).toString("base64");
       const started = Date.now();
@@ -317,7 +361,7 @@ function olmocrBackend(model: string): OcrBackend {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          prompt: "Return the natural text of this document.",
+          prompt: prompt.text,
           images: [b64],
           stream: false,
           // repeat_penalty is not optional. Without it the model reads the page
@@ -391,12 +435,13 @@ interface Block {
  * page correctly and then loops one sentence about forty times, which is a
  * sampling artefact rather than a reading failure, but it wrecks the text.
  */
-function olmocrMlxBackend(model: string): OcrBackend {
+function olmocrMlxBackend(model: string, prompt: OcrPrompt): OcrBackend {
   const python =
     process.env.OLMOCR_MLX_PYTHON ?? join(ROOT, "../../.venv-mlx/bin/python");
   return {
     name: "olmocr-mlx",
     model,
+    prompt,
     run: async (item) => {
       const started = Date.now();
       const { stdout } = await run(
@@ -409,7 +454,7 @@ function olmocrMlxBackend(model: string): OcrBackend {
           "--image",
           scanPath(item),
           "--prompt",
-          "Return the natural text of this document.",
+          prompt.text,
           "--max-tokens",
           "1400",
           "--temperature",
@@ -536,6 +581,14 @@ export async function runOcrEval(
   engine: string;
   model: string;
   embedModel: string;
+  /**
+   * Which prompt produced these numbers. Absent for engines that take no
+   * prompt (tesseract, replay). Recorded because a retrieval score is a claim
+   * about an instruction as much as about a model — quoting "rank 1" without
+   * saying which instruction produced it is the unattributable-output problem
+   * the never-inline rule exists to prevent, just one layer up.
+   */
+  prompt?: { name: string; hash: string; version: string };
   items: ScanResult[];
 }> {
   const embed = await embedder(embedModel);
@@ -580,6 +633,15 @@ export async function runOcrEval(
     engine: backend.name,
     model: backend.model,
     embedModel,
+    ...(backend.prompt
+      ? {
+          prompt: {
+            name: backend.prompt.name,
+            hash: backend.prompt.hash,
+            version: backend.prompt.version,
+          },
+        }
+      : {}),
     items,
   };
 }
@@ -675,10 +737,14 @@ async function main(): Promise<void> {
   if (engine === "text") backend = textBackend();
   else if (engine === "tesseract") backend = await tesseractBackend();
   else if (engine === "ollama-vision")
-    backend = ollamaVisionBackend(arg("model") ?? "qwen3.6:35b-a3b");
+    backend = ollamaVisionBackend(
+      arg("model") ?? "qwen3.6:35b-a3b",
+      await loadOcrPrompt("general"),
+    );
   else if (engine === "olmocr-mlx")
     backend = olmocrMlxBackend(
       arg("model") ?? "mlx-community/olmOCR-2-7B-1025-4bit",
+      await loadOcrPrompt("document"),
     );
   else if (engine === "olmocr")
     backend = olmocrBackend(
@@ -688,6 +754,7 @@ async function main(): Promise<void> {
       // with one — which is a broken projector rather than a bad architecture
       // label, and nothing errors either way.
       arg("model") ?? "hf.co/bartowski/allenai_olmOCR-2-7B-1025-GGUF:Q8_0",
+      await loadOcrPrompt("document"),
     );
   else throw new Error(`unknown engine "${engine}"`);
 

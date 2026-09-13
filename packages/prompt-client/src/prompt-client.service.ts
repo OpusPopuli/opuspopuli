@@ -58,6 +58,7 @@ import type {
   StructuralAnalysisParams,
   DocumentAnalysisParams,
   RAGParams,
+  OcrTranscriptionParams,
   CivicsExtractionParams,
   BillExtractionParams,
   BillVotesExtractionParams,
@@ -499,6 +500,30 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
 
   async getRAGPrompt(params: RAGParams): Promise<PromptServiceResponse> {
     return this.composeRag(params);
+  }
+
+  /**
+   * Get the instruction for a VISION model transcribing a photographed
+   * document — the petition scanner's OCR path and its eval harness
+   * (opuspopuli#1234, #1049).
+   *
+   * Keep `promptHash` and `promptVersion` on whatever you persist, exactly as
+   * every other prompt consumer must. It matters more here than usual: the
+   * transcription IS the evidence a downstream analysis reasons over, so an
+   * unattributable one makes every conclusion drawn from it unattributable
+   * too.
+   *
+   * Deliberately has NO hardcoded fallback. Every other template degrades to
+   * an inline default when the database has not been seeded; doing that here
+   * would put this prompt's text back in this repo, which is the exact thing
+   * moving it to the service was meant to end. An unseeded service therefore
+   * throws, loudly, rather than quietly transcribing against a prompt nobody
+   * published.
+   */
+  async getOcrTranscriptionPrompt(
+    params: OcrTranscriptionParams,
+  ): Promise<PromptServiceResponse> {
+    return this.composeOcrTranscription(params);
   }
 
   /**
@@ -1379,6 +1404,25 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
 
     return {
       promptText,
+      promptHash: this.hash(template.templateText),
+      promptVersion: `v${template.version}`,
+    };
+  }
+
+  private async composeOcrTranscription(
+    params: OcrTranscriptionParams,
+  ): Promise<PromptServiceResponse> {
+    const template = await this.getTemplate(
+      params.variant === "document"
+        ? "ocr-transcription-document"
+        : "ocr-transcription",
+    );
+
+    // No interpolation: the image is carried by the model request, not the
+    // template, so the stored text IS the prompt text. The hash below is
+    // therefore a hash of exactly what the model was sent.
+    return {
+      promptText: template.templateText,
       promptHash: this.hash(template.templateText),
       promptVersion: `v${template.version}`,
     };
