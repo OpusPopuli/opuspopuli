@@ -6,7 +6,10 @@ import { OcrModule } from '@opuspopuli/ocr-provider';
 import { ExtractionModule } from '@opuspopuli/extraction-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
-import { PromptClientModule } from '@opuspopuli/prompt-client';
+import {
+  PromptClientModule,
+  PromptClientService,
+} from '@opuspopuli/prompt-client';
 
 import { DocumentCrudService } from './services/document-crud.service';
 import { FileService } from './services/file.service';
@@ -53,6 +56,22 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
     }),
   ],
   providers: [
+    /**
+     * Supplies the OCR transcription instruction when OCR_PROVIDER=vision
+     * (#1050). Lives here rather than in @opuspopuli/ocr-provider so that
+     * package gains no dependency on prompt-client — and so the prompt text
+     * itself stays where it belongs, in prompt-service.
+     *
+     * The hash and version travel with the text; ScanService persists them
+     * alongside the transcription, because a transcription that cannot name
+     * the instruction that produced it is not attributable evidence.
+     */
+    {
+      provide: 'OCR_PROMPT_SUPPLIER',
+      inject: [PromptClientService],
+      useFactory: (promptClient: PromptClientService) => () =>
+        promptClient.getOcrTranscriptionPrompt({ variant: 'general' }),
+    },
     DocumentsResolver,
     DocumentCrudService,
     FileService,

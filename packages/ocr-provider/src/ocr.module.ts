@@ -4,6 +4,7 @@ import { IOcrProvider } from "@opuspopuli/common";
 import { ocrConfig } from "@opuspopuli/config-provider";
 import { OcrService } from "./ocr.service.js";
 import { TesseractOcrProvider } from "./providers/tesseract.provider.js";
+import { VisionOcrProvider } from "./providers/vision.provider.js";
 import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";
 import {
   PreprocessingConfig,
@@ -28,6 +29,10 @@ export interface OcrModuleConfig {
  *
  * To swap providers, change the OCR_PROVIDER factory:
  * - Tesseract (default, OSS, in-process, no external services)
+ * - Vision (OCR_PROVIDER=vision) — a local vision-language model via Ollama.
+ *   Reads phone photographs of dense legal text that Tesseract cannot; see
+ *   VisionOcrProvider for the production measurements. Requires the app to
+ *   register an OCR_PROMPT_SUPPLIER (prompt text never lives in this repo).
  * - Google Vision (cloud, paid, high accuracy) - future
  *
  * Preprocessing can be enabled via configuration:
@@ -40,7 +45,14 @@ export interface OcrModuleConfig {
     // OCR provider selection
     {
       provide: "OCR_PROVIDER",
-      useFactory: (configService: ConfigService): IOcrProvider => {
+      useFactory: (
+        configService: ConfigService,
+        promptSupplier?: () => Promise<{
+          promptText: string;
+          promptHash: string;
+          promptVersion: string;
+        }>,
+      ): IOcrProvider => {
         const provider =
           configService.get<string>("ocr.provider") || "tesseract";
         const languagesConfig = configService.get<string>("ocr.languages");
@@ -49,12 +61,31 @@ export interface OcrModuleConfig {
           : ["eng"];
 
         switch (provider.toLowerCase()) {
+          case "vision": {
+            if (!promptSupplier) {
+              // Fail at boot, not per scan. Without a prompt the provider
+              // cannot run at all, and a per-scan failure would look like a
+              // model problem rather than a wiring one.
+              throw new Error(
+                "OCR_PROVIDER=vision requires an OCR_PROMPT_SUPPLIER provider. " +
+                  "Register one in the consuming module — prompt text is served " +
+                  "from prompt-service and must never be inlined here.",
+              );
+            }
+            return new VisionOcrProvider(
+              configService.get<string>("ocr.vision.model") || "qwen2.5vl:7b",
+              configService.get<string>("ocr.vision.url") ||
+                "http://localhost:11434",
+              promptSupplier,
+              configService.get<number>("ocr.vision.timeoutMs") ?? 120_000,
+            );
+          }
           case "tesseract":
           default:
             return new TesseractOcrProvider(languages);
         }
       },
-      inject: [ConfigService],
+      inject: [ConfigService, { token: "OCR_PROMPT_SUPPLIER", optional: true }],
     },
 
     // Image preprocessor
