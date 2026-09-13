@@ -14,7 +14,20 @@ class ImageDataShim {
 }
 (globalThis as unknown as { ImageData: unknown }).ImageData = ImageDataShim;
 
-const frames = JSON.parse(readFileSync("/tmp/frames.json", "utf8")) as Record<
+// Path to a JSON manifest of raw RGBA frames to probe, given on the command
+// line rather than hardcoded: the frames are scratch data produced per
+// investigation, and a fixed /tmp path silently reads a STALE manifest from an
+// earlier run instead of failing.
+const manifestPath = process.argv[2];
+if (!manifestPath) {
+  console.error(
+    "usage: tsx src/detect-probe.ts <frames.json>\n" +
+      '  where frames.json is {"<label>": {"path": "<raw rgba>", "width": N, "height": N}}',
+  );
+  process.exit(1);
+}
+
+const frames = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<
   string,
   { path: string; width: number; height: number }
 >;

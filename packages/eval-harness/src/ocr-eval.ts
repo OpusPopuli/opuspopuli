@@ -30,6 +30,36 @@
  * compares. Every instance of that row is evidence the gate measures the wrong
  * quantity.
  *
+ * ── The inline prompts below, and why they are still here ────────────────
+ *
+ * This repo's rule is that prompt text lives exclusively in `prompt-service`,
+ * never inline, not even temporarily. Three OCR instructions in this file
+ * break that rule, deliberately and visibly, and this note is the price.
+ *
+ * The rule's stated rationale (#1143) is attestation: every AI output a
+ * citizen sees must be able to prove which versioned, hashed, published prompt
+ * produced it. Nothing here produces a citizen-facing output. The harness
+ * writes a score to a local JSON file; no row, no explanation and no analysis
+ * derives from these strings, so there is no attestation chain to break.
+ *
+ * What they actually are is experiment parameters — varied per run, alongside
+ * temperature and repeat_penalty, to find out whether a VLM belongs in the
+ * scan path at all. Seeding versioned prompts for engines we have already
+ * rejected (olmOCR confabulates, Molmo crashes the runner) would put dead
+ * prompts in a public, attested registry to serve a measurement that argued
+ * against using them.
+ *
+ * THE CONDITION, which matters more than the exemption:
+ *
+ *   If the VLM path ships, its production prompt comes from prompt-service —
+ *   and this harness must then be re-pointed at that exact prompt and re-run
+ *   before the numbers are quoted as evidence for the decision.
+ *
+ * Otherwise the eval measures one prompt and production runs another, and
+ * "qwen2.5vl retrieves at rank 1" becomes a claim about a string nobody
+ * shipped. Tracked so it cannot be forgotten between the experiment and the
+ * rollout.
+ *
  * Usage:
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine tesseract
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine ollama-vision
