@@ -108,6 +108,74 @@ describe('ScanService', () => {
     });
 
     /**
+     * #1049: the detection reading is recorded on the document row, so the
+     * capture thresholds can eventually be set from observed device behaviour
+     * rather than from one developer's phone.
+     */
+    it('records the detection reading on the document row', async () => {
+      db.document.create.mockResolvedValue({ id: 'doc-1' });
+      db.document.update.mockResolvedValue({});
+      ocrService.extractFromBuffer.mockResolvedValue({
+        text: 'text',
+        confidence: 90,
+        provider: 'tesseract',
+        blocks: [],
+        processingTimeMs: 10,
+      });
+
+      await service.processScan('user-1', base64Data, 'image/png', undefined, {
+        detectionConfidence: 0.9931,
+        coverage: 0.8164,
+        sharpness: 10472.32,
+        cropFired: true,
+        frameWidth: 1920,
+        frameHeight: 1080,
+      });
+
+      const created = db.document.create.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(created.data).toMatchObject({
+        captureDetectionConfidence: 0.9931,
+        captureCoverage: 0.8164,
+        captureSharpness: 10472.32,
+        captureCropFired: true,
+        captureFrameWidth: 1920,
+        captureFrameHeight: 1080,
+      });
+    });
+
+    /**
+     * A client that reports nothing must leave the columns NULL, not zero.
+     *
+     * Zero is a reading the detector can genuinely produce — it means it found
+     * nothing in the frame. Writing zeros for "did not report" would make the
+     * two indistinguishable and drag down every average computed over the
+     * column, which is the one thing these columns exist to support.
+     */
+    it('writes no capture columns at all when none were reported', async () => {
+      db.document.create.mockResolvedValue({ id: 'doc-1' });
+      db.document.update.mockResolvedValue({});
+      ocrService.extractFromBuffer.mockResolvedValue({
+        text: 'text',
+        confidence: 90,
+        provider: 'tesseract',
+        blocks: [],
+        processingTimeMs: 10,
+      });
+
+      await service.processScan('user-1', base64Data, 'image/png');
+
+      const created = db.document.create.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      const captureKeys = Object.keys(created.data).filter((k) =>
+        k.startsWith('capture'),
+      );
+      expect(captureKeys).toEqual([]);
+    });
+
+    /**
      * #1075: the scrubbed text is what gets persisted AND what gets returned.
      * Returning the raw OCR would hand signature rows straight back over
      * GraphQL while the database held the safe version — the leak would be

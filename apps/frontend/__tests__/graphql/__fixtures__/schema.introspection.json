@@ -1946,6 +1946,94 @@
         "inputFields": [
           {
             "defaultValue": null,
+            "name": "coverage",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "cropFired",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "detectionConfidence",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "frameHeight",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "frameWidth",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "sharpness",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          }
+        ],
+        "interfaces": null,
+        "kind": "INPUT_OBJECT",
+        "name": "CaptureMetricsInput",
+        "possibleTypes": null
+      },
+      {
+        "enumValues": null,
+        "fields": null,
+        "inputFields": [
+          {
+            "defaultValue": null,
             "name": "accessToken",
             "type": {
               "kind": "NON_NULL",
@@ -13151,6 +13239,15 @@
         "enumValues": null,
         "fields": null,
         "inputFields": [
+          {
+            "defaultValue": null,
+            "name": "capture",
+            "type": {
+              "kind": "INPUT_OBJECT",
+              "name": "CaptureMetricsInput",
+              "ofType": null
+            }
+          },
           {
             "defaultValue": null,
             "name": "data",

@@ -11,6 +11,10 @@ import {
   useDocumentDetection,
   type ReadinessHint,
 } from "@/lib/hooks/useDocumentDetection";
+import {
+  toCaptureMetrics,
+  type CaptureMetrics,
+} from "@/lib/vision/capture-metrics";
 import { deskewImageData } from "@/lib/vision/perspective";
 import { getKeepRegion, cropImageData } from "@/lib/vision/signature-region";
 
@@ -27,7 +31,7 @@ interface CameraViewfinderProps {
   switchCamera: () => Promise<void>;
   startContinuousAnalysis: (captureFrame: () => ImageData | null) => void;
   stopContinuousAnalysis: () => void;
-  onCapture: (imageData: ImageData) => void;
+  onCapture: (imageData: ImageData, metrics: CaptureMetrics) => void;
   onToggleTorch: () => void;
   onCancel?: () => void;
 }
@@ -123,7 +127,8 @@ export function CameraViewfinder({
     // while the crop must use the freshest reading available. Swapping capture
     // onto `readiness` would crop by a stale page position, which is precisely
     // how a signature row ends up back in shot.
-    const { quad } = detection.latest();
+    const readiness = detection.latest();
+    const { quad } = readiness;
     const deskewed = quad ? (deskewImageData(frame, quad) ?? frame) : frame;
     const pageFillsImage = deskewed !== frame;
 
@@ -143,7 +148,13 @@ export function CameraViewfinder({
       pageFillsImage,
     });
 
-    onCapture(cropImageData(deskewed, keep));
+    // Record what the detector decided, from the SAME reading the crop used
+    // (#1049). Reading `latest()` a second time here would sample a different
+    // frame, and the telemetry would describe a capture that never happened.
+    onCapture(
+      cropImageData(deskewed, keep),
+      toCaptureMetrics(readiness, pageFillsImage),
+    );
   }, [captureFrame, onCapture, detection]);
 
   return (

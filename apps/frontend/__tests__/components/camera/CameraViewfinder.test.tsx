@@ -157,6 +157,53 @@ describe("CameraViewfinder", () => {
       expect(handed.height).toBeLessThan(tallFrame.height);
     });
 
+    /**
+     * #1049: capture reports what the detector decided, so the thresholds can
+     * eventually be set from observed device behaviour instead of from one
+     * developer's phone. The reading must be well-formed on every path —
+     * anything non-finite fails GraphQL Float serialisation and would lose the
+     * scan itself, which is the opposite of the trade we are making here.
+     */
+    it("reports the detector's reading alongside the image", async () => {
+      const user = userEvent.setup();
+
+      render(<CameraViewfinder {...defaultProps} />);
+      await user.click(screen.getByRole("button", { name: "Capture" }));
+
+      const metrics = (defaultProps.onCapture as jest.Mock).mock.calls[0][1];
+
+      expect(metrics).toEqual({
+        detectionConfidence: expect.any(Number),
+        coverage: expect.any(Number),
+        sharpness: expect.any(Number),
+        cropFired: expect.any(Boolean),
+        frameWidth: expect.any(Number),
+        frameHeight: expect.any(Number),
+      });
+      const nonFinite = Object.entries(metrics).filter(
+        ([, v]) => typeof v === "number" && !Number.isFinite(v),
+      );
+      expect(nonFinite).toEqual([]);
+    });
+
+    /**
+     * A blank frame has no document in it, so the deskew cannot run and
+     * capture falls back to the whole frame. `cropFired: false` is the record
+     * of that fallback — the eval harness measured the same photograph and OCR
+     * engine at rank 6 uncropped versus rank 1 cropped, so this one bit
+     * separates a good scan from a bad one.
+     */
+    it("records that the crop did not fire when no document is found", async () => {
+      const user = userEvent.setup();
+
+      render(<CameraViewfinder {...defaultProps} />);
+      await user.click(screen.getByRole("button", { name: "Capture" }));
+
+      const metrics = (defaultProps.onCapture as jest.Mock).mock.calls[0][1];
+
+      expect(metrics.cropFired).toBe(false);
+    });
+
     it("should not call onCapture when captureFrame returns null", async () => {
       const user = userEvent.setup();
       const captureFrame = jest.fn(() => null);
