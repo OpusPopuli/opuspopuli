@@ -520,17 +520,19 @@ describe("PromptClientService", () => {
       );
     });
 
-    it("falls back to the hardcoded votes template (roll-call contract) when DB is empty", async () => {
+    it("throws when the votes template is not seeded (#1246)", async () => {
+      // Used to fall through to an inline roll-call contract. That copy is
+      // gone: the contract lives in prompt-service where it is versioned.
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      const result = await service.getBillVotesExtractionPrompt(BASE);
-
-      // Fallback emits the same roll-call shape (members[] + position) so
-      // votes still extract in degraded mode.
-      expect(result.promptText).toContain("202520260AB42");
-      expect(result.promptText).toContain("members");
-      expect(result.promptText).toContain("position");
-      expect(result.promptVersion).toBe("v0");
+      await expect(
+        service.getBillVotesExtractionPrompt({
+          regionId: "california",
+          sourceUrl: "https://example.gov/bill",
+          billNumber: "AB 1",
+          html: "<div/>",
+        } as any),
+      ).rejects.toThrow(/not found/);
     });
   });
 
@@ -1312,24 +1314,17 @@ describe("PromptClientService", () => {
       expect(result.promptText).toBe('- id: "law" — Law: Signed into law.');
     });
 
-    it("falls back to the hardcoded minimal template when DB lookup misses", async () => {
-      // Core ingest pipeline — must work even without prompt-service /
-      // a seeded DB. The fallback preserves the merged-output schema so
-      // region-sync consumers can parse the response.
+    it("throws when the status-summary template is not seeded (#1246)", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      const result = await service.getBillStatusSummaryPrompt(BASE);
-
-      expect(result.promptText).toContain("Region: california");
-      expect(result.promptText).toContain("Bill: AB 1");
-      expect(result.promptText).toContain(
-        "Prior known status: Senate - Held in Committee",
-      );
-      expect(result.promptText).toContain(
-        '- id: "in_committee" — In Committee: Bill is referred to a policy committee.',
-      );
-      expect(result.promptText).toContain("<html>Bill body</html>");
-      expect(result.promptVersion).toBe("v0");
+      await expect(
+        service.getBillStatusSummaryPrompt({
+          billNumber: "AB 1",
+          title: "t",
+          status: "s",
+          philosophy: undefined,
+        } as any),
+      ).rejects.toThrow(/not found/);
     });
 
     it("returns the prompt template version verbatim for the version-bump re-enrich flow", async () => {
@@ -1388,29 +1383,42 @@ describe("PromptClientService", () => {
 
       await expect(
         service.getPromptHash("nonexistent-template"),
-      ).rejects.toThrow(
-        'Prompt template "nonexistent-template" not found in database',
-      );
+      ).rejects.toThrow(/not found/);
     });
   });
 
-  describe("fallback templates", () => {
-    it("should return fallback when DB template missing for core template", async () => {
-      // All DB lookups return null
+  /**
+   * #1246: there is no hardcoded fallback any more. These pin the replacement
+   * contract — an unseeded lookup FAILS rather than quietly serving prompt
+   * text this repo carries a copy of.
+   *
+   * The old behaviour degraded instead, and #920 is what that cost: a wiped
+   * prompt_templates table fell through to stubs, extraction produced records
+   * the domain mapper rejected, and meetings went silently to zero.
+   */
+  describe("no inline fallback (#1246)", () => {
+    it("throws rather than serving a prompt this repo carries inline", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      const result = await service.getRAGPrompt({
-        context: "The sky is blue.",
-        query: "What color?",
-      });
-
-      expect(result.promptText).toContain("The sky is blue.");
-      expect(result.promptText).toContain("What color?");
-      expect(result.promptVersion).toBe("v0");
+      await expect(
+        service.getRAGPrompt({ context: "The sky is blue.", query: "What?" }),
+      ).rejects.toThrow(/not found/);
     });
 
-    it("should use fallbackName's hardcoded fallback when primary not in DB", async () => {
-      // structural-analysis found in DB, but schema type not found
+    it("names prompt-service in the error, so the fix is obvious", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getRAGPrompt({ context: "a", query: "b" }),
+      ).rejects.toThrow(/PROMPT_SERVICE_URL|prompt-service/);
+    });
+
+    /**
+     * A missing template used to resolve through `fallbackName` to another
+     * inline default. With the inline copies gone, an unseeded schema type
+     * must fail too — not silently borrow a sibling's text.
+     */
+    it("throws when neither the template nor its fallback name is seeded", async () => {
       mockDb.promptTemplate.findFirst
         .mockResolvedValueOnce(
           mockTemplate(
@@ -1418,31 +1426,31 @@ describe("PromptClientService", () => {
             "Schema: {{SCHEMA_DESCRIPTION}} {{DATA_TYPE}} {{CONTENT_GOAL}} {{HINTS_SECTION}} {{HTML}}",
           ),
         )
-        // structural-schema-exotic: not in DB
         .mockResolvedValueOnce(null)
-        // structural-schema-default: not in DB either
         .mockResolvedValueOnce(null);
 
-      const result = await service.getStructuralAnalysisPrompt({
-        dataType: "exotic" as any,
-        contentGoal: "test",
-        html: "<div/>",
-      });
-
-      // Should use the hardcoded structural-schema-default fallback
-      expect(result.promptText).toContain(
-        "Extract all relevant structured data fields",
-      );
+      await expect(
+        service.getStructuralAnalysisPrompt({
+          dataType: "exotic" as any,
+          contentGoal: "test",
+          html: "<div/>",
+        }),
+      ).rejects.toThrow(/not found/);
     });
 
-    it("should cache fallback templates after first use", async () => {
+    it("does not cache a failure as if it were a template", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      await service.getRAGPrompt({ context: "a", query: "b" });
-      await service.getRAGPrompt({ context: "c", query: "d" });
+      await expect(
+        service.getRAGPrompt({ context: "a", query: "b" }),
+      ).rejects.toThrow();
+      await expect(
+        service.getRAGPrompt({ context: "c", query: "d" }),
+      ).rejects.toThrow();
 
-      // DB queried only once for "rag" (cached after fallback returned)
-      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledTimes(1);
+      // Queried again: a miss must stay a miss, so seeding the service fixes
+      // the next call instead of requiring a restart.
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1521,13 +1529,14 @@ describe("PromptClientService", () => {
       expect(metrics.circuitBreakerState).toBe("closed");
     });
 
-    it("should track hardcoded fallback usage", async () => {
+    it("no longer records hardcoded fallbacks, because there are none (#1246)", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      await service.getRAGPrompt({ context: "a", query: "b" });
-      const metrics = service.getMetrics();
+      await expect(
+        service.getRAGPrompt({ context: "a", query: "b" }),
+      ).rejects.toThrow();
 
-      expect(metrics.hardcodedFallbacks).toBeGreaterThan(0);
+      expect(service.getMetrics().hardcodedFallbacks).toBe(0);
     });
 
     it("should return null circuit breaker health when not in remote mode", () => {

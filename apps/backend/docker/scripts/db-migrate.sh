@@ -39,25 +39,23 @@ fi
 echo "Running Prisma migrate deploy..."
 npx prisma migrate deploy
 
-# Seed the prompt_templates failover cache — but ONLY when the node is not
-# configured to use the remote prompt-service. #605 removed this seeding on
-# the assumption that PROMPT_SERVICE_URL is always set (prompt-service is then
-# authoritative and the local table is just a failover cache). But --local-only
-# nodes run WITHOUT PROMPT_SERVICE_URL, so PromptClientService reads this table
-# directly. A create-op-node regen / DB restore wipes prompt_templates (a seed
-# table, never in the backup), and with no reseed the structural-analysis and
-# schema prompts fall back to hardcoded stubs → broken manifests → extraction
-# silently yields records the domain mapper rejects (meetings went to 0). See
-# #920. seed-prompts.ts upserts by name, so this is idempotent and safe to run
-# on every deploy. Kept non-fatal so a seed hiccup never blocks startup, matching
-# the admin-user / vault seeds below.
-if [ -z "${PROMPT_SERVICE_URL:-}" ]; then
-  echo "=== Seeding prompt_templates failover cache (PROMPT_SERVICE_URL unset) ==="
-  npx --yes tsx prisma/seed-prompts.ts || \
-    echo "  (prompt_templates seed skipped — non-fatal; run db:seed-prompts manually)"
-else
-  echo "=== Skipping prompt_templates seed (PROMPT_SERVICE_URL set — prompt-service authoritative) ==="
-fi
+# prompt_templates is NOT seeded here (opuspopuli#1246).
+#
+# Prompt text lives in prompt-service, which versions and content-hashes it.
+# This repo used to carry a 367-line inline copy for nodes running without
+# PROMPT_SERVICE_URL; that copy is gone, and with it the possibility of two
+# divergent versions of the same prompt where nothing records which one an
+# output came from.
+#
+# A node that needs AI features runs prompt-service and sets
+# PROMPT_SERVICE_URL — `requirePromptServiceUrl` already refuses to boot
+# without it in production. Without it, PromptClientService now throws on the
+# first prompt fetch rather than degrading.
+#
+# That throw is the point. #920 was expensive because it was survivable: a
+# wiped prompt_templates table fell through to hardcoded stubs, extraction
+# produced records the domain mapper rejected, and meetings went silently to
+# zero. A boot-time failure is the cheaper version of that week.
 
 echo "Checking spatial_ref_sys BEFORE setup..."
 psql -h "$PGHOST" -U "$PGUSER" -d "$PGDB" -c "SELECT schemaname, tablename FROM pg_tables WHERE tablename = 'spatial_ref_sys';"
