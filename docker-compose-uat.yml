@@ -110,6 +110,17 @@ x-backend-env: &backend-env
   # silently rather than erroring (opuspopuli#1231).
   EMBEDDINGS_OLLAMA_MODEL: ${EMBEDDINGS_OLLAMA_MODEL:-nomic-embed-text-v2-moe:latest}
   #
+  # Petition OCR engine (opuspopuli#1050). `tesseract` here, NOT the `vision`
+  # default the nodes run: UAT has no guaranteed vision model, and a stack that
+  # silently scans nothing is worse for testing than one that scans poorly.
+  # Set OCR_PROVIDER=vision (with the model pulled) to exercise the real path.
+  OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+  # Pinned SEPARATELY from LLM_MODEL and must stay that way — inference is
+  # moving to a US-provenance model with no vision capability, and deriving one
+  # from the other breaks scanning silently the day that lands.
+  OCR_VISION_MODEL: ${OCR_VISION_MODEL:-qwen2.5vl:7b}
+  OCR_VISION_URL: ${OCR_VISION_URL:-http://host.docker.internal:11434}
+  #
   # VECTORDB_DIMENSIONS is deliberately NOT pinned here. The vector width is a
   # code constant (EMBEDDING_DIMENSIONS in @opuspopuli/common) and
   # vectordb.config.ts already defaults to it. Pinning a literal in compose adds

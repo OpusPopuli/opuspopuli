@@ -1,4 +1,4 @@
-import { Module, DynamicModule } from "@nestjs/common";
+import { Module, DynamicModule, FactoryProvider } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IOcrProvider } from "@opuspopuli/common";
 import { ocrConfig } from "@opuspopuli/config-provider";
@@ -130,6 +130,48 @@ export interface OcrModuleConfig {
   exports: [OcrService, "OCR_PROVIDER", ImagePreprocessor],
 })
 export class OcrModule {
+  /**
+   * Register the module with a prompt supplier resolved from the consuming
+   * module's own providers (#1050).
+   *
+   * ── Why this exists rather than the consumer just registering the token ──
+   *
+   * NestJS resolves a module's factory dependencies within THAT module's
+   * scope. Providing `OCR_PROMPT_SUPPLIER` in the consuming module does not
+   * make it visible here — the static `OcrModule` still sees nothing and the
+   * vision provider throws at boot. That is exactly how this was first wired,
+   * and only starting the service revealed it.
+   *
+   * So the supplier is threaded in explicitly. `imports` lets the caller bring
+   * whatever module owns the prompt client, without this package taking a
+   * dependency on prompt-client — which matters, because the point of the
+   * exercise is that prompt text lives in prompt-service, not in a package
+   * that could be tempted to inline a default.
+   */
+  static forRootAsync(options: {
+    imports?: DynamicModule["imports"];
+    inject?: FactoryProvider["inject"];
+    useFactory: (...args: never[]) => () => Promise<{
+      promptText: string;
+      promptHash: string;
+      promptVersion: string;
+    }>;
+  }): DynamicModule {
+    const base = OcrModule.forRoot();
+    return {
+      ...base,
+      imports: [...(base.imports ?? []), ...(options.imports ?? [])],
+      providers: [
+        ...(base.providers ?? []),
+        {
+          provide: "OCR_PROMPT_SUPPLIER",
+          useFactory: options.useFactory,
+          inject: options.inject,
+        } as FactoryProvider,
+      ],
+    };
+  }
+
   /**
    * Configure the module with custom options (for testing or direct usage)
    */
