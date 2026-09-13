@@ -109,12 +109,19 @@ x-backend-env: &backend-env
   # model that scores 0/14 top-1 on the real proposition corpus and fails
   # silently rather than erroring (opuspopuli#1231).
   EMBEDDINGS_OLLAMA_MODEL: ${EMBEDDINGS_OLLAMA_MODEL:-nomic-embed-text-v2-moe:latest}
-  # Must equal EMBEDDING_DIMENSIONS in @opuspopuli/common (768 since #1156).
-  # Applied only when the knowledge-RAG table is CREATED — `CREATE TABLE IF NOT
-  # EXISTS` will not widen an existing one — so a disagreement here surfaces as
-  # a runtime insert failure with no startup signal, unlike the column-width
-  # mismatch that now refuses to boot.
-  VECTORDB_DIMENSIONS: ${VECTORDB_DIMENSIONS:-768}
+  #
+  # VECTORDB_DIMENSIONS is deliberately NOT pinned here. The vector width is a
+  # code constant (EMBEDDING_DIMENSIONS in @opuspopuli/common) and
+  # vectordb.config.ts already defaults to it. Pinning a literal in compose adds
+  # a THIRD place that must agree, updated by a different kind of change from
+  # the other two — so a width bump in code would leave this file asserting the
+  # old number and the stack refusing to boot.
+  #
+  # An earlier version of this block did pin it, and the same pin broke both e2e
+  # shards on a branch cut from main where the constant was still 384 (#1238).
+  # The boot assertion caught it, which is the system working — but the fix is
+  # one source of truth, not a louder disagreement. Override via the environment
+  # for a specific run.
   #
   # Default stays xenova (in-process) so `pnpm uat:up` needs no Ollama daemon
   # and no 957 MB pull. To exercise what production runs:
