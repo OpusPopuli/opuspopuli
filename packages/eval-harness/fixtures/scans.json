@@ -4,10 +4,16 @@
   "corpus": "corpus-propositions.json",
   "items": [
     {
-      "id": "clipboard-0007A1",
+      "id": "0007A1-full-frame",
       "gold": "25-0007A1",
       "image": "scanned-proposition.jpeg",
-      "notes": "petition on a clipboard, shot from above, slight angle; clipboard/desk/pen visible outside the paper; signature rows blank"
+      "notes": "as captured: clipboard, desk and pen visible outside the paper \u2014 what production sends when edge detection is not confident"
+    },
+    {
+      "id": "0007A1-cropped",
+      "gold": "25-0007A1",
+      "image": "scanned-proposition-cropped.jpeg",
+      "notes": "cropped to the paper (63% of the frame kept) \u2014 what production sends when the deskew-crop fires"
     }
   ]
 }

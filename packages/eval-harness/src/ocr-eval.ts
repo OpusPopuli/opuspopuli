@@ -37,6 +37,10 @@
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine text   # replay stored OCR
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const run = promisify(execFile);
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -229,7 +233,17 @@ function ollamaVisionBackend(model: string): OcrBackend {
             "commentary. If a region is illegible, skip it rather than guessing.",
           images: [b64],
           stream: false,
-          options: { temperature: 0 },
+          // 1400, not 4096: a 7B VLM generating 4096 tokens of a dense legal
+          // page exceeds Node's 5-minute fetch headers timeout and the request
+          // dies with UND_ERR_HEADERS_TIMEOUT — a harness failure that looks
+          // like a model failure. A page's worth of text fits comfortably.
+          // repeat_penalty for the same reason it is set on the olmocr path:
+          // these models loop a sentence when transcribing repetitive forms.
+          options: {
+            temperature: 0.1,
+            num_predict: 1400,
+            repeat_penalty: 1.15,
+          },
         }),
       });
       if (!r.ok) throw new Error(`ollama ${r.status}: ${await r.text()}`);
@@ -276,7 +290,16 @@ function olmocrBackend(model: string): OcrBackend {
           prompt: "Return the natural text of this document.",
           images: [b64],
           stream: false,
-          options: { temperature: 0, num_predict: 4096 },
+          // repeat_penalty is not optional. Without it the model reads the page
+          // correctly and then loops one sentence about forty times — a
+          // sampling artefact rather than a reading failure, but it destroys
+          // the text. Observed identically under MLX, so it is the model, not
+          // the serving path.
+          options: {
+            temperature: 0.1,
+            num_predict: 1400,
+            repeat_penalty: 1.15,
+          },
         }),
       });
       if (!r.ok) throw new Error(`ollama ${r.status}: ${await r.text()}`);
@@ -319,6 +342,75 @@ interface Block {
  * have admitted the scans the page average rejected, before anything in
  * production is changed to use it.
  */
+/**
+ * olmOCR-2 through MLX, because the GGUF route does not work.
+ *
+ * Measured 2026-09-13: the community GGUF (`mradermacher/olmOCR-2-7B-1025`)
+ * produces confabulation at every quantization tried — coherent text with no
+ * image, garbage with one, while another vision model reads the same file
+ * correctly through the same Ollama. The GGUF declares architecture `qwen2vl`
+ * while olmOCR-2 is built on Qwen2.5-VL, so the older vision pipeline is being
+ * applied to a newer projector. MLX bypasses llama.cpp entirely and works.
+ *
+ * The operational cost is real and belongs in any decision this informs: MLX
+ * is a Python process outside Ollama, so adopting it means a sidecar on the
+ * node — another service to supervise, health-check and deploy, in a stack
+ * where everything else reaches inference through one daemon.
+ *
+ * `--repetition-penalty` is not optional. Without it the 4-bit model reads the
+ * page correctly and then loops one sentence about forty times, which is a
+ * sampling artefact rather than a reading failure, but it wrecks the text.
+ */
+function olmocrMlxBackend(model: string): OcrBackend {
+  const python =
+    process.env.OLMOCR_MLX_PYTHON ?? join(ROOT, "../../.venv-mlx/bin/python");
+  return {
+    name: "olmocr-mlx",
+    model,
+    run: async (item) => {
+      const started = Date.now();
+      const { stdout } = await run(
+        python,
+        [
+          "-m",
+          "mlx_vlm.generate",
+          "--model",
+          model,
+          "--image",
+          scanPath(item),
+          "--prompt",
+          "Return the natural text of this document.",
+          "--max-tokens",
+          "1400",
+          "--temperature",
+          "0.1",
+          "--repetition-penalty",
+          "1.15",
+          "--repetition-context-size",
+          "256",
+        ],
+        { maxBuffer: 32 * 1024 * 1024 },
+      );
+      // The CLI interleaves progress lines with the generation; drop the
+      // decoration rather than letting it be embedded as if it were page text.
+      const text = stdout
+        .split("\n")
+        .filter((l) => !/^(Fetching|Files:|\s*\d+%\|)/.test(l))
+        .join("\n")
+        .trim();
+      return {
+        text,
+        // No per-character confidence exists for any VLM. If one of these wins,
+        // MIN_RETRIEVAL_OCR_CONFIDENCE loses its input entirely and the gate
+        // has to be replaced, not merely retuned.
+        pageConfidence: null,
+        bestRegionConfidence: null,
+        ms: Date.now() - started,
+      };
+    },
+  };
+}
+
 function bestRegion(blocks?: Block[]): number | null {
   const withBoxes = (blocks ?? []).filter(
     (b) => b.boundingBox && b.text.trim().length > 0,
@@ -554,9 +646,18 @@ async function main(): Promise<void> {
   else if (engine === "tesseract") backend = await tesseractBackend();
   else if (engine === "ollama-vision")
     backend = ollamaVisionBackend(arg("model") ?? "qwen3.6:35b-a3b");
+  else if (engine === "olmocr-mlx")
+    backend = olmocrMlxBackend(
+      arg("model") ?? "mlx-community/olmOCR-2-7B-1025-4bit",
+    );
   else if (engine === "olmocr")
     backend = olmocrBackend(
-      arg("model") ?? "hf.co/mradermacher/olmOCR-2-7B-1025-GGUF:Q4_K_M",
+      // bartowski's conversion, NOT mradermacher's. Both declare arch
+      // `qwen2vl` and both advertise `vision`; only this one actually reads an
+      // image. mradermacher's confabulates — coherent with no image, garbage
+      // with one — which is a broken projector rather than a bad architecture
+      // label, and nothing errors either way.
+      arg("model") ?? "hf.co/bartowski/allenai_olmOCR-2-7B-1025-GGUF:Q8_0",
     );
   else throw new Error(`unknown engine "${engine}"`);
 
