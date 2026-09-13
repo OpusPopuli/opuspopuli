@@ -168,8 +168,8 @@
   "verification": {
     "verifiedTitle": "Verified against the filed record",
     "verifiedBody": "This analysis is based on {{measure}} as filed with the Secretary of State, not only on the page you photographed.",
-    "unverifiedTitle": "Not matched to a filed state measure",
-    "unverifiedBody": "We couldn't match this to a filed state measure. It may be a local or county petition, or it may not be on file — we're reading the page in front of you, not an official record."
+    "unverifiedTitle": "Not confirmed against the filed record",
+    "unverifiedBody": "We're reading the page in front of you, not an official record. We haven't confirmed which filed measure this is: it may be a local or county petition, it may not be on file, or we may not have matched it with enough confidence."
   },
   "filedAnalysis": {
     "title": "What the filed measure says",
