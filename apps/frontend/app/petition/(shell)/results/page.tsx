@@ -17,6 +17,11 @@ import {
   type DocumentAnalysis,
   type LinkedProposition,
 } from "@/lib/graphql/documents";
+import {
+  readCaptureMetrics,
+  type CaptureMetrics,
+} from "@/lib/vision/capture-metrics";
+import { readSessionJson } from "@/lib/session-json";
 import { ReportIssueButton } from "@/components/ReportIssueButton";
 import { PetitionPageHeader } from "@/app/petition/components/PetitionPageHeader";
 import { TrackOnBallotButton } from "@/components/petition/TrackOnBallotButton";
@@ -28,6 +33,22 @@ import { VerificationBanner } from "@/components/petition/VerificationBanner";
 import { FiledAnalysis } from "@/components/petition/FiledAnalysis";
 
 type ProcessingStep = "extracting" | "analyzing" | "complete" | "error";
+
+/**
+ * Read the fuzzed scan location out of sessionStorage, or null if it is absent
+ * or unreadable. A lost location downgrades the scan; a thrown parse loses it.
+ */
+function readScanLocation(): { latitude: number; longitude: number } | null {
+  return readSessionJson("petition-scan-location", isCoordinates);
+}
+
+function isCoordinates(
+  value: unknown,
+): value is { latitude: number; longitude: number } {
+  if (typeof value !== "object" || value === null) return false;
+  const { latitude, longitude } = value as Record<string, unknown>;
+  return typeof latitude === "number" && typeof longitude === "number";
+}
 
 export default function PetitionResultsPage() {
   const router = useRouter();
@@ -68,6 +89,7 @@ export default function PetitionResultsPage() {
     async (
       base64: string,
       location: { latitude: number; longitude: number } | null,
+      capture: CaptureMetrics | null,
     ) => {
       try {
         // Step 1: Process scan (OCR + persist)
@@ -78,6 +100,9 @@ export default function PetitionResultsPage() {
               data: base64,
               mimeType: "image/jpeg",
               documentType: "petition",
+              // Omitted entirely when absent, so the column records NULL
+              // rather than a fabricated zero (#1049).
+              ...(capture ? { capture } : {}),
             },
           },
         });
@@ -149,20 +174,24 @@ export default function PetitionResultsPage() {
       return;
     }
 
-    const locationStr = sessionStorage.getItem("petition-scan-location");
-    const location = locationStr
-      ? (JSON.parse(locationStr) as { latitude: number; longitude: number })
-      : null;
+    // Guarded (see readScanLocation): a malformed value here used to throw
+    // inside this mount effect, after `hasStarted` was already set — aborting
+    // the pipeline before OCR and stranding the user on a dead screen with a
+    // photograph they cannot retake.
+    const location = readScanLocation();
+
+    const capture = readCaptureMetrics();
 
     // Clean up sessionStorage
     sessionStorage.removeItem("petition-scan-data");
     sessionStorage.removeItem("petition-scan-location");
+    sessionStorage.removeItem("petition-scan-capture");
 
     // Initial-mount kickoff of the OCR pipeline — runPipeline internally
     // calls setState. This is the documented entry point, not a cascading
     // render loop.
 
-    runPipeline(base64, location);
+    runPipeline(base64, location, capture);
   }, [router, runPipeline]);
 
   const handleShare = useCallback(async () => {
