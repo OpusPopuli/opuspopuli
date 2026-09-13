@@ -226,6 +226,67 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getOcrTranscriptionPrompt", () => {
+    it("serves the general-model instruction verbatim, with attestation", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("ocr-transcription", "Transcribe all readable text."),
+      );
+
+      const result = await service.getOcrTranscriptionPrompt({
+        variant: "general",
+      });
+
+      expect(result.promptText).toBe("Transcribe all readable text.");
+      expect(result.promptVersion).toBe("v1");
+      expect(result.promptHash).toMatch(/^[0-9a-f]{8,}$/);
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: "ocr-transcription", isActive: true },
+        }),
+      );
+    });
+
+    /**
+     * The variants are not interchangeable. A document-tuned model given the
+     * long general instruction has room to editorialise, and a general model
+     * given the one-line instruction summarises instead of transcribing — so
+     * picking the wrong template degrades output without erroring.
+     */
+    it("serves a different template for a document-tuned model", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate(
+          "ocr-transcription-document",
+          "Return the natural text of this document.",
+        ),
+      );
+
+      await service.getOcrTranscriptionPrompt({ variant: "document" });
+
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: "ocr-transcription-document", isActive: true },
+        }),
+      );
+    });
+
+    /**
+     * Every other template degrades to a hardcoded inline default when the
+     * database has not been seeded. This one MUST NOT: an inline fallback here
+     * would put the prompt text back in this repo, which is the whole thing
+     * moving it to the service was meant to end.
+     *
+     * Verified by reintroducing the bug — adding an `ocr-transcription` entry
+     * to FALLBACK_TEMPLATES makes this test fail.
+     */
+    it("throws rather than falling back to an unpublished inline prompt", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.getOcrTranscriptionPrompt({ variant: "general" }),
+      ).rejects.toThrow(/ocr-transcription/);
+    });
+  });
+
   describe("getCivicsExtractionPrompt", () => {
     it("composes civics-extraction prompt with all interpolated fields", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValueOnce(

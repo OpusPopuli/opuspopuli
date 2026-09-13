@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@opuspopuli/embeddings-provider": "workspace:*",
-    "@opuspopuli/ocr-provider": "workspace:*"
+    "@opuspopuli/ocr-provider": "workspace:*",
+    "@opuspopuli/prompt-client": "workspace:*",
+    "@opuspopuli/relationaldb-provider": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
