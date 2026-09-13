@@ -33,6 +33,7 @@
  * Usage:
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine tesseract
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine ollama-vision
+ *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine olmocr
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine text   # replay stored OCR
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -165,10 +166,14 @@ async function tesseractBackend(): Promise<OcrBackend> {
   const P = (
     mod as unknown as {
       TesseractOcrProvider: new () => {
-        extractText(input: { buffer: Buffer; mimeType: string }): Promise<{
+        extractText(input: {
+          type: "buffer";
+          buffer: Buffer;
+          mimeType: string;
+        }): Promise<{
           text: string;
           confidence: number;
-          blocks?: { text: string; confidence: number }[];
+          blocks?: Block[];
         }>;
       };
     }
@@ -182,6 +187,7 @@ async function tesseractBackend(): Promise<OcrBackend> {
       const buffer = readFileSync(scanPath(item));
       const started = Date.now();
       const out = await provider.extractText({
+        type: "buffer",
         buffer,
         mimeType: mimeFor(item.image ?? ""),
       });
@@ -241,21 +247,128 @@ function ollamaVisionBackend(model: string): OcrBackend {
   };
 }
 
-function bestRegion(
-  blocks?: { text: string; confidence: number }[],
-): number | null {
-  if (!blocks || blocks.length === 0) return null;
-  // Longest-block confidence, not max: a two-character block at 99 says
-  // nothing about whether the measure's text came through.
-  const ranked = [...blocks].sort((a, b) => b.text.length - a.text.length);
-  return ranked[0]?.confidence ?? null;
+/**
+ * olmOCR-2 — a document-OCR model rather than a general vision model.
+ *
+ * `allenai/olmOCR-2-7B-1025`, Apache 2.0, fine-tuned from Qwen2.5-VL-7B for
+ * exactly this task: photograph or scan in, reading-order text out. Served
+ * here through Ollama from the community GGUF, which ships the mmproj the
+ * vision path needs.
+ *
+ * The prompt is deliberately thinner than the general-VLM one. olmOCR is
+ * trained to transcribe documents without being asked nicely; a long
+ * instruction mostly gives it room to editorialise, and anything it adds in its
+ * own words is text the measure does not contain.
+ */
+function olmocrBackend(model: string): OcrBackend {
+  const url = process.env.EMBEDDINGS_OLLAMA_URL ?? "http://localhost:11434";
+  return {
+    name: "olmocr",
+    model,
+    run: async (item) => {
+      const b64 = readFileSync(scanPath(item)).toString("base64");
+      const started = Date.now();
+      const r = await fetch(`${url}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          prompt: "Return the natural text of this document.",
+          images: [b64],
+          stream: false,
+          options: { temperature: 0, num_predict: 4096 },
+        }),
+      });
+      if (!r.ok) throw new Error(`ollama ${r.status}: ${await r.text()}`);
+      const data = (await r.json()) as { response?: string };
+      return {
+        text: data.response ?? "",
+        // Same structural point as the general VLM: no per-character
+        // confidence exists, so a confidence gate cannot be fed by this engine
+        // at all. Adopting it means replacing the gate, not just the OCR.
+        pageConfidence: null,
+        bestRegionConfidence: null,
+        ms: Date.now() - started,
+      };
+    },
+  };
+}
+
+interface Block {
+  text: string;
+  confidence: number;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * The confidence of the best horizontal BAND of the page, not of the page.
+ *
+ * Tesseract returns one block per word, each with pixel coordinates, so the
+ * page average is a mean over every word it found — including the camera
+ * background outside the paper, which is where the noise lives. A photograph
+ * whose Attorney General summary is clean and whose surroundings are garbage
+ * averages to something that looks uniformly mediocre, and the production gate
+ * compares that average against 70.
+ *
+ * This slices the page into horizontal bands and scores each by its words'
+ * confidence weighted by word LENGTH — long words carry the content, and a
+ * two-character fragment at 99 says nothing about whether the measure came
+ * through. The best band is what a region-aware gate would see.
+ *
+ * Reported, never acted on: the point is to find out whether such a gate would
+ * have admitted the scans the page average rejected, before anything in
+ * production is changed to use it.
+ */
+function bestRegion(blocks?: Block[]): number | null {
+  const withBoxes = (blocks ?? []).filter(
+    (b) => b.boundingBox && b.text.trim().length > 0,
+  );
+  if (withBoxes.length === 0) return null;
+
+  const ys = withBoxes.map((b) => b.boundingBox!.y);
+  const top = Math.min(...ys);
+  const bottom = Math.max(...ys);
+  if (bottom === top) return weighted(withBoxes);
+
+  const BANDS = 12;
+  const height = (bottom - top) / BANDS;
+  let best: number | null = null;
+
+  for (let i = 0; i < BANDS; i++) {
+    const lo = top + i * height;
+    const hi = lo + height;
+    const band = withBoxes.filter(
+      (b) => b.boundingBox!.y >= lo && b.boundingBox!.y < hi,
+    );
+    // A band of three stray marks is not evidence of a readable region.
+    if (band.length < 15) continue;
+    const score = weighted(band);
+    if (best === null || score > best) best = score;
+  }
+
+  return best ?? weighted(withBoxes);
+}
+
+/** Confidence weighted by word length — content-bearing words dominate. */
+function weighted(blocks: Block[]): number {
+  const chars = blocks.reduce((n, b) => n + b.text.trim().length, 0);
+  if (chars === 0) return 0;
+  return (
+    blocks.reduce((n, b) => n + b.confidence * b.text.trim().length, 0) / chars
+  );
 }
 
 function scanPath(item: ScanItem): string {
   if (!item.image) throw new Error(`item ${item.id} has no image`);
-  const p = join(ROOT, "fixtures/scans", item.image);
-  if (!existsSync(p)) throw new Error(`missing fixture image: ${p}`);
-  return p;
+  // `fixtures/scans/<name>` is the convention; a path relative to `fixtures/`
+  // also resolves, so a one-off image does not need a directory made for it.
+  for (const candidate of [
+    join(ROOT, "fixtures/scans", item.image),
+    join(ROOT, "fixtures", item.image),
+  ]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error(`missing fixture image for ${item.id}: ${item.image}`);
 }
 
 function mimeFor(file: string): string {
@@ -441,6 +554,10 @@ async function main(): Promise<void> {
   else if (engine === "tesseract") backend = await tesseractBackend();
   else if (engine === "ollama-vision")
     backend = ollamaVisionBackend(arg("model") ?? "qwen3.6:35b-a3b");
+  else if (engine === "olmocr")
+    backend = olmocrBackend(
+      arg("model") ?? "hf.co/mradermacher/olmOCR-2-7B-1025-GGUF:Q4_K_M",
+    );
   else throw new Error(`unknown engine "${engine}"`);
 
   const run = await runOcrEval(backend, docs, fixture, embedModel);

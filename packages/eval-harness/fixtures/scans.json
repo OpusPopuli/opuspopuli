@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "ocr-scan",
+  "corpus": "corpus-propositions.json",
+  "items": [
+    {
+      "id": "clipboard-0007A1",
+      "gold": "25-0007A1",
+      "image": "scanned-proposition.jpeg",
+      "notes": "petition on a clipboard, shot from above, slight angle; clipboard/desk/pen visible outside the paper; signature rows blank"
+    }
+  ]
+}
