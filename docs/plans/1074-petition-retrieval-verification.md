@@ -107,6 +107,14 @@ creates no new signer-PII derivative at rest.
 
 ### The `unverified` copy
 
+> **Superseded 2026-09-13.** This wording gained a third case it could not
+> describe. Since #1156 an `unverified` result also covers "we matched it, and
+> declined to vouch for the match" — the similarity threshold belongs to a
+> model that is no longer selectable (#1233). Told to someone whose petition we
+> *did* match, "we couldn't match this … it may not be on file" is false in
+> every clause. Replaced with wording that is true in all three cases; the
+> reasoning below still applies and is why it stayed long.
+
 > We couldn't match this to a filed state measure. It may be a local or county
 > petition, or it may not be on file — we're reading the page in front of you,
 > not an official record.

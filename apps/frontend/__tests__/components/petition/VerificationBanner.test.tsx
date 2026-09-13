@@ -30,18 +30,31 @@ describe("VerificationBanner", () => {
 
   describe("unverified", () => {
     /**
-     * The copy has to be true from both sides. For someone holding a genuine
-     * county petition it must not read as an accusation; for someone holding a
-     * fake it must not read as reassurance.
+     * The copy has to be true from three sides now, not two.
+     *
+     * For someone holding a genuine county petition it must not read as an
+     * accusation; for someone holding a fake it must not read as reassurance;
+     * and since #1156 it must also be true when we DID match the petition but
+     * declined to vouch for the match, because the similarity threshold
+     * belongs to a model that is no longer selectable (#1233).
+     *
+     * The previous copy — "We couldn't match this to a filed state measure …
+     * it may not be on file" — is false in that third case: we matched it,
+     * possibly correctly at high similarity, and it is on file. This asserts
+     * the claim that replaced it, which is true in all three.
      */
-    it("says we could not match it AND that it may be legitimate", () => {
+    it("does not claim we failed to find a match", () => {
       render(<VerificationBanner verificationState="unverified" />);
 
-      const body = screen.getByText(/We couldn't match this/);
+      const body = screen.getByText(/We haven't confirmed which filed measure/);
       expect(body).toBeInTheDocument();
-      // Neither half alone is honest.
+      // Still offers the innocent explanations — neither half alone is honest.
       expect(body).toHaveTextContent(/local or county petition/);
       expect(body).toHaveTextContent(/may not be on file/);
+      // ...and the case that used to be unrepresentable.
+      expect(body).toHaveTextContent(
+        /not have matched it with enough confidence/,
+      );
     });
 
     /** What we actually read, stated plainly rather than implied. */
@@ -98,7 +111,7 @@ describe("VerificationBanner", () => {
 
     expect(
       screen.getByRole("region", {
-        name: /Not matched to a filed state measure/,
+        name: /Not confirmed against the filed record/,
       }),
     ).toBeInTheDocument();
   });
