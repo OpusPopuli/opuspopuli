@@ -118,10 +118,14 @@ describe('pgvector index strategy + width assertion (#1150)', () => {
     expect(hnsw).toHaveLength(1);
   });
 
-  it('aborts at boot when provider width disagrees with the store', () => {
+  it('aborts at boot when provider width disagrees with the store', async () => {
     const service = new KnowledgeService(
       {
         getProviderInfo: () => ({ dimensions: 768 }),
+        // Startup also verifies the model is actually pulled (#1156). This
+        // stub is the real provider's shape: an in-process provider has
+        // nothing to check, so readiness resolves immediately.
+        assertProviderReady: async () => undefined,
       } as unknown as ConstructorParameters<typeof KnowledgeService>[0],
       new PgVectorProvider(db, COLLECTION, 384),
       {
@@ -133,7 +137,12 @@ describe('pgvector index strategy + width assertion (#1150)', () => {
 
     // Boot, not per-row: a mismatch means every vector written from here on
     // is unusable and nothing downstream can detect it.
-    expect(() => service.onModuleInit()).toThrow(
+    //
+    // Awaited, not `expect(() => ...).toThrow`: onModuleInit became async when
+    // it gained the model-readiness check, and a synchronous matcher against an
+    // async function does not fail — it leaves an unhandled rejection that
+    // kills the jest worker, which is how this surfaced (E2E shard 1, #1156).
+    await expect(service.onModuleInit()).rejects.toThrow(
       /768-dimension vectors but the vector store expects 384/,
     );
   });

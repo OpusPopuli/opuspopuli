@@ -28,5 +28,25 @@
  * The services assert the running provider against this constant at startup so
  * a mismatch fails loudly and immediately, instead of throwing once per row
  * during a backfill or silently degrading every scan to `unverified`.
+ *
+ * ── 768 since the nomic cutover (#1156, roadmap R1) ──────────────────────
+ *
+ * Was 384, for Xenova `all-MiniLM-L6-v2`. Now `nomic-embed-text-v2-moe`,
+ * decided on Spanish: MiniLM answered 5 of 8 Spanish queries against the real
+ * proposition corpus and its hits cleared the next-best answer by 0.036 —
+ * noise, so it was guessing rather than retrieving. nomic answers 8 of 8 and
+ * clears by 0.223. English is a slight regression (margin .194 -> .155),
+ * recorded rather than buried. See `packages/eval-harness`.
+ *
+ * The migration is `20260911180000_embeddings_768_cutover`. Changing this
+ * constant WITHOUT that migration deployed is the failure the three-way
+ * startup assertion in `proposition-embedding.service.ts` exists to catch: the
+ * old two-way check (provider vs constant) passes happily while every write
+ * throws per row against a column of the other width.
+ *
+ * A consequence worth stating, because it constrains what can be selected:
+ * any provider chosen via `EMBEDDINGS_PROVIDER` must now produce 768. That
+ * includes the in-process zero-setup path, which is why its default model is a
+ * 768 one rather than MiniLM.
  */
-export const EMBEDDING_DIMENSIONS = 384;
+export const EMBEDDING_DIMENSIONS = 768;

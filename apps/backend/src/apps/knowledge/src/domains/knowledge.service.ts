@@ -74,7 +74,12 @@ export class KnowledgeService implements OnModuleInit {
    * embedding written from now on is unusable, and nothing downstream can
    * detect that.
    */
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    // Same blast-radius argument as the width check below: a model that was
+    // never pulled means every embedding from now on fails, and the only
+    // evidence is a 404 per call behind a healthy health check (#1156).
+    await this.embeddingsService.assertProviderReady();
+
     const providerWidth = this.embeddingsService.getProviderInfo().dimensions;
     const storeWidth = this.vectorDB.getDimensions();
 

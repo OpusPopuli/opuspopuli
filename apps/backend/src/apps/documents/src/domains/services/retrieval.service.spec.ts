@@ -7,6 +7,7 @@ import {
   RetrievalService,
   MIN_RETRIEVAL_OCR_CONFIDENCE,
   MIN_VERIFIED_SIMILARITY,
+  VERIFICATION_CALIBRATION,
 } from './retrieval.service';
 
 /**
@@ -27,7 +28,11 @@ describe('RetrievalService', () => {
     $queryRaw: jest.Mock;
     documentProposition: { upsert: jest.Mock };
   };
-  let embeddings: { getEmbeddingsForQuery: jest.Mock };
+  let embeddings: {
+    getEmbeddingsForQuery: jest.Mock;
+    getProviderInfo: jest.Mock;
+    assertProviderReady: jest.Mock;
+  };
   let metrics: { recordPetitionRetrieval: jest.Mock };
 
   const row = (distance: number) => [
@@ -47,6 +52,16 @@ describe('RetrievalService', () => {
     };
     embeddings = {
       getEmbeddingsForQuery: jest.fn().mockResolvedValue(vector()),
+      // The model is recorded onto the row alongside the vector (#1156): half
+      // of the staleness key, and the only way to tell afterwards which
+      // encoder produced a stored embedding.
+      // The CALIBRATED model by default, so the threshold tests below keep
+      // testing the threshold. The calibration gate has its own describe block.
+      getProviderInfo: jest.fn().mockReturnValue({
+        model: VERIFICATION_CALIBRATION.model,
+        dimensions: EMBEDDING_DIMENSIONS,
+      }),
+      assertProviderReady: jest.fn().mockResolvedValue(undefined),
     };
     metrics = { recordPetitionRetrieval: jest.fn() };
 
@@ -172,6 +187,106 @@ describe('RetrievalService', () => {
    * scored 0.545 and 0.586, so nothing would EVER have been verified and
    * nothing would have said so. This telemetry is how that gets noticed.
    */
+  /**
+   * A similarity threshold belongs to one model's space, not to the task.
+   *
+   * 0.50 was measured against MiniLM-384 from nine photographs. Under
+   * bge-base-768 a well-formed initiative that was NEVER FILED scores 0.7577
+   * against an unrelated measure — it would be labelled `verified` and get an
+   * auto_retrieval link asserting that identity. Under nomic, correct matches
+   * score 0.4-0.5 and the same constant verifies almost nothing. Wrong in both
+   * directions, so a threshold applied to a model it was not measured against
+   * makes no judgement at all.
+   */
+  /**
+   * Every way of being wrong about embeddings should be caught at boot, in one
+   * place: wrong provider width, wrong column width, and a model that was never
+   * pulled. The last was rehearsed against a real daemon — the service starts
+   * clean and then fails per row with a 404, behind a green health check.
+   */
+  describe('startup checks (#1156)', () => {
+    const columnWidth = (width: number) =>
+      db.$queryRaw.mockResolvedValue([{ width }]);
+
+    it('verifies the provider can actually serve embeddings', async () => {
+      columnWidth(EMBEDDING_DIMENSIONS);
+
+      await service.onModuleInit();
+
+      expect(embeddings.assertProviderReady).toHaveBeenCalled();
+    });
+
+    it('refuses to start when the model is not available', async () => {
+      columnWidth(EMBEDDING_DIMENSIONS);
+      embeddings.assertProviderReady.mockRejectedValue(
+        new Error(
+          'Ollama model "nomic-embed-text-v2-moe:latest" is not installed',
+        ),
+      );
+
+      await expect(service.onModuleInit()).rejects.toThrow(/not installed/);
+    });
+
+    it('refuses to start when the column width disagrees', async () => {
+      columnWidth(384);
+
+      await expect(service.onModuleInit()).rejects.toThrow(/is vector\(384\)/);
+    });
+  });
+
+  describe('calibration gate (#1156)', () => {
+    beforeEach(() => {
+      embeddings.getProviderInfo.mockReturnValue({
+        model: 'Xenova/bge-base-en-v1.5',
+        dimensions: EMBEDDING_DIMENSIONS,
+      });
+      // Comfortably over the threshold — the point is that it does not matter.
+      db.$queryRaw.mockResolvedValue(row(1 - 0.95));
+    });
+
+    it('never verifies under a model the threshold was not measured against', async () => {
+      const out = await service.findBestMatch('doc-1', 'text', 90);
+
+      expect(out.match).not.toBeNull();
+      expect(out.match!.similarity).toBeCloseTo(0.95, 6);
+      expect(out.match!.verified).toBe(false);
+      expect(out.uncalibrated).toBe(true);
+    });
+
+    it('writes no link when it cannot verify', async () => {
+      await service.findBestMatch('doc-1', 'text', 90);
+
+      expect(db.documentProposition.upsert).not.toHaveBeenCalled();
+    });
+
+    /**
+     * `uncalibrated` is the ABSENCE of a verdict, not a negative one. Counting
+     * it as `unverified` would show a dark feature as a working one whose
+     * matches simply score low.
+     */
+    it('reports uncalibrated separately from unverified', async () => {
+      await service.findBestMatch('doc-1', 'text', 90);
+
+      expect(metrics.recordPetitionRetrieval).toHaveBeenCalledWith(
+        expect.any(String),
+        'uncalibrated',
+        expect.closeTo(0.95, 6),
+      );
+    });
+
+    it('still verifies under the calibrated model', async () => {
+      embeddings.getProviderInfo.mockReturnValue({
+        model: VERIFICATION_CALIBRATION.model,
+        dimensions: EMBEDDING_DIMENSIONS,
+      });
+
+      const out = await service.findBestMatch('doc-1', 'text', 90);
+
+      expect(out.match!.verified).toBe(true);
+      expect(out.uncalibrated).toBeUndefined();
+    });
+  });
+
   describe('telemetry (#1074 subtask 7)', () => {
     it('records the similarity of every completed match', async () => {
       await service.findBestMatch('doc-1', 'petition text', 85);

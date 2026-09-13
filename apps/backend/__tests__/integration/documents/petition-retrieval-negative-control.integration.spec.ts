@@ -50,6 +50,7 @@ import {
 import {
   RetrievalService,
   MIN_VERIFIED_SIMILARITY,
+  VERIFICATION_CALIBRATION,
 } from '../../../src/apps/documents/src/domains/services/retrieval.service';
 import { PropositionEmbeddingService } from '../../../src/apps/region/src/domains/proposition-embedding.service';
 import {
@@ -97,6 +98,14 @@ const embeddingsStub = {
     }
     return FIXTURE.vectors[entry[0]].vector;
   },
+  // Reported straight off the fixture rather than hardcoded: the model that
+  // produced these vectors is exactly what belongs in `documents.embedding_model`
+  // (#1156), and reading it here keeps the stub honest if the fixture is
+  // regenerated with a different one.
+  getProviderInfo: () => ({
+    model: FIXTURE.model,
+    dimensions: FIXTURE.dimensions,
+  }),
 } as unknown as EmbeddingsService;
 
 describe('Petition retrieval negative control (real DB)', () => {
@@ -182,7 +191,21 @@ describe('Petition retrieval negative control (real DB)', () => {
     ).toBe(embeddingSourceFor(measure));
   });
 
-  it('verifies a scan of a measure that IS in the corpus', async () => {
+  /**
+   * Retrieval still FINDS the right measure — that is the part the embedding
+   * swap did not break, and the part this asserts.
+   *
+   * What it no longer does is call it `verified`. `MIN_VERIFIED_SIMILARITY`
+   * was measured against MiniLM-384; this fixture is bge-base-768 and
+   * production runs nomic, so the threshold belongs to neither and the service
+   * fails closed (#1156). Measured on this very corpus: the unfiled scan below
+   * scores 0.7577 under bge, which 0.50 would have called verified.
+   *
+   * The verdict returns when the threshold is re-measured against real
+   * photographs under the shipped model — which needs petitions
+   * re-photographed, since scan images are never persisted.
+   */
+  it('finds the right measure but will not verify it under an uncalibrated model', async () => {
     const doc = await scan('nc-positive@example.com', SCAN_OF_A_FILED_MEASURE);
 
     const outcome = await service.findBestMatch(
@@ -192,11 +215,14 @@ describe('Petition retrieval negative control (real DB)', () => {
     );
 
     expect(outcome.attempted).toBe(true);
+    // Retrieval quality is intact: the correct measure is still nearest, and
+    // still by a wide margin.
     expect(outcome.match?.externalId).toBe('TEST-NC-0001');
-    expect(outcome.match?.similarity).toBeGreaterThanOrEqual(
-      MIN_VERIFIED_SIMILARITY,
-    );
-    expect(outcome.match?.verified).toBe(true);
+    expect(outcome.match?.similarity).toBeGreaterThan(0.9);
+
+    expect(FIXTURE.model).not.toBe(VERIFICATION_CALIBRATION.model);
+    expect(outcome.uncalibrated).toBe(true);
+    expect(outcome.match?.verified).toBe(false);
   });
 
   it('never verifies a well-formed initiative that was never filed', async () => {
@@ -217,7 +243,13 @@ describe('Petition retrieval negative control (real DB)', () => {
     expect(outcome.attempted).toBe(true);
     expect(outcome.match).not.toBeNull();
     expect(outcome.match?.verified).toBe(false);
-    expect(outcome.match?.similarity).toBeLessThan(MIN_VERIFIED_SIMILARITY);
+
+    // The number that makes the calibration gate necessary rather than
+    // cautious: under bge this unfiled measure clears 0.50 comfortably, so the
+    // pre-#1156 code would have verified it and written a link asserting the
+    // citizen's petition IS TEST-NC-0001.
+    expect(outcome.match!.similarity).toBeGreaterThan(MIN_VERIFIED_SIMILARITY);
+    expect(outcome.uncalibrated).toBe(true);
   });
 
   it('writes no link for an unverified match', async () => {

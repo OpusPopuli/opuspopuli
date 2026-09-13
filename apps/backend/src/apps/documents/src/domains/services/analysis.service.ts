@@ -585,6 +585,22 @@ function provenanceFields(
   if (!retrieval) return {};
 
   return {
+    // An UNCALIBRATED match reports as `unverified`, and that is imprecise on
+    // purpose (#1156).
+    //
+    // The DTO defines `unverified` as "no filing matched and the analysis is a
+    // reading of the photograph alone". Under the calibration gate a filing
+    // may well have matched — possibly the right one, at high similarity — and
+    // what is missing is a threshold measured against the running model. The
+    // accurate disclosure would be a third state.
+    //
+    // It is not introduced here because `VerificationBanner` renders NOTHING
+    // for a state it does not recognise, so a new wire value would remove the
+    // disclosure instead of refining it, and fixing that properly means the
+    // component, both locales and the a11y pass. Deliberately deferred while
+    // the retrieval path is dark (0/10 documents embedded, #1220); revisit
+    // with the threshold recalibration, which is when a match can be judged
+    // again at all.
     verificationState: retrieval.match?.verified ? 'verified' : 'unverified',
     ...(retrieval.match && {
       matchedPropositionId: retrieval.match.propositionId,

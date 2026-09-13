@@ -176,20 +176,41 @@ GIN + rate limiting (existing gateway throttle) carry the load.
 
 ### Semantic leg (Phase 3 — same API, new ordering)
 
-1. **Search-scoped embedding columns, additive**:
-   `bills.search_embedding vector(768)` and
-   `propositions.search_embedding vector(768)`, HNSW from empty (the
-   propositions-migration discipline, never IVFFlat), each with
-   `search_embedding_model` + `search_embedding_source_hash` columns — the M1
-   "model identity + dimensions in the staleness key" requirement, landed
-   early, so any future swap is flip-env + backfill and mixed-state is
-   detectable. **The existing 384-dim MiniLM columns
-   (`propositions.embedding`, `documents.embedding`) and the petition
-   verification path calibrated against them (`MIN_VERIFIED_SIMILARITY =
-   0.50`) are untouched.** Two model spaces coexist; they are never compared
-   in any query; M5 retires the old space and recalibrates petition
-   thresholds as already planned.
-2. **`BillEmbeddingService`** mirrors `PropositionEmbeddingService`
+1. ~~**Search-scoped embedding columns, additive**~~ — **SUPERSEDED 2026-09-12
+   by the hard cutover (#1156, PR #1232).** Shipped differently, and the
+   difference matters to anyone reading item 2 below.
+
+   > The coexistence design existed to keep two models running while a corpus
+   > migrated. Measured in production, there was no corpus to migrate:
+   > propositions held **64** vectors, `documents.embedding` **0 of 10**, and
+   > the knowledge RAG store **0 rows** — 64 vectors in total, re-embedding in
+   > ~300ms. So there are no parallel `search_embedding` columns. The existing
+   > `embedding` columns were **widened in place** to `vector(768)` on
+   > propositions and documents, `bills.embedding` was added greenfield, and
+   > the staleness key landed as `embedding_model` beside the existing
+   > `embedding_source_hash`.
+   >
+   > Three claims in the original text are now false rather than merely
+   > outdated:
+   >
+   > - **The MiniLM columns are not untouched** — they are gone, widened to 768.
+   > - **Two model spaces do not coexist** — there is one, and
+   >   `EMBEDDING_DIMENSIONS` is a single global constant, so there cannot be two.
+   > - **`MIN_VERIFIED_SIMILARITY = 0.50` is not still valid.** It was measured
+   >   against MiniLM-384, which is no longer selectable. Petition verification
+   >   now fails closed — matches return `uncalibrated`, and no link is written
+   >   — until it is re-measured against real photographs (#1233).
+   >
+   > M5 did not retire the old space later; this brought it forward. See
+   > `docs/plans/1156-embeddings-hard-cutover.md` for the measured evidence,
+   > including the control corpus where the old threshold verified a petition
+   > that was never filed.
+2. **`BillEmbeddingService`** — _still outstanding; the only part of the
+   semantic leg's embedding work not yet shipped. `bills.embedding` exists with
+   its HNSW index and **0 of 5019 rows written**. Read it against the correction
+   above: the target column is `bills.embedding`, not `bills.search_embedding`._
+
+   Mirrors `PropositionEmbeddingService`
    (hash-gated idempotency, startup dimension assertion, raw-SQL
    `writeVector`): embeds `billNumber + title + subject +
    aiSummary.plainEnglishSummary`. A parallel proposition path embeds

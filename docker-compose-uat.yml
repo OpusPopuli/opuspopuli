@@ -88,6 +88,45 @@ x-backend-env: &backend-env
   # come from Vault. Inbucket remains the default.
   SMTP_ADMIN_EMAIL: noreply@opuspopuli.local
   FRONTEND_URL: http://localhost:3300
+  # Embeddings — shared, because three services generate them.
+  #
+  # `knowledge` owns the RAG store, `region` embeds the proposition corpus, and
+  # `documents` embeds petition scans and compares them against
+  # `propositions.embedding`. Binding these to a subset would let one service
+  # run a different model from the others: no error — the widths still agree —
+  # but two similarity spaces that are never comparable, with `embedding_model`
+  # on each row the only way to find out afterwards. Same reasoning as
+  # opuspopuli-node#57.
+  #
+  # Nothing set these before, so every service fell through to the backend's
+  # own defaults. That was consistent, and invisible — which meant UAT could
+  # not exercise the provider production actually runs.
+  EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-xenova}
+  # host.docker.internal, not localhost: inside a container localhost is the
+  # container. Only used when the provider is ollama.
+  EMBEDDINGS_OLLAMA_URL: ${EMBEDDINGS_OLLAMA_URL:-http://host.docker.internal:11434}
+  # v2-moe, NOT the bare `nomic-embed-text` — that name is v1.5, a different
+  # model that scores 0/14 top-1 on the real proposition corpus and fails
+  # silently rather than erroring (opuspopuli#1231).
+  EMBEDDINGS_OLLAMA_MODEL: ${EMBEDDINGS_OLLAMA_MODEL:-nomic-embed-text-v2-moe:latest}
+  #
+  # VECTORDB_DIMENSIONS is deliberately NOT pinned here. The vector width is a
+  # code constant (EMBEDDING_DIMENSIONS in @opuspopuli/common) and
+  # vectordb.config.ts already defaults to it. Pinning a literal in compose adds
+  # a THIRD place that must agree, updated by a different kind of change from
+  # the other two — so a width bump in code would leave this file asserting the
+  # old number and the stack refusing to boot.
+  #
+  # An earlier version of this block did pin it, and the same pin broke both e2e
+  # shards on a branch cut from main where the constant was still 384 (#1238).
+  # The boot assertion caught it, which is the system working — but the fix is
+  # one source of truth, not a louder disagreement. Override via the environment
+  # for a specific run.
+  #
+  # Default stays xenova (in-process) so `pnpm uat:up` needs no Ollama daemon
+  # and no 957 MB pull. To exercise what production runs:
+  #   ollama pull nomic-embed-text-v2-moe
+  #   EMBEDDINGS_PROVIDER=ollama docker compose -f docker-compose-uat.yml up -d
 
 # Docker's json-file driver defaults to NO rotation and NO size cap, so container
 # logs grow without bound. On the us-ca production node on 2026-08-13 that was

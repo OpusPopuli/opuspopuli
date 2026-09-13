@@ -124,36 +124,67 @@ async function ollamaBackend(
   prefixed: boolean,
 ): Promise<Backend> {
   const url = process.env.EMBEDDINGS_OLLAMA_URL ?? "http://localhost:11434";
-  // Batched /api/embed, not the legacy per-call /api/embeddings: 6x faster on
-  // the same work, and the backfill path this measures should use it too.
-  const embed = async (input: string[]): Promise<number[][]> => {
-    const r = await fetch(`${url}/api/embed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, input }),
-    });
-    if (!r.ok) throw new Error(`ollama ${r.status}: ${await r.text()}`);
-    return ((await r.json()) as { embeddings: number[][] }).embeddings;
-  };
-  const probe = await embed(["dimension probe"]);
+
+  // The SHIPPED provider, not an inline fetch.
+  //
+  // This backend used to reimplement the /api/embed call here, including its
+  // own task prefixing. That made the nomic leg — the one the R1 decision
+  // rests on — a measurement of a reimplementation, while the xenova leg below
+  // measured the real provider. A harness that exists because confident claims
+  // kept turning out wrong should not itself be measuring code that production
+  // does not run. The provider now owns batching, prefixes and the dimension
+  // map (#1156 slice A), so there is nothing left to duplicate.
+  const mod = await import("@opuspopuli/embeddings-provider");
+  const P = (
+    mod as unknown as {
+      OllamaEmbeddingProvider: new (
+        baseUrl?: string,
+        model?: string,
+        fetchFn?: unknown,
+        options?: { taskPrefixes?: boolean; batchSize?: number },
+      ) => {
+        getModelName(): string;
+        getDimensions(): number;
+        embedDocuments(t: string[]): Promise<number[][]>;
+        embedQuery(q: string): Promise<number[]>;
+      };
+    }
+  ).OllamaEmbeddingProvider;
+
+  const p = new P(url, model, undefined, { taskPrefixes: prefixed });
+
+  // Declared width vs actual width. `getDimensions()` reads a static map; this
+  // is the one place that can catch a wrong entry in it against the model that
+  // actually answers, which is exactly the failure the map replaced.
+  const probe = await p.embedQuery("dimension probe");
+  if (probe.length !== p.getDimensions()) {
+    throw new Error(
+      `${model} declares ${p.getDimensions()} dimensions but returned ${probe.length}`,
+    );
+  }
+
   return {
     name: "ollama",
-    model,
-    dimensions: probe[0].length,
-    embedDocuments: (t) =>
-      embed(prefixed ? t.map((x) => `search_document: ${x}`) : t),
-    embedQuery: async (q) =>
-      (await embed([prefixed ? `search_query: ${q}` : q]))[0],
+    model: p.getModelName(),
+    dimensions: p.getDimensions(),
+    embedDocuments: (t) => p.embedDocuments(t),
+    embedQuery: (q) => p.embedQuery(q),
   };
 }
 
-async function xenovaBackend(): Promise<Backend> {
+async function xenovaBackend(model?: string): Promise<Backend> {
+  // Takes a model so the in-process path can be measured at widths other than
+  // MiniLM's 384. After the R1 cutover `EMBEDDING_DIMENSIONS` is 768, and a
+  // zero-setup path that stays selectable has to produce 768 too (#1156 §4.5)
+  // — which candidate does that acceptably is a question for this harness, not
+  // for a judgement call.
+  //
   // Imported lazily: pulling the in-process transformers runtime costs seconds
   // and is pointless when measuring the Ollama path.
   const mod = await import("@opuspopuli/embeddings-provider");
   const P = (
     mod as unknown as {
-      XenovaEmbeddingProvider: new () => {
+      XenovaEmbeddingProvider: new (model?: string) => {
         getModelName?: () => string;
         getDimensions(): number;
         embedDocuments(t: string[]): Promise<number[][]>;
@@ -161,8 +192,20 @@ async function xenovaBackend(): Promise<Backend> {
       };
     }
   ).XenovaEmbeddingProvider;
-  const p = new P();
-  await p.embedQuery("warmup");
+  const p = new P(model);
+
+  // Same declared-vs-actual check as the ollama leg. `getDimensionsForModel`
+  // in xenova.provider.ts is still a chain of `includes()` tests ending in
+  // `return 384` for anything unrecognised, so a model passed via --model can
+  // report a width it does not produce — and a harness reporting the wrong
+  // dimension is a harness producing a number nobody can trust.
+  const probe = await p.embedQuery("warmup");
+  if (probe.length !== p.getDimensions()) {
+    throw new Error(
+      `${p.getModelName?.() ?? model} declares ${p.getDimensions()} dimensions but returned ${probe.length}`,
+    );
+  }
+
   return {
     name: "xenova",
     model: p.getModelName?.() ?? "Xenova/all-MiniLM-L6-v2",
@@ -287,7 +330,7 @@ async function main(): Promise<void> {
           arg("model") ?? "nomic-embed-text-v2-moe:latest",
           prefixed,
         )
-      : await xenovaBackend();
+      : await xenovaBackend(arg("model"));
 
   const run = await runEval(backend, docs, fixture, prefixed);
   console.log(report(run));

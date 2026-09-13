@@ -49,7 +49,20 @@ import { XenovaEmbeddingProvider } from "./providers/xenova.provider.js";
               configService.get<string>("embeddings.ollama.model") ||
               "nomic-embed-text-v2-moe:latest";
 
-            return new OllamaEmbeddingProvider(ollamaUrl, ollamaModel);
+            return new OllamaEmbeddingProvider(
+              ollamaUrl,
+              ollamaModel,
+              undefined,
+              {
+                taskPrefixes:
+                  configService.get<boolean>(
+                    "embeddings.ollama.taskPrefixes",
+                  ) ?? false,
+                batchSize:
+                  configService.get<number>("embeddings.ollama.batchSize") ||
+                  64,
+              },
+            );
 
           case "xenova":
           default:

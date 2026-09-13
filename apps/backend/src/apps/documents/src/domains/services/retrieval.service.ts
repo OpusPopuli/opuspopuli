@@ -1,5 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DbService, LinkSource } from '@opuspopuli/relationaldb-provider';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  DbService,
+  LinkSource,
+  assertVectorColumnWidth,
+} from '@opuspopuli/relationaldb-provider';
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
 import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
 import { MetricsService } from 'src/common/metrics';
@@ -81,6 +85,33 @@ export const MIN_RETRIEVAL_OCR_CONFIDENCE = 70;
  */
 export const MIN_VERIFIED_SIMILARITY = 0.5;
 
+/**
+ * The model `MIN_VERIFIED_SIMILARITY` was calibrated against, and the evidence.
+ *
+ * A similarity threshold is not a property of the task — it is a property of
+ * one model's similarity space, and the spaces are not comparable. Measured on
+ * the same four-document control corpus (2026-09-11):
+ *
+ *                        correct match   best WRONG match   unfiled scan
+ *   MiniLM-384 (this)        0.9703           0.3876           0.3876
+ *   bge-base-768             0.9723           0.6951           0.7577
+ *
+ * Under bge, 0.50 separates nothing: a well-formed initiative that was never
+ * filed scores 0.7577 against an unrelated measure and would be labelled
+ * `verified`, with an `auto_retrieval` link written to say so. Under nomic —
+ * what production runs — correct matches score 0.4–0.5 (#1156), so the same
+ * constant is too STRICT and verifies almost nothing. Wrong in both
+ * directions, for opposite reasons.
+ *
+ * So the threshold travels with its model, and a mismatch fails closed.
+ */
+export const VERIFICATION_CALIBRATION = {
+  model: 'Xenova/all-MiniLM-L6-v2',
+  threshold: MIN_VERIFIED_SIMILARITY,
+  calibratedFrom:
+    '9 photographs of a real petition, 2026-08-29 (#1074 subtask 7)',
+} as const;
+
 const SERVICE = 'documents-service';
 
 export interface RetrievalMatch {
@@ -97,10 +128,27 @@ export interface RetrievalOutcome {
   readonly match: RetrievalMatch | null;
   /** Present when retrieval was skipped, for telemetry and the verdict. */
   readonly skippedReason?: 'low_ocr_confidence' | 'no_text' | 'empty_corpus';
+  /**
+   * True when a match was found but could not be verified because the running
+   * embedding model is not the one the threshold was calibrated against.
+   *
+   * Distinct from an ordinary low-similarity result: that is a judgement the
+   * system is entitled to make, this is one it is not.
+   */
+  readonly uncalibrated?: boolean;
+}
+
+/** Which of the three retrieval verdicts telemetry should record. */
+function resolveRetrievalOutcome(
+  calibrated: boolean,
+  verified: boolean,
+): 'verified' | 'unverified' | 'uncalibrated' {
+  if (!calibrated) return 'uncalibrated';
+  return verified ? 'verified' : 'unverified';
 }
 
 @Injectable()
-export class RetrievalService {
+export class RetrievalService implements OnModuleInit {
   private readonly logger = new Logger(RetrievalService.name, {
     timestamp: true,
   });
@@ -110,6 +158,39 @@ export class RetrievalService {
     private readonly embeddings: EmbeddingsService,
     private readonly metrics: MetricsService,
   ) {}
+
+  /**
+   * Both columns this service touches, checked at boot.
+   *
+   * It writes `documents.embedding` and compares against
+   * `propositions.embedding`, so a width disagreement on EITHER makes every
+   * scan fail — the write with `expected N dimensions`, the query with
+   * `different vector dimensions`. Both are caught per-request today and
+   * degrade the scan to `unverified`, which is indistinguishable from a
+   * genuine low-similarity result. Boot is where that should be found.
+   */
+  async onModuleInit(): Promise<void> {
+    const actual = this.embeddings.getProviderInfo().dimensions;
+    if (actual !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Embeddings provider produces ${actual}-dimension vectors but the ` +
+          `embedding columns are vector(${EMBEDDING_DIMENSIONS}). See ` +
+          `EMBEDDING_DIMENSIONS in @opuspopuli/common.`,
+      );
+    }
+
+    // A pulled model is as much a precondition as a matching width (#1156).
+    await this.embeddings.assertProviderReady();
+
+    for (const table of ['documents', 'propositions']) {
+      await assertVectorColumnWidth(
+        this.db,
+        table,
+        'embedding',
+        EMBEDDING_DIMENSIONS,
+      );
+    }
+  }
 
   /**
    * Embed the scan and find its closest filed measure.
@@ -167,7 +248,10 @@ export class RetrievalService {
       // vector, which would create a second at-rest copy of user text — the
       // column exists precisely so it does not have to.
       await this.db.$executeRaw`
-        UPDATE documents SET embedding = ${literal}::vector WHERE id = ${documentId}
+        UPDATE documents
+        SET embedding = ${literal}::vector,
+            embedding_model = ${this.embeddings.getProviderInfo().model}
+        WHERE id = ${documentId}
       `;
 
       const rows = await this.db.$queryRaw<
@@ -188,16 +272,43 @@ export class RetrievalService {
       const top = rows[0];
       // pgvector's <=> is cosine DISTANCE; similarity is its complement.
       const similarity = 1 - Number(top.distance);
-      const verified = similarity >= MIN_VERIFIED_SIMILARITY;
+
+      // Fail closed when the threshold does not belong to the running model.
+      //
+      // 0.50 is MiniLM-384's number. Applied to bge-base's compressed space it
+      // verifies a petition that was never filed (0.7577); applied to nomic's
+      // lower one it verifies almost nothing. An `unverified` label is a safe
+      // landing place — the scan still gets its analysis, just not a claim
+      // about WHICH measure it is — and a wrong `verified` is not, because it
+      // writes an auto_retrieval link asserting an identity to the citizen who
+      // scanned it. Recalibration needs real photographs re-taken (scan images
+      // are never persisted, by design), so the honest state until then is
+      // "matched, not verified".
+      const runningModel = this.embeddings.getProviderInfo().model;
+      const calibrated = runningModel === VERIFICATION_CALIBRATION.model;
+      const verified = calibrated && similarity >= MIN_VERIFIED_SIMILARITY;
+
+      if (!calibrated) {
+        this.logger.warn(
+          `Petition verification is uncalibrated: threshold ${MIN_VERIFIED_SIMILARITY} was ` +
+            `measured against ${VERIFICATION_CALIBRATION.model} but the running model is ` +
+            `${runningModel}. Matches are reported as unverified until the threshold is ` +
+            `re-measured (${VERIFICATION_CALIBRATION.calibratedFrom}).`,
+        );
+      }
 
       // Ids and scores only — never the candidate's text or the scan's.
       this.logger.log(
-        `Retrieval for document ${documentId}: best=${top.external_id} similarity=${similarity.toFixed(4)} verified=${verified}`,
+        `Retrieval for document ${documentId}: best=${top.external_id} similarity=${similarity.toFixed(4)} verified=${verified}${calibrated ? '' : ' (uncalibrated)'}`,
       );
 
+      // 'uncalibrated' is deliberately not folded into 'unverified': one is a
+      // verdict, the other is the absence of one, and a dashboard that cannot
+      // tell them apart shows a dark feature as a working one.
+      const telemetryOutcome = resolveRetrievalOutcome(calibrated, verified);
       this.metrics.recordPetitionRetrieval(
         SERVICE,
-        verified ? 'verified' : 'unverified',
+        telemetryOutcome,
         similarity,
       );
 
@@ -224,6 +335,7 @@ export class RetrievalService {
           similarity,
           verified,
         },
+        ...(calibrated ? {} : { uncalibrated: true }),
       };
     } catch (error) {
       // Enrichment, not a gate. A retrieval outage must degrade to
