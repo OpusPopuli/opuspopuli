@@ -59,6 +59,12 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     private readonly graphqlOperationDuration: Histogram<string>,
 
     // Circuit Breaker Metrics
+    @InjectMetric('documents_embedded_total')
+    private readonly documentsEmbedded: Gauge<string>,
+
+    @InjectMetric('documents_total')
+    private readonly documentsTotal: Gauge<string>,
+
     @InjectMetric('circuit_breaker_state')
     private readonly circuitBreakerState: Gauge<string>,
 
@@ -290,6 +296,29 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
    * threshold would have verified nothing, ever, and nothing would have said
    * so. The histogram is how that gets noticed next time.
    */
+  /**
+   * Publish how much of the document corpus is actually searchable (#1220).
+   *
+   * The failure this exists for is not an error — it is an ABSENCE, and
+   * absences do not raise themselves. Production sat at 20 documents / 0
+   * embedded for two weeks: every scan logged `Retrieval skipped ... below
+   * 70`, the code behaved exactly as specified, and no aggregate anywhere said
+   * the feature had never once produced a match.
+   *
+   * `documents_embedded_total` flat while `petition_retrieval_total{outcome=
+   * "skipped_low_ocr_confidence"}` climbs is that condition, visible on a
+   * dashboard on day one instead of reconstructable from logs on day fourteen.
+   */
+  recordDocumentEmbeddingCoverage(
+    service: string,
+    type: string,
+    embedded: number,
+    total: number,
+  ): void {
+    this.documentsEmbedded.set({ service, type }, embedded);
+    this.documentsTotal.set({ service, type }, total);
+  }
+
   recordPetitionRetrieval(
     service: string,
     outcome:
