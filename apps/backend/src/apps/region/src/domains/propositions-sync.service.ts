@@ -187,7 +187,21 @@ export class PropositionsSyncService {
             },
             update: {
               title: prop.title,
-              summary: prop.summary,
+              // `summary` is NOT NULL with no database default, so the write
+              // must always supply a string (#1219).
+              //
+              // Until #1252 the domain schema guaranteed one by backfilling
+              // the title into an empty summary — which was itself the defect
+              // that issue removed, because it embedded the title twice and
+              // looked like content. Removing it made `undefined` reachable
+              // here, and because these upserts run inside a batch
+              // transaction, ONE record without a summary rolled back every
+              // other row in the run: 46 correctly-extracted Attorney General
+              // measures discarded because an unrelated SOS measure had none.
+              //
+              // Empty string, never the title. An absent summary should look
+              // absent.
+              summary: prop.summary ?? '',
               fullText: prop.fullText,
               status: prop.status,
               electionDate: prop.electionDate,
@@ -197,7 +211,7 @@ export class PropositionsSyncService {
             create: {
               externalId: prop.externalId,
               title: prop.title,
-              summary: prop.summary,
+              summary: prop.summary ?? '',
               fullText: prop.fullText,
               status: prop.status,
               electionDate: prop.electionDate,
