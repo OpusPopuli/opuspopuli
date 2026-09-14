@@ -168,12 +168,12 @@ export class ScrapingPipelineService {
    * Execute extraction using caller-supplied selectors, bypassing AI analysis.
    * No LLM call, no manifest store, no self-heal loop.
    */
-  private executeStaticManifest<T>(
+  private async executeStaticManifest<T>(
     source: DataSourceConfig,
     regionId: string,
     html: string,
     pipelineStart: number,
-  ): ExtractionResult<T> {
+  ): Promise<ExtractionResult<T>> {
     const sm = source.staticManifest!;
     const syntheticManifest = {
       id: `static-${regionId}-${source.dataType}`,
@@ -195,11 +195,26 @@ export class ScrapingPipelineService {
       lastCheckedAt: new Date(),
     };
 
-    const rawResult = this.extractor.extract(
+    const extracted = this.extractor.extract(
       html,
       syntheticManifest as never,
       source.url,
     );
+
+    // Enrichment runs here too (#1219).
+    //
+    // It did not, and choosing a static manifest therefore SILENTLY disabled
+    // detail-page and PDF enrichment — a config decision about selectors
+    // quietly changing which pipeline stages run at all. Pinning the
+    // California AG manifest fixed its extraction (46/46 items, correct
+    // titles) and simultaneously stopped it fetching the 44 Attorney General
+    // summaries that were the entire point, because this method returned
+    // before Stage 3.5.
+    //
+    // Nothing errored. The run got FASTER — 3 seconds instead of 44 — which is
+    // exactly what a silently skipped stage looks like from the outside.
+    const rawResult = await this.enrichWithDetails(extracted, source);
+
     const duration = Date.now() - pipelineStart;
     this.logger.log(
       `Pipeline complete [static]: ${rawResult.items.length} items extracted in ${duration}ms`,

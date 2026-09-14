@@ -773,3 +773,122 @@ describe("ScrapingPipelineService", () => {
     });
   });
 });
+
+/**
+ * #1219. Choosing a `staticManifest` silently disabled detail-page and PDF
+ * enrichment: `executeStaticManifest` extracted and returned before Stage 3.5.
+ *
+ * That is a config decision about SELECTORS quietly changing which pipeline
+ * STAGES run. Pinning the California AG manifest fixed its extraction (46/46
+ * items, correct titles) and simultaneously stopped it fetching the 44
+ * Attorney General summaries that were the entire point of pinning it.
+ *
+ * Nothing errored. The run got FASTER — 3 seconds instead of 44 — which is
+ * exactly what a silently skipped stage looks like from outside.
+ */
+describe("staticManifest enrichment (#1219)", () => {
+  const html = `<table class="views-table"><tbody>
+    <tr><td class="id">26-0004</td><td class="s"><a href="/ts.pdf">T&amp;S</a></td></tr>
+  </tbody></table>`;
+
+  const staticSource = {
+    url: "https://oag.ca.gov/initiatives/active-measures",
+    dataType: "propositions",
+    staticManifest: {
+      containerSelector: "table.views-table tbody",
+      itemSelector: "tr",
+      fieldMappings: [
+        {
+          fieldName: "externalId",
+          selector: "td.id",
+          extractionMethod: "text",
+          required: true,
+        },
+        {
+          fieldName: "summaryUrl",
+          selector: "td.s a",
+          extractionMethod: "attribute",
+          attribute: "href",
+          required: false,
+        },
+      ],
+    },
+  } as never;
+
+  const build = (
+    enrichItems: jest.Mock,
+    enrichSummaries: jest.Mock = jest
+      .fn()
+      .mockImplementation((r: unknown) => r),
+  ) => {
+    const extractor = {
+      extract: jest.fn().mockReturnValue({
+        // Both URLs, as the real AG rows carry: detailUrl feeds fullText,
+        // summaryUrl feeds summary. They drive different enrichment stages.
+        items: [
+          {
+            externalId: "26-0004",
+            detailUrl: "/measure.pdf",
+            summaryUrl: "/ts.pdf",
+          },
+        ],
+        warnings: [],
+        errors: [],
+      }),
+    };
+    const crawler: Record<string, unknown> = { enrichItems, enrichSummaries };
+    return new ScrapingPipelineService(
+      { generate: jest.fn() } as never,
+      {
+        fetchWithRetry: jest.fn().mockResolvedValue({ content: html }),
+      } as never,
+      { analyze: jest.fn() } as never,
+      { findActive: jest.fn(), save: jest.fn() } as never,
+      extractor as never,
+      { map: jest.fn().mockImplementation((r: unknown) => r) } as never,
+      { evaluate: jest.fn().mockReturnValue({ shouldHeal: false }) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      crawler as never,
+      { discover: jest.fn() } as never,
+      null as never,
+    );
+  };
+
+  it("runs detail enrichment on the static path, not only the AI path", async () => {
+    const enrichItems = jest.fn().mockImplementation((r: unknown) => r);
+    const pipeline = build(enrichItems);
+
+    await pipeline.execute(staticSource, "california");
+
+    // The regression: this was never called, so summaryUrl was extracted and
+    // then nothing ever fetched it.
+    expect(enrichItems).toHaveBeenCalled();
+  });
+
+  it("still returns the extracted items", async () => {
+    const pipeline = build(jest.fn().mockImplementation((r: unknown) => r));
+
+    const result = await pipeline.execute(staticSource, "california");
+
+    expect(result.items).toHaveLength(1);
+  });
+
+  /**
+   * The specific stage that was lost. summaryUrl is extracted by the static
+   * manifest and means nothing unless something fetches it.
+   */
+  it("fetches the AG summary PDFs on the static path", async () => {
+    const enrichSummaries = jest.fn().mockImplementation((r: unknown) => r);
+    const pipeline = build(
+      jest.fn().mockImplementation((r: unknown) => r),
+      enrichSummaries,
+    );
+
+    await pipeline.execute(staticSource, "california");
+
+    expect(enrichSummaries).toHaveBeenCalled();
+  });
+});
