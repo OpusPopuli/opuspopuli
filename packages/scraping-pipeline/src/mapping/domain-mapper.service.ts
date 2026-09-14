@@ -631,7 +631,32 @@ const PropositionSchema = z
     title: z.string().min(1).transform(cleanPropositionTitle),
     summary: z.string().default(""),
     fullText: z.string().optional(),
-    status: z.nativeEnum(PropositionStatus).default(PropositionStatus.PENDING),
+    /**
+     * Normalised before validation, because a rejected batch is a SILENT
+     * batch (opuspopuli#1219).
+     *
+     * Production evidence, 2026-09-14: the California AG source extracted 46
+     * measures, fetched 44 Attorney General summaries successfully, and then
+     * lost all 46 to `Invalid enum value ... received 'active'`. The manifest
+     * asked for a constant `pending`, but the rule carries
+     * `extractionMethod: "text"` with no selector, so the extractor scrapes
+     * container text from a page titled "Active Measures" and `defaultValue`
+     * never applies. That source had been rejecting 100% of its items since
+     * August without anyone noticing.
+     *
+     * The manifest hint already says, in capitals, not to emit 'active'. A
+     * hint is a request to a language model; it is not a guarantee, and this
+     * one has now been ignored across multiple manifest generations. So the
+     * vocabulary is reconciled HERE, where it is deterministic, rather than
+     * hoping the next regeneration complies.
+     *
+     * Only unambiguous synonyms are mapped. Anything genuinely unknown still
+     * fails validation — that is a real signal about a changed source, and
+     * swallowing it would trade one silent failure for another.
+     */
+    status: z
+      .preprocess(normalisePropositionStatus, z.nativeEnum(PropositionStatus))
+      .default(PropositionStatus.PENDING),
     electionDate: coerceFlexibleDateOptional,
     sourceUrl: z
       .string()
@@ -653,6 +678,52 @@ const PropositionSchema = z
   // an empty one yields the title alone, which is exactly what the row
   // actually knows.
   .transform((data) => ({ ...data }));
+
+/**
+ * Map source vocabulary onto the PropositionStatus enum.
+ *
+ * "active" is the one that has actually cost us — the AG's list page is titled
+ * "Active Measures", and an initiative on it is circulating for signatures,
+ * i.e. exactly `pending`.
+ *
+ * ── Only where the civic meaning is unambiguous ──────────────────────────
+ *
+ * `passed` is a claim that VOTERS APPROVED A MEASURE. Nothing reaches it by
+ * synonym, because every plausible candidate is a trap:
+ *
+ *   qualified  A measure that has "qualified for the ballot" has NOT passed —
+ *              it is awaiting a vote. Mapping it to `passed` would tell a
+ *              citizen a measure carried when nobody has voted on it yet. The
+ *              enum has no on-the-ballot state, and `pending` is the honest
+ *              approximation.
+ *   approved   Ambiguous: approved FOR CIRCULATION by the AG, or approved BY
+ *              VOTERS? Opposite ends of the lifecycle. Not mapped at all.
+ *   rejected   Ambiguous the same way — rejected by the AG before circulating,
+ *              or rejected at the polls. Not mapped.
+ *
+ * An unmapped value still fails validation, which is the correct outcome: a
+ * source using vocabulary we have not read is real signal, and a wrong civic
+ * claim is far worse than a rejected batch.
+ */
+function normalisePropositionStatus(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+
+  const key = value.trim().toLowerCase();
+  const synonyms: Record<string, PropositionStatus> = {
+    // Circulating for signatures, or on the ballot awaiting a vote.
+    active: PropositionStatus.PENDING,
+    circulating: PropositionStatus.PENDING,
+    qualified: PropositionStatus.PENDING,
+    pending: PropositionStatus.PENDING,
+    // Decided at the polls.
+    defeated: PropositionStatus.FAILED,
+    failed: PropositionStatus.FAILED,
+    passed: PropositionStatus.PASSED,
+    withdrawn: PropositionStatus.WITHDRAWN,
+  };
+
+  return synonyms[key] ?? value;
+}
 
 /**
  * Slugify a string for use in a composed externalId — lowercase, ASCII
