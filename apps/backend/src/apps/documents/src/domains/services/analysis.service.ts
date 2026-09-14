@@ -12,6 +12,7 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import { MetricsService } from 'src/common/metrics';
 import { DocumentAnalysis, AnalyzeDocumentResult } from '../dto/analysis.dto';
 import { parseAnalysisResponse } from '../prompts/document-analysis.prompt';
+import { analyzableFloor } from './ocr-quality';
 import { LinkingService } from './linking.service';
 import { RetrievalService, type RetrievalOutcome } from './retrieval.service';
 
@@ -61,7 +62,10 @@ const MIN_ANALYZABLE_TEXT_CHARS = 80;
  * Evidence weight: nine photographs of one petition by one person. Enough to
  * place a conservative floor, not enough to be aggressive with it.
  */
-const MIN_ANALYZABLE_OCR_CONFIDENCE = 40;
+// Moved to ocr-quality.ts, which selects the floor per OCR engine (#1050).
+// Tesseract's per-glyph mean and a vision model's readability proxy are not
+// the same quantity and cannot share a threshold.
+// (constant re-exported there as MIN_ANALYZABLE_OCR_CONFIDENCE)
 
 /**
  * Analysis Service
@@ -173,6 +177,7 @@ export class AnalysisService {
               documentId,
               document.extractedText,
               document.ocrConfidence,
+              document.ocrProvider,
             )
           : null;
 
@@ -550,6 +555,8 @@ function isUnreadablePetition(document: {
   type: string;
   extractedText: string | null;
   ocrConfidence: number | null;
+  /** Selects which floor applies — see ocr-quality.ts. */
+  ocrProvider: string | null;
 }): boolean {
   if (document.type !== 'petition') return false;
 
@@ -561,7 +568,7 @@ function isUnreadablePetition(document: {
     (document.extractedText?.trim().length ?? 0) < MIN_ANALYZABLE_TEXT_CHARS;
   const tooNoisy =
     typeof document.ocrConfidence === 'number' &&
-    document.ocrConfidence < MIN_ANALYZABLE_OCR_CONFIDENCE;
+    document.ocrConfidence < analyzableFloor(document.ocrProvider);
 
   return tooShort || tooNoisy;
 }

@@ -49,7 +49,9 @@
  * There is no inline fallback, by design. `getOcrTranscriptionPrompt` throws
  * when the template is not seeded rather than degrading to a default, so a
  * missing seed is a loud failure rather than a quiet measurement of the wrong
- * thing. If it throws, seed the prompts (`pnpm db:seed-prompts`).
+ * thing. If it throws, point PROMPT_SERVICE_URL at a running prompt-service,
+ * or seed `prompt_templates` from the prompt-service repo (#1246 removed this
+ * repo's inline copy, so there is no local seed to run any more).
  *
  * Usage:
  *   pnpm --filter @opuspopuli/eval-harness eval:ocr -- --engine tesseract
