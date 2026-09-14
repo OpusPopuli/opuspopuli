@@ -39,6 +39,17 @@ import {
 interface MappingDiagnostics {
   schemaRejects: number;
   issues: string[];
+  /**
+   * Title-echo findings (#1219).
+   *
+   * Kept SEPARATE from `issues`, which is only ever surfaced when
+   * `schemaRejects > 0` — a title echo is a perfectly valid record by the
+   * schema, so routing these through `issues` meant they were reported only
+   * when some unrelated record happened to fail validation, and swallowed
+   * otherwise. The issue asks for a pipeline warning rather than a silent
+   * write; this is the field that delivers one.
+   */
+  summaryEchoes: string[];
 }
 
 @Injectable()
@@ -60,7 +71,11 @@ export class DomainMapperService {
     const warnings = [...raw.warnings];
     const errors = [...raw.errors];
     const items: T[] = [];
-    const diagnostics: MappingDiagnostics = { schemaRejects: 0, issues: [] };
+    const diagnostics: MappingDiagnostics = {
+      schemaRejects: 0,
+      issues: [],
+      summaryEchoes: [],
+    };
 
     for (let i = 0; i < raw.items.length; i++) {
       try {
@@ -106,6 +121,14 @@ export class DomainMapperService {
     warnings: string[],
   ): SelectorFailure[] {
     const failures: SelectorFailure[] = [...(raw.selectorFailures ?? [])];
+
+    if (diagnostics.summaryEchoes.length > 0) {
+      warnings.push(
+        `${diagnostics.summaryEchoes.length} of ${raw.items.length} ` +
+          `${source.dataType} had a title-echo summary, dropped — ` +
+          diagnostics.summaryEchoes[0],
+      );
+    }
 
     if (diagnostics.schemaRejects > 0 && raw.items.length > 0) {
       const schemaIssues = [...new Set(diagnostics.issues)].slice(0, 10);
@@ -262,7 +285,7 @@ export class DomainMapperService {
       typeof enriched.summary === "string" ? enriched.summary : undefined,
     );
     if (echo.isEcho) {
-      diag.issues.push(
+      diag.summaryEchoes.push(
         `Proposition ${String(enriched.externalId ?? "?")}: summary is a title ` +
           `echo (${echo.substanceChars} chars of substance after the title) — ` +
           `dropped. Expected the Attorney General's title-and-summary via ` +

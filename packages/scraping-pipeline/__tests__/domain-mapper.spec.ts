@@ -199,6 +199,36 @@ describe("DomainMapperService", () => {
      * costs nothing: `embeddingSource` joins title and summary, so an empty one
      * yields the title alone — exactly what the row actually knows.
      */
+    /**
+     * #1219 asks for "a pipeline warning, not a silent write". Found by
+     * running the real mapper locally: the lint originally pushed to
+     * `diag.issues`, which is only surfaced when `schemaRejects > 0`. A title
+     * echo is a perfectly VALID record by the schema, so the warning was
+     * reported only when some unrelated record happened to fail validation,
+     * and swallowed otherwise — the lint dropped summaries silently, which is
+     * the exact behaviour the issue rules out.
+     */
+    it("surfaces a pipeline warning when it drops a title echo", () => {
+      const title =
+        "LIMITS ABILITY OF VOTERS TO RAISE REVENUES. INITIATIVE CONSTITUTIONAL AMENDMENT.";
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "25-0004A1",
+              title,
+              summary: `${title}\nTitle and Summary Issued on July 16, 2025\nFiscal Impact Estimate Report`,
+            },
+          ],
+        }),
+        createSource({ dataType: DataType.PROPOSITIONS }),
+      );
+
+      expect(result.items[0]).toMatchObject({ summary: "" });
+      expect(result.warnings.join(" ")).toMatch(/title-echo summary/);
+      expect(result.warnings.join(" ")).toContain("25-0004A1");
+    });
+
     it("leaves summary empty rather than backfilling the title", () => {
       const result = mapper.map(
         createRawResult({
