@@ -9,6 +9,8 @@ describe('MetricsService', () => {
   let mockGraphqlOperationsTotal: jest.Mocked<Counter<string>>;
   let mockGraphqlOperationDuration: jest.Mocked<Histogram<string>>;
   let mockCircuitBreakerState: jest.Mocked<Gauge<string>>;
+  let mockDocumentsEmbedded: jest.Mocked<Gauge<string>>;
+  let mockDocumentsTotal: jest.Mocked<Gauge<string>>;
   let mockCircuitBreakerFailures: jest.Mocked<Counter<string>>;
   let mockDbQueryDuration: jest.Mocked<Histogram<string>>;
   let mockSubgraphRequestDuration: jest.Mocked<Histogram<string>>;
@@ -105,6 +107,13 @@ describe('MetricsService', () => {
       Counter<string>
     >;
 
+    mockDocumentsEmbedded = { set: jest.fn() } as unknown as jest.Mocked<
+      Gauge<string>
+    >;
+    mockDocumentsTotal = { set: jest.fn() } as unknown as jest.Mocked<
+      Gauge<string>
+    >;
+
     // Instantiate service directly with mocks (bypasses NestJS DI token issues)
     service = new MetricsService(
       mockOptions,
@@ -112,6 +121,8 @@ describe('MetricsService', () => {
       mockHttpRequestsTotal,
       mockGraphqlOperationsTotal,
       mockGraphqlOperationDuration,
+      mockDocumentsEmbedded,
+      mockDocumentsTotal,
       mockCircuitBreakerState,
       mockCircuitBreakerFailures,
       mockDbQueryDuration,
@@ -361,6 +372,8 @@ describe('MetricsService', () => {
         mockHttpRequestsTotal,
         mockGraphqlOperationsTotal,
         mockGraphqlOperationDuration,
+        mockDocumentsEmbedded,
+        mockDocumentsTotal,
         mockCircuitBreakerState,
         mockCircuitBreakerFailures,
         mockDbQueryDuration,
@@ -420,6 +433,8 @@ describe('MetricsService', () => {
         mockHttpRequestsTotal,
         mockGraphqlOperationsTotal,
         mockGraphqlOperationDuration,
+        mockDocumentsEmbedded,
+        mockDocumentsTotal,
         mockCircuitBreakerState,
         mockCircuitBreakerFailures,
         mockDbQueryDuration,
@@ -469,6 +484,8 @@ describe('MetricsService', () => {
         mockHttpRequestsTotal,
         mockGraphqlOperationsTotal,
         mockGraphqlOperationDuration,
+        mockDocumentsEmbedded,
+        mockDocumentsTotal,
         mockCircuitBreakerState,
         mockCircuitBreakerFailures,
         mockDbQueryDuration,
@@ -613,6 +630,67 @@ describe('MetricsService', () => {
       expect(mockAnalysisCacheMisses.inc).toHaveBeenCalledWith({
         service: 'documents-service',
       });
+    });
+  });
+
+  /**
+   * #1220. Production held 20 petition scans and 0 embedded for two weeks.
+   * Every scan logged `Retrieval skipped ... below 70`; the code was correct;
+   * no aggregate anywhere said the feature had never once matched.
+   *
+   * The gauge exists so that condition is a flat line next to a climbing skip
+   * counter, visible on day one.
+   */
+  describe('recordDocumentEmbeddingCoverage (#1220)', () => {
+    it('publishes embedded and total separately, so the ratio is derivable', () => {
+      service.recordDocumentEmbeddingCoverage(
+        'documents-service',
+        'petition',
+        0,
+        20,
+      );
+
+      expect(mockDocumentsEmbedded.set).toHaveBeenCalledWith(
+        { service: 'documents-service', type: 'petition' },
+        0,
+      );
+      expect(mockDocumentsTotal.set).toHaveBeenCalledWith(
+        { service: 'documents-service', type: 'petition' },
+        20,
+      );
+    });
+
+    /**
+     * The exact production state. A counter could not express it — nothing
+     * ever incremented, which is indistinguishable from nothing ever happening.
+     * A gauge set to 0 is a positive assertion that zero is the current value.
+     */
+    it('records a real zero rather than staying unset', () => {
+      service.recordDocumentEmbeddingCoverage(
+        'documents-service',
+        'petition',
+        0,
+        20,
+      );
+
+      expect(mockDocumentsEmbedded.set).toHaveBeenCalledWith(
+        expect.anything(),
+        0,
+      );
+    });
+
+    it('tracks recovery once scans start embedding', () => {
+      service.recordDocumentEmbeddingCoverage(
+        'documents-service',
+        'petition',
+        7,
+        20,
+      );
+
+      expect(mockDocumentsEmbedded.set).toHaveBeenLastCalledWith(
+        expect.anything(),
+        7,
+      );
     });
   });
 });

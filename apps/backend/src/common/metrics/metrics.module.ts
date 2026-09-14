@@ -130,6 +130,26 @@ export class MetricsModule {
         buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
       }),
       // Database connection pool metrics (from Prisma metrics preview feature)
+      /**
+       * Petition scans that carry an embedding, against the total (#1220).
+       *
+       * A gauge rather than a counter because the question is a STATE — "how
+       * much of the corpus is actually searchable right now" — and a counter
+       * cannot answer it. Production ran for two weeks at 20 documents and 0
+       * embedded with nothing surfacing: the per-scan skip was logged every
+       * time, and nobody reads twenty log lines. An aggregate would have shown
+       * a flat line beside a climbing skip counter on the first day.
+       */
+      makeGaugeProvider({
+        name: 'documents_embedded_total',
+        help: 'Documents with an embedding (searchable against filed measures)',
+        labelNames: ['service', 'type'],
+      }),
+      makeGaugeProvider({
+        name: 'documents_total',
+        help: 'Documents of this type, embedded or not',
+        labelNames: ['service', 'type'],
+      }),
       makeGaugeProvider({
         name: 'db_pool_connections_open',
         help: 'Number of open database connections',

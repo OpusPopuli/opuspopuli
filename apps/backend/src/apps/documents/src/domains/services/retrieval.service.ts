@@ -191,6 +191,58 @@ export class RetrievalService implements OnModuleInit {
         EMBEDDING_DIMENSIONS,
       );
     }
+
+    await this.publishEmbeddingCoverage();
+  }
+
+  /**
+   * Publish embedded/total for petition scans, at boot and after each attempt
+   * (#1220).
+   *
+   * At boot as well as on write, because the condition this exists to surface
+   * is one where NOTHING is ever written — production held 20 documents and 0
+   * embedded for two weeks, and a metric that only updates on success would
+   * have stayed silent for exactly as long as the problem lasted.
+   *
+   * Failures are swallowed and logged. Telemetry about retrieval must never be
+   * the thing that stops a service booting, or prevents a scan.
+   */
+  private async publishEmbeddingCoverage(): Promise<void> {
+    try {
+      const [row] = await this.db.$queryRaw<
+        { embedded: bigint; total: bigint }[]
+      >`
+        SELECT count(embedding) AS embedded, count(*) AS total
+        FROM documents
+        WHERE type = 'petition' AND deleted_at IS NULL
+      `;
+      if (!row) return;
+
+      const embedded = Number(row.embedded);
+      const total = Number(row.total);
+      this.metrics.recordDocumentEmbeddingCoverage(
+        SERVICE,
+        'petition',
+        embedded,
+        total,
+      );
+
+      // Said out loud at boot, not only exported. The two-week silence was a
+      // dashboard nobody had built yet; a log line needs no dashboard.
+      if (total > 0 && embedded === 0) {
+        this.logger.warn(
+          `No petition scan has ever been embedded (0 of ${total}). ` +
+            `Retrieval cannot match any scan against a filed measure. ` +
+            `Check the OCR confidence floor against what the engine produces.`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not publish embedding coverage: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   /**
@@ -260,6 +312,11 @@ export class RetrievalService implements OnModuleInit {
             embedding_model = ${this.embeddings.getProviderInfo().model}
         WHERE id = ${documentId}
       `;
+
+      // Refresh coverage on every write, so the gauge tracks rather than
+      // snapshots boot (#1220). Cheap: one indexed count per successful embed,
+      // and scans arrive at human pace.
+      await this.publishEmbeddingCoverage();
 
       const rows = await this.db.$queryRaw<
         { id: string; external_id: string; title: string; distance: number }[]
