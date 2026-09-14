@@ -187,7 +187,21 @@ export class PropositionsSyncService {
             },
             update: {
               title: prop.title,
-              summary: prop.summary,
+              // `summary` is NOT NULL with no database default, so the write
+              // must always supply a string (#1219).
+              //
+              // Until #1252 the domain schema guaranteed one by backfilling
+              // the title into an empty summary — which was itself the defect
+              // that issue removed, because it embedded the title twice and
+              // looked like content. Removing it made `undefined` reachable
+              // here, and because these upserts run inside a batch
+              // transaction, ONE record without a summary rolled back every
+              // other row in the run: 46 correctly-extracted Attorney General
+              // measures discarded because an unrelated SOS measure had none.
+              //
+              // Empty string, never the title. An absent summary should look
+              // absent.
+              summary: prop.summary ?? '',
               fullText: prop.fullText,
               status: prop.status,
               electionDate: prop.electionDate,
@@ -197,7 +211,7 @@ export class PropositionsSyncService {
             create: {
               externalId: prop.externalId,
               title: prop.title,
-              summary: prop.summary,
+              summary: prop.summary ?? '',
               fullText: prop.fullText,
               status: prop.status,
               electionDate: prop.electionDate,
@@ -210,6 +224,31 @@ export class PropositionsSyncService {
       'propositions:',
     );
     extractTracker.complete();
+
+    // A source that extracted rows and wrote none is a FAILURE, not a quiet
+    // no-op (#1219, E-27).
+    //
+    // This has now cost two rounds of debugging. These upserts run in a batch
+    // transaction, so a single invalid record rolls back every other row —
+    // and the run still reported success. On 2026-09-14 that discarded 46
+    // correctly-extracted Attorney General measures, along with the 44
+    // summaries that had just taken seven minutes of PDF fetching, because one
+    // unrelated measure was missing a required field. The only trace was a
+    // `0 created, 0 updated` line among thousands.
+    //
+    // Deliberately WARN and not throw. The write already failed; the sync's
+    // remaining phases (stage backfill, embedding, analysis) are still worth
+    // running for whatever else succeeded, and turning a data problem into a
+    // crashed job loses the diagnostics with it. The point is that the number
+    // stops being silent.
+    if (propositions.length > 0 && result.created + result.updated === 0) {
+      this.logger.error(
+        `[PropositionSync] WROTE NOTHING: ${propositions.length} proposition(s) ` +
+          `extracted for ${pluginName}, 0 created and 0 updated. The batch ` +
+          `write was rolled back — look for a PrismaClientValidationError ` +
+          `above; one invalid record aborts the whole transaction.`,
+      );
+    }
 
     if (stagePatterns.length > 0) {
       await this.backfillStageIds(stagePatterns, pluginName);

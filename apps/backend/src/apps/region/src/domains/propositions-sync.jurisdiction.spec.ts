@@ -89,6 +89,147 @@ describe('PropositionsSyncService — regionPluginName stamp', () => {
     );
   });
 
+  /**
+   * #1219. `propositions.summary` is NOT NULL with no database default, so the
+   * write must always supply a string.
+   *
+   * Until #1252 the domain schema guaranteed one by backfilling the title into
+   * an empty summary — which was itself the defect that issue removed, because
+   * it embedded the title twice and looked like content. Removing it made
+   * `undefined` reachable here.
+   *
+   * In production that took down an entire sync: these upserts run inside a
+   * batch transaction, so ONE measure without a summary rolled back every
+   * other row in the run. Forty-six correctly-extracted Attorney General
+   * measures were discarded because an unrelated SOS measure had no summary,
+   * and the sync reported success.
+   */
+  /**
+   * #1219 / E-27. A source that extracted rows and wrote none is a failure,
+   * and it was reported as success twice.
+   *
+   * These upserts run in a batch transaction, so one invalid record rolls back
+   * every other row. On 2026-09-14 that discarded 46 Attorney General measures
+   * and the 44 summaries that had just taken seven minutes to fetch, because
+   * an unrelated measure was missing a required field. The only trace was a
+   * `0 created, 0 updated` line among thousands.
+   */
+  describe('wrote-nothing guard', () => {
+    it('logs an error when rows were extracted but none written', async () => {
+      const service = await build();
+      const spy = jest
+        .spyOn(
+          (service as never as { logger: { error: jest.Mock } }).logger,
+          'error',
+        )
+        .mockImplementation(() => undefined);
+      const provider = {
+        getName: () => 'california-sonoma',
+        fetchPropositions: jest.fn().mockResolvedValue([measure]),
+      };
+      // Upsert harness that reports a rolled-back transaction.
+      const rolledBack: UpsertByExternalId = (async () => ({
+        processed: 1,
+        created: 0,
+        updated: 0,
+      })) as never;
+
+      await service.sync(provider as never, undefined, [], rolledBack);
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining('WROTE NOTHING'),
+      );
+    });
+
+    it('stays quiet when rows were actually written', async () => {
+      const service = await build();
+      const spy = jest
+        .spyOn(
+          (service as never as { logger: { error: jest.Mock } }).logger,
+          'error',
+        )
+        .mockImplementation(() => undefined);
+      const provider = {
+        getName: () => 'california-sonoma',
+        fetchPropositions: jest.fn().mockResolvedValue([measure]),
+      };
+
+      await service.sync(provider as never, undefined, [], upsertByExternalId);
+
+      expect(spy).not.toHaveBeenCalledWith(
+        expect.stringContaining('WROTE NOTHING'),
+      );
+    });
+
+    it('stays quiet when the source legitimately had nothing to sync', async () => {
+      const service = await build();
+      const spy = jest
+        .spyOn(
+          (service as never as { logger: { error: jest.Mock } }).logger,
+          'error',
+        )
+        .mockImplementation(() => undefined);
+      const provider = {
+        getName: () => 'california-sonoma',
+        fetchPropositions: jest.fn().mockResolvedValue([]),
+      };
+
+      await service.sync(provider as never, undefined, [], upsertByExternalId);
+
+      expect(spy).not.toHaveBeenCalledWith(
+        expect.stringContaining('WROTE NOTHING'),
+      );
+    });
+  });
+
+  describe('summary is always written as a string', () => {
+    const noSummary = { ...measure, summary: undefined };
+
+    it('writes an empty string rather than undefined on create', async () => {
+      const service = await build();
+      const provider = {
+        getName: () => 'california-sonoma',
+        fetchPropositions: jest.fn().mockResolvedValue([noSummary]),
+      };
+
+      await service.sync(provider as never, undefined, [], upsertByExternalId);
+
+      const call = db.proposition.upsert.mock.calls[0][0];
+      expect(call.create.summary).toBe('');
+      expect(call.update.summary).toBe('');
+    });
+
+    /**
+     * Empty string, NEVER the title. Restoring a title backfill here would
+     * reintroduce the echo #1219 exists to remove.
+     */
+    it('does not fall back to the title', async () => {
+      const service = await build();
+      const provider = {
+        getName: () => 'california-sonoma',
+        fetchPropositions: jest.fn().mockResolvedValue([noSummary]),
+      };
+
+      await service.sync(provider as never, undefined, [], upsertByExternalId);
+
+      const call = db.proposition.upsert.mock.calls[0][0];
+      expect(call.create.summary).not.toBe(measure.title);
+    });
+
+    it('passes a real summary through unchanged', async () => {
+      const service = await build();
+      const provider = {
+        getName: () => 'california-sonoma',
+        fetchPropositions: jest.fn().mockResolvedValue([measure]),
+      };
+
+      await service.sync(provider as never, undefined, [], upsertByExternalId);
+
+      const call = db.proposition.upsert.mock.calls[0][0];
+      expect(call.create.summary).toBe(measure.summary);
+    });
+  });
+
   it('scopes the created-vs-updated lookup to the jurisdiction', async () => {
     const service = await build();
     const provider = {
