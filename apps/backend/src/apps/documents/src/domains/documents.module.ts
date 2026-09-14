@@ -6,7 +6,10 @@ import { OcrModule } from '@opuspopuli/ocr-provider';
 import { ExtractionModule } from '@opuspopuli/extraction-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
-import { PromptClientModule } from '@opuspopuli/prompt-client';
+import {
+  PromptClientModule,
+  PromptClientService,
+} from '@opuspopuli/prompt-client';
 
 import { DocumentCrudService } from './services/document-crud.service';
 import { FileService } from './services/file.service';
@@ -33,26 +36,67 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
  *
  * @see https://github.com/OpusPopuli/opuspopuli/issues/463
  */
+/**
+ * One configured prompt-client module, shared by reference.
+ *
+ * Both this module and OcrModule need `PromptClientService`, and OcrModule
+ * resolves its factory in its OWN scope — so the module has to appear in both
+ * import lists. Passing the SAME object rather than calling forRootAsync twice
+ * is what keeps it one instance: a second call would build a second client,
+ * with its own cache and its own circuit breaker, silently doubling every
+ * prompt fetch.
+ */
+const promptClientModule = PromptClientModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    config: {
+      promptServiceUrl: requirePromptServiceUrl(config, 'documents'),
+      promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
+      hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
+    },
+  }),
+});
+
 @Module({
   imports: [
     // #1074: matches a scanned petition to the filed measure it actually is.
     EmbeddingsModule,
     StorageModule,
-    OcrModule,
+    /**
+     * Registered with a prompt supplier so OCR_PROVIDER=vision can fetch its
+     * instruction from prompt-service (#1050). It must be threaded through
+     * forRootAsync rather than provided here: NestJS resolves OcrModule's
+     * factory in OcrModule's own scope, so a token provided in THIS module is
+     * invisible to it and the vision provider throws at boot. Found by
+     * starting the service, not by typechecking it.
+     */
+    OcrModule.forRootAsync({
+      imports: [promptClientModule],
+      inject: [PromptClientService],
+      useFactory: (promptClient: PromptClientService) => () =>
+        promptClient.getOcrTranscriptionPrompt({ variant: 'general' }),
+    }),
     ExtractionModule,
     LLMModule,
-    PromptClientModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        config: {
-          promptServiceUrl: requirePromptServiceUrl(config, 'documents'),
-          promptServiceApiKey: config.get('PROMPT_SERVICE_API_KEY'),
-          hmacNodeId: config.get('PROMPT_SERVICE_NODE_ID'),
-        },
-      }),
-    }),
+    promptClientModule,
   ],
   providers: [
+    /**
+     * Supplies the OCR transcription instruction when OCR_PROVIDER=vision
+     * (#1050). Lives here rather than in @opuspopuli/ocr-provider so that
+     * package gains no dependency on prompt-client — and so the prompt text
+     * itself stays where it belongs, in prompt-service.
+     *
+     * The hash and version travel with the text; ScanService persists them
+     * alongside the transcription, because a transcription that cannot name
+     * the instruction that produced it is not attributable evidence.
+     */
+    {
+      provide: 'OCR_PROMPT_SUPPLIER',
+      inject: [PromptClientService],
+      useFactory: (promptClient: PromptClientService) => () =>
+        promptClient.getOcrTranscriptionPrompt({ variant: 'general' }),
+    },
     DocumentsResolver,
     DocumentCrudService,
     FileService,
