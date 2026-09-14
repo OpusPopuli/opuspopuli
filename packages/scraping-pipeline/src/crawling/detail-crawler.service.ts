@@ -27,6 +27,7 @@ import type {
 } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { extractStructuredArray } from "../extraction/structured-extractor.js";
+import { extractAgSummary } from "./ag-summary.js";
 
 /** Maximum detail pages to fetch per source per sync (safety limit against runaway crawling) */
 const MAX_DETAIL_PAGES = 500;
@@ -49,6 +50,66 @@ export class DetailCrawlerService {
    * @param llm - LLM provider for AI content extraction
    * @returns Enriched raw result with detail page content merged into items
    */
+  /**
+   * Second enrichment pass: the Attorney General's title-and-summary PDF
+   * (opuspopuli#1219).
+   *
+   * Separate from `enrichItems` because it is a DIFFERENT document with a
+   * different job. `detailUrl` is the proponent's submission and feeds
+   * `fullText`; `summaryUrl` is the AG's circulating text and feeds `summary`,
+   * which is what the corpus embeds and what a petition scan photographs.
+   * Conflating them is how `summary` came to hold the title echoed back.
+   *
+   * Every failure is non-fatal. A missing or unreadable summary leaves the
+   * field absent, which is honest — the previous behaviour wrote the title
+   * back into it, which looked like data and silently degraded retrieval.
+   */
+  async enrichSummaries(
+    rawResult: RawExtractionResult,
+    source: DataSourceConfig,
+  ): Promise<RawExtractionResult> {
+    const items = rawResult.items.filter(
+      (item) => typeof item.summaryUrl === "string" && item.summaryUrl,
+    );
+    if (items.length === 0) return rawResult;
+
+    this.logger.log(
+      `Fetching ${items.length} Attorney General title-and-summary PDF(s)`,
+    );
+
+    let written = 0;
+    for (const item of items.slice(0, MAX_DETAIL_PAGES)) {
+      const url = DetailCrawlerService.resolveUrl(
+        item.summaryUrl as string,
+        source.url,
+      );
+      try {
+        const { text, reason } = extractAgSummary(
+          await this.fetchDetailContent(url),
+        );
+        if (text) {
+          item.summary = text;
+          written += 1;
+        } else {
+          rawResult.warnings.push(
+            `AG summary rejected for ${String(item.externalId)} (${reason}): ${url}`,
+          );
+        }
+      } catch (error) {
+        rawResult.warnings.push(
+          `AG summary fetch failed for ${String(item.externalId)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Wrote ${written} of ${items.length} Attorney General summaries`,
+    );
+    return rawResult;
+  }
+
   async enrichItems(
     rawResult: RawExtractionResult,
     source: DataSourceConfig,
