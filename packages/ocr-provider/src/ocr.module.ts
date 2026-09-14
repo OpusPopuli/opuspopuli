@@ -39,6 +39,57 @@ export interface OcrModuleConfig {
  * - OCR_PREPROCESSING_ENABLED: true/false (default: true)
  * - OCR_PREPROCESSING_PRESET: fast/balanced/quality (default: balanced)
  */
+
+/**
+ * Build the configured OCR provider. ONE definition, used by the static module
+ * and by forRoot/forRootAsync alike.
+ *
+ * It existed twice. The static `@Module` factory learned the `vision` case
+ * (#1050); `forRoot` did not, and it hardcoded Tesseract without even reading
+ * `ocr.provider`. Since `forRootAsync` builds on `forRoot`, the one module
+ * registration that DOES supply a prompt supplier was the one that could never
+ * select the provider needing it — so `OCR_PROVIDER=vision` booted clean,
+ * reported healthy, attached the supplier to nothing, and ran Tesseract.
+ *
+ * Nothing errored, because nothing was wrong from any single file's point of
+ * view. Two copies of a selection rule is the defect; this is the fix.
+ */
+function selectOcrProvider(
+  configService: ConfigService,
+  languages: string[],
+  promptSupplier?: OcrPromptSupplier,
+): IOcrProvider {
+  const provider = configService.get<string>("ocr.provider") || "tesseract";
+
+  if (provider.toLowerCase() === "vision") {
+    if (!promptSupplier) {
+      // Fail at boot, not per scan: without a prompt the provider cannot run
+      // at all, and a per-scan failure would read as a model problem rather
+      // than a wiring one.
+      throw new Error(
+        "OCR_PROVIDER=vision requires an OCR_PROMPT_SUPPLIER provider. " +
+          "Register one via OcrModule.forRootAsync() in the consuming module — " +
+          "prompt text is served from prompt-service and must never be inlined here.",
+      );
+    }
+    return new VisionOcrProvider(
+      configService.get<string>("ocr.vision.model") || "qwen2.5vl:7b",
+      configService.get<string>("ocr.vision.url") || "http://localhost:11434",
+      promptSupplier,
+      configService.get<number>("ocr.vision.timeoutMs") ?? 120_000,
+    );
+  }
+
+  return new TesseractOcrProvider(languages);
+}
+
+/** Supplies the transcription instruction; see VisionOcrProvider. */
+export type OcrPromptSupplier = () => Promise<{
+  promptText: string;
+  promptHash: string;
+  promptVersion: string;
+}>;
+
 @Module({
   imports: [ConfigModule.forFeature(ocrConfig)],
   providers: [
@@ -53,37 +104,11 @@ export interface OcrModuleConfig {
           promptVersion: string;
         }>,
       ): IOcrProvider => {
-        const provider =
-          configService.get<string>("ocr.provider") || "tesseract";
         const languagesConfig = configService.get<string>("ocr.languages");
         const languages = languagesConfig
           ? languagesConfig.split(",").map((l) => l.trim())
           : ["eng"];
-
-        switch (provider.toLowerCase()) {
-          case "vision": {
-            if (!promptSupplier) {
-              // Fail at boot, not per scan. Without a prompt the provider
-              // cannot run at all, and a per-scan failure would look like a
-              // model problem rather than a wiring one.
-              throw new Error(
-                "OCR_PROVIDER=vision requires an OCR_PROMPT_SUPPLIER provider. " +
-                  "Register one in the consuming module — prompt text is served " +
-                  "from prompt-service and must never be inlined here.",
-              );
-            }
-            return new VisionOcrProvider(
-              configService.get<string>("ocr.vision.model") || "qwen2.5vl:7b",
-              configService.get<string>("ocr.vision.url") ||
-                "http://localhost:11434",
-              promptSupplier,
-              configService.get<number>("ocr.vision.timeoutMs") ?? 120_000,
-            );
-          }
-          case "tesseract":
-          default:
-            return new TesseractOcrProvider(languages);
-        }
+        return selectOcrProvider(configService, languages, promptSupplier);
       },
       inject: [ConfigService, { token: "OCR_PROMPT_SUPPLIER", optional: true }],
     },
@@ -185,9 +210,15 @@ export class OcrModule {
       providers: [
         {
           provide: "OCR_PROVIDER",
-          useFactory: (): IOcrProvider => {
-            return new TesseractOcrProvider(languages);
-          },
+          useFactory: (
+            configService: ConfigService,
+            promptSupplier?: OcrPromptSupplier,
+          ): IOcrProvider =>
+            selectOcrProvider(configService, languages, promptSupplier),
+          inject: [
+            ConfigService,
+            { token: "OCR_PROMPT_SUPPLIER", optional: true },
+          ],
         },
         {
           provide: ImagePreprocessor,
