@@ -463,10 +463,16 @@ export class ScrapingPipelineService {
           (item.contactInfo as Record<string, unknown> | undefined)?.website;
       }
     }
-    if (rawResult.items.some((item) => item.detailUrl)) {
-      return this.detailCrawler.enrichItems(rawResult, source, this.llm);
+    let result = rawResult;
+    if (result.items.some((item) => item.detailUrl)) {
+      result = await this.detailCrawler.enrichItems(result, source, this.llm);
     }
-    return rawResult;
+    // The AG title-and-summary is a second, different PDF on the same row —
+    // it feeds `summary`, where detailUrl feeds `fullText` (#1219).
+    if (result.items.some((item) => item.summaryUrl)) {
+      result = await this.detailCrawler.enrichSummaries(result, source);
+    }
+    return result;
   }
 
   /**

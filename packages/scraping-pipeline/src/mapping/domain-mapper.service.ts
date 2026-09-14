@@ -8,6 +8,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
+import { detectSummaryEcho } from "./summary-echo.js";
 import {
   DataType,
   PropositionStatus,
@@ -38,6 +39,17 @@ import {
 interface MappingDiagnostics {
   schemaRejects: number;
   issues: string[];
+  /**
+   * Title-echo findings (#1219).
+   *
+   * Kept SEPARATE from `issues`, which is only ever surfaced when
+   * `schemaRejects > 0` — a title echo is a perfectly valid record by the
+   * schema, so routing these through `issues` meant they were reported only
+   * when some unrelated record happened to fail validation, and swallowed
+   * otherwise. The issue asks for a pipeline warning rather than a silent
+   * write; this is the field that delivers one.
+   */
+  summaryEchoes: string[];
 }
 
 @Injectable()
@@ -59,7 +71,11 @@ export class DomainMapperService {
     const warnings = [...raw.warnings];
     const errors = [...raw.errors];
     const items: T[] = [];
-    const diagnostics: MappingDiagnostics = { schemaRejects: 0, issues: [] };
+    const diagnostics: MappingDiagnostics = {
+      schemaRejects: 0,
+      issues: [],
+      summaryEchoes: [],
+    };
 
     for (let i = 0; i < raw.items.length; i++) {
       try {
@@ -105,6 +121,14 @@ export class DomainMapperService {
     warnings: string[],
   ): SelectorFailure[] {
     const failures: SelectorFailure[] = [...(raw.selectorFailures ?? [])];
+
+    if (diagnostics.summaryEchoes.length > 0) {
+      warnings.push(
+        `${diagnostics.summaryEchoes.length} of ${raw.items.length} ` +
+          `${source.dataType} had a title-echo summary, dropped — ` +
+          diagnostics.summaryEchoes[0],
+      );
+    }
 
     if (diagnostics.schemaRejects > 0 && raw.items.length > 0) {
       const schemaIssues = [...new Set(diagnostics.issues)].slice(0, 10);
@@ -242,10 +266,34 @@ export class DomainMapperService {
     // anchor whose href points to the bill PDF. The regions config
     // extracts that href as `detailUrl`, but the proposition domain
     // type stores it as `sourceUrl`. Map across so the field lands.
-    const enriched = {
+    const enriched: Record<string, unknown> = {
       ...record,
       sourceUrl: record.sourceUrl ?? record.detailUrl,
     };
+
+    // Title-echo lint (#1219). A `summary` that is the title repeated plus
+    // scraper furniture carries no information the title does not, but it
+    // LOOKS like content — which is why 52 of 64 production rows held one
+    // unnoticed, and why 25-0004A1 and 25-0005A1 embedded to the same vector.
+    //
+    // Dropped, not just warned about. An echo is strictly worse than an absent
+    // summary: absent is visible and recoverable, an echo silently degrades
+    // every embedding computed from it. The AG's real summary now arrives via
+    // summaryUrl, so there is nothing legitimate to lose here.
+    const echo = detectSummaryEcho(
+      typeof enriched.title === "string" ? enriched.title : undefined,
+      typeof enriched.summary === "string" ? enriched.summary : undefined,
+    );
+    if (echo.isEcho) {
+      diag.summaryEchoes.push(
+        `Proposition ${String(enriched.externalId ?? "?")}: summary is a title ` +
+          `echo (${echo.substanceChars} chars of substance after the title) — ` +
+          `dropped. Expected the Attorney General's title-and-summary via ` +
+          `summaryUrl.`,
+      );
+      enriched.summary = undefined;
+    }
+
     return this.parseOrCollect(
       PropositionSchema,
       enriched,
@@ -592,10 +640,19 @@ const PropositionSchema = z
       .transform((v) => v ?? undefined)
       .optional(),
   })
-  .transform((data) => ({
-    ...data,
-    summary: data.summary || data.title,
-  }));
+  // NO backfill from title (#1219).
+  //
+  // This used to read `summary: data.summary || data.title`, present since the
+  // pipeline's first commit. It is a second, independent source of the title
+  // echo: any measure whose summary failed to extract got the title written
+  // into the field instead, which then embedded as the title twice and looked
+  // like content to every reader downstream.
+  //
+  // An empty summary is the honest representation of "not extracted". It costs
+  // nothing at embedding time — `embeddingSource` joins title and summary, so
+  // an empty one yields the title alone, which is exactly what the row
+  // actually knows.
+  .transform((data) => ({ ...data }));
 
 /**
  * Slugify a string for use in a composed externalId — lowercase, ASCII
