@@ -163,7 +163,8 @@ describe("DomainMapperService", () => {
         externalId: "ACA 13",
         title: "Voting thresholds",
         // summary defaults to cleaned title until AI analysis populates analysis_summary
-        summary: "Voting thresholds",
+        // #1219: no longer backfilled from the title.
+        summary: "",
         sourceUrl:
           "https://www.sos.ca.gov/elections/ballot-measures/pdf/aca-13.pdf",
       });
@@ -188,7 +189,17 @@ describe("DomainMapperService", () => {
       });
     });
 
-    it("should use title as summary when summary is empty", () => {
+    /**
+     * #1219: this used to assert the opposite — the schema backfilled the
+     * title into an empty summary, and that was a second independent source of
+     * the "52 of 64 summaries repeat the title" defect. The title embedded
+     * twice and looked like content to every reader downstream.
+     *
+     * An empty summary is the honest representation of "not extracted". It
+     * costs nothing: `embeddingSource` joins title and summary, so an empty one
+     * yields the title alone — exactly what the row actually knows.
+     */
+    it("leaves summary empty rather than backfilling the title", () => {
       const result = mapper.map(
         createRawResult({
           items: [
@@ -202,9 +213,7 @@ describe("DomainMapperService", () => {
         createSource({ dataType: DataType.PROPOSITIONS }),
       );
 
-      expect(result.items[0]).toMatchObject({
-        summary: "Education Budget",
-      });
+      expect(result.items[0]).toMatchObject({ summary: "" });
     });
 
     it("should coerce electionDate strings to Date", () => {
