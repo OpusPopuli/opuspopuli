@@ -7,6 +7,7 @@ import {
 import { EmbeddingsService } from '@opuspopuli/embeddings-provider';
 import { EMBEDDING_DIMENSIONS } from '@opuspopuli/common';
 import { MetricsService } from 'src/common/metrics';
+import { retrievalFloor } from './ocr-quality';
 
 /**
  * Matches a scanned petition to the filed measure it actually is (#1074).
@@ -202,6 +203,13 @@ export class RetrievalService implements OnModuleInit {
     documentId: string,
     text: string,
     ocrConfidence: number | null,
+    /**
+     * Which engine produced `text`. Selects the floor, because a Tesseract
+     * per-glyph mean and a vision model's readability proxy are different
+     * quantities and do not share a threshold (#1050). Defaulted so callers
+     * written before this keep the Tesseract behaviour they expect.
+     */
+    ocrProvider: string | null = null,
   ): Promise<RetrievalOutcome> {
     if (!text?.trim()) {
       this.metrics.recordPetitionRetrieval(SERVICE, 'skipped_no_text');
@@ -211,12 +219,11 @@ export class RetrievalService implements OnModuleInit {
     // A null confidence means the extraction path did not record one (PDF and
     // plain-text uploads are deterministic). Those are trustworthy, so only an
     // explicitly low number skips.
-    if (
-      typeof ocrConfidence === 'number' &&
-      ocrConfidence < MIN_RETRIEVAL_OCR_CONFIDENCE
-    ) {
+    const floor = retrievalFloor(ocrProvider);
+    if (typeof ocrConfidence === 'number' && ocrConfidence < floor) {
       this.logger.log(
-        `Retrieval skipped for document ${documentId}: ocrConfidence ${ocrConfidence.toFixed(1)} below ${MIN_RETRIEVAL_OCR_CONFIDENCE}`,
+        `Retrieval skipped for document ${documentId}: ocrConfidence ` +
+          `${ocrConfidence.toFixed(1)} below ${floor} (provider ${ocrProvider ?? 'tesseract'})`,
       );
       this.metrics.recordPetitionRetrieval(
         SERVICE,

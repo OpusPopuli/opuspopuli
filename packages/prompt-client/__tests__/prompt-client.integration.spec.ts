@@ -3,7 +3,7 @@
  *
  * Tests the full service lifecycle including:
  * - NestJS module initialization (onModuleInit / onModuleDestroy)
- * - 3-tier fallback chain: remote → database → hardcoded
+ * - fallback chain: remote → database → throw (#1246: no inline copies)
  * - Cache behavior with ICache interface
  * - HMAC vs Bearer auth selection
  * - Circuit breaker recovery flow
@@ -30,10 +30,10 @@ describe("PromptClientService Integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Full fallback chain: remote → DB → hardcoded
+  // Full chain: remote → DB → throw
   // -------------------------------------------------------------------------
 
-  describe("3-tier fallback chain", () => {
+  describe("fallback chain", () => {
     let service: PromptClientService;
     let mockDb: any;
     const originalFetch = globalThis.fetch;
@@ -124,30 +124,20 @@ describe("PromptClientService Integration", () => {
       expect(metrics.hardcodedFallbacks).toBe(0);
     });
 
-    it("should fall back to hardcoded when remote and DB both fail (tier 3)", async () => {
+    it("fails when remote AND database both miss (#1246)", async () => {
+      // Tier 3 used to be a hardcoded copy of the prompt in this repo. It is
+      // gone, so the chain is remote -> database -> throw. Degrading here is
+      // what made #920 survivable and therefore expensive.
       globalThis.fetch = jest
         .fn()
         .mockRejectedValue(new Error("connection refused"));
-
-      // DB returns nothing
       mockDb.promptTemplate.findFirst.mockResolvedValue(null);
 
-      const result = await service.getRAGPrompt({
-        context: "fallback ctx",
-        query: "fallback q",
-      });
+      await expect(
+        service.getRAGPrompt({ context: "c", query: "q" }),
+      ).rejects.toThrow(/not found/);
 
-      expect(result.promptText).toContain("fallback ctx");
-      expect(result.promptText).toContain("fallback q");
-      expect(result.promptVersion).toBe("v0");
-
-      const metrics = service.getMetrics();
-      // After #729: dbFallbacks counts only templates actually fetched
-      // FROM the DB (not just "request used the DB path"). DB returned
-      // null here, so 0 templates from DB; the hardcoded fallback fired
-      // instead — counted separately.
-      expect(metrics.dbFallbacks).toBe(0);
-      expect(metrics.hardcodedFallbacks).toBeGreaterThan(0);
+      expect(service.getMetrics().hardcodedFallbacks).toBe(0);
     });
   });
 
@@ -350,16 +340,18 @@ describe("PromptClientService Integration", () => {
       // Init (validates templates)
       await service.onModuleInit();
 
-      // Use (with hardcoded fallbacks since DB returns null)
-      const result = await service.getRAGPrompt({
-        context: "lifecycle test",
-        query: "question",
-      });
-      expect(result.promptText).toContain("lifecycle test");
+      // Use. The DB is empty and there is no inline copy any more (#1246),
+      // so this is the honest outcome: the service starts and destroys
+      // cleanly, and a prompt fetch against an unseeded store fails loudly
+      // rather than serving text this repo should not be carrying.
+      await expect(
+        service.getRAGPrompt({ context: "lifecycle test", query: "question" }),
+      ).rejects.toThrow(/not found/);
 
-      // Metrics reflect usage
+      // Metrics reflect usage. hardcodedFallbacks stays 0 for good: there are
+      // no hardcoded templates left to fall back to (#1246).
       const metrics = service.getMetrics();
-      expect(metrics.hardcodedFallbacks).toBeGreaterThan(0);
+      expect(metrics.hardcodedFallbacks).toBe(0);
 
       // Destroy (cleans up cache)
       await service.onModuleDestroy();

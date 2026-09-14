@@ -12,6 +12,10 @@ export {
 
 // Provider implementations
 export { TesseractOcrProvider } from "./providers/tesseract.provider.js";
+export {
+  VisionOcrProvider,
+  readabilityScore,
+} from "./providers/vision.provider.js";
 
 // Service and module
 export { OcrService } from "./ocr.service.js";
