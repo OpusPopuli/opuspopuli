@@ -45,50 +45,73 @@ Results land in `results/` as JSON (gitignored), keyed by provider+model, so run
 
 Margin is computed against the best _non-gold_ document deliberately: several filings are genuine duplicates, so ranking two of them 1st and 2nd is correct behaviour and must not be scored as a narrow win.
 
-## Baselines — 56 items, 2026-09-14
+## Baselines — 56 items, post-#1261, 2026-09-15
 
-65 propositions, **56 gold items (35 EN + 21 ES)** — past M4's floor of 50. Current build.
+**69 propositions** (the corpus grew by 4), 56 gold items (35 EN + 21 ES), after #1261 landed
+real Legislative Digest summaries. Verified with the pipeline's own `detectSummaryEcho`:
+**7.2% echo (5/69)**, against R2's <10% exit. Median summary is now **992 characters**, up from
+~211 — which was the title and nothing else.
 
-| Model | dims | Overall | EN | ES | Corpus sep. |
-| --- | --- | --- | --- | --- | --- |
-| `Xenova/all-MiniLM-L6-v2` | 384 | 39/56 · MRR .776 · margin .105 | 29/35 · .150 | **10/21** · .031 | 0.375 |
-| `Xenova/bge-base-en-v1.5` *(the `eval:baseline` default)* | 768 | 47/56 · MRR .885 · margin .071 | 31/35 · .085 | 16/21 · .048 | 0.693 |
-| `nomic-embed-text-v2-moe` **prefixed** | 768 | **51/56 · MRR .939 · margin .145** | **32/35** · .133 | **19/21** · **.166** | 0.470 |
+| Model | Overall | EN | ES | Corpus sep. |
+| --- | --- | --- | --- | --- |
+| `Xenova/all-MiniLM-L6-v2` (384) | 41/56 · MRR .806 | 32/35 · .182 | **9/21** · .034 | 0.334 |
+| `Xenova/bge-base-en-v1.5` (768) | 48/56 · MRR .900 | 32/35 · .099 | 16/21 · .042 | 0.670 |
+| `nomic-embed-text-v2-moe` prefixed (768) | **52/56 · MRR .953 · margin .171** | **34/35 · .167** | **18/21** · **.178** | 0.397 |
 
-### Growing the set is what made it a measurement
+### What the corpus fix bought, measured
 
-On the old 22 items, bge and nomic were **indistinguishable** — 21/22 and MRR .977 each. At 56
-items nomic leads by four hits and .054 of MRR, and the ES column separates them outright:
-16/21 against 19/21, at margins of .048 against .166.
+nomic, before and after the same 56 items:
 
-| | 22 items | 56 items |
+| | pre-#1261 (65 docs) | post-#1261 (69 docs) |
 | --- | --- | --- |
-| MiniLM-384 | 18/22 · MRR .865 | 39/56 · MRR .776 |
-| bge-base-768 | 21/22 · MRR .977 | 47/56 · MRR .885 |
-| nomic-768 prefixed | 21/22 · MRR .977 | **51/56 · MRR .939** |
+| Overall | 51/56 · MRR .939 · margin .145 | **52/56 · MRR .953 · margin .171** |
+| EN | 32/35 · margin .133 | **34/35 · margin .167** |
+| ES | 19/21 · margin .166 | 18/21 · margin .178 |
+| Byte-identical docs | yes (`max` sep 1.000) | **none** (`max` .999) |
 
-Every model scores *lower* on the bigger set, which is the point: the added items are harder
-because they were authored from what each measure actually says rather than from its title.
-A 22-item set that ranks three very different models within one hit of each other was not
-measuring much.
+**English is the clear win**: 91.4% → 97.1%, with margin up a quarter. The corpus now carries
+real text for English queries to match against instead of a repeated title.
 
-### Authoring rule: from the measure, not the corpus
+**`ret-en-008` finally hits.** This item missed under *every* model in every prior run, and the
+README recorded it as a corpus defect rather than a model failure — three filings shared a
+title and two were byte-identical. There are now **zero byte-identical documents** in the
+corpus. The defect was real, it was data, and fixing the data fixed the item.
 
-New items were written against each measure's **operative text** — the section after the AG
-transmittal letter — not against the title-echo summaries the corpus currently carries. So an
-item stays valid when #1261 lands real summaries; only its difficulty changes.
+### The prediction, scored
 
-Six items are flagged `contentOnly`, meaning the distinguishing detail lives in `fullText` and
-not in the title. **Two of the six miss today** (`ret-en-020`, insurance lowballing;
-`ret-en-031`, the residency test for income tax) and should start hitting once summaries carry
-real content — that is a direct read on what the corpus fix buys.
+Six items were flagged `contentOnly` before the fix, with two predicted to miss until real
+summaries landed:
 
-The other four hit already, and **that prediction was wrong**: `ret-en-033` / `ret-es-018` were
-authored as the clearest "unlock candidates" — a query about taxing prepared food against a
-corpus entry that is only the bare act name — and they hit anyway, because "California Food Tax
-Fairness Act" carries enough of the signal on its own. Recorded rather than quietly dropped:
-predicting which items a corpus fix will unlock is evidently not reliable, so the honest
-version is to flag candidates and let the re-run say.
+- **`ret-en-031`** (the residency test for income tax) — **now hits.** Predicted correctly.
+- **`ret-en-020`** (insurance lowballing) — **still misses**, but the reason has changed:
+  `25-0020A2` now carries a 1,006-character summary, so the corpus *can* support the query.
+  It is no longer a corpus-ceiling miss; it is a genuine retrieval miss, which is a more
+  useful thing to know.
+
+### Spanish regressed, and the cause is precise
+
+ES went 19/21 → 18/21, with two new misses — and both are measures that **still have no
+summary**:
+
+| item | target | summary length | outcome |
+| --- | --- | --- | --- |
+| `ret-es-017` | `SB 417` | 52 chars | now misses |
+| `ret-es-018` | `26-0005` | **0 chars** | now misses |
+
+`26-0005` previously carried `"California Food Tax Fairness Act"` as its summary, so the title
+appeared twice in the embedding source. That duplication was an *echo* — correctly identified
+as a defect — but it was also signal, and removing it left the document as title-only. The
+English query against the same measure (`ret-en-033`) still hits; the Spanish one no longer
+does. Cross-lingual retrieval has the least signal to spare, so it fails first.
+
+This is the shape of the remaining gap rather than a fault in the fix: **17 of 69 rows now
+have an empty summary** — 14 Sonoma local measures plus `26-0005` and `26-0006`. The AG
+initiatives, which is what #1261 targeted, went from title-echo to ~992 characters of real
+Legislative Digest and improved sharply. The local measures have yet to be filled in.
+
+Worth noting for whoever picks that up: an empty summary is not an echo, so it does not appear
+in the 7.2%. The echo metric and "does this row carry a usable summary" are different
+questions, and only the first is currently reported.
 
 ### The stale-build trap
 
