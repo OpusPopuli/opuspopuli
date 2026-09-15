@@ -445,6 +445,58 @@ conclusion, now with a worked example.
 attacker text reached a citizen-facing field — but 1/5 is not a rate, and per-run variance
 elsewhere in this harness is large enough that resisted cases should not be read as safe.
 
+## Source hierarchy — is the analysis citing law, or citing the proponent?
+
+A filed initiative is not one kind of text. `full_text` runs through three zones with very
+different authority:
+
+1. **Transmittal** — the proponent's covering letter to the AG. Enclosure lists, fee cheques,
+   contact details, often a "Summary of Measure's Purpose" written by the proponent. **Not law
+   and not neutral** — one side's description of its own measure.
+2. **Findings and declarations** — inside the measure and enacted with it, but written to
+   persuade ("too slow, too bureaucratic and too costly").
+3. **Operative text** — the sections that actually change the law.
+
+Zones are derived from structural markers, so this needs no per-measure gold labels.
+
+### Result — 70 placed citations, qwen3.5:9b
+
+| zone cited | citations | share |
+| --- | --- | --- |
+| operative | 24 | 34% |
+| findings | 25 | 36% |
+| **transmittal (covering letter)** | **21** | **30%** |
+
+**41 of 70 (59%) are misattributed** — a claim about what the measure *does*, sourced from a
+zone that does not say what the measure does. **21 (30%) cite the proponent's covering
+letter**: a campaign document presented as the source for an analysis the citizen is told is
+checkable.
+
+Two measures account for most of it. On `25-0031` **all five** citations land in the covering
+letter; on `25-0015`, **all eight** do.
+
+### This compounds the anchoring finding rather than repeating it
+
+Anchoring asks whether a citation's span *supports* its claim (11%). This asks where the span
+*points*. They are independent failures and both are live: a citation can resolve cleanly into
+the document and still be quoting the proponent's sales pitch.
+
+It is also the mechanism behind framing leakage. Advocacy wording does not arrive from nowhere
+— it arrives because the model summarised the findings section and adopted its register. That
+is why framing is scored here rather than as a separate word list: this gets at the cause.
+
+### A corpus finding falls out of it
+
+The covering letter is not a rounding error in these documents. Across the 16 fixture
+measures, **5 are more than 25% covering letter**, and `25-0031` is **89%** — its `full_text`
+is very nearly all letter, with the measure as a coda.
+
+That is the same defect as `25-0012A2` (whose `full_text` is *entirely* transmittal, and which
+was dropped from the fixtures for it), just less extreme. It is worth R2 knowing: extraction
+keeps the covering letter, so the model spends much of its context on a document that is not
+the measure — and, per **#1263**, the covering letter is also exactly where the proponent's
+postal address, email and phone number live.
+
 ## Model provenance
 
 Every run against a served model records what actually answered:

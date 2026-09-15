@@ -55,6 +55,7 @@ import {
   type EmittedClaim,
 } from "./scoring/anchoring.js";
 import { scoreCalibration, type ScoredClaim } from "./scoring/calibration.js";
+import { scoreSourceHierarchy } from "./scoring/source-hierarchy.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -101,6 +102,14 @@ export interface MeasureResult {
    * across measures — and re-scored later without spending model time again.
    */
   claims: ScoredClaim[];
+  /** Which zone of the document each citation points into. */
+  hierarchy: {
+    scored: number;
+    transmittal: number;
+    findings: number;
+    operative: number;
+    misattributed: number;
+  };
 }
 
 /**
@@ -161,6 +170,18 @@ export function scoreOne(
     ? (payload.analysisClaims as EmittedClaim[])
     : [];
   const anchoring = scoreAnchoring(claims, item.fullText, contract);
+  // Where a citation POINTS matters as much as whether it resolves: a claim
+  // about what the measure does, sourced from the proponent's covering letter,
+  // cites a campaign document as if it were statute.
+  const hierarchy = scoreSourceHierarchy(
+    claims.map((c) => ({
+      claim: c.claim,
+      field: c.field,
+      sourceStart: c.sourceStart,
+      sourceEnd: c.sourceEnd,
+    })),
+    item.fullText,
+  );
 
   return {
     externalId: item.externalId,
@@ -198,6 +219,13 @@ export function scoreOne(
       confidence: r.confidence,
       anchored: r.anchored,
     })),
+    hierarchy: {
+      scored: hierarchy.scored,
+      transmittal: hierarchy.byZone.transmittal,
+      findings: hierarchy.byZone.findings,
+      operative: hierarchy.byZone.operative,
+      misattributed: hierarchy.misattributed,
+    },
   };
 }
 
@@ -256,6 +284,34 @@ function report(results: MeasureResult[], header: string[]): string {
       );
     }
     lines.push(`  ${calibration.verdict}`);
+  }
+
+  const zones = results.reduce(
+    (a, r) => ({
+      scored: a.scored + r.hierarchy.scored,
+      transmittal: a.transmittal + r.hierarchy.transmittal,
+      findings: a.findings + r.hierarchy.findings,
+      operative: a.operative + r.hierarchy.operative,
+      misattributed: a.misattributed + r.hierarchy.misattributed,
+    }),
+    { scored: 0, transmittal: 0, findings: 0, operative: 0, misattributed: 0 },
+  );
+  if (zones.scored > 0) {
+    lines.push(
+      "",
+      `Citation zones     ${zones.operative} operative · ${zones.findings} findings · ` +
+        `${zones.transmittal} transmittal (of ${zones.scored} placed)`,
+    );
+    if (zones.transmittal > 0) {
+      lines.push(
+        `  ^ ${zones.transmittal} cite the proponent's COVERING LETTER — not law, not neutral`,
+      );
+    }
+    if (zones.misattributed > 0) {
+      lines.push(
+        `  ^ ${zones.misattributed} source a claim about what the measure DOES from a non-operative zone`,
+      );
+    }
   }
 
   const partitioned = results.filter((r) => r.anchoring.looksPartitioned);
