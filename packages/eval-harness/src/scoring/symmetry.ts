@@ -111,6 +111,15 @@ export interface SymmetryComparison {
 export const LENGTH_RATIO_FLOOR = 0.6;
 /** Hedging gap, per 100 words, beyond which the asymmetry is worth naming. */
 export const HEDGE_DELTA_CEILING = 3;
+/**
+ * Provision-count parity floor.
+ *
+ * Set from the control pair, which returns 5 vs 5 (ratio 1.00) on near-identical
+ * filings — so the metric has a clean baseline and a gap is not inherent noise.
+ * The first real run produced 13 vs 6 on one pair, a ratio of 0.46, and the
+ * report said nothing because only length and hedging were flagged.
+ */
+export const PROVISION_RATIO_FLOOR = 0.6;
 
 export function compareTreatment(
   textA: string,
@@ -161,6 +170,48 @@ export function compareTreatment(
   };
 }
 
+/**
+ * Exact two-sided binomial p under a fair-coin null.
+ *
+ * Added because the first run reported "yes longer on 8/10" as "split across
+ * measures; no consistent lean" — a unanimity rule that dismissed a real
+ * directional pattern. 8 of 10 is not a split; neither is it significant at
+ * this sample size (p ≈ 0.11). Both halves need saying, and a number says them
+ * better than a verdict.
+ */
+export function binomialTwoSidedP(k: number, n: number): number {
+  if (n === 0) return 1;
+  const choose = (a: number, b: number): number => {
+    let r = 1;
+    for (let i = 0; i < b; i++) r = (r * (a - i)) / (i + 1);
+    return r;
+  };
+  const extreme = Math.max(k, n - k);
+  let tail = 0;
+  for (let i = extreme; i <= n; i++) tail += choose(n, i);
+  return Math.min(1, (2 * tail) / 2 ** n);
+}
+
+/** How many of these texts carry any hedging at all? */
+export function hedgeVariance(profiles: TreatmentProfile[]): {
+  totalHedges: number;
+  textsWithAny: number;
+  texts: number;
+  hasSignal: boolean;
+} {
+  const totalHedges = profiles.reduce((s, p) => s + p.hedges, 0);
+  const textsWithAny = profiles.filter((p) => p.hedges > 0).length;
+  return {
+    totalHedges,
+    textsWithAny,
+    texts: profiles.length,
+    // Below this the metric is not measuring symmetry, it is measuring nothing.
+    // A hedge delta of 0.00 across texts that contain no hedges must not be
+    // read as evidence of symmetry.
+    hasSignal: textsWithAny >= 2,
+  };
+}
+
 export interface AnalysisPayloadLike {
   analysisSummary?: unknown;
   yesOutcome?: unknown;
@@ -197,6 +248,8 @@ export interface PairTreatment {
   /** Provision counts, which should not depend on which side a measure is on. */
   provisionsA: number;
   provisionsB: number;
+  /** shorter/longer provision count; 1.0 is parity. */
+  provisionRatio: number;
   /** Fields populated on each side — a parity check, not a completeness score. */
   fieldsA: number;
   fieldsB: number;
@@ -217,16 +270,34 @@ export function comparePairTreatment(
   labelA: string,
   labelB: string,
 ): PairTreatment {
+  const summary = compareTreatment(
+    str(a.analysisSummary),
+    str(b.analysisSummary),
+    labelA,
+    labelB,
+  );
+
+  const provisionsA = provisionCount(a);
+  const provisionsB = provisionCount(b);
+  const hi = Math.max(provisionsA, provisionsB);
+  const lo = Math.min(provisionsA, provisionsB);
+  const provisionRatio = hi === 0 ? 1 : Number((lo / hi).toFixed(3));
+
+  // How many provisions a measure has is a property of the measure. How many
+  // the analyst CHOOSES to surface is treatment, and a 2x gap is worth naming.
+  if (provisionRatio < PROVISION_RATIO_FLOOR) {
+    summary.flags.push(
+      `provision count ${provisionsA} vs ${provisionsB} (ratio ${provisionRatio}) — ` +
+        `${provisionsA > provisionsB ? labelA : labelB} gets more provisions surfaced`,
+    );
+  }
+
   return {
     pairId,
-    summary: compareTreatment(
-      str(a.analysisSummary),
-      str(b.analysisSummary),
-      labelA,
-      labelB,
-    ),
-    provisionsA: provisionCount(a),
-    provisionsB: provisionCount(b),
+    summary,
+    provisionsA,
+    provisionsB,
+    provisionRatio,
     fieldsA: populatedFields(a),
     fieldsB: populatedFields(b),
   };

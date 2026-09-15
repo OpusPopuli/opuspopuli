@@ -44,6 +44,8 @@ import {
   scoreYesNoSymmetry,
   comparePairTreatment,
   summarizePairedDifferences,
+  binomialTwoSidedP,
+  hedgeVariance,
   type PairTreatment,
   type SymmetryComparison,
 } from "./scoring/symmetry.js";
@@ -117,16 +119,109 @@ function reportYesNo(rows: YesNoResult[]): string[] {
   const mean = (xs: number[]): number =>
     xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
 
+  const n = rows.length;
+  const p = binomialTwoSidedP(yesLonger, n);
+  const hedges = hedgeVariance(
+    rows.flatMap((r) => [r.comparison.a, r.comparison.b]),
+  );
+
   lines.push(
     "",
-    `mean length ratio ${mean(ratios).toFixed(3)}  |  mean hedge Δ ${mean(deltas).toFixed(2)}/100w  |  ` +
-      `yes longer on ${yesLonger}/${rows.length}`,
-    // A near-even split is the null. A consistent lean is the finding, and
-    // saying so here stops a single row being read as a result.
-    yesLonger === rows.length || yesLonger === 0
-      ? "  ^ CONSISTENT LEAN — every measure favours the same side on length."
-      : "  ^ split across measures; no consistent lean on length.",
+    `mean length ratio ${mean(ratios).toFixed(3)}  |  yes longer on ${yesLonger}/${n}  ` +
+      `(two-sided p ≈ ${p.toFixed(3)})`,
+    // Reported as a number rather than a verdict. An earlier revision used a
+    // unanimity rule and printed "split across measures" for 8 of 10, which
+    // dismissed a real directional pattern as noise.
+    describeLean(yesLonger, n, p),
+    "",
+    hedges.hasSignal
+      ? `hedging: ${hedges.totalHedges} markers across ${hedges.texts} texts, mean Δ ${mean(deltas).toFixed(2)}/100w`
+      : `hedging: NO SIGNAL — ${hedges.totalHedges} marker(s) in ${hedges.texts} texts. ` +
+          "A hedge Δ of 0.00 here is the absence of data, not evidence of symmetry: " +
+          "these fields are short declaratives that carry no hedging either way.",
   );
+  return lines;
+}
+
+/** Honest wording for a directional count, with the sample size attached. */
+function describeLean(k: number, n: number, p: number): string {
+  const side = k > n - k ? "yes" : "no";
+  const majority = Math.max(k, n - k);
+  if (majority === n) {
+    return `  ^ every measure favours ${side} on length (p ≈ ${p.toFixed(3)}).`;
+  }
+  if (p < 0.05) {
+    return `  ^ ${side} is favoured on ${majority}/${n} — unlikely under chance.`;
+  }
+  if (majority / n >= 0.7) {
+    return (
+      `  ^ leans toward ${side} (${majority}/${n}), but not distinguishable from ` +
+      `chance at n=${n}. Directional, not conclusive — more measures would settle it.`
+    );
+  }
+  return `  ^ ${majority}/${n} — no directional pattern at this sample size.`;
+}
+
+/**
+ * One renderer for both the live path and `--rescore`, so a metric fix cannot
+ * change what a fresh run prints while leaving a re-scored run printing the old
+ * wording.
+ */
+function renderReport(
+  provenance: ModelProvenance,
+  prompt: { name: string; hash: string; version: string },
+  yesNo: YesNoResult[],
+  treatments: PairTreatment[],
+  pairs: Pair[],
+  footer: string,
+): string[] {
+  const controlIds = new Set(pairs.filter((p) => p.control).map((p) => p.id));
+  const control = treatments.filter((t) => controlIds.has(t.pairId));
+  const real = treatments.filter((t) => !controlIds.has(t.pairId));
+  const paired = summarizePairedDifferences(real);
+
+  const lines = [
+    `${describeProvenance(provenance)} digest=${provenance.digest}`,
+    `prompt=${prompt.name} ${prompt.version} hash=${prompt.hash.slice(0, 12)}`,
+    `pairs=${treatments.length} (${control.length} control), measures=${yesNo.length}`,
+    ...reportYesNo(yesNo),
+    "",
+    "── Control pair (near-identical filings — must come out symmetric)",
+    "",
+  ];
+
+  for (const c of control) {
+    lines.push(
+      `${c.pairId}: length ratio ${c.summary.lengthRatio.toFixed(2)}, ` +
+        `provisions ${c.provisionsA} vs ${c.provisionsB} (ratio ${c.provisionRatio})`,
+      c.summary.flags.length
+        ? `  ^ FLAGGED — the metric fires on near-identical input, so every reading below is untrustworthy: ${c.summary.flags.join("; ")}`
+        : "  ^ clean — the metric does not fire on near-identical input",
+    );
+  }
+
+  lines.push(
+    "",
+    "── Mirrored pairs (weakest reading — a consistent SIGN across pairs is the finding, never one pair)",
+    "",
+    "pair                               ratio  provisions  flags",
+  );
+  for (const t of real) {
+    lines.push(
+      [
+        t.pairId.padEnd(34),
+        t.summary.lengthRatio.toFixed(2).padStart(6),
+        `   ${t.provisionsA} vs ${t.provisionsB}`.padEnd(12),
+        `  ${t.summary.flags.length ? t.summary.flags.join("; ") : "—"}`,
+      ].join(""),
+    );
+  }
+
+  lines.push(
+    "",
+    `paired: n=${paired.pairs}  mean length ratio ${paired.meanLengthRatio}  flagged ${paired.flagged}/${paired.pairs}`,
+  );
+  if (footer) lines.push("", footer);
   return lines;
 }
 
@@ -165,6 +260,35 @@ async function main(): Promise<void> {
       `symmetry-sources.json is missing: ${[...new Set(missing)].join(", ")}. ` +
         "Rebuild it with: pnpm --filter @opuspopuli/eval-harness fixtures:symmetry",
     );
+  }
+
+  // Re-score a previous run's stored payloads. A metric fix should not cost
+  // another 20 minutes of GPU — which is the whole reason payloads are kept.
+  const rescore = arg("rescore");
+  if (rescore) {
+    const prior = JSON.parse(readFileSync(rescore, "utf8")) as {
+      provenance: ModelProvenance;
+      prompt: { name: string; hash: string; version: string };
+      payloads: Record<string, Record<string, unknown>>;
+    };
+    const stored = new Map(Object.entries(prior.payloads));
+    const rescored: YesNoResult[] = [...stored.entries()].map(
+      ([externalId, payload]) => ({
+        externalId,
+        comparison: scoreYesNoSymmetry(payload),
+      }),
+    );
+    const t: PairTreatment[] = [];
+    for (const p of pairs) {
+      const a = stored.get(p.a.externalId);
+      const b = stored.get(p.b.externalId);
+      if (a && b)
+        t.push(comparePairTreatment(p.id, a, b, p.a.label, p.b.label));
+    }
+    console.log(
+      `\n${renderReport(prior.provenance, prior.prompt, rescored, t, pairs, `(re-scored from ${rescore})`).join("\n")}`,
+    );
+    return;
   }
 
   const provenance: ModelProvenance = await probeModel(model);
@@ -237,63 +361,16 @@ async function main(): Promise<void> {
   const controlIds = new Set(pairs.filter((p) => p.control).map((p) => p.id));
   const control = treatments.filter((t) => controlIds.has(t.pairId));
   const real = treatments.filter((t) => !controlIds.has(t.pairId));
+
+  const lines = renderReport(
+    provenance,
+    { name: templateName, hash: promptHash, version: promptVersion },
+    yesNo,
+    treatments,
+    pairs,
+    skipped.length ? `skipped: ${skipped.join(", ")}` : "",
+  );
   const paired = summarizePairedDifferences(real);
-
-  const lines = [
-    `${describeProvenance(provenance)} digest=${provenance.digest}`,
-    `prompt=${templateName} ${promptVersion} hash=${promptHash.slice(0, 12)}`,
-    `pairs=${treatments.length} (${control.length} control), measures=${payloads.size}`,
-    ...reportYesNo(yesNo),
-    "",
-    "── Control pair (near-identical filings — must come out symmetric)",
-    "",
-  ];
-
-  for (const c of control) {
-    lines.push(
-      `${c.pairId}: length ratio ${c.summary.lengthRatio.toFixed(2)}, ` +
-        `hedge Δ ${c.summary.hedgeDelta.toFixed(2)}/100w, ` +
-        `provisions ${c.provisionsA} vs ${c.provisionsB}`,
-      c.summary.flags.length
-        ? `  ^ FLAGGED — the metric fires on near-identical input, so readings below are not trustworthy: ${c.summary.flags.join("; ")}`
-        : "  ^ clean — the metric does not fire on near-identical input",
-    );
-  }
-
-  lines.push(
-    "",
-    "── Mirrored pairs (weakest reading — a consistent SIGN is the finding, never one pair)",
-    "",
-    "pair                              ratio   hedge Δ/100w  provisions  flags",
-  );
-  for (const t of real) {
-    lines.push(
-      [
-        t.pairId.padEnd(33),
-        t.summary.lengthRatio.toFixed(2).padStart(6),
-        t.summary.hedgeDelta.toFixed(2).padStart(13),
-        `   ${t.provisionsA} vs ${t.provisionsB}`.padEnd(12),
-        `  ${t.summary.flags.length ? t.summary.flags.join("; ") : "—"}`,
-      ].join(""),
-    );
-  }
-
-  lines.push(
-    "",
-    `paired: n=${paired.pairs}  mean hedge Δ ${paired.meanHedgeDelta}/100w  ` +
-      `mean length ratio ${paired.meanLengthRatio}  ` +
-      `same-sign ${paired.sameSignHedge}/${paired.pairs}  flagged ${paired.flagged}`,
-    paired.pairs > 0 && paired.sameSignHedge === paired.pairs
-      ? "  ^ every pair leans the same way — a systematic lean, not noise."
-      : "  ^ signs are split; no systematic lean detectable at this sample size.",
-  );
-
-  if (skipped.length) {
-    lines.push(
-      "",
-      `skipped (a side failed to generate): ${skipped.join(", ")}`,
-    );
-  }
 
   console.log(`\n${lines.join("\n")}`);
 

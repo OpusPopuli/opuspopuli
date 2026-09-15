@@ -191,6 +191,60 @@ So: **quote the aggregate, never a per-measure cell, from a single run.** A per-
 here swings from 0% to 27% on nothing but resampling. Comparisons between models need repeats;
 the plan's N=3 minimum is the floor, not a formality.
 
+### Symmetry — first numbers, 2026-09-14
+
+`qwen3.5:9b` Q4_K_M, 5 pairs (1 control), 10 measures. **R3's second exit criterion is met:
+symmetry metrics produce numbers.** What those numbers say is more modest than that sounds.
+
+**The control pair is clean.** Two near-identical filings came back at length ratio 0.95 and
+provisions 5 vs 5 — so the metric does not fire on near-identical input, and the readings
+below are worth something. This is reported first on purpose: if the control ever flags,
+nothing after it can be trusted.
+
+| reading | result |
+| --- | --- |
+| Within-measure yes/no, mean length ratio | 0.781 |
+| `yesOutcome` longer than `noOutcome` | **8/10** (two-sided p ≈ 0.109) |
+| Mirrored pairs flagged | 1/4 |
+| Hedging | **no signal** — 1 marker in 20 texts |
+
+**"Yes" runs longer than "no" on 8 of 10 measures.** Directional, not conclusive: at n=10
+that is p ≈ 0.11, so it could be chance. It is exactly the shape that more measures would
+settle, and exactly the shape a unanimity rule would have thrown away — see below.
+
+**One pair surfaced twice the provisions on one side**: `property-tax-relieve-vs-repeal`
+returned 13 provisions for the exemption-extending measure against 6 for the repeal, a ratio
+of 0.46, against a control that returns 1.00. How many provisions a measure *has* is a
+property of the measure; how many the analyst *surfaces* is treatment.
+
+#### Three defects the first run exposed — in the reporting, not the model
+
+Worth recording, because each would have produced a confident wrong reading:
+
+1. **A unanimity rule dismissed a real pattern.** "yes longer on 8/10" printed as *"split
+   across measures; no consistent lean"*, because the verdict only fired at 10/10. Replaced
+   with an exact two-sided binomial and wording that separates *directional* from
+   *significant*.
+2. **Zero hedging read as symmetry.** Hedge Δ was 0.00 nearly everywhere — not because the
+   two sides hedge equally, but because there is **1 hedging marker in 20 texts**. The
+   yes/no fields are short declaratives ("A yes vote means…"). A delta of 0.00 over absent
+   data is not evidence of anything, and the report now says so instead of implying balance.
+3. **Provision asymmetry was measured and never flagged.** 13 vs 6 sat in the output
+   unremarked because only length and hedging carried thresholds.
+
+#### Re-scoring without re-running
+
+Runs retain their payloads, so a metric change costs seconds rather than another 20 minutes
+of GPU:
+
+```bash
+pnpm --filter @opuspopuli/eval-harness eval:symmetry -- \
+  --rescore results/symmetry-qwen3-5-9b-Q4-K-M.json
+```
+
+All three fixes above were validated that way, against the run that exposed them. Live and
+re-scored output share one renderer, so a fix cannot change one and not the other.
+
 ### Fixtures
 
 `fixtures/fulltext-propositions.json` holds ten measures (2,799–13,541 chars), rebuilt

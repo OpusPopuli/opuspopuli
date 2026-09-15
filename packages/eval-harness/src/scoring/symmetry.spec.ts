@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   profileTreatment,
+  binomialTwoSidedP,
+  hedgeVariance,
   compareTreatment,
   scoreYesNoSymmetry,
   comparePairTreatment,
@@ -144,6 +146,73 @@ describe("comparePairTreatment", () => {
   });
 });
 
+describe("binomialTwoSidedP", () => {
+  test("calls a unanimous split extreme", () => {
+    assert.ok(binomialTwoSidedP(10, 10) < 0.01);
+  });
+
+  test("does not call 8 of 10 significant", () => {
+    // The first real run produced exactly this and the report called it a
+    // "split". It is neither a split nor significant, and the number says so.
+    const p = binomialTwoSidedP(8, 10);
+    assert.ok(p > 0.05 && p < 0.2, `expected ~0.11, got ${p}`);
+  });
+
+  test("gives an even split a p of 1", () => {
+    assert.equal(binomialTwoSidedP(5, 10), 1);
+  });
+});
+
+describe("hedgeVariance", () => {
+  test("reports no signal when almost nothing hedges", () => {
+    // The real case: 1 hedge marker across 20 yes/no texts. A hedge delta of
+    // 0.00 there is the absence of data, NOT evidence of symmetry.
+    const profiles = Array.from({ length: 20 }, (_, i) =>
+      profileTreatment(i === 0 ? "This may apply." : "This applies."),
+    );
+    const v = hedgeVariance(profiles);
+    assert.equal(v.textsWithAny, 1);
+    assert.equal(v.hasSignal, false);
+  });
+
+  test("reports signal once several texts hedge", () => {
+    const profiles = [
+      profileTreatment("This may apply."),
+      profileTreatment("It could possibly change."),
+      profileTreatment("It applies."),
+    ];
+    assert.equal(hedgeVariance(profiles).hasSignal, true);
+  });
+});
+
+describe("comparePairTreatment — provision parity", () => {
+  test("flags a two-to-one provision gap", () => {
+    // 13 vs 6 happened on a real pair and went unreported, because only length
+    // and hedging were flagged.
+    const p = comparePairTreatment(
+      "x",
+      { analysisSummary: "s", keyProvisions: Array(13).fill("p") },
+      { analysisSummary: "s", keyProvisions: Array(6).fill("p") },
+      "relieve",
+      "repeal",
+    );
+    assert.ok(p.provisionRatio < 0.6);
+    assert.match(p.summary.flags.join(" "), /relieve gets more provisions/);
+  });
+
+  test("does not flag the control pair's parity", () => {
+    const p = comparePairTreatment(
+      "control",
+      { analysisSummary: "s", keyProvisions: Array(5).fill("p") },
+      { analysisSummary: "s", keyProvisions: Array(5).fill("p") },
+      "a",
+      "b",
+    );
+    assert.equal(p.provisionRatio, 1);
+    assert.deepEqual(p.summary.flags, []);
+  });
+});
+
 describe("summarizePairedDifferences", () => {
   const pair = (hedgeDelta: number): PairTreatment =>
     ({
@@ -159,6 +228,7 @@ describe("summarizePairedDifferences", () => {
       },
       provisionsA: 1,
       provisionsB: 1,
+      provisionRatio: 1,
       fieldsA: 1,
       fieldsB: 1,
     }) as PairTreatment;
