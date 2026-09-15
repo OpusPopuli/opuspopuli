@@ -108,3 +108,67 @@ describe("detectSummaryEcho (#1219)", () => {
     expect(verdict.isEcho).toBe(false);
   });
 });
+
+/**
+ * The blind spot the prefix test left (#1261).
+ *
+ * `startsWith(title)` only sees an echo when the summary carries the extra
+ * words. When the TITLE is the longer string the test is defeated, and all
+ * twelve live Sonoma County rows scored clean while carrying a summary a
+ * reader gains nothing from.
+ */
+describe("detectSummaryEcho — summary contained in the title (#1261)", () => {
+  it.each([
+    ["Measure E: Waugh School District Bond", "Waugh School District Bond"],
+    [
+      "Measure H: Sonoma County Parks Sales Tax",
+      "Sonoma County Parks Sales Tax",
+    ],
+    [
+      "Measure AB: Sonoma County Junior College District Bond",
+      "Sonoma County Junior College District Bond",
+    ],
+  ])("flags the de-prefixed title %s", (title, summary) => {
+    expect(detectSummaryEcho(title, summary).isEcho).toBe(true);
+  });
+
+  it("flags a summary identical to the title", () => {
+    expect(
+      detectSummaryEcho("Local taxes: limitation", "Local taxes: limitation")
+        .isEcho,
+    ).toBe(true);
+  });
+
+  it("ignores case and whitespace when comparing", () => {
+    expect(
+      detectSummaryEcho(
+        "Measure D:  Coast Life Support District",
+        "coast life support district",
+      ).isEcho,
+    ).toBe(true);
+  });
+
+  /**
+   * The direction that must NOT regress: a real digest opens with the measure
+   * title and then says something. Containment cannot match it, because the
+   * summary is the longer string.
+   */
+  it("does not flag a real summary that opens with the title", () => {
+    const verdict = detectSummaryEcho(
+      "Government preferences",
+      "Government preferences. The California Constitution, pursuant to " +
+        "provisions enacted by Proposition 209, prohibits the state from " +
+        "granting preferential treatment to any individual or group on the " +
+        "basis of race, sex, colour, ethnicity, or national origin, as specified.",
+    );
+
+    expect(verdict.isEcho).toBe(false);
+    expect(verdict.substanceChars).toBeGreaterThan(150);
+  });
+
+  it("does not flag a summary unrelated to the title", () => {
+    expect(
+      detectSummaryEcho("Voting thresholds", "Withdrawal of ACA 13.").isEcho,
+    ).toBe(false);
+  });
+});

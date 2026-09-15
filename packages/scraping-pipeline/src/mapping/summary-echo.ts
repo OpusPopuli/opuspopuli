@@ -51,6 +51,27 @@ export function detectSummaryEcho(
   const normSummary = normalise(summary);
   const normTitle = title ? normalise(title) : "";
 
+  // A summary CONTAINED IN the title adds no information by construction, and
+  // the prefix test below cannot see it: `startsWith` is defeated whenever the
+  // extra words sit on the TITLE side.
+  //
+  // Measured on the twelve live Sonoma County rows, every one of which the
+  // prefix test scored as clean:
+  //
+  //   title    Measure E: Waugh School District Bond
+  //   summary  Waugh School District Bond
+  //
+  // That is the same defect as a plain echo — a `summary` a reader gains
+  // nothing from — arrived at by dropping the measure prefix instead of
+  // repeating the title verbatim. Reporting those twelve as clean understated
+  // the corpus echo rate as 8.2% when it was 27.9% (#1261).
+  if (
+    normTitle.length > 0 &&
+    normTitle.toLowerCase().includes(normSummary.toLowerCase())
+  ) {
+    return { isEcho: true, substanceChars: 0 };
+  }
+
   // An ECHO requires the title to actually be echoed. A summary that simply
   // does not begin with the title is not this defect, however terse it is —
   // judging on length alone would discard short but genuine summaries, which
