@@ -9,7 +9,9 @@
     "eval:retrieval": "tsx src/retrieval-eval.ts",
     "eval:baseline": "tsx src/retrieval-eval.ts --provider xenova",
     "typecheck": "tsc --noEmit",
-    "eval:ocr": "tsx src/ocr-eval.ts"
+    "eval:ocr": "tsx src/ocr-eval.ts",
+    "test": "tsc --noEmit && tsx --test \"src/**/*.spec.ts\"",
+    "test:watch": "tsx --test --watch \"src/**/*.spec.ts\""
   },
   "dependencies": {
     "@opuspopuli/embeddings-provider": "workspace:*",

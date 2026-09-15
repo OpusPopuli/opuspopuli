@@ -69,6 +69,8 @@ const run = promisify(execFile);
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertFreshBuilds } from "./build-freshness.js";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
@@ -718,6 +720,8 @@ function report(run: Awaited<ReturnType<typeof runOcrEval>>): string {
 }
 
 async function main(): Promise<void> {
+  assertFreshBuilds();
+
   const argv = process.argv.slice(2);
   const arg = (k: string): string | undefined => {
     const i = argv.indexOf(`--${k}`);
