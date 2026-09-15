@@ -520,6 +520,72 @@ keeps the covering letter, so the model spends much of its context on a document
 the measure — and, per **#1263**, the covering letter is also exactly where the proponent's
 postal address, email and phone number live.
 
+## Omission — what the analysis left out
+
+```bash
+pnpm --filter @opuspopuli/eval-harness eval:omission -- --run results/generation-....json
+```
+
+The one metric here where the failure leaves **no wrong output to point at**. An analysis can
+be accurate, grounded and correctly abstaining, and still leave a voter ignorant of the
+provision that matters most to them. Nothing else in this harness would notice.
+
+24 provisions across 5 measures, **17 marked essential** — a provision a voter cannot make an
+informed choice without. Severability and definitional clauses are deliberately not essential,
+and the two recalls are reported separately: dropping *"the provisions of this Act are
+severable"* is not the failure that dropping *"employing a non-physician to review a doctor's
+decision is a felony"* would be.
+
+### Result — qwen3.5:9b, 2026-09-15
+
+| measure | provisions | recalled | essential |
+| --- | --- | --- | --- |
+| `25-0002A1` | 6 | 5 (83%) | 5/5 |
+| `25-0007A1` | 7 | 7 (100%) | 4/4 |
+| `25-0015` | 4 | 3 (75%) | **2/3** |
+| `25-0019A1` | 3 | 3 (100%) | 2/2 |
+| `ACA 22` | 4 | 4 (100%) | 3/3 |
+| **overall** | **24** | **22 (92%)** | **16/17 (94%)** |
+
+**This is the metric the model does well on**, and that matters for reading everything else
+here. The picture is not "the model is weak"; it is specifically the **attribution layer** that
+is broken. The same run that recalls 94% of essential provisions anchors 9% of its citations
+and sources 39% of them from non-operative text. It knows what the measure says. It cannot
+reliably tell you where it read it.
+
+### The one essential provision dropped
+
+`25-0015` provision `0015-3`: *"The penalty is triggered by any qualifying vote cast after
+January 1 2025."* That is the retroactivity date — the difference between a rule about future
+conduct and one that already applies to votes cast. The analysis surfaced the ten-year office
+ban and who it applies to, but not when it bites.
+
+**Honest caveat: this miss is near the threshold.** It scored 0.457 against a cut of 0.527,
+where the null distribution sits at 0.369. The next-lowest score in the whole set is 0.515 —
+also close. So the metric is confident that 0.457 is below unrelated-text level only by a
+modest margin, and a different embedding model could plausibly move it either way. Treat one
+near-threshold miss as a flag to read the output, not as a verdict.
+
+### The threshold is calibrated, not chosen
+
+Gold provisions are written in the measure's register; the model writes in a voter's. Exact or
+keyword matching would score correct paraphrase as omission — punishing precisely the
+plain-language rewriting the product exists to do. So matching is by embedding similarity.
+
+The cut is derived from the data: every gold provision is scored against statements belonging
+to **other** measures, which are known non-matches, and the threshold goes at the 95th
+percentile of that null distribution. On this run: **null mean 0.369, p95 0.527, n=874**. True
+matches cluster at 0.77–0.83, well clear of it.
+
+A hand-picked threshold would be the author's intuition wearing a decimal point — which is the
+error the calibration metric in this harness already made once, by modelling a string enum as a
+number. There is also a floor: if unrelated provisions already score high, the embedding cannot
+separate this corpus, and a calibrated threshold would silently pass everything. The floor
+makes that fail loudly instead.
+
+Scoring reads payloads retained by a previous generation run, so adding this metric cost an
+embedding pass rather than another round of inference.
+
 ## Model provenance
 
 Every run against a served model records what actually answered:

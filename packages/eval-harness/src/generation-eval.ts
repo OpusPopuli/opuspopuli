@@ -102,6 +102,12 @@ export interface MeasureResult {
    * across measures — and re-scored later without spending model time again.
    */
   claims: ScoredClaim[];
+  /**
+   * The parsed analysis, retained for the same reason: omission scoring needs
+   * an embedding pass the generation leg should not pay for, and a metric that
+   * arrives later must not cost another full run.
+   */
+  payload: Record<string, unknown>;
   /** Which zone of the document each citation points into. */
   hierarchy: {
     scored: number;
@@ -219,6 +225,7 @@ export function scoreOne(
       confidence: r.confidence,
       anchored: r.anchored,
     })),
+    payload,
     hierarchy: {
       scored: hierarchy.scored,
       transmittal: hierarchy.byZone.transmittal,
@@ -351,6 +358,10 @@ async function main(): Promise<void> {
     argv.includes("--think") || argv.includes("--no-think");
   const contract = (arg("contract") ?? "offsets") as AnchorContract;
   const limit = arg("limit") ? Number.parseInt(arg("limit")!, 10) : undefined;
+  const pick = arg("measures")
+    ?.split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
 
   const source = JSON.parse(
     readFileSync(join(ROOT, "fixtures/fulltext-propositions.json"), "utf8"),
@@ -360,9 +371,17 @@ async function main(): Promise<void> {
   ) as { items: GoldItem[] };
 
   const goldById = new Map(gold.items.map((g) => [g.externalId, g]));
-  const items = (limit ? source.items.slice(0, limit) : source.items).filter(
-    (i) => goldById.has(i.externalId),
+  const selected = pick
+    ? source.items.filter((i) => pick.includes(i.externalId))
+    : source.items;
+  const items = (limit ? selected.slice(0, limit) : selected).filter((i) =>
+    goldById.has(i.externalId),
   );
+  if (items.length === 0) {
+    throw new Error(
+      `No measures selected.${pick ? ` Asked for: ${pick.join(", ")}` : ""}`,
+    );
+  }
 
   // Probed BEFORE any generation: a run that cannot be attributed to a
   // digest and quantization is not worth the minutes it costs.

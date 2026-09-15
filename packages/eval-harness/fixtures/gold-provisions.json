@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "kind": "omission-gold",
+  "corpus": "fulltext-propositions.json",
+  "note": "Key provisions authored 2026-09-15 by reading each measure's OPERATIVE text (after the AG transmittal letter). Phrased in the measure's own register; matching is by embedding similarity so a plain-language rewrite counts as recalled. 'essential' marks a provision a voter cannot make an informed choice without — severability and definitional clauses are deliberately not essential.",
+  "measures": [
+    {
+      "externalId": "25-0002A1",
+      "provisions": [
+        {
+          "id": "0002-1",
+          "essential": true,
+          "text": "No insurer may delay, deny or modify a medical procedure or medication recommended by a treating physician where doing so could result in disability, death, amputation, permanent disfigurement, or loss or reduction of any bodily function."
+        },
+        {
+          "id": "0002-2",
+          "essential": true,
+          "text": "A decision to delay, deny or modify care on behalf of an insurer may only be made by a physician."
+        },
+        {
+          "id": "0002-3",
+          "essential": true,
+          "text": "In a lawsuit the insurer bears the burden of proving by clear and convincing evidence that the treatment was unnecessary or would not cause harm."
+        },
+        {
+          "id": "0002-4",
+          "essential": true,
+          "text": "An insurer that wrongly delays, denies or modifies care is liable for treble damages and attorney fees."
+        },
+        {
+          "id": "0002-5",
+          "essential": true,
+          "text": "Employing or conspiring to employ a non-physician to review a treating physician's decision is a felony."
+        },
+        {
+          "id": "0002-6",
+          "essential": false,
+          "text": "Nothing in the section prevents the California Medical Board or Osteopathic Medical Board from imposing discipline."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0007A1",
+      "provisions": [
+        {
+          "id": "0007-1",
+          "essential": true,
+          "text": "Voters casting a ballot in person must present government-issued identification that conclusively verifies identity."
+        },
+        {
+          "id": "0007-2",
+          "essential": true,
+          "text": "Elections officials may only count a regular or provisional ballot after verifying the voter's identity and that the person cast only one ballot."
+        },
+        {
+          "id": "0007-3",
+          "essential": true,
+          "text": "The Secretary of State and county elections officials must maintain accurate voter registration lists and use best efforts to verify citizenship attestations against government data."
+        },
+        {
+          "id": "0007-4",
+          "essential": true,
+          "text": "The state must provide a voter ID card free of charge to any eligible voter who requests one."
+        },
+        {
+          "id": "0007-5",
+          "essential": false,
+          "text": "Counties must annually report the percentage of their voter rolls that have been citizenship-verified."
+        },
+        {
+          "id": "0007-6",
+          "essential": false,
+          "text": "The State Auditor must audit state and county compliance during every odd-numbered year and report findings publicly."
+        },
+        {
+          "id": "0007-7",
+          "essential": false,
+          "text": "The section is self-executing and the Legislature must enact implementing laws, including for military and overseas voters."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0015",
+      "provisions": [
+        {
+          "id": "0015-1",
+          "essential": true,
+          "text": "A state legislator who votes to propose or ratify a redistricting map, or to modify or suspend the redistricting process in effect on January 1 2025, becomes subject to the prohibitions that apply to redistricting commission members."
+        },
+        {
+          "id": "0015-2",
+          "essential": true,
+          "text": "Such a legislator may not hold elective public office at federal, state, county or city level for ten years following that vote."
+        },
+        {
+          "id": "0015-3",
+          "essential": true,
+          "text": "The penalty is triggered by any qualifying vote cast after January 1 2025."
+        },
+        {
+          "id": "0015-4",
+          "essential": false,
+          "text": "A legislator already elected may serve out the remainder of that single term, but the ten-year bar then runs from the end of it."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0019A1",
+      "provisions": [
+        {
+          "id": "0019-1",
+          "essential": true,
+          "text": "Restores the right, lost in 2011, to vote on citizen-initiated ballot measures at statewide primary elections."
+        },
+        {
+          "id": "0019-2",
+          "essential": true,
+          "text": "Amends Elections Code section 9016 to remove the restriction confining initiative and referendum measures to November general elections."
+        },
+        {
+          "id": "0019-3",
+          "essential": false,
+          "text": "Retains a minimum interval between certification of a measure and the election at which it appears."
+        }
+      ]
+    },
+    {
+      "externalId": "ACA 22",
+      "provisions": [
+        {
+          "id": "aca22-1",
+          "essential": true,
+          "text": "Beginning January 1 2027, no local government may impose, extend or increase any special tax unless it is submitted to the electorate and approved by a two-thirds vote."
+        },
+        {
+          "id": "aca22-2",
+          "essential": true,
+          "text": "The two-thirds requirement applies to the electorate of a local government exercising the initiative power, not only to the governing body."
+        },
+        {
+          "id": "aca22-3",
+          "essential": true,
+          "text": "No local government may impose ad valorem taxes on real property except as specifically provided."
+        },
+        {
+          "id": "aca22-4",
+          "essential": false,
+          "text": "'Local government' and 'special tax' carry the meanings already given in Article XIII C."
+        }
+      ]
+    }
+  ]
+}
