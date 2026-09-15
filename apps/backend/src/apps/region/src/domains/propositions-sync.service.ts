@@ -5,6 +5,10 @@ import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionEmbeddingService } from './proposition-embedding.service';
 import { RegionCacheService } from './region-cache.service';
 import { propositionSyncTracker } from './sync-phase-logger';
+import {
+  detectSummaryEcho,
+  extractLegislativeDigest,
+} from '@opuspopuli/scraping-pipeline';
 
 /**
  * Compiled lifecycle-stage matcher. Each entry maps a region-defined stage
@@ -321,6 +325,122 @@ export class PropositionsSyncService {
       await this.cacheService.invalidateCache('propositions:');
     }
     return result;
+  }
+
+  /**
+   * Backfill `summary` from the Legislative Counsel's Digest already stored
+   * on `fullText` (#1261).
+   *
+   * ── Why the sync path is not enough ──────────────────────────────────────
+   *
+   * A sync can only repair a measure it re-extracts, and it only re-extracts
+   * what the source still lists. Five Secretary of State measures — ACA 20,
+   * ACA 22, SB 417, SB 42 and SCA 1 — were dropped from the qualified-ballot
+   * -measures page when it rolled to the next election cycle. They are real
+   * measures with rows in this database, and no amount of re-syncing will
+   * ever touch them again. Measured after a full local re-sync, they were the
+   * entire remaining echo tail: 5 of 52 rows, 9.6%.
+   *
+   * Their `fullText` still holds the digest. This reads it from the database
+   * rather than the network, so it repairs rows the pipeline cannot reach.
+   *
+   * ── What it will not do ──────────────────────────────────────────────────
+   *
+   * Only a summary that is BLANK or a title echo is replaced. A genuine
+   * Attorney General title-and-summary is better than a digest — it is
+   * written for the ballot, where the digest is written for legislators — so
+   * overwriting one would be a regression, not a repair.
+   *
+   * Idempotent: a second run finds nothing left to fix, because a row it
+   * repaired is no longer blank and no longer an echo.
+   *
+   * Re-embeds what it rewrote, before returning. `embeddingSourceHash` does
+   * not need clearing — `embedMissing` recomputes the hash from
+   * `title + summary` and re-embeds any row whose stored hash no longer
+   * matches — but it DOES need calling. Writing summaries without it leaves
+   * the corpus holding vectors for text that is no longer there, and a stale
+   * vector is worse than a missing one: retrieval still returns a confident
+   * score against wording the row no longer has (#1074).
+   *
+   * @param limit - cap the number of rows examined, for a cautious first run.
+   * @returns how many summaries were written.
+   */
+  async backfillSummariesFromDigest(limit?: number): Promise<number> {
+    // Two passes on purpose. `fullText` runs to 115,000 characters on a
+    // filing, and most rows do not need repairing — selecting it for every
+    // row would pull the whole corpus of documents into memory to look at a
+    // `summary` column. Find the candidates on the cheap columns first, then
+    // read the text only for those.
+    const rows = await this.db.proposition.findMany({
+      where: { deletedAt: null, fullText: { not: null } },
+      select: { id: true, externalId: true, title: true, summary: true },
+      ...(limit && limit > 0 ? { take: limit } : {}),
+    });
+    const candidates = rows.filter((r) =>
+      this.needsSummaryRepair(r.title, r.summary),
+    );
+
+    let written = 0;
+    let degraded = 0;
+    for (const prop of candidates) {
+      const stored = await this.db.proposition.findUnique({
+        where: { id: prop.id },
+        select: { fullText: true },
+      });
+
+      const { text, droppedFraction } = extractLegislativeDigest(
+        stored?.fullText ?? '',
+        prop.externalId ?? undefined,
+      );
+      if (!text) continue;
+
+      await this.db.proposition.update({
+        where: { id: prop.id },
+        data: { summary: text },
+      });
+      written += 1;
+      if (droppedFraction) {
+        degraded += 1;
+        // The source OCR dropped a fraction glyph, so a number in this
+        // summary reads as a bare "%". Never repaired, always reported — a
+        // vote threshold is the number that must not be guessed (#1266).
+        this.logger.warn(
+          `Propositions: digest for ${String(prop.externalId)} has a percent ` +
+            `sign with no number — the source PDF's OCR dropped a fraction glyph`,
+        );
+      }
+    }
+
+    if (written > 0) {
+      this.logger.log(
+        `Propositions: backfilled ${written} summary(ies) from the Legislative ` +
+          `Counsel's Digest of ${rows.length} row(s) examined` +
+          (degraded > 0 ? `; ${degraded} carry a dropped fraction glyph` : ''),
+      );
+      if (this.propositionEmbedding) {
+        const embedded = await this.propositionEmbedding.embedMissing();
+        this.logger.log(
+          `Propositions: re-embedded ${embedded.embedded} row(s) after the backfill`,
+        );
+      }
+      if (this.cacheService) {
+        await this.cacheService.invalidateCache('propositions:');
+      }
+    }
+    return written;
+  }
+
+  /**
+   * A summary is worth replacing only when it is absent or carries nothing the
+   * title does not. Shared with the pipeline's lint so the backfill and the
+   * sync agree on what an echo is.
+   */
+  private needsSummaryRepair(
+    title: string | null,
+    summary: string | null,
+  ): boolean {
+    if (!summary?.trim()) return true;
+    return detectSummaryEcho(title ?? undefined, summary).isEcho;
   }
 
   /**

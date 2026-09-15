@@ -50,6 +50,17 @@ export {
 
 // Domain mapping
 export { DomainMapperService } from "./mapping/domain-mapper.service.js";
+// Exported for the proposition summary backfill (#1261): the sync path can
+// only repair a measure still listed at its source, so the backfill re-runs
+// these two over `fullText` already in the database.
+export {
+  detectSummaryEcho,
+  type SummaryEchoVerdict,
+} from "./mapping/summary-echo.js";
+export {
+  extractLegislativeDigest,
+  type LegislativeDigestResult,
+} from "./crawling/legislative-digest.js";
 
 // Self-healing
 export { SelfHealingService } from "./healing/self-healing.service.js";

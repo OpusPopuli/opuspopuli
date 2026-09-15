@@ -308,6 +308,11 @@ export class RegionDomainService {
     return this.syncService.regenerateMinutesSummaries(body, limit);
   }
 
+  /** Backfill proposition summaries from the stored digest text (#1261). */
+  backfillPropositionSummaries(limit?: number): Promise<number> {
+    return this.syncService.backfillPropositionSummaries(limit);
+  }
+
   regeneratePropositionAnalysis(id: string): Promise<boolean> {
     return this.syncService.regeneratePropositionAnalysis(id);
   }
