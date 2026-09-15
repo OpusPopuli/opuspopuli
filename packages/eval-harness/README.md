@@ -159,6 +159,38 @@ previous ended — was detected on 3 of 10 measures.
 another of similar size, same settings, same machine. Single-run numbers are directional
 only; comparisons need repeats.
 
+### Run-to-run variance — two identical runs, 2026-09-14
+
+R1 on the plan's risk register says single-run rankings are noise. Two full runs at identical
+settings (`qwen3.5:9b`, Q4_K_M, `think: false`, 6000 tokens, offsets contract):
+
+| | run 1 | run 2 |
+| --- | --- | --- |
+| JSON valid | 10/10 | 10/10 |
+| Claims anchored | 6/54 · **11%** | 7/60 · **12%** |
+| Fabricated figures | 0 | 0 |
+| Fabricated fields | 0 | 0 |
+| Partitioning detected | 3/10 | 3/10 |
+| Median cited span | 185 chars | 200 chars |
+
+**The aggregate is stable; the per-measure figures are not.** Same measure, same settings,
+one run apart:
+
+| measure | run 1 | run 2 |
+| --- | --- | --- |
+| `25-0019A1` | 0/4 · 0% | 3/11 · 27% |
+| `ACA 22` | 2/5 · 40% | 0/7 · 0% |
+| `25-0041A1` | 1/11 · 9% | 0/6 · 0% |
+| `25-0003` | 0/4 · 0% | 1/4 · 25% |
+
+The model also emits a different *number* of claims each time — 54 against 60 in total, and
+4 against 11 on `25-0019A1` alone — so the denominator moves as well as the numerator. Which
+measures trip the partitioning detector changes too (`25-0017` in run 1, `25-0007A1` in run 2).
+
+So: **quote the aggregate, never a per-measure cell, from a single run.** A per-measure number
+here swings from 0% to 27% on nothing but resampling. Comparisons between models need repeats;
+the plan's N=3 minimum is the floor, not a formality.
+
 ### Fixtures
 
 `fixtures/fulltext-propositions.json` holds ten measures (2,799–13,541 chars), rebuilt

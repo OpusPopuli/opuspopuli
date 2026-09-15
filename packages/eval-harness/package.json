@@ -13,7 +13,9 @@
     "test": "tsc --noEmit && tsx --test \"src/**/*.spec.ts\"",
     "test:watch": "tsx --test --watch \"src/**/*.spec.ts\"",
     "fixtures:fulltext": "tsx src/build-fulltext-fixture.ts",
-    "eval:generation": "tsx src/generation-eval.ts"
+    "eval:generation": "tsx src/generation-eval.ts",
+    "fixtures:symmetry": "tsx src/build-fulltext-fixture.ts --symmetry",
+    "eval:symmetry": "tsx src/symmetry-eval.ts"
   },
   "dependencies": {
     "@opuspopuli/common": "workspace:*",

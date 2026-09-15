@@ -11,7 +11,7 @@
  *   pnpm --filter @opuspopuli/eval-harness fixtures:fulltext
  */
 
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -59,23 +59,43 @@ const MEASURES = [
   "ACA 22",
 ];
 
-const SQL = `
-select json_agg(j order by j->>'externalId') from (
-  select json_build_object(
-    'externalId', external_id,
-    'title', title,
-    'fullText', full_text) as j
-  from propositions
-  where external_id in (${MEASURES.map((m) => `'${m}'`).join(", ")})
-    and full_text is not null) s`;
-
 interface Row {
   externalId: string;
   title: string;
   fullText: string;
 }
 
+/** Measures referenced by `fixtures/symmetry-pairs.json`, both sides of every pair. */
+function symmetryMeasures(): string[] {
+  const fixture = JSON.parse(
+    readFileSync(join(ROOT, "fixtures/symmetry-pairs.json"), "utf8"),
+  ) as {
+    pairs: Array<{ a: { externalId: string }; b: { externalId: string } }>;
+  };
+  return [
+    ...new Set(fixture.pairs.flatMap((p) => [p.a.externalId, p.b.externalId])),
+  ];
+}
+
 async function main(): Promise<void> {
+  // One builder, two fixtures. Redaction is a post-condition on both: a second
+  // bespoke query is a second place for someone to skip it.
+  const symmetry = process.argv.includes("--symmetry");
+  const measures = symmetry ? symmetryMeasures() : MEASURES;
+  const outFile = symmetry
+    ? "fixtures/symmetry-sources.json"
+    : "fixtures/fulltext-propositions.json";
+
+  const sql = `
+select json_agg(j order by j->>'externalId') from (
+  select json_build_object(
+    'externalId', external_id,
+    'title', title,
+    'fullText', full_text) as j
+  from propositions
+  where external_id in (${measures.map((m) => `'${m}'`).join(", ")})
+    and full_text is not null) s`;
+
   const { stdout } = await run("docker", [
     "exec",
     process.env.OPUSPOPULI_DB_CONTAINER ?? "opuspopuli-db",
@@ -87,15 +107,15 @@ async function main(): Promise<void> {
     "-t",
     "-A",
     "-c",
-    SQL,
+    sql,
   ]);
 
   const rows = JSON.parse(stdout) as Row[];
-  if (rows.length !== MEASURES.length) {
+  if (rows.length !== measures.length) {
     const got = new Set(rows.map((r) => r.externalId));
     throw new Error(
-      `Expected ${MEASURES.length} measures, got ${rows.length}. Missing: ` +
-        MEASURES.filter((m) => !got.has(m)).join(", "),
+      `Expected ${measures.length} measures, got ${rows.length}. Missing: ` +
+        measures.filter((m) => !got.has(m)).join(", "),
     );
   }
 
@@ -129,7 +149,7 @@ async function main(): Promise<void> {
 
   const fixture = {
     schemaVersion: 1,
-    kind: "generation-source",
+    kind: symmetry ? "symmetry-source" : "generation-source",
     corpus: "propositions",
     note:
       "title + fullText as production sends them to the analysis prompt, with " +
@@ -140,7 +160,7 @@ async function main(): Promise<void> {
     items,
   };
 
-  const out = join(ROOT, "fixtures/fulltext-propositions.json");
+  const out = join(ROOT, outFile);
   writeFileSync(out, `${JSON.stringify(fixture, null, 2)}\n`);
   console.log(
     `\nwrote ${items.length} measures, ${redactions} redactions, post-condition clean`,
