@@ -70,6 +70,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertFreshBuilds } from "./build-freshness.js";
+import { probeModel, type ModelProvenance } from "./provenance.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -768,7 +769,22 @@ async function main(): Promise<void> {
   console.log(report(run));
 
   mkdirSync(join(ROOT, "results"), { recursive: true });
-  const slug = `ocr-${run.engine}-${run.model.replace(/[^a-z0-9]+/gi, "-")}`;
+  // Engines that drive a served model carry its digest and quantization;
+  // tesseract and the replay backend have neither.
+  const provenance: ModelProvenance | undefined =
+    run.engine === "ollama-vision" || run.engine === "olmocr"
+      ? await probeModel(run.model).catch(() => undefined)
+      : undefined;
+  if (provenance) {
+    (run as { provenance?: ModelProvenance }).provenance = provenance;
+  }
+
+  const quant = provenance ? `-${provenance.quantization}` : "";
+  const slug =
+    `ocr-${run.engine}-${run.model.replace(/[^a-z0-9]+/gi, "-")}${quant}`.replace(
+      /[^a-z0-9-]+/gi,
+      "-",
+    );
   const out = join(ROOT, "results", `${slug}.json`);
   writeFileSync(out, `${JSON.stringify(run, null, 2)}\n`);
   console.log(`\nwritten: ./results/${slug}.json`);

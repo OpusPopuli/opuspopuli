@@ -34,6 +34,13 @@ import { fileURLToPath } from "node:url";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 
 import { assertFreshBuilds } from "./build-freshness.js";
+import {
+  probeModel,
+  describeProvenance,
+  slugFor,
+  assertThinkDecided,
+  type ModelProvenance,
+} from "./provenance.js";
 import { resolveAnalysisPrompt } from "./prompt-attribution.js";
 import { createLlmBackend, type GenerationRun } from "./backends/llm.js";
 import { scoreJsonValidity } from "./scoring/json-validity.js";
@@ -257,6 +264,10 @@ async function main(): Promise<void> {
 
   const model = arg("model") ?? process.env.LLM_MODEL ?? "qwen3.5:9b";
   const think = argv.includes("--think");
+  // Explicit means the flag was typed either way. A reasoning-capable model
+  // run on the default is refused below rather than silently measured.
+  const thinkWasExplicit =
+    argv.includes("--think") || argv.includes("--no-think");
   const contract = (arg("contract") ?? "offsets") as AnchorContract;
   const limit = arg("limit") ? Number.parseInt(arg("limit")!, 10) : undefined;
 
@@ -271,6 +282,11 @@ async function main(): Promise<void> {
   const items = (limit ? source.items.slice(0, limit) : source.items).filter(
     (i) => goldById.has(i.externalId),
   );
+
+  // Probed BEFORE any generation: a run that cannot be attributed to a
+  // digest and quantization is not worth the minutes it costs.
+  const provenance: ModelProvenance = await probeModel(model);
+  assertThinkDecided(provenance, thinkWasExplicit);
 
   const backend = createLlmBackend({ model, think });
   const db = new DbService();
@@ -304,7 +320,8 @@ async function main(): Promise<void> {
   }
 
   const header = [
-    `model=${model} think=${think} maxTokens=${backend.maxTokens} contract=${contract}`,
+    `${describeProvenance(provenance)} digest=${provenance.digest} ${provenance.parameterSize} ${provenance.architecture}`,
+    `think=${think} maxTokens=${backend.maxTokens} contract=${contract}`,
     `prompt=${prompt?.templateName} ${prompt?.promptVersion} hash=${prompt?.promptHash.slice(0, 12)} (${prompt?.templateChars} chars)`,
     `measures=${results.length}`,
   ];
@@ -313,6 +330,7 @@ async function main(): Promise<void> {
   const out = {
     ranAt: new Date().toISOString(),
     model,
+    provenance,
     think,
     maxTokens: backend.maxTokens,
     contract,
@@ -326,7 +344,9 @@ async function main(): Promise<void> {
   };
 
   mkdirSync(join(ROOT, "results"), { recursive: true });
-  const slug = `${model.replace(/[^a-z0-9]+/gi, "-")}${think ? "-think" : ""}-${contract}`;
+  // The slug carries the quantization: two quantizations of one model are
+  // different measurements and must not overwrite each other.
+  const slug = `${slugFor(provenance)}${think ? "-think" : ""}-${contract}`;
   const path = join(ROOT, "results", `generation-${slug}.json`);
   writeFileSync(path, `${JSON.stringify(out, null, 2)}\n`);
   console.log(`\nwritten: ${path.replace(ROOT, ".")}`);

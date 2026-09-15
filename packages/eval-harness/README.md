@@ -185,6 +185,55 @@ all ten, each with its rationale — the "fiscal" strings that do appear are a f
 checklist item, "without regard to fiscal years" boilerplate, a "fiscal emergency"
 condition, and "Fiscal committee: no" routing metadata. None is a fiscal analysis.
 
+## Model provenance
+
+Every run against a served model records what actually answered:
+
+```json
+"provenance": {
+  "model": "qwen3.5:9b",
+  "digest": "6488c96fa5faab64",
+  "quantization": "Q4_K_M",
+  "architecture": "qwen35",
+  "parameterCount": 9653104368,
+  "capabilities": ["completion", "vision", "tools", "thinking"],
+  "runtime": { "name": "ollama", "version": "0.18.0" }
+}
+```
+
+**A tag is not a pin.** `OllamaLLMProvider.getModelName()` returns `this.config.model` —
+the bare tag — and `qwen3.5:9b` can be re-pulled and mean different bytes tomorrow. The
+digest is the pin, and it goes on the result.
+
+**Quantization is in the result filename**, so two quantizations of one model cannot
+overwrite each other's results. `assertComparable()` refuses a q4-vs-q8 comparison outright:
+R3 requires matched-quant comparison because Ollama serves q4 by default, and an OLMo-q4
+against qwen-q4 is partly a comparison of two quantizations rather than two models.
+
+Worth knowing from the current baselines: the LLMs are served at **Q4_K_M** while
+`nomic-embed-text-v2-moe` is served at **F16**. Those are not the same kind of measurement,
+and until now nothing recorded the difference.
+
+**A reasoning-capable model must have its `think` setting stated.** `capabilities` reports
+`thinking` for such checkpoints, and `assertThinkDecided()` refuses to start without an
+explicit `--think` or `--no-think`:
+
+```
+qwen3.5:9b reports the "thinking" capability, and no explicit think setting was given.
+
+Left to a default, a reasoning model can spend its whole token budget on hidden
+reasoning and return an empty response — which scores as a format failure and reads
+as model incompatibility. Pass --think (with a larger budget) or --no-think to state
+the decision.
+```
+
+That is #1142's first "do not skip" requirement, enforced rather than documented. It is the
+configuration error that invalidated the entire first run of this harness.
+
+The in-process Xenova provider gets **no** provenance block: it is not a served model and has
+no digest or quantization, and recording an empty record would imply a pin that does not
+exist. Tesseract and the OCR replay backend are treated the same way.
+
 ## Adding items
 
 Edit `fixtures/retrieval-propositions.json`. The schema is the durable asset — the count grows as the Seed pipeline feeds accepted corrections back in as gold cases.
