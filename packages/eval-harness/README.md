@@ -45,29 +45,50 @@ Results land in `results/` as JSON (gitignored), keyed by provider+model, so run
 
 Margin is computed against the best _non-gold_ document deliberately: several filings are genuine duplicates, so ranking two of them 1st and 2nd is correct behaviour and must not be scored as a narrow win.
 
-## Baselines — 2026-09-14
+## Baselines — 56 items, 2026-09-14
 
-65 propositions, 22 items (14 EN + 8 ES), post-#1219 summaries, current build.
+65 propositions, **56 gold items (35 EN + 21 ES)** — past M4's floor of 50. Current build.
 
-| Model                                    | dims | Overall                          | EN                  | ES                    | Corpus sep. (mean) |
-| ---------------------------------------- | ---- | -------------------------------- | ------------------- | --------------------- | ------------------ |
-| `Xenova/all-MiniLM-L6-v2`                | 384  | 18/22 · MRR .865 · margin .1366  | 13/14 · margin .1941 | 5/8 · margin **.0360** | 0.375              |
-| `Xenova/bge-base-en-v1.5` *(the current `eval:baseline` default)* | 768 | 21/22 · MRR .977 · margin .0931 | 13/14 · margin .1115 | 8/8 · margin .0610 | 0.693 |
-| `nomic-embed-text-v2-moe` **prefixed**   | 768  | **21/22 · MRR .977 · margin .1794** | 13/14 · margin .1542 | **8/8 · margin .2234** | 0.470              |
-| `nomic-embed-text-v2-moe` unprefixed     | 768  | 21/22 · MRR .970 · margin .1814  | 13/14 · margin .1554 | 8/8 · margin .2270    | 0.367              |
+| Model | dims | Overall | EN | ES | Corpus sep. |
+| --- | --- | --- | --- | --- | --- |
+| `Xenova/all-MiniLM-L6-v2` | 384 | 39/56 · MRR .776 · margin .105 | 29/35 · .150 | **10/21** · .031 | 0.375 |
+| `Xenova/bge-base-en-v1.5` *(the `eval:baseline` default)* | 768 | 47/56 · MRR .885 · margin .071 | 31/35 · .085 | 16/21 · .048 | 0.693 |
+| `nomic-embed-text-v2-moe` **prefixed** | 768 | **51/56 · MRR .939 · margin .145** | **32/35** · .133 | **19/21** · **.166** | 0.470 |
 
-**Read the margin, not the hit rate.** `bge-base-en-v1.5` ties nomic on hits (21/22) and matches its MRR, yet its Spanish answers clear the next-best document by **0.061** where nomic-prefixed clears by **0.223**. MiniLM's Spanish margin of 0.036 is the number this README has always called "nearly guessing"; bge is not far above it. Its corpus separation tells the same story from the query-independent side — 0.693 mean, by far the most compressed corpus of the four, i.e. it maps these 65 documents closer together than any other candidate.
+### Growing the set is what made it a measurement
 
-**`eval:baseline` no longer means MiniLM.** It runs the Xenova provider's *default*, and that default moved to `bge-base-en-v1.5` (768d) with the #1156 cutover work. Earlier revisions of this table labelled that column "MiniLM-384 (production)". To measure MiniLM now, name it:
+On the old 22 items, bge and nomic were **indistinguishable** — 21/22 and MRR .977 each. At 56
+items nomic leads by four hits and .054 of MRR, and the ES column separates them outright:
+16/21 against 19/21, at margins of .048 against .166.
 
-```bash
-pnpm --filter @opuspopuli/eval-harness eval:retrieval -- \
-  --provider xenova --model Xenova/all-MiniLM-L6-v2
-```
+| | 22 items | 56 items |
+| --- | --- | --- |
+| MiniLM-384 | 18/22 · MRR .865 | 39/56 · MRR .776 |
+| bge-base-768 | 21/22 · MRR .977 | 47/56 · MRR .885 |
+| nomic-768 prefixed | 21/22 · MRR .977 | **51/56 · MRR .939** |
 
-**Prefixing is worth ~0.05 of ES margin and costs nothing.** Prefixed and unprefixed agree on every hit (21/22, 8/8 ES); the prefixed leg holds a higher MRR (.977 vs .970) and a corpus separation of 0.470 vs 0.367. The provider still defaults task prefixes **off** — the comment in `ollama.provider.ts` records an earlier measurement ("margin 0.160 prefixed vs 0.168 unprefixed, within noise") which was taken against a build where prefixing could not run at all (below).
+Every model scores *lower* on the bigger set, which is the point: the added items are harder
+because they were authored from what each measure actually says rather than from its title.
+A 22-item set that ranks three very different models within one hit of each other was not
+measuring much.
 
-**Both remaining misses are the same corpus defect.** `ret-en-008` misses under every model because three filings share a title and two are byte-identical — `max=1.000` separation under all four. That is #1219 data, not model behaviour.
+### Authoring rule: from the measure, not the corpus
+
+New items were written against each measure's **operative text** — the section after the AG
+transmittal letter — not against the title-echo summaries the corpus currently carries. So an
+item stays valid when #1261 lands real summaries; only its difficulty changes.
+
+Six items are flagged `contentOnly`, meaning the distinguishing detail lives in `fullText` and
+not in the title. **Two of the six miss today** (`ret-en-020`, insurance lowballing;
+`ret-en-031`, the residency test for income tax) and should start hitting once summaries carry
+real content — that is a direct read on what the corpus fix buys.
+
+The other four hit already, and **that prediction was wrong**: `ret-en-033` / `ret-es-018` were
+authored as the clearest "unlock candidates" — a query about taxing prepared food against a
+corpus entry that is only the bare act name — and they hit anyway, because "California Food Tax
+Fairness Act" carries enough of the signal on its own. Recorded rather than quietly dropped:
+predicting which items a corpus fix will unlock is evidently not reliable, so the honest
+version is to flag candidates and let the re-run say.
 
 ### The stale-build trap
 
