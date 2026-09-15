@@ -54,6 +54,7 @@ import {
   type AnchorContract,
   type EmittedClaim,
 } from "./scoring/anchoring.js";
+import { scoreCalibration, type ScoredClaim } from "./scoring/calibration.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -95,6 +96,11 @@ export interface MeasureResult {
   ms: number;
   tokensOut?: number;
   tokensPerSecond?: number;
+  /**
+   * Per-claim confidence and outcome, retained so calibration can be scored
+   * across measures — and re-scored later without spending model time again.
+   */
+  claims: ScoredClaim[];
 }
 
 /**
@@ -188,6 +194,10 @@ export function scoreOne(
     ms: run.ms,
     tokensOut: run.tokensOut,
     tokensPerSecond: run.tokensPerSecond,
+    claims: anchoring.results.map((r) => ({
+      confidence: r.confidence,
+      anchored: r.anchored,
+    })),
   };
 }
 
@@ -232,6 +242,21 @@ function report(results: MeasureResult[], header: string[]): string {
       (fabricatedFigures.length ? ` — ${fabricatedFigures.join(", ")}` : ""),
     `Fabricated fields  ${abstainFab} (populated where the source cannot support it)`,
   );
+
+  // Calibration across every claim in the run. Asked on behalf of #1209: if a
+  // verification gate kept only high-confidence claims, would the survivors be
+  // any better?
+  const calibration = scoreCalibration(results.flatMap((r) => r.claims));
+  if (calibration.n > 0 || calibration.withoutConfidence > 0) {
+    lines.push("", "Confidence:");
+    for (const g of calibration.groups) {
+      lines.push(
+        `  ${g.label.padEnd(8)} n=${String(g.count).padStart(3)} ` +
+          `(${(g.share * 100).toFixed(0)}% of claims)  anchors ${(g.accuracy * 100).toFixed(1)}%`,
+      );
+    }
+    lines.push(`  ${calibration.verdict}`);
+  }
 
   const partitioned = results.filter((r) => r.anchoring.looksPartitioned);
   if (partitioned.length) {
@@ -334,6 +359,7 @@ async function main(): Promise<void> {
     think,
     maxTokens: backend.maxTokens,
     contract,
+    calibration: scoreCalibration(results.flatMap((r) => r.claims)),
     prompt: prompt && {
       name: prompt.templateName,
       hash: prompt.promptHash,

@@ -245,6 +245,43 @@ pnpm --filter @opuspopuli/eval-harness eval:symmetry -- \
 All three fixes above were validated that way, against the run that exposed them. Live and
 re-scored output share one renderer, so a fix cannot change one and not the other.
 
+### Calibration — can #1209 gate on claim confidence?
+
+**No.** Measured over 70 claims from the symmetry run (`qwen3.5:9b`, Q4_K_M):
+
+| level | n | share | anchoring rate |
+| --- | --- | --- | --- |
+| `high` | 69 | **98.6%** | **4.3%** |
+| `medium` | 1 | 1.4% | 0% |
+
+The model marks essentially everything `"high"`, and a `"high"` claim's citation holds 4.3%
+of the time. Filtering to `"high"` retains 98.6% of claims and lifts precision by **0.001**.
+
+That answers the question #1209 would otherwise have to ask later, and it answers it in the
+unhelpful direction: **confidence gating is not available as a verification strategy.** A
+verify-or-snap gate has to check the span. There is no cheap signal to lean on first.
+
+#### Confidence is an ordinal, and modelling it as a number measured nothing
+
+Worth recording, because the first version of this metric produced a clean, confident, wrong
+answer. The published prompt asks for `"confidence": "high"` with allowed values
+`"high" | "medium" | "low"`; production agrees (`PropositionAnalysisClaim.confidence`), and
+all 521 claim rows in the dev database carry a string.
+
+The scorer modelled confidence as a number, binned at 0.5/0.7/0.8/0.9/0.95, and computed an
+expected calibration error. Against real output it reported **0 of 70 claims carrying a
+confidence value** — because every one of them was the string `"high"`. It was measuring its
+own assumption.
+
+There is now no ECE, deliberately: computing one means inventing numeric values the model
+never emitted and then measuring the error in numbers of our own devising. What replaces it
+is blunter and more useful — the anchoring rate *within* each level, and what filtering to
+each level actually buys.
+
+A consequence for anyone designing the gate: confidence is a **three-way choice, not a
+threshold sweep**. And on this evidence the three-way choice is between "keep everything" and
+"keep everything".
+
 ### Fixtures
 
 `fixtures/fulltext-propositions.json` holds ten measures (2,799–13,541 chars), rebuilt

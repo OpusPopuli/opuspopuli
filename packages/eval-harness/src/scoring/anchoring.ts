@@ -38,7 +38,7 @@ export interface EmittedClaim {
   sourceEnd?: number;
   /** `quote-then-locate` contract: the span the model says it is citing. */
   quote?: string;
-  confidence?: number;
+  confidence?: string | number;
 }
 
 export type AnchorVerdict =
@@ -52,6 +52,17 @@ export type AnchorVerdict =
 export interface AnchorResult {
   claim: string;
   field: string;
+  /**
+   * The model's own stated confidence, carried through untouched.
+   *
+   * Kept because the interesting question is not what the model claimed but
+   * whether that claim predicted anything — see `scoring/calibration.ts`. The
+   * motivating case is the Legistar structural manifest: wrong answer, stated
+   * confidence 0.9. The published prompt for proposition analysis asks for an
+   * ORDINAL ("high" | "medium" | "low"); numbers are accepted for generators
+   * that emit one.
+   */
+  confidence?: string | number;
   verdict: AnchorVerdict;
   anchored: boolean;
   /** The span the citation actually resolves to, when it resolves at all. */
@@ -166,7 +177,12 @@ export function detectPartitioning(claims: EmittedClaim[]): boolean {
 
 function scoreOffsetClaim(claim: EmittedClaim, fullText: string): AnchorResult {
   const { sourceStart: start, sourceEnd: end } = claim;
-  const base = { claim: claim.claim, field: claim.field, support: 0 };
+  const base = {
+    claim: claim.claim,
+    field: claim.field,
+    confidence: claim.confidence,
+    support: 0,
+  };
 
   if (typeof start !== "number" || typeof end !== "number") {
     return { ...base, verdict: "missing-anchor", anchored: false };
@@ -193,7 +209,12 @@ function scoreOffsetClaim(claim: EmittedClaim, fullText: string): AnchorResult {
 }
 
 function scoreQuoteClaim(claim: EmittedClaim, fullText: string): AnchorResult {
-  const base = { claim: claim.claim, field: claim.field, support: 0 };
+  const base = {
+    claim: claim.claim,
+    field: claim.field,
+    confidence: claim.confidence,
+    support: 0,
+  };
   const quote = claim.quote?.trim();
 
   if (!quote) {
