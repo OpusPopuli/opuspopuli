@@ -329,6 +329,53 @@ all ten, each with its rationale — the "fiscal" strings that do appear are a f
 checklist item, "without regard to fiscal years" boilerplate, a "fiscal emergency"
 condition, and "Fiscal committee: no" routing metadata. None is a fiscal analysis.
 
+## Throughput — concurrency buys nothing at the current server config
+
+`qwen3.5:9b` Q4_K_M, 8 requests per lane, real measure text, model warmed first.
+
+| concurrency | wall (s) | agg tok/s | median latency (s) | speedup |
+| --- | --- | --- | --- | --- |
+| 1 | 40.8 | 12.7 | 5.2 | 1.00x |
+| 2 | 39.5 | 12.8 | 9.7 (1.85x) | 1.03x |
+| 4 | 40.2 | 13.1 | 20.0 (3.82x) | 1.01x |
+
+**Wall clock is flat; per-request latency scales exactly with queue depth.** That is the
+signature of strict FIFO serialisation: the same total work completes in the same total time,
+and each request simply waits longer. `OLLAMA_NUM_PARALLEL` is unset on this server, and the
+server is behaving as though it were **1**.
+
+Four things follow, and none of them were established before:
+
+1. **Every app-side `*_CONCURRENCY` knob is correctly at 1.** Raising
+   `PROPOSITION_ANALYSIS_CONCURRENCY` or `BILL_ENRICHMENT_CONCURRENCY` today would deepen a
+   queue, multiply latency, and deliver no extra throughput. The repo comments asserted this
+   dependency; it is now measured.
+2. **M6's "adversarial review doubles inference" costs 1:1 in wall clock** at this config.
+   There is no batching relief to absorb it.
+3. **The ~48h bills sync is not fixable by raising its knob alone** — the server has to
+   change first.
+4. **R7's expensive question has a cheap prerequisite.** Before evaluating vLLM-Metal for
+   continuous batching, the untried experiment is `OLLAMA_NUM_PARALLEL=4`. A serving-runtime
+   migration argued on throughput grounds should not be argued before the one-variable
+   experiment has been run.
+
+### Why the server is measured rather than read
+
+Effective parallelism is inferred from behaviour, not from the environment variable. The
+variable is unset here, so Ollama picks a default that depends on available memory and model
+size, and a value set at boot need not describe the process now serving. Sending N requests at
+concurrency C and watching wall clock answers what the config only implies.
+
+Two controls make the number mean something: the model is **warmed before the first lane**, so
+model-load time does not land entirely on the C=1 lane and fake a concurrency win; and
+`maxTokens` is fixed so a model that writes longer answers does not read as a slower one.
+
+**Honest limit on the tok/s figure.** `maxTokens` caps work but does not equalise it — these
+requests averaged 65 output tokens against a 400 cap, because the prompt asks for two
+sentences and the model stopped early. So 12.7 agg tok/s is *not* comparable to the 20–26
+tok/s the generation leg reports on full analyses; per-request overhead dominates here. The
+across-lane comparison is unaffected, since all three lanes run identical prompts.
+
 ## Model provenance
 
 Every run against a served model records what actually answered:

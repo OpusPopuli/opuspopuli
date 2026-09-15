@@ -15,7 +15,8 @@
     "fixtures:fulltext": "tsx src/build-fulltext-fixture.ts",
     "eval:generation": "tsx src/generation-eval.ts",
     "fixtures:symmetry": "tsx src/build-fulltext-fixture.ts --symmetry",
-    "eval:symmetry": "tsx src/symmetry-eval.ts"
+    "eval:symmetry": "tsx src/symmetry-eval.ts",
+    "eval:throughput": "tsx src/throughput-eval.ts"
   },
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
