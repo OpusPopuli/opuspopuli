@@ -892,3 +892,139 @@ describe("staticManifest enrichment (#1219)", () => {
     expect(enrichSummaries).toHaveBeenCalled();
   });
 });
+
+/**
+ * The Legislative Counsel's Digest fallback (#1261).
+ *
+ * Tested through `execute`, not by calling the extractor directly. The
+ * extractor having correct output proves nothing about whether the pipeline
+ * ever calls it — that is precisely how the AG summary stage above came to be
+ * skipped for a month while every unit test passed.
+ */
+describe("legislative digest fallback (#1261)", () => {
+  const summaryOf = (result: { items: unknown[] }) =>
+    (result.items[0] as Record<string, unknown>).summary as string | undefined;
+
+  const html = `<table class="views-table"><tbody>
+    <tr><td class="id">ACA 7</td></tr>
+  </tbody></table>`;
+
+  /** Long enough to clear the 200-character floor, as the real ones are. */
+  const DIGEST_PDF =
+    "Assembly Constitutional Amendment No. 7 LEGISLATIVE COUNSEL'S DIGEST " +
+    "ACA 7, Jackson. Government preferences. The California Constitution, " +
+    "pursuant to provisions enacted by Proposition 209, prohibits the state " +
+    "from granting preferential treatment to any individual or group on the " +
+    "basis of race, sex, color, ethnicity, or national origin in public " +
+    "employment, public education, or public contracting, as specified. " +
+    "This measure would instead limit that prohibition, as specified. " +
+    "Resolved by the Assembly, the Senate concurring, that the Legislature";
+
+  const build = (item: Record<string, unknown>, dataType = "propositions") => {
+    const source = {
+      url: "https://www.sos.ca.gov/elections/ballot-measures/qualified-ballot-measures",
+      dataType,
+      staticManifest: {
+        containerSelector: "table.views-table tbody",
+        itemSelector: "tr",
+        fieldMappings: [
+          {
+            fieldName: "externalId",
+            selector: "td.id",
+            extractionMethod: "text",
+            required: true,
+          },
+        ],
+      },
+    } as never;
+    const pipeline = new ScrapingPipelineService(
+      { generate: jest.fn() } as never,
+      {
+        fetchWithRetry: jest.fn().mockResolvedValue({ content: html }),
+      } as never,
+      { analyze: jest.fn() } as never,
+      { findActive: jest.fn(), save: jest.fn() } as never,
+      {
+        extract: jest
+          .fn()
+          .mockReturnValue({ items: [item], warnings: [], errors: [] }),
+      } as never,
+      { map: jest.fn().mockImplementation((r: unknown) => r) } as never,
+      { evaluate: jest.fn().mockReturnValue({ shouldHeal: false }) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        enrichItems: jest.fn().mockImplementation((r: unknown) => r),
+        enrichSummaries: jest.fn().mockImplementation((r: unknown) => r),
+      } as never,
+      { discover: jest.fn() } as never,
+      null as never,
+    );
+    return { pipeline, source };
+  };
+
+  it("fills a blank summary from the digest already on fullText", async () => {
+    const { pipeline, source } = build({
+      externalId: "ACA 7",
+      fullText: DIGEST_PDF,
+    });
+
+    const result = await pipeline.execute(source, "california");
+
+    expect(summaryOf(result)).toContain("The California Constitution");
+    expect(summaryOf(result)).not.toContain("Resolved by the Assembly");
+  });
+
+  /**
+   * The AG title-and-summary is written for the ballot; the digest is written
+   * for legislators. Where both exist the AG text is the better summary, and
+   * this stage runs last precisely so it cannot clobber it.
+   */
+  it("never overwrites a summary that enrichment already produced", async () => {
+    const { pipeline, source } = build({
+      externalId: "ACA 7",
+      fullText: DIGEST_PDF,
+      summary: "The Attorney General's own title and summary text.",
+    });
+
+    const result = await pipeline.execute(source, "california");
+
+    expect(summaryOf(result)).toBe(
+      "The Attorney General's own title and summary text.",
+    );
+  });
+
+  it("leaves non-proposition sources alone", async () => {
+    const { pipeline, source } = build(
+      { externalId: "ACA 7", fullText: DIGEST_PDF },
+      "bills",
+    );
+
+    const result = await pipeline.execute(source, "california");
+
+    expect(summaryOf(result)).toBeUndefined();
+  });
+
+  /**
+   * A vote threshold the OCR destroyed must be reported, never guessed.
+   */
+  it("warns when the OCR dropped a fraction glyph", async () => {
+    const { pipeline, source } = build({
+      externalId: "ACA 22",
+      fullText:
+        "LEGISLATIVE COUNSEL’S DIGEST ACA 22, as introduced, Wicks. Local " +
+        "taxes: limitation. The California Constitution conditions the " +
+        "imposition of a special tax by a local government upon the approval " +
+        "of % of the voters of the local government voting on that tax, and " +
+        "this measure would revise that threshold, as specified by statute.",
+    });
+
+    const result = await pipeline.execute(source, "california");
+
+    expect(result.warnings.join(" ")).toMatch(
+      /percent sign with no number|dropped a fraction glyph/,
+    );
+  });
+});

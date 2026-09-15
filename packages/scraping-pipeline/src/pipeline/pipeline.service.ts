@@ -19,8 +19,10 @@ import type {
   RawExtractionResult,
   StructuralAnalysisResult,
   StructuralManifest,
-  DataType,
 } from "@opuspopuli/common";
+// Value import: DataType is a string enum and is compared against, not only
+// used in type position.
+import { DataType } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { StructuralAnalyzerService } from "../analysis/structural-analyzer.service.js";
 import { computeStructureHash } from "../analysis/structure-hasher.js";
@@ -34,6 +36,7 @@ import { ApiIngestHandler } from "../handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "../handlers/pdf-extract.handler.js";
 import { MinutesIngestHandler } from "../handlers/minutes-ingest.handler.js";
 import { DetailCrawlerService } from "../crawling/detail-crawler.service.js";
+import { extractLegislativeDigest } from "../crawling/legislative-digest.js";
 import { LinkDiscoveryService } from "../crawling/link-discovery.service.js";
 import {
   MANIFEST_MISSING_CALLBACK,
@@ -487,7 +490,63 @@ export class ScrapingPipelineService {
     if (result.items.some((item) => item.summaryUrl)) {
       result = await this.detailCrawler.enrichSummaries(result, source);
     }
+    if (source.dataType === DataType.PROPOSITIONS) {
+      this.deriveSummariesFromDigest(result);
+    }
     return result;
+  }
+
+  /**
+   * Last resort for a measure that still has no summary: the Legislative
+   * Counsel's Digest inside the detailUrl PDF already on `fullText` (#1261).
+   *
+   * Runs after both enrichment passes and only fills a BLANK summary, so a
+   * genuine Attorney General title-and-summary is never overwritten by it.
+   * The AG document is written for the ballot; the digest is written for
+   * legislators. Where both exist the AG text is the better summary, and this
+   * pass must not clobber it.
+   *
+   * Needs no fetch — the text was downloaded by `enrichItems`. Measured on the
+   * eight live Secretary of State rows: five held a title echo and three were
+   * empty; all eight yield a digest of 441-5,780 characters.
+   */
+  private deriveSummariesFromDigest(result: RawExtractionResult): void {
+    let written = 0;
+    let truncatedCount = 0;
+    for (const item of result.items) {
+      const summary = typeof item.summary === "string" ? item.summary : "";
+      if (summary.trim()) continue;
+      if (typeof item.fullText !== "string" || !item.fullText) continue;
+
+      const billId =
+        typeof item.externalId === "string" ? item.externalId : undefined;
+      const { text, droppedFraction, truncated } = extractLegislativeDigest(
+        item.fullText,
+        billId,
+      );
+      if (!text) continue;
+
+      item.summary = text;
+      written += 1;
+      if (truncated) truncatedCount += 1;
+      if (droppedFraction) {
+        // The OCR dropped a fraction glyph, so a number in this summary reads
+        // as a bare "%". Not repairable from the text and never guessed — a
+        // vote threshold is exactly the number that must not be invented.
+        result.warnings.push(
+          `Legislative digest for ${String(billId ?? "?")} has a percent sign ` +
+            `with no number — the source PDF's OCR dropped a fraction glyph`,
+        );
+      }
+    }
+    if (written > 0) {
+      this.logger.log(
+        `Derived ${written} proposition summary(ies) from the Legislative Counsel's Digest` +
+          (truncatedCount > 0
+            ? `; ${truncatedCount} cut at a sentence boundary to fit the embedding window`
+            : ""),
+      );
+    }
   }
 
   /**
