@@ -772,9 +772,15 @@ importers:
 
   packages/eval-harness:
     dependencies:
+      '@opuspopuli/common':
+        specifier: workspace:*
+        version: link:../common
       '@opuspopuli/embeddings-provider':
         specifier: workspace:*
         version: link:../embeddings-provider
+      '@opuspopuli/llm-provider':
+        specifier: workspace:*
+        version: link:../llm-provider
       '@opuspopuli/ocr-provider':
         specifier: workspace:*
         version: link:../ocr-provider

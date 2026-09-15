@@ -77,6 +77,114 @@ Nothing in the source was wrong. Nothing logged an error. The result file assert
 
 `src/build-freshness.ts` now refuses to run any eval when a guarded package's source is newer than its build, and names the rebuild command. `EVAL_SKIP_BUILD_CHECK=1` bypasses it and says so loudly; do not set it for a run whose numbers you intend to quote.
 
+## Generation leg (#1142)
+
+```bash
+PROMPT_SERVICE_URL=http://localhost:3210 PROMPT_SERVICE_API_KEY=<key> \
+  pnpm --filter @opuspopuli/eval-harness eval:generation -- \
+    --model qwen3.5:9b [--think] [--limit 3] [--contract quote-then-locate]
+```
+
+Runs the real `document-analysis-proposition-analysis` template through the real
+`OllamaLLMProvider`, at production's settings — `maxTokens` 6000 (not 2000; see #1085),
+`temperature` 0.2, and `think` **set explicitly per model**.
+
+### Prerequisites that will look like bugs
+
+**`PROMPT_SERVICE_URL` is required, and the eval refuses to run without it.** This is
+deliberate, and stronger than the client's own behaviour. `getDocumentAnalysisPrompt`
+asks for `document-analysis-proposition-analysis` with `document-analysis-generic` as
+its fallback, and `getTemplateFromDb` substitutes that fallback **silently** when the
+requested template is missing. The local `prompt_templates` table in `opuspopuli-db`
+carries `document-analysis-proposition` (948 chars) but not
+`document-analysis-proposition-analysis` (6,818 chars) — so an unguarded run scores
+675 characters of generic instruction while recording a `promptHash` that makes the
+result look attributed.
+
+`src/prompt-attribution.ts` closes both doors: it requires the URL, and it fetches the
+named template straight from prompt-service to check its hash against the one the
+client returned. A mismatch means a fallback happened, and the run stops.
+
+**A stale build is refused too** — see [The stale-build trap](#the-stale-build-trap).
+
+### What it measures
+
+| Metric | Meaning |
+| --- | --- |
+| **JSON validity** | Through production's own `extractJsonObjectSlice`. `empty-response` is a **separate verdict** from `no-json`: with reasoning left on, a capable model spends its whole budget thinking and returns nothing, which reads as a format failure and is one flag. |
+| **Numeric grounding** | Every `$`, percentage and magnitude emitted must appear in the source, matched on **value** so "$1.2 million" is grounded by "$1,200,000". |
+| **Abstention correctness** | An empty `fiscalImpact` on AG-filed text is the **right** answer. Fabricating and missing are reported separately, never netted. |
+| **Claim-span anchoring** | Scored on **raw** offsets, never `normalizePayload`-clamped ones, and with a partitioning detector for the sequential-span tell. |
+
+**Field completeness is never scored.** In #1142's first run a 3.4B model topped the
+scoreboard at 16/18 fields *because it fabricated the fiscal impact*, while qwen scored
+lower for correctly returning an empty `fiscalImpact`. All six models returned empty
+`fiscalImpact` on all five measures — a property of the source data, which a
+completeness metric misreads as a model failure.
+
+### Baseline — qwen3.5:9b, 2026-09-14
+
+10 measures, `document-analysis-proposition-analysis` v1 (`850bdd19629b`, 6,818 chars),
+`think: false`, `maxTokens` 6000, offsets contract. M4 Pro, Q4_K_M.
+
+| | |
+| --- | --- |
+| JSON valid | **10/10** |
+| Claims anchored | **6/54 (11%)** |
+| Fabricated figures | **0** |
+| Fabricated fields | **0** |
+| Abstention correctness | **100%** — empty `fiscalImpact` on all ten, which is correct |
+| Median cited span | 185 chars |
+| Wall clock | 855s total, 85s/measure, 6.8–23.3 tok/s |
+
+This reproduces what #1142 reported from an uncommitted script, and sharpens one part of it.
+
+**The anchoring failure is not out-of-range offsets.** Across 54 claims the verdicts are
+**47 unsupported, 6 anchored, 1 out-of-range**. Ninety-eight percent of qwen's citations
+point *inside* the document, at paragraph-sized spans (median 100–334 chars), and simply
+do not contain the claim they are attached to.
+
+That matters for #1212 and #1209. "Fabricated offsets" covers two different behaviours:
+
+- **Out of range** — granite's `1240..5400` in a 2,799-char document. A bounds check
+  catches it, and `normalizePayload`'s clamp currently hides it.
+- **In range, unrelated** — qwen's dominant mode. A bounds check passes it. Clamping does
+  nothing to it. Only comparing the span against the claim catches it at all.
+
+A verify-or-snap gate built around range validation would therefore pass ~98% of qwen's
+wrong citations. Sequential partitioning — each claim's span starting exactly where the
+previous ended — was detected on 3 of 10 measures.
+
+**Throughput varies enough to matter.** 6.83 tok/s on one measure against 23.28 on
+another of similar size, same settings, same machine. Single-run numbers are directional
+only; comparisons need repeats.
+
+### Fixtures
+
+`fixtures/fulltext-propositions.json` holds ten measures (2,799–13,541 chars), rebuilt
+with:
+
+```bash
+pnpm --filter @opuspopuli/eval-harness fixtures:fulltext
+```
+
+That is a script rather than a psql command **because redaction must not be optional**.
+`propositions.full_text` includes the proponent's transmittal letter, which carries a
+named individual's postal address, personal email and phone number — nine of ten
+measures contain at least one. `src/redaction.ts` strips them and the build fails if
+anything survives.
+
+> **Production sends this text unredacted.** The redaction changes the fixture, not the
+> pipeline. That the proposition-analysis path puts proponent contact details into an
+> LLM prompt is a finding about production, and this harness must not be read as
+> evidence that it was fixed.
+
+`fixtures/gold-proposition-analysis.json` carries the per-field `supportable`
+judgements, authored by reading each measure. `fiscalImpact` is `supportable: false` on
+all ten, each with its rationale — the "fiscal" strings that do appear are a filing
+checklist item, "without regard to fiscal years" boilerplate, a "fiscal emergency"
+condition, and "Fiscal committee: no" routing metadata. None is a fiscal analysis.
+
 ## Adding items
 
 Edit `fixtures/retrieval-propositions.json`. The schema is the durable asset — the count grows as the Seed pipeline feeds accepted corrections back in as gold cases.

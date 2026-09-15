@@ -7,7 +7,7 @@
 | **Date**                | 2026-09-14                                                                                        |
 | **Author**              | Rodney Gagnon                                                                                     |
 | **Branch**              | `feat/eval-harness-generation-and-symmetry-1142`                                                  |
-| **Data classification** | **No regulated data.** Public civic records only — see §4                                          |
+| **Data classification** | Public civic records only — but `full_text` carries proponent contact details, redacted in fixtures. **Corrected during S1; see §4** |
 | **Compliance profile**  | `us-state-privacy` + `soc2` active; applicable class `ca-personal-information` (CCPA/CPRA)         |
 | **Schema migrations**   | **None**                                                                                          |
 | **GraphQL / federation**| **None** — no SDL, resolver or subgraph change; no federation impact                               |
@@ -97,10 +97,39 @@ Compliance profile (`.claude/compliance-profile.yaml`) declares **`us-state-priv
 `hipaa`, `part11`, `gxp-csa` and `iso-medical` are deliberately **not** declared. The applicable
 regulated class is therefore **`ca-personal-information` (CCPA/CPRA)**.
 
-**This change touches no regulated data.** Every fixture is a public civic record — AG-filed
-initiative text, Sonoma County measures, California legislative bills. No user account, profile,
-address or petition-signature data enters any prompt, fixture, log or result file. The existing
-posture is unchanged.
+> **CORRECTED 2026-09-14, during S1.** The paragraph below originally read "No user account,
+> profile, address or petition-signature data enters any prompt, fixture, log or result file."
+> That was wrong about `propositions.full_text`, and the correction is recorded rather than
+> silently edited.
+
+**Every fixture is a public civic record** — AG-filed initiative text, Sonoma County measures,
+California legislative bills. No user account, profile or petition-signature data enters any
+prompt, fixture, log or result file.
+
+**But `full_text` is not only measure text.** For AG-filed California initiatives it includes the
+proponent's transmittal letter, carrying a named individual's postal address, personal email
+address and phone number. Nine of the ten measures selected for the generation fixture contain at
+least one; two carry street addresses that read as residential. One candidate measure
+(`25-0012A2`) turned out to have a cover letter as its *entire* `full_text` — enclosure list,
+proponent block, purpose paragraph — and was dropped from the fixture for that reason as well.
+
+These are public records: the Attorney General publishes proponent contact details, and CCPA
+excludes information lawfully made available from government records from "personal information"
+(Cal. Civ. Code § 1798.140(v)(2)). The exemption very probably applies. The fixture redacts them
+anyway (`src/redaction.ts`, enforced as a post-condition on `fixtures:fulltext`), for three
+reasons that do not depend on that exemption holding:
+
+1. **Committing is hard to reverse.** A fixture lands in git history, and republishing a public
+   record as test data in a source repo is a different act from the state publishing it — not one
+   to perform by default on an assumed exemption.
+2. **It is not measure content.** A proponent's phone number is filing furniture.
+3. **It corrupts the scorers.** ZIP codes, suite numbers and phone numbers are digit strings, and
+   the grounding scorer counts digit strings.
+
+**Open finding, not fixed here: production sends `full_text` to the model unredacted.** The
+redaction changes the fixture, not the pipeline. That the proposition-analysis path puts proponent
+contact details into an LLM prompt is a finding about production; it belongs to a separate issue
+and must not be read as closed because this harness redacts its own fixture.
 
 Three data paths audited and cleared:
 
@@ -298,7 +327,7 @@ Format: `severity × likelihood → mitigation`.
 | R6  | `think` / token-budget misconfiguration silently invalidates a whole run — the first run produced *entirely invalid* results this way | **high × possible**   | Explicit per-model `think`; assert non-empty response and `done_reason !== 'length'`; fail loudly with the config echoed rather than scoring an empty string as 0/3 |
 | R7  | Un-matched quantization makes a model comparison partly a quantization comparison                               | **medium × likely**   | S2 lands before any candidate sweep; results refuse to compare across differing quant/runtime                                                               |
 | R8  | prompt-service unreachable → the harness throws by design (#1246/#1249) and reads as a bug                       | **low × likely**      | Preflight check with an actionable message naming `PROMPT_SERVICE_URL`; documented in the README as a prerequisite, not a failure                            |
-| R9  | **Regulated-data exposure** — a future fixture carries CCPA personal information (signed petition, real resident data) | **high × rare**       | Public-civic-record-only rule stated here and in the README; blank-form scan only; re-photography explicitly out of scope and deferred to #1074/#1220; `/op-data-scan` before PR |
+| R9  | **Regulated-data exposure** — a fixture carries CCPA personal information. **OCCURRED in S1**: proponent postal addresses, personal emails and phone numbers are present in `propositions.full_text` (9 of 10 candidate measures) | **high × likely** *(was rare)* | `src/redaction.ts` strips them, enforced as a build post-condition that fails rather than writes; the cover-letter measure was dropped entirely; blank-form scan only; re-photography deferred to #1074/#1220; `/op-data-scan` before PR |
 | R10 | **AGPL-3.0 constraint** — a GPL-licensed scorer, judge or OCR dependency contaminates the dual-license structure | **high × rare**       | New dependencies restricted to Apache-2.0 or MIT; `tesseract.js` (already in use) is Apache-2.0; licence check via `/op-security` before PR                  |
 | R11 | **Breaking change** — S2's result-shape change invalidates the recorded #1229 baselines                          | **low × possible**    | Additive fields only; bump `schemaVersion` on fixtures; re-run and re-record both shipped baselines in the same PR                                           |
 | R12 | Disk and time cost — 19.5GB per 32B candidate, multi-hour dense-32B sweeps                                       | **low × likely**      | Candidate subsetting via CLI flag; document per-candidate footprint; dense-32B legs opt-in                                                                   |

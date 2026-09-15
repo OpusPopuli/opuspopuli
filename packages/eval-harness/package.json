@@ -11,10 +11,14 @@
     "typecheck": "tsc --noEmit",
     "eval:ocr": "tsx src/ocr-eval.ts",
     "test": "tsc --noEmit && tsx --test \"src/**/*.spec.ts\"",
-    "test:watch": "tsx --test --watch \"src/**/*.spec.ts\""
+    "test:watch": "tsx --test --watch \"src/**/*.spec.ts\"",
+    "fixtures:fulltext": "tsx src/build-fulltext-fixture.ts",
+    "eval:generation": "tsx src/generation-eval.ts"
   },
   "dependencies": {
+    "@opuspopuli/common": "workspace:*",
     "@opuspopuli/embeddings-provider": "workspace:*",
+    "@opuspopuli/llm-provider": "workspace:*",
     "@opuspopuli/ocr-provider": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
     "@opuspopuli/relationaldb-provider": "workspace:*"
