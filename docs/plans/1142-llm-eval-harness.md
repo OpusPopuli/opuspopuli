@@ -126,10 +126,10 @@ reasons that do not depend on that exemption holding:
 3. **It corrupts the scorers.** ZIP codes, suite numbers and phone numbers are digit strings, and
    the grounding scorer counts digit strings.
 
-**Open finding, not fixed here: production sends `full_text` to the model unredacted.** The
-redaction changes the fixture, not the pipeline. That the proposition-analysis path puts proponent
-contact details into an LLM prompt is a finding about production; it belongs to a separate issue
-and must not be read as closed because this harness redacts its own fixture.
+**Open finding, not fixed here: production sends `full_text` to the model unredacted, and renders
+it to citizens.** Filed as **#1263**. The redaction changes the fixture, not the pipeline, and
+#1142 must not be read as having addressed it. Scale on the dev corpus: of 53 measures with
+`full_text`, 29 carry an email address, 32 a phone number and 17 a street address.
 
 Three data paths audited and cleared:
 
