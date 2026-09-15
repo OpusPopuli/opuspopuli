@@ -84,8 +84,17 @@ No file overlap. Two couplings, both mitigated by design:
 - **R2 changes proposition summaries** → the committed corpus fixture drifts. This is a property of
   the snapshot approach, not a defect: the harness measures a **pinned** corpus, so R2's churn cannot
   destabilise it mid-flight. Re-snapshotting is one documented `psql` command when a new baseline is
-  wanted. The only live dependency is that S0 reads the dev database, which as of 2026-09-14 shows
-  ~12.5% title-echo (down from 52/64), indicating #1219 has landed there.
+  wanted.
+
+  > **CORRECTED 2026-09-14, during S3.** S0 reported the dev corpus at ~12.5% title echo and
+  > inferred that #1219 had landed the R2 summary work. Both halves were wrong. Measured properly:
+  > **53 of 65 summaries contain the title verbatim**, and ~85% carry nothing but scraper furniture
+  > (`Title and Summary Issued on <date>`, `Fiscal Impact Estimate Report`, `Proponent`). #1219
+  > fixed a sync rollback on a missing summary, not summary capture — that is **#1220, still open**.
+  > The bad reading came from a heuristic testing whether the summary *starts with* the title; it
+  > does not, because the boilerplate comes first. **R2's exit criterion (<10% title echoes) is not
+  > met**, and the roadmap's ordering rule — R2 before R3 gold-item authoring — therefore bites on
+  > S3.
 - **R4 changes `LlmGeneratorBase` / provider interfaces** → the generation leg's imports could break.
   Mitigation: consume only the narrow stable surface (`ILLMProvider.generate()`,
   `PromptClientService` public methods) behind an adapter confined to `src/backends/`, so a provider
