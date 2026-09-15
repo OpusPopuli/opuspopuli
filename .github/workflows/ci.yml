@@ -15,16 +15,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Is this change documentation only? (opuspopuli: docs PRs waited ~20 minutes
+  # for a suite that could not be affected by them.)
+  #
+  # Scoped DELIBERATELY TIGHT: docs/** and top-level *.md, nothing else.
+  # `.github/**`, `.claude/**`, compose files and package.json all look inert
+  # and are not — a workflow edit changes CI itself, and a compose edit changed
+  # which OCR engine production ran (opuspopuli#1050).
+  #
+  # Fails TOWARD running everything: any error, any unmatched path, any force
+  # push with no usable base leaves docs_only false. The cost of being wrong in
+  # that direction is a slow PR; in the other it is untested code on main.
+  changes:
+    name: Detect docs-only change
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.check.outputs.docs_only }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        name: Classify changed files
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          if [ -z "$BASE" ] || [ -z "$HEAD" ]; then
+            # push to main, or anything without a PR diff: run everything.
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "No PR diff available — running the full suite."
+            exit 0
+          fi
+          FILES=$(git diff --name-only "$BASE" "$HEAD")
+          if [ -z "$FILES" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "Empty diff — running the full suite."
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "$FILES" | sed 's/^/  /'
+          # A file is inert only if it is under docs/ or a top-level .md.
+          OTHER=$(echo "$FILES" | grep -vE '^docs/|^[^/]+\.md$' || true)
+          if [ -z "$OTHER" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "Documentation only — skipping build, test and E2E."
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "Non-documentation files present:"
+            echo "$OTHER" | sed 's/^/  /'
+          fi
   packages-build:
     name: Build Packages
     runs-on: ubuntu-latest
+    needs: [changes]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Setup pnpm
+        if: needs.changes.outputs.docs_only != 'true'
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - name: Setup Node.js
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
         with:
           node-version: '24'
@@ -33,14 +88,17 @@ jobs:
           scope: '@opuspopuli'
 
       - name: Install dependencies
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build packages
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm -r --filter './packages/*' build
 
       - name: Upload package build artifacts
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
         with:
           name: packages-dist
@@ -50,6 +108,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    needs: [changes]
     permissions:
       contents: read
       packages: read
@@ -59,8 +118,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Setup pnpm
+        if: needs.changes.outputs.docs_only != 'true'
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - name: Setup Node.js
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
         with:
           node-version: '24'
@@ -69,11 +130,13 @@ jobs:
           scope: '@opuspopuli'
 
       - name: Install dependencies
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trivy filesystem scan
+        if: needs.changes.outputs.docs_only != 'true'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: 'fs'
@@ -89,20 +152,28 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
-        if: always() && hashFiles('trivy-fs-results.sarif') != ''
+        # `always()` so a failing scan still uploads its findings, AND the
+        # docs-only guard — the SARIF cannot exist when the scan did not run.
+        if: >-
+          always()
+          && needs.changes.outputs.docs_only != 'true'
+          && hashFiles('trivy-fs-results.sarif') != ''
         with:
           sarif_file: 'trivy-fs-results.sarif'
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: [changes]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Setup pnpm
+        if: needs.changes.outputs.docs_only != 'true'
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - name: Setup Node.js
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
         with:
           node-version: '24'
@@ -111,17 +182,19 @@ jobs:
           scope: '@opuspopuli'
 
       - name: Install dependencies
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run linting
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm lint
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [packages-build]
+    needs: [packages-build, changes]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -129,8 +202,10 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm
+        if: needs.changes.outputs.docs_only != 'true'
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - name: Setup Node.js
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
         with:
           node-version: '24'
@@ -139,23 +214,28 @@ jobs:
           scope: '@opuspopuli'
 
       - name: Install dependencies
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download package build artifacts
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
         with:
           name: packages-dist
           path: packages/
 
       - name: Generate Prisma client
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
 
       - name: Run tests with coverage
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm test
 
       - name: Upload coverage artifacts
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4
         with:
           name: coverage-reports
@@ -168,14 +248,16 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, packages-build]
+    needs: [lint, packages-build, changes]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Setup pnpm
+        if: needs.changes.outputs.docs_only != 'true'
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
       - name: Setup Node.js
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
         with:
           node-version: '24'
@@ -184,23 +266,28 @@ jobs:
           scope: '@opuspopuli'
 
       - name: Install dependencies
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm install --frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download package build artifacts
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
         with:
           name: packages-dist
           path: packages/
 
       - name: Generate Prisma client
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
 
       - name: Build backend
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter backend build
 
       - name: Build frontend
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter frontend build
 
   # Compute the E2E shard matrix.
@@ -223,7 +310,9 @@ jobs:
   # still main-only, and that is a conscious trade, not an oversight.
   e2e-shards:
     name: Compute E2E shard matrix
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
+    needs: [changes]
     outputs:
       shards: ${{ steps.set.outputs.shards }}
       total: ${{ steps.set.outputs.total }}
@@ -241,8 +330,9 @@ jobs:
 
   e2e:
     name: E2E Tests (shard ${{ matrix.shard }})
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    needs: [packages-build, test, e2e-shards]
+    needs: [packages-build, test, e2e-shards, changes]
     env:
       # Keep Inbucket's web UI publish out of the ephemeral port range —
       # see the comment on the port in docker-compose.yml. Job-scoped so
