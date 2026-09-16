@@ -161,9 +161,17 @@ function verdict(base: Lane, top: Lane): string {
     return (
       `Concurrency buys nothing: ${top.concurrency} in flight finishes in ` +
       `${top.speedup.toFixed(2)}x the time of one at a time, and median latency ` +
-      `rose ${latencyRatio.toFixed(1)}x. Requests are being serialised — raising ` +
-      `an app-side CONCURRENCY knob would only deepen a queue. Set ` +
-      `OLLAMA_NUM_PARALLEL on the server first, then re-measure.`
+      `rose ${latencyRatio.toFixed(1)}x. Requests are being serialised, so ` +
+      `raising an app-side CONCURRENCY knob would only deepen a queue.\n\n` +
+      `Setting OLLAMA_NUM_PARALLEL is NOT necessarily the fix, and this is the ` +
+      `trap: measured 2026-09-15, qwen35 produced this same result with the ` +
+      `variable set to 4, because Ollama logs "model architecture does not ` +
+      `currently support parallel requests" at WARN and loads with Parallel:1 ` +
+      `anyway. olmo3 DID load with Parallel:4 and four KV slots — and still ` +
+      `showed no aggregate gain, because the GPU is saturated by one request.\n` +
+      `Check the server log for that warning before concluding anything: the ` +
+      `API reports no capability flag, so the log is the only place the ` +
+      `downgrade appears.`
     );
   }
 
@@ -258,7 +266,11 @@ async function main(): Promise<void> {
   const header = [
     `${describeProvenance(provenance)} digest=${provenance.digest}`,
     `requests=${requests} maxTokens=${maxTokens} think=${think}`,
-    `server: OLLAMA_NUM_PARALLEL is not set in this repo; effective parallelism is inferred below`,
+    // Deliberately NOT a claim about what the server is configured for. The
+    // repo does not set OLLAMA_NUM_PARALLEL, but the server may; and Ollama
+    // may accept the setting and then ignore it (see the verdict below). Only
+    // the measured behaviour is reported here.
+    `effective parallelism is inferred from behaviour below, not read from config`,
   ];
   console.log(`\n${[...header, ...describe(lanes)].join("\n")}`);
 
