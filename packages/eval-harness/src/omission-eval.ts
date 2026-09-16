@@ -16,6 +16,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertFreshBuilds } from "./build-freshness.js";
+import { slugFor, type ModelProvenance } from "./provenance.js";
 import {
   scoreOmission,
   calibrateThreshold,
@@ -101,6 +102,7 @@ async function main(): Promise<void> {
 
   const run = JSON.parse(readFileSync(join(ROOT, runPath), "utf8")) as {
     model: string;
+    provenance?: ModelProvenance;
     results: Array<{ externalId: string; payload?: Record<string, unknown> }>;
   };
   const goldFixture = JSON.parse(
@@ -231,7 +233,14 @@ async function main(): Promise<void> {
   console.log(`\n${lines.join("\n")}`);
 
   mkdirSync(join(ROOT, "results"), { recursive: true });
-  const out = join(ROOT, "results", "omission.json");
+  // Named for the run it scored, as every other leg is. A fixed filename made
+  // scoring a second model silently overwrite the first — the only trace of
+  // which model the file described was a `model` field inside it, which is the
+  // unattributable-result failure this package exists to prevent.
+  const slug = run.provenance
+    ? slugFor(run.provenance)
+    : run.model.replace(/[^a-z0-9]+/gi, "-");
+  const out = join(ROOT, "results", `omission-${slug}.json`);
   writeFileSync(
     out,
     `${JSON.stringify({ ranAt: new Date().toISOString(), run: runPath, model: run.model, embedModel, calibration: cal, scores, totals: tot }, null, 2)}\n`,
