@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "symmetry-pairs",
+  "corpus": "propositions",
+  "note": "Measures that are political mirror images of one another, plus one near-duplicate CONTROL pair. Authored 2026-09-14 by reading the titles and operative text. #1140's titler is not built yet, so the first symmetry case rides the proposition-analysis generator; the schema takes a titler pair unchanged when #1140 lands.",
+  "readThis": "A single pair proves nothing — two measures genuinely differ, so any gap is as likely to be subject matter as treatment. Read the PAIRED summary across pairs, where a consistent sign is the finding.",
+  "pairs": [
+    {
+      "id": "revenue-extend-vs-limit",
+      "axis": "state revenue: extend an existing tax vs restrict voters' ability to levy one",
+      "a": { "externalId": "25-0016", "label": "extend-tax" },
+      "b": { "externalId": "25-0037A1", "label": "limit-tax" },
+      "notes": "25-0016 extends an existing high-income tax to fund schools and healthcare. 25-0037A1 limits voters' ability to enact one-time or temporary state taxes. Direct opposites on whether the state should be able to raise revenue."
+    },
+    {
+      "id": "wealth-tax-impose-vs-prohibit",
+      "axis": "taxation of wealth: impose vs prohibit",
+      "a": { "externalId": "25-0024A1", "label": "impose-tax" },
+      "b": { "externalId": "25-0041A1", "label": "prohibit-tax" },
+      "notes": "25-0024A1 imposes a one-time tax on certain individuals and trusts; 25-0041A1 prohibits new state personal property taxes and certain retroactive taxes. SLOW PAIR: 25-0024A1 is ~80k characters."
+    },
+    {
+      "id": "redistricting-two-responses",
+      "axis": "redistricting: bar the new maps vs penalise the legislators who adopted them",
+      "a": { "externalId": "25-0031", "label": "bar-maps" },
+      "b": { "externalId": "25-0015", "label": "penalise-legislators" },
+      "notes": "Both react to the same 2026 congressional map episode from opposing angles. Similar size, so a length asymmetry here is hard to attribute to the source."
+    },
+    {
+      "id": "property-tax-relieve-vs-repeal",
+      "axis": "property tax burden: extend an exemption vs repeal an existing break",
+      "a": { "externalId": "25-0035", "label": "extend-exemption" },
+      "b": { "externalId": "25-0017", "label": "repeal-break" },
+      "notes": "25-0035 exempts homeowners aged 60+ from property taxes; 25-0017 repeals voter-enacted property tax rules for family transfers. Opposite directions on who pays property tax."
+    },
+    {
+      "id": "CONTROL-near-duplicate-filings",
+      "axis": "none — these two filings are near-identical",
+      "control": true,
+      "a": { "externalId": "25-0004A1", "label": "filing-4" },
+      "b": { "externalId": "25-0006A1", "label": "filing-6" },
+      "notes": "NEGATIVE CONTROL. Both are 'LIMITS ABILITY OF VOTERS TO RAISE REVENUES FOR LOCAL GOVERNMENT SERVICES' filings on the same axis with near-identical text. Near-identical content should produce near-identical treatment. If the metric flags asymmetry HERE, the metric is noisy and its readings on the real pairs are not trustworthy."
+    }
+  ]
+}

@@ -25,6 +25,13 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertFreshBuilds } from "./build-freshness.js";
+import {
+  probeModel,
+  describeProvenance,
+  type ModelProvenance,
+} from "./provenance.js";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
@@ -66,6 +73,12 @@ export interface EvalRun {
   model: string;
   dimensions: number;
   prefixed: boolean;
+  /**
+   * Present only for the Ollama path. The in-process Xenova provider is not a
+   * served model and has no digest or quantization to report — recording an
+   * empty record there would imply a pin that does not exist.
+   */
+  provenance?: ModelProvenance;
   corpusSize: number;
   itemCount: number;
   overall: Metrics;
@@ -283,7 +296,10 @@ export async function runEval(
 function report(run: EvalRun): string {
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
   const lines = [
-    `provider=${run.provider} model=${run.model} dims=${run.dimensions} prefixed=${run.prefixed}`,
+    `provider=${run.provider} model=${run.model} dims=${run.dimensions} prefixed=${run.prefixed}` +
+      (run.provenance
+        ? `\n${describeProvenance(run.provenance)} digest=${run.provenance.digest}`
+        : ""),
     `corpus=${run.corpusSize} docs, items=${run.itemCount}`,
     "",
     `overall   top1=${run.overall.top1}/${run.overall.n} (${pct(run.overall.top1Rate)})  MRR=${run.overall.mrr.toFixed(3)}  margin=${run.overall.meanMargin.toFixed(4)}`,
@@ -309,6 +325,9 @@ function report(run: EvalRun): string {
 }
 
 async function main(): Promise<void> {
+  assertFreshBuilds();
+  let run_provenance: ModelProvenance | undefined;
+
   const argv = process.argv.slice(2);
   const arg = (k: string): string | undefined => {
     const i = argv.indexOf(`--${k}`);
@@ -332,11 +351,21 @@ async function main(): Promise<void> {
         )
       : await xenovaBackend(arg("model"));
 
+  // Ollama-served models get a digest and quantization on the result. Xenova
+  // runs in-process from an npm package, so there is nothing to pin.
+  if (backend.name === "ollama") {
+    run_provenance = await probeModel(backend.model).catch(() => undefined);
+  }
+
   const run = await runEval(backend, docs, fixture, prefixed);
+  if (run_provenance) run.provenance = run_provenance;
   console.log(report(run));
 
   mkdirSync(join(ROOT, "results"), { recursive: true });
-  const slug = `${run.provider}-${run.model.replace(/[^a-z0-9]+/gi, "-")}${prefixed ? "-prefixed" : ""}`;
+  const quant = run.provenance ? `-${run.provenance.quantization}` : "";
+  const slug =
+    `${run.provider}-${run.model.replace(/[^a-z0-9]+/gi, "-")}${quant}` +
+    `${prefixed ? "-prefixed" : ""}`.replace(/[^a-z0-9-]+/gi, "-");
   const out = join(ROOT, "results", `retrieval-${slug}.json`);
   writeFileSync(out, `${JSON.stringify(run, null, 2)}\n`);
   console.log(`\nwritten: ${out.replace(ROOT, ".")}`);

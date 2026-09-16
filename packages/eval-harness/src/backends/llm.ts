@@ -1,0 +1,115 @@
+/**
+ * The generation backend — production's LLM provider, driven as production
+ * drives it.
+ *
+ * This is the R4 seam. `LlmGeneratorBase`, JSON mode and per-generator Zod
+ * schemas are all planned to change under the provenance work (epic #1207), so
+ * everything the harness depends on is confined to this one file: it consumes
+ * `ILLMProvider.generate()` and nothing else. When the provider interface
+ * moves, this is the file that moves with it.
+ *
+ * The settings below are not defaults chosen here — they mirror
+ * `proposition-analysis.service.ts` exactly, because a harness configured
+ * differently from production measures a system nobody runs. #1142's first run
+ * is the cautionary case: it used 2000 tokens where production uses 6000, left
+ * reasoning on where production sends `think: false`, and produced entirely
+ * invalid results from configuration alone.
+ */
+
+import { OllamaLLMProvider } from "@opuspopuli/llm-provider";
+
+/** Mirrors PROPOSITION_ANALYSIS_MAX_TOKENS. NOT 2000 — see #1085. */
+export const ANALYSIS_MAX_TOKENS = 6000;
+/** Mirrors the temperature proposition-analysis.service.ts passes. */
+export const ANALYSIS_TEMPERATURE = 0.2;
+
+/**
+ * Reasoning models need a bigger budget, not the same one.
+ *
+ * `think: false` is what production sends and is the default here. But a
+ * reasoning checkpoint asked to think will spend the budget thinking before it
+ * answers: qwen3.5:9b returned an EMPTY response having spent all 2000 tokens
+ * on hidden reasoning, and gpt-oss:20b produced 22,000-26,000 characters of
+ * reasoning and no answer at default effort. When thinking is deliberately
+ * enabled, the answer must not be starved — hence the multiplier rather than a
+ * shared constant.
+ */
+export const THINKING_BUDGET_MULTIPLIER = 3;
+
+export interface GenerationRun {
+  text: string;
+  finishReason?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  maxTokens: number;
+  ms: number;
+  /** Output tokens per second — the throughput number R7 needs. */
+  tokensPerSecond?: number;
+}
+
+export interface LlmBackend {
+  model: string;
+  think: boolean;
+  maxTokens: number;
+  generate(prompt: string): Promise<GenerationRun>;
+}
+
+export interface LlmBackendOptions {
+  model: string;
+  /**
+   * Set EXPLICITLY per model — never left to a default. #1142 lists this
+   * first among the things not to skip.
+   */
+  think?: boolean;
+  maxTokens?: number;
+  url?: string;
+  /**
+   * Analysis on a long measure runs for minutes, and a 32B dense model runs
+   * for considerably longer. The provider's 60s default would time out and
+   * read as a model failure.
+   */
+  requestTimeoutMs?: number;
+}
+
+export function createLlmBackend(opts: LlmBackendOptions): LlmBackend {
+  const think = opts.think ?? false;
+  const maxTokens =
+    opts.maxTokens ??
+    (think
+      ? ANALYSIS_MAX_TOKENS * THINKING_BUDGET_MULTIPLIER
+      : ANALYSIS_MAX_TOKENS);
+
+  const provider = new OllamaLLMProvider({
+    url: opts.url ?? process.env.OLLAMA_URL ?? "http://localhost:11434",
+    model: opts.model,
+    requestTimeoutMs: opts.requestTimeoutMs ?? 30 * 60 * 1000,
+  });
+
+  return {
+    model: opts.model,
+    think,
+    maxTokens,
+    async generate(prompt: string): Promise<GenerationRun> {
+      const started = Date.now();
+      const result = await provider.generate(prompt, {
+        maxTokens,
+        temperature: ANALYSIS_TEMPERATURE,
+        think,
+      });
+      const ms = Date.now() - started;
+
+      return {
+        text: result.text ?? "",
+        finishReason: result.finishReason,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        maxTokens,
+        ms,
+        tokensPerSecond:
+          result.tokensOut && ms > 0
+            ? Number(((result.tokensOut / ms) * 1000).toFixed(2))
+            : undefined,
+      };
+    },
+  };
+}

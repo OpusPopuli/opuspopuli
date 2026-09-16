@@ -167,6 +167,284 @@
       "query": "proteger los boicots en apoyo a los derechos palestinos",
       "gold": ["25-0011"],
       "difficulty": "cross-lingual"
+    },
+    {
+      "id": "ret-en-015",
+      "lang": "en",
+      "query": "loan to help a middle income family buy a newly built house",
+      "gold": ["25-0013A1"],
+      "difficulty": "oblique",
+      "notes": "Measure creates CalHFA-administered middle-class homeownership loans for newly constructed single-family homes."
+    },
+    {
+      "id": "ret-en-016",
+      "lang": "en",
+      "query": "state money in an account so my child can attend a private or religious school",
+      "gold": ["25-0014"],
+      "difficulty": "oblique",
+      "notes": "Education Savings Accounts, ~$17,000/year, TK-12. The measure text is explicit that it is NOT a voucher model."
+    },
+    {
+      "id": "ret-en-017",
+      "lang": "en",
+      "query": "keep the tax on the top two percent that pays for schools instead of letting it expire",
+      "gold": ["25-0016"],
+      "difficulty": "oblique",
+      "notes": "Extends the 2012 high-earner income tax; measure text cites $104 billion raised since passage."
+    },
+    {
+      "id": "ret-en-018",
+      "lang": "en",
+      "query": "pass my house to my kids without the property tax going up",
+      "gold": ["25-0017"],
+      "difficulty": "oblique",
+      "notes": "Restores the pre-2021 parent-child and grandparent-grandchild transfer exclusion from reassessment."
+    },
+    {
+      "id": "ret-en-019",
+      "lang": "en",
+      "query": "let ballot measures go back on the June primary ballot",
+      "gold": ["25-0019A1"],
+      "difficulty": "oblique",
+      "notes": "Reclaim Voters Rights Act — restores the right lost in 2011 to vote on initiatives at statewide primaries."
+    },
+    {
+      "id": "ret-en-020",
+      "lang": "en",
+      "query": "my insurance company lowballed the claim I paid premiums for",
+      "gold": ["25-0020A2"],
+      "difficulty": "oblique",
+      "contentOnly": true,
+      "notes": "'Insurance Policyholder Bill of Rights'. The lowballing language is in the findings; the title says only NEW REQUIREMENTS FOR HOMEOWNER INSURANCE POLICIES."
+    },
+    {
+      "id": "ret-en-021",
+      "lang": "en",
+      "query": "stop health care unions from bankrolling ballot measures",
+      "gold": ["25-0021A1"],
+      "difficulty": "direct",
+      "notes": "Findings describe unions using the initiative process for leverage over health care providers."
+    },
+    {
+      "id": "ret-en-022",
+      "lang": "en",
+      "query": "cap what my lawyer can take out of a car crash settlement",
+      "gold": ["25-0022A1"],
+      "difficulty": "oblique",
+      "notes": "Requires the victim retain at least 75% of the total recovered."
+    },
+    {
+      "id": "ret-en-023",
+      "lang": "en",
+      "query": "speed up environmental review so housing and clean energy get built",
+      "gold": ["25-0023A1"],
+      "difficulty": "oblique",
+      "notes": "Building an Affordable California Act — CEQA changes for 'essential projects'."
+    },
+    {
+      "id": "ret-en-024",
+      "lang": "en",
+      "query": "rules protecting children from AI chatbots and phones at school",
+      "gold": ["25-0025A1", "25-0036A1"],
+      "difficulty": "ambiguous",
+      "notes": "GOLD SET: two near-identical AI child-safety filings. Either ranking first is correct."
+    },
+    {
+      "id": "ret-en-025",
+      "lang": "en",
+      "query": "borrow money to fund research into curing immune diseases",
+      "gold": ["25-0026A1"],
+      "difficulty": "oblique",
+      "notes": "California Immunology Research and Cures Initiative — bond authorization."
+    },
+    {
+      "id": "ret-en-026",
+      "lang": "en",
+      "query": "hold Uber responsible when a passenger is injured",
+      "gold": ["25-0028A1"],
+      "difficulty": "oblique",
+      "notes": "Rideshare Company Public Accountability Act. Distinguish from 25-0029A1, which is the sexual-misconduct measure."
+    },
+    {
+      "id": "ret-en-027",
+      "lang": "en",
+      "query": "rideshare companies accountable for sexual assault of passengers and drivers",
+      "gold": ["25-0029A1"],
+      "difficulty": "direct",
+      "notes": "Paired with ret-en-026: the two rideshare measures must be distinguishable from each other."
+    },
+    {
+      "id": "ret-en-028",
+      "lang": "en",
+      "query": "what happens if a president refuses to leave office when his term ends",
+      "gold": ["25-0030A1"],
+      "difficulty": "oblique",
+      "notes": "'King Slayer Act: Defense of Constitutional Order'."
+    },
+    {
+      "id": "ret-en-029",
+      "lang": "en",
+      "query": "crack down on charities that funnel money to for-profit companies",
+      "gold": ["25-0032A1"],
+      "difficulty": "oblique",
+      "contentOnly": true,
+      "notes": "California Charitable Fraud Prevention Act; parens patriae findings. The title says only REGULATES CERTAIN NONPROFIT RESEARCH ORGANIZATIONS."
+    },
+    {
+      "id": "ret-en-030",
+      "lang": "en",
+      "query": "stop charging property tax on the homes of people over sixty",
+      "gold": ["25-0035"],
+      "difficulty": "oblique",
+      "notes": "Exempts the principal residence of eligible homeowners from ad valorem property tax from the 2027-28 lien date."
+    },
+    {
+      "id": "ret-en-031",
+      "lang": "en",
+      "query": "how long can I stay in California before I owe state income tax",
+      "gold": ["25-0039A1"],
+      "difficulty": "oblique",
+      "contentOnly": true,
+      "notes": "Splits taxpayers into part-time resident, resident and non-resident by physical presence. The residency test is in the text, not the title."
+    },
+    {
+      "id": "ret-en-032",
+      "lang": "en",
+      "query": "audit a new special tax program before voters get to approve it",
+      "gold": ["25-0040A1"],
+      "difficulty": "oblique",
+      "notes": "Pre-election financial and performance audit by the State Auditor."
+    },
+    {
+      "id": "ret-en-033",
+      "lang": "en",
+      "query": "stop taxing prepared food at the grocery store",
+      "gold": ["26-0005"],
+      "difficulty": "oblique",
+      "contentOnly": true,
+      "notes": "UNLOCK CANDIDATE: the corpus entry is the bare act name 'California Food Tax Fairness Act'. The prepared-food distinction exists only in fullText, so this should miss until #1261 lands a real summary."
+    },
+    {
+      "id": "ret-en-034",
+      "lang": "en",
+      "query": "bonds to build housing for veterans",
+      "gold": ["SB 417"],
+      "difficulty": "direct",
+      "notes": "Veterans and Affordable Housing Bond Act of 2026."
+    },
+    {
+      "id": "ret-en-035",
+      "lang": "en",
+      "query": "public money for campaigns so candidates need not chase wealthy donors",
+      "gold": ["SB 42"],
+      "difficulty": "oblique",
+      "contentOnly": true,
+      "notes": "California Fair Elections Act findings. The corpus entry is the bare bill title."
+    },
+    {
+      "id": "ret-es-009",
+      "lang": "es",
+      "query": "mantener el impuesto a los más ricos para financiar las escuelas",
+      "gold": ["25-0016"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish query against an English-only measure."
+    },
+    {
+      "id": "ret-es-010",
+      "lang": "es",
+      "query": "heredar la casa de mis padres sin que suban los impuestos",
+      "gold": ["25-0017"],
+      "difficulty": "cross-lingual",
+      "notes": "Colloquial Spanish for the parent-child transfer exclusion."
+    },
+    {
+      "id": "ret-es-011",
+      "lang": "es",
+      "query": "requisitos de identificación para poder votar",
+      "gold": ["25-0007A1"],
+      "difficulty": "cross-lingual",
+      "notes": "California Voter ID Initiative."
+    },
+    {
+      "id": "ret-es-012",
+      "lang": "es",
+      "query": "mi seguro negó un tratamiento que mi médico recomendó",
+      "gold": ["25-0002A1"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish counterpart of ret-en-002 — a direct EN/ES parity check on the same measure."
+    },
+    {
+      "id": "ret-es-013",
+      "lang": "es",
+      "query": "préstamo para comprar una casa nueva siendo de clase media",
+      "gold": ["25-0013A1"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish counterpart of ret-en-015."
+    },
+    {
+      "id": "ret-es-014",
+      "lang": "es",
+      "query": "proteger a los niños de la inteligencia artificial y los teléfonos en la escuela",
+      "gold": ["25-0025A1", "25-0036A1"],
+      "difficulty": "cross-lingual",
+      "notes": "GOLD SET, Spanish counterpart of ret-en-024."
+    },
+    {
+      "id": "ret-es-015",
+      "lang": "es",
+      "query": "demandar a Uber si me lastiman como pasajero",
+      "gold": ["25-0028A1"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish counterpart of ret-en-026; must not collapse onto 25-0029A1."
+    },
+    {
+      "id": "ret-es-016",
+      "lang": "es",
+      "query": "exención del impuesto predial para personas mayores de sesenta años",
+      "gold": ["25-0035"],
+      "difficulty": "cross-lingual",
+      "notes": "'impuesto predial' is the common Spanish term for property tax and appears nowhere in the corpus."
+    },
+    {
+      "id": "ret-es-017",
+      "lang": "es",
+      "query": "bonos para construir viviendas para veteranos",
+      "gold": ["SB 417"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish counterpart of ret-en-034."
+    },
+    {
+      "id": "ret-es-018",
+      "lang": "es",
+      "query": "eliminar el impuesto sobre la comida preparada",
+      "gold": ["26-0005"],
+      "difficulty": "cross-lingual",
+      "contentOnly": true,
+      "notes": "UNLOCK CANDIDATE, Spanish counterpart of ret-en-033. Expected to miss until the corpus carries a real summary."
+    },
+    {
+      "id": "ret-es-019",
+      "lang": "es",
+      "query": "acelerar los permisos ambientales para construir viviendas",
+      "gold": ["25-0023A1"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish counterpart of ret-en-023."
+    },
+    {
+      "id": "ret-es-020",
+      "lang": "es",
+      "query": "límite a lo que un abogado puede cobrar tras un accidente de auto",
+      "gold": ["25-0022A1"],
+      "difficulty": "cross-lingual",
+      "notes": "Spanish counterpart of ret-en-022."
+    },
+    {
+      "id": "ret-es-021",
+      "lang": "es",
+      "query": "que California se independice de Estados Unidos",
+      "gold": ["24-0001A2", "25-0010"],
+      "difficulty": "cross-lingual",
+      "notes": "GOLD SET: the two Calexit filings are duplicates of one another."
     }
   ]
 }

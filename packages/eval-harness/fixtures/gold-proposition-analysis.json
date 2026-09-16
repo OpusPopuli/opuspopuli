@@ -1,0 +1,378 @@
+{
+  "schemaVersion": 1,
+  "kind": "generation-gold",
+  "corpus": "fulltext-propositions.json",
+  "note": "Authored 2026-09-14 by reading each measure. supportable=false means the SOURCE cannot support the field, so an empty value is CORRECT and a populated one is fabrication. Field completeness is never scored — see #1142.",
+  "items": [
+    {
+      "externalId": "25-0002A1",
+      "chars": 2799,
+      "containsDollarFigure": false,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "AG-filed initiative text: operative statutory language only, no fiscal analysis and no dollar figure anywhere in the text."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0003",
+      "chars": 12173,
+      "containsDollarFigure": true,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "AG-filed initiative text. Dollar figures appear in operative provisions, but the filing carries no fiscal analysis section."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0007A1",
+      "chars": 4633,
+      "containsDollarFigure": false,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "AG-filed initiative text: voter identification requirements, operative language only, no fiscal analysis."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0015",
+      "chars": 3508,
+      "containsDollarFigure": true,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "AG-filed initiative text. No fiscal analysis; the Legislative Analyst estimate is a separate document not present in full_text."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0017",
+      "chars": 4467,
+      "containsDollarFigure": true,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "AG-filed initiative text. No fiscal analysis section."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0019A1",
+      "chars": 3013,
+      "containsDollarFigure": false,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "AG-filed initiative text. No fiscal analysis section."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0037A1",
+      "chars": 8034,
+      "containsDollarFigure": true,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "The only \"fiscal\" string is \"without regard to fiscal years\" in the standard defend-this-measure appropriation clause — not an analysis."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0038A1",
+      "chars": 12077,
+      "containsDollarFigure": true,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "Same defend-this-measure appropriation boilerplate as 25-0037A1; no fiscal analysis."
+        }
+      ]
+    },
+    {
+      "externalId": "25-0041A1",
+      "chars": 13542,
+      "containsDollarFigure": true,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "The only \"fiscal\" string is a \"declares a fiscal emergency\" condition in the operative text — a trigger, not an analysis of this measure."
+        }
+      ]
+    },
+    {
+      "externalId": "ACA 22",
+      "chars": 3491,
+      "containsDollarFigure": false,
+      "fieldExpectations": [
+        {
+          "field": "analysisSummary",
+          "supportable": true,
+          "rationale": "Every measure has text to summarise; an empty summary is the one failure the pipeline cannot recover from."
+        },
+        {
+          "field": "keyProvisions",
+          "supportable": true,
+          "rationale": "Operative provisions are present in the measure text."
+        },
+        {
+          "field": "existingVsProposed",
+          "supportable": true,
+          "rationale": "The measure states what it amends or repeals."
+        },
+        {
+          "field": "yesOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text."
+        },
+        {
+          "field": "noOutcome",
+          "supportable": true,
+          "rationale": "Derivable from the operative text: current law continues."
+        },
+        {
+          "field": "fiscalImpact",
+          "supportable": false,
+          "rationale": "Legislative constitutional amendment. \"Fiscal committee: no\" is routing metadata on the measure header, not a fiscal analysis."
+        }
+      ]
+    }
+  ]
+}

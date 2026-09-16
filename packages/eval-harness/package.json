@@ -9,10 +9,22 @@
     "eval:retrieval": "tsx src/retrieval-eval.ts",
     "eval:baseline": "tsx src/retrieval-eval.ts --provider xenova",
     "typecheck": "tsc --noEmit",
-    "eval:ocr": "tsx src/ocr-eval.ts"
+    "eval:ocr": "tsx src/ocr-eval.ts",
+    "test": "tsc --noEmit && tsx --test \"src/**/*.spec.ts\"",
+    "test:watch": "tsx --test --watch \"src/**/*.spec.ts\"",
+    "fixtures:fulltext": "tsx src/build-fulltext-fixture.ts",
+    "eval:generation": "tsx src/generation-eval.ts",
+    "fixtures:symmetry": "tsx src/build-fulltext-fixture.ts --symmetry",
+    "eval:symmetry": "tsx src/symmetry-eval.ts",
+    "eval:throughput": "tsx src/throughput-eval.ts",
+    "eval:adversarial": "tsx src/adversarial-eval.ts",
+    "eval:omission": "tsx src/omission-eval.ts",
+    "eval:divergence": "tsx src/divergence-eval.ts"
   },
   "dependencies": {
+    "@opuspopuli/common": "workspace:*",
     "@opuspopuli/embeddings-provider": "workspace:*",
+    "@opuspopuli/llm-provider": "workspace:*",
     "@opuspopuli/ocr-provider": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
     "@opuspopuli/relationaldb-provider": "workspace:*"
