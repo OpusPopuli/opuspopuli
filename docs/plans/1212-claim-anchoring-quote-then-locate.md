@@ -116,10 +116,16 @@ Critical path: **S0 → S1 → S2 (gate) → S3 → S4**. S5 must be settled bef
 > `setGlobalHttpPool` appears 0 times in `backends/llm.ts`, and `omission-eval.ts` still writes a
 > fixed `results/omission.json`.
 >
-> **This branch is cut from `main` and therefore does not have them.** Either wait for #1271 to
-> merge and rebase, or branch from `fix/eval-harness-measurement-defects-1142`. Starting S2 without
-> the headers-timeout fix means any generation over five minutes dies as `TypeError: fetch failed`,
-> which reads as a model failure rather than a transport one.
+> **All three S0 items are now on PR #1271, and this branch — cut from `main` — has none of
+> them.** Either wait for #1271 to merge and rebase, or branch from
+> `fix/eval-harness-measurement-defects-1142`.
+>
+> The `--document-type` flag is a **hard** blocker: without it the S2 gate cannot point at the new
+> template at all. The headers-timeout fix is a **soft** one for S2 specifically — that gate runs
+> `olmo-3:7b-instruct --no-think` at ~26s per measure, far under the 300s ceiling — but two
+> *non-think* measures in the 2026-09-16 sweep still took 1086s and 1150s under memory pressure,
+> and would have died as `TypeError: fetch failed`, which reads as a model failure rather than a
+> transport one.
 
 
 Three items, all in `packages/eval-harness`, without which the measurement cannot run or cannot be
@@ -132,10 +138,12 @@ trusted:
   exactly 302s; two *non-think* qwen measures took 1086s and 1150s under memory pressure and would
   have died too. Fix is `setGlobalHttpPool({ headersTimeoutMs: 1_350_000 })` in `backends/llm.ts`,
   mirroring `region-worker/src/main.ts`. **Done — PR #1271, not yet merged.**
-- **`--document-type` flag on `generation-eval.ts`.** `resolveAnalysisPrompt` is called with a
-  hardcoded `"proposition-analysis"` (line 403). Without a selector, `--contract quote-then-locate`
-  scores output produced by the *offsets* template and reports `missing-anchor` for every claim —
-  a silent wrong measurement.
+- **`--document-type` flag on `generation-eval.ts`.** `resolveAnalysisPrompt` was called with a
+  hardcoded `"proposition-analysis"`. Without a selector, `--contract quote-then-locate` scores
+  output produced by the *offsets* template and reports `missing-anchor` for every claim — a silent
+  wrong measurement, and a false negative on the S2 gate below. The template now also joins the
+  results slug when non-default, so two templates under one contract cannot overwrite each other.
+  **Done — PR #1271, not yet merged.**
 - **`omission-eval` output naming.** It writes a fixed `results/omission.json` regardless of which
   run it scored, so scoring a second model silently overwrites the first. Use `slugFor()` as the
   other legs do. **Done — PR #1271, not yet merged.**
