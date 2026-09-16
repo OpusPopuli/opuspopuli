@@ -36,8 +36,19 @@ export interface EmittedClaim {
   /** `offsets` contract: character positions into fullText, unclamped. */
   sourceStart?: number;
   sourceEnd?: number;
-  /** `quote-then-locate` contract: the span the model says it is citing. */
-  quote?: string;
+  /**
+   * `quote-then-locate` contract: the span the model says it is citing.
+   *
+   * Named `sourceQuote` because that is the contract the prompt template asks
+   * for and the name S3's consumer will read — it sits alongside the offsets
+   * contract's `sourceStart`/`sourceEnd`. This interface previously called it
+   * `quote`, which no producer ever emits: `generation-eval` casts the model's
+   * `analysisClaims` straight to this type with no field mapping, so the field
+   * was always undefined and EVERY claim scored `missing-anchor`. The gate
+   * could only ever report 0%, which reads as "the contract failed" — the one
+   * result that would wrongly force the segment-id fallback.
+   */
+  sourceQuote?: string;
   confidence?: string | number;
 }
 
@@ -82,6 +93,19 @@ export interface AnchoringScore {
   byVerdict: Record<string, number>;
   /** Evidence for "the model is partitioning, not locating" — see below. */
   looksPartitioned: boolean;
+  /**
+   * Evidence for "nothing is producing the anchor field at all".
+   *
+   * Under `quote-then-locate`, EVERY claim scoring `missing-anchor` is far
+   * likelier to mean the scorer and the producer disagree about the field name
+   * than that a model which emitted valid JSON independently omitted the quote
+   * from all of them. That is not hypothetical: `generation-eval` casts model
+   * output straight to `EmittedClaim`, so a cast cannot catch the mismatch,
+   * and this scorer read `claim.quote` while the template emits `sourceQuote`
+   * — the S2 gate could only ever report 0%, indistinguishable from "models
+   * cannot quote". Surfacing it turns a silent wrong answer into a loud one.
+   */
+  looksUnmapped: boolean;
 }
 
 const STOPWORDS = new Set([
@@ -218,7 +242,7 @@ function scoreQuoteClaim(claim: EmittedClaim, fullText: string): AnchorResult {
     confidence: claim.confidence,
     support: 0,
   };
-  const quote = claim.quote?.trim();
+  const quote = claim.sourceQuote?.trim();
 
   if (!quote) {
     return { ...base, verdict: "missing-anchor", anchored: false };
@@ -272,5 +296,9 @@ export function scoreAnchoring(
     rate: results.length === 0 ? 0 : anchored / results.length,
     byVerdict,
     looksPartitioned: contract === "offsets" && detectPartitioning(claims),
+    looksUnmapped:
+      contract === "quote-then-locate" &&
+      results.length > 0 &&
+      byVerdict["missing-anchor"] === results.length,
   };
 }

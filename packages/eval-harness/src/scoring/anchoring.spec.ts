@@ -169,7 +169,7 @@ describe("scoreAnchoring — quote-then-locate contract (#1212)", () => {
         {
           claim: "public schools must provide sustainability instruction",
           field: "keyProvisions",
-          quote:
+          sourceQuote:
             "Every public school shall provide instruction in earth sustainability.",
         },
       ],
@@ -187,7 +187,7 @@ describe("scoreAnchoring — quote-then-locate contract (#1212)", () => {
         {
           claim: "public schools must provide sustainability instruction",
           field: "x",
-          quote:
+          sourceQuote:
             "Every public school shall provide\n  instruction in earth sustainability.",
         },
       ],
@@ -197,13 +197,85 @@ describe("scoreAnchoring — quote-then-locate contract (#1212)", () => {
     assert.equal(score.results[0].verdict, "anchored");
   });
 
+  // Regression guard for the defect this contract shipped with: the scorer
+  // read `claim.quote` while the prompt template emits `sourceQuote`, and
+  // `generation-eval` casts model output straight to EmittedClaim with no
+  // field mapping. Every claim therefore scored `missing-anchor` and the S2
+  // gate could only ever report 0% — indistinguishable from "models cannot
+  // quote either", and the one result that would wrongly force the
+  // segment-id fallback.
+  //
+  // Parsed from JSON on purpose. A typed object literal would be updated by
+  // the compiler if the interface field were renamed again, hiding exactly
+  // the mismatch this test exists to catch; parsed JSON is `any`, so it keeps
+  // asserting against the wire shape the template actually produces.
+  test("reads the field name the prompt template actually emits", () => {
+    const asModelEmitsIt = JSON.parse(
+      JSON.stringify({
+        claim: "public schools must provide sustainability instruction",
+        field: "keyProvisions",
+        sourceQuote:
+          "Every public school shall provide instruction in earth sustainability.",
+        confidence: "high",
+      }),
+    ) as EmittedClaim;
+
+    const score = scoreAnchoring(
+      [asModelEmitsIt],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+
+    assert.equal(
+      score.byVerdict["missing-anchor"],
+      undefined,
+      "a well-formed quoted claim must not score missing-anchor — that verdict " +
+        "means the scorer is reading a field the producer never sets",
+    );
+    assert.equal(score.results[0].verdict, "anchored");
+    assert.equal(score.rate, 1);
+  });
+
+  test("flags an all-missing-anchor run as a probable field mismatch", () => {
+    // The whole failure mode in one assertion: claims that carry no anchor
+    // field at all. Reporting 0% silently is indistinguishable from "the
+    // model cannot quote", so the score must say the measurement is suspect.
+    const score = scoreAnchoring(
+      [
+        { claim: "a", field: "x" },
+        { claim: "b", field: "y" },
+      ],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+    assert.equal(score.rate, 0);
+    assert.equal(score.looksUnmapped, true);
+  });
+
+  test("does not flag a run where some claims did anchor", () => {
+    const score = scoreAnchoring(
+      [
+        {
+          claim: "public schools must provide sustainability instruction",
+          field: "keyProvisions",
+          sourceQuote:
+            "Every public school shall provide instruction in earth sustainability.",
+        },
+        { claim: "b", field: "y" },
+      ],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+    assert.equal(score.looksUnmapped, false);
+  });
+
   test("reports a quote that is not in the source", () => {
     const score = scoreAnchoring(
       [
         {
           claim: "the measure bans homework",
           field: "x",
-          quote: "All homework is hereby abolished.",
+          sourceQuote: "All homework is hereby abolished.",
         },
       ],
       FULL_TEXT,
@@ -215,7 +287,7 @@ describe("scoreAnchoring — quote-then-locate contract (#1212)", () => {
   test("does not run the partitioning check on this contract", () => {
     // There are no offsets to partition; reporting true would be meaningless.
     const score = scoreAnchoring(
-      [{ claim: "a", field: "x", quote: "Section 1." }],
+      [{ claim: "a", field: "x", sourceQuote: "Section 1." }],
       FULL_TEXT,
       "quote-then-locate",
     );
