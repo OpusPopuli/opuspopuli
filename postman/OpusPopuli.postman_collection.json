@@ -793,6 +793,31 @@
           }
         },
         {
+          "name": "Backfill Proposition Summaries (Admin)",
+          "description": "Backfill proposition `summary` from the Legislative Counsel's Digest already stored on `fullText` (#1261). Returns how many were written.\n\nExists because a sync only repairs a measure its source still lists. When the Secretary of State's qualified-ballot-measures page rolled to the next election cycle it dropped five measures (ACA 20, ACA 22, SB 417, SB 42, SCA 1); they still have rows, and re-syncing will never touch them again. This reads their digest from the database instead.\n\nSafe to re-run: only a BLANK or title-echo summary is replaced, so a genuine Attorney General title-and-summary is never overwritten and a second run returns 0. Re-embeds what it rewrote, so the retrieval corpus follows.\n\n`limit` caps the rows examined, for a cautious first pass; omit it to sweep the corpus.\n\nExpect a warning in the region logs for ACA 22 — the source PDF's OCR dropped a fraction glyph, so its vote threshold reads as \"approval of % of the voters\". Reported, never repaired (#1266). Requires an admin session.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation BackfillPropositionSummaries($limit: Int) {\n  backfillPropositionSummaries(limit: $limit)\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
           "name": "Sync — County Reps, All Counties (Admin)",
           "description": "Sync Board of Supervisors for all 58 enabled CA county sub-regions. Saves sync_job_id.",
           "event": [
