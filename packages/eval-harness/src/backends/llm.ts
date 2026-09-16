@@ -17,6 +17,30 @@
  */
 
 import { OllamaLLMProvider } from "@opuspopuli/llm-provider";
+import { setGlobalHttpPool } from "@opuspopuli/common";
+
+/**
+ * Raise undici's headers timeout before any fetch fires.
+ *
+ * `ILLMProvider.generate()` posts with `stream: false`, so Ollama sends no
+ * response headers until the whole generation is finished. undici's default
+ * `headersTimeout` is 300s and is NOT governed by the provider's
+ * `requestTimeoutMs` — so a generation that takes longer than five minutes
+ * dies as `TypeError: fetch failed` / `UND_ERR_HEADERS_TIMEOUT` however
+ * generous the configured timeout is.
+ *
+ * Measured here, not theorised: on 2026-09-16 both think runs died this way —
+ * qwen3.5:9b at 302s on its first measure, olmo-3:7b-think on its third — and
+ * a reasoning model is exactly the case that exceeds five minutes.
+ *
+ * `region`, `region-worker` and `llm-rerank-worker` each do this at boot for
+ * the same reason; the value mirrors theirs. `knowledge`, `documents` and
+ * `structural-analysis-worker` do NOT, which is filed separately — the harness
+ * matching production's *configured* services is the right default here,
+ * because measuring the unfixed path would measure the bug rather than
+ * the model.
+ */
+setGlobalHttpPool({ headersTimeoutMs: 1_350_000 });
 
 /** Mirrors PROPOSITION_ANALYSIS_MAX_TOKENS. NOT 2000 — see #1085. */
 export const ANALYSIS_MAX_TOKENS = 6000;
