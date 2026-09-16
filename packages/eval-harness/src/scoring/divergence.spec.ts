@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   contentTokens,
   scoreDivergence,
+  omissionSignal,
   calibrateDivergence,
   MIN_CALIBRATION_SAMPLES,
 } from "./divergence.js";
@@ -110,5 +111,49 @@ describe("calibrateDivergence", () => {
     const c = calibrateDivergence([]);
     assert.equal(c.usable, false);
     assert.match(c.note, /nothing to calibrate/i);
+  });
+});
+
+describe("omissionSignal", () => {
+  const pair = scoreDivergence(
+    "petition signature verification requirements county elections official",
+    "petition signature verification",
+  );
+
+  test("refuses a verdict until the baseline exists", () => {
+    // The rate is measurable long before it is trustworthy. Handing back a
+    // boolean here is how a guard gets wired up on Tesseract's noise floor.
+    const s = omissionSignal(pair, calibrateDivergence([0.2, 0.25]));
+    assert.equal(s.available, false);
+    assert.equal(s.omissionRate, null);
+    assert.equal(s.flagged, false);
+    assert.match(s.reason, /Not calibrated/);
+  });
+
+  test("refuses on no samples at all", () => {
+    const s = omissionSignal(pair, calibrateDivergence([]));
+    assert.equal(s.available, false);
+    assert.equal(s.flagged, false);
+  });
+
+  test("gives a verdict once enough known-good pairs exist", () => {
+    const cal = calibrateDivergence(
+      Array.from({ length: MIN_CALIBRATION_SAMPLES }, () => 0.1),
+    );
+    const s = omissionSignal(pair, cal);
+    assert.equal(s.available, true);
+    assert.equal(s.omissionRate, pair.omissionRate);
+    assert.equal(s.flagged, true);
+    assert.match(s.reason, /above the calibrated/);
+  });
+
+  test("does not flag a pair inside the calibrated baseline", () => {
+    const cal = calibrateDivergence(
+      Array.from({ length: MIN_CALIBRATION_SAMPLES }, () => 0.9),
+    );
+    const s = omissionSignal(pair, cal);
+    assert.equal(s.available, true);
+    assert.equal(s.flagged, false);
+    assert.match(s.reason, /within the calibrated baseline/);
   });
 });

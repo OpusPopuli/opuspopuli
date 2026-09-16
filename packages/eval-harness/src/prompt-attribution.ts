@@ -40,7 +40,18 @@ import { PromptClientService } from "@opuspopuli/prompt-client";
 export interface ResolvedPrompt {
   /** The template actually asked for, e.g. document-analysis-proposition-analysis. */
   templateName: string;
+  /** The composed prompt — template WITH the document text substituted in. */
   promptText: string;
+  /**
+   * The template alone, as prompt-service published it.
+   *
+   * Kept because a scorer that needs to recognise the prompt in a model's
+   * output must match against the template and not the composed prompt: the
+   * composed prompt contains the document, so matching it would flag every
+   * analysis that quoted the measure it was asked to analyse. See
+   * `scoring/injection.ts`.
+   */
+  templateText: string;
   promptHash: string;
   promptVersion: string;
   templateChars: number;
@@ -82,10 +93,10 @@ export function readPromptServiceConfig(): PromptServiceConfig {
  * check on that client's resolution, so sharing its fallback chain would make
  * the check agree with whatever the client did.
  */
-async function fetchTemplateHash(
+async function fetchTemplate(
   cfg: PromptServiceConfig,
   templateName: string,
-): Promise<{ promptHash: string; templateChars: number }> {
+): Promise<{ promptHash: string; templateText: string }> {
   if (!cfg.apiKey) {
     throw new Error(
       "PROMPT_SERVICE_API_KEY is required to verify prompt attribution.",
@@ -114,10 +125,30 @@ async function fetchTemplateHash(
     promptHash: string;
     templateText: string;
   };
-  return {
-    promptHash: body.promptHash,
-    templateChars: body.templateText.length,
-  };
+  return { promptHash: body.promptHash, templateText: body.templateText };
+}
+
+/**
+ * The attribution check itself, separated from the fetching so it can be
+ * tested: this comparison is the only thing standing between a run and a
+ * results file that names a prompt it never used.
+ */
+export function assertAttribution(
+  templateName: string,
+  authoritativeHash: string,
+  clientHash: string,
+): void {
+  if (clientHash === authoritativeHash) return;
+
+  throw new Error(
+    `Prompt attribution failed for "${templateName}".\n\n` +
+      `  prompt-service says: ${authoritativeHash}\n` +
+      `  the client returned: ${clientHash}\n\n` +
+      "The client resolved a DIFFERENT template than the one requested — " +
+      "almost certainly the 'document-analysis-generic' fallback, reached " +
+      "because the remote fetch failed and getTemplateFromDb substituted it " +
+      "without warning. Any score from this run would name the wrong prompt.",
+  );
 }
 
 /**
@@ -132,7 +163,7 @@ export async function resolveAnalysisPrompt(
   const cfg = readPromptServiceConfig();
   const templateName = `document-analysis-${documentType}`;
 
-  const authoritative = await fetchTemplateHash(cfg, templateName);
+  const authoritative = await fetchTemplate(cfg, templateName);
 
   const client = new PromptClientService(db, {
     promptServiceUrl: cfg.url,
@@ -142,23 +173,14 @@ export async function resolveAnalysisPrompt(
   const { promptText, promptHash, promptVersion } =
     await client.getDocumentAnalysisPrompt({ documentType, text });
 
-  if (promptHash !== authoritative.promptHash) {
-    throw new Error(
-      `Prompt attribution failed for "${templateName}".\n\n` +
-        `  prompt-service says: ${authoritative.promptHash}\n` +
-        `  the client returned: ${promptHash}\n\n` +
-        "The client resolved a DIFFERENT template than the one requested — " +
-        "almost certainly the 'document-analysis-generic' fallback, reached " +
-        "because the remote fetch failed and getTemplateFromDb substituted it " +
-        "without warning. Any score from this run would name the wrong prompt.",
-    );
-  }
+  assertAttribution(templateName, authoritative.promptHash, promptHash);
 
   return {
     templateName,
     promptText,
+    templateText: authoritative.templateText,
     promptHash,
     promptVersion,
-    templateChars: authoritative.templateChars,
+    templateChars: authoritative.templateText.length,
   };
 }

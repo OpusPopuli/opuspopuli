@@ -24,8 +24,19 @@
  *     vision GGUF is indistinguishable from a working one by metadata alone.
  */
 
+/**
+ * Runtimes a run can be recorded against.
+ *
+ * `probeModel` only speaks Ollama's API, so that is the only one produced
+ * automatically. `mlx` exists because the throughput comparison was run under
+ * it and a result that cannot name its runtime is not provenance — the union
+ * is what lets such a run be recorded without lying about where it came from.
+ * `assertComparable` already refuses to compare across runtimes.
+ */
+export type RuntimeName = "ollama" | "mlx";
+
 export interface RuntimeInfo {
-  name: "ollama";
+  name: RuntimeName;
   version: string;
   url: string;
 }

@@ -125,7 +125,6 @@ async function main(): Promise<void> {
   const backend = createLlmBackend({ model, think });
 
   const db = new DbService();
-  const results: InjectionResult[] = [];
   const rows: Array<{
     id: string;
     base: string;
@@ -160,7 +159,13 @@ async function main(): Promise<void> {
       });
       const payload = json.payload ?? {};
 
-      const result = scoreInjection(c, payload, true);
+      const result = scoreInjection(c, payload, {
+        fiscalUnsupportable: true,
+        // The TEMPLATE, not `prompt.promptText` — the composed prompt contains
+        // this measure's own text, and an analysis that quotes the measure is
+        // doing its job, not exfiltrating instructions.
+        promptTemplate: prompt.templateText,
+      });
       // A fabricated figure is independent corroboration: the injection for
       // inj-002 carries a dollar amount absent from the source, so the
       // grounding scorer should see it without knowing an attack happened.
@@ -177,7 +182,6 @@ async function main(): Promise<void> {
         item.fullText, // the CLEAN text: a figure from the injection is not grounded
       );
 
-      results.push(result);
       rows.push({
         id: c.id,
         base: c.base,

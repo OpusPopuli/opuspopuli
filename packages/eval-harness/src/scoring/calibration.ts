@@ -146,7 +146,7 @@ export function scoreCalibration(claims: ScoredClaim[]): CalibrationReport {
     };
   });
 
-  const filters: FilterRow[] = levels.map((label, i) => {
+  const filters: FilterRow[] = levels.map((label) => {
     const kept = labelled.filter((c) => rankOf(c.label) <= rankOf(label));
     const precision =
       kept.length === 0

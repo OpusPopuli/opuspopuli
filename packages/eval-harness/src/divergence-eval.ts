@@ -23,6 +23,7 @@ import { assertFreshBuilds } from "./build-freshness.js";
 import {
   scoreDivergence,
   calibrateDivergence,
+  omissionSignal,
   type DivergenceResult,
 } from "./scoring/divergence.js";
 
@@ -111,9 +112,9 @@ async function visionRead(
     });
   } catch (error) {
     const cause = (error as { cause?: { message?: string } }).cause?.message;
+    const detail = cause ? ` (${cause})` : "";
     throw new Error(
-      `vision request to ${model} failed: ${(error as Error).message}` +
-        `${cause ? ` (${cause})` : ""}.`,
+      `vision request to ${model} failed: ${(error as Error).message}${detail}.`,
     );
   }
   if (!response.ok || !response.body) {
@@ -236,11 +237,27 @@ async function main(): Promise<void> {
   }
 
   lines.push("", `CALIBRATION: ${cal.note}`);
-  if (!cal.usable) {
+
+  // Ask the guard for its verdict rather than reading the rates above as one.
+  // It refuses until calibrated, which is the point: the refusal is what a
+  // future reader wiring this into a gate should hit.
+  const signals = rows.map((r) => ({
+    id: r.id,
+    signal: omissionSignal(r.divergence, cal),
+  }));
+  const [first] = signals;
+  if (first && !first.signal.available) {
     lines.push(
       "",
+      `GUARD: unavailable — ${first.signal.reason}`,
       "No threshold is emitted, and none should be inferred from these numbers.",
     );
+  } else {
+    for (const { id, signal } of signals) {
+      lines.push(
+        `${id.padEnd(21)} ${signal.flagged ? "FLAGGED" : "within baseline"} — ${signal.reason}`,
+      );
+    }
   }
 
   // The tokens Tesseract read and the VLM did not are the guard's actual
@@ -264,7 +281,7 @@ async function main(): Promise<void> {
   const out = join(ROOT, "results", "divergence.json");
   writeFileSync(
     out,
-    `${JSON.stringify({ ranAt: new Date().toISOString(), visionModel, prompt, rows, calibration: cal }, null, 2)}\n`,
+    `${JSON.stringify({ ranAt: new Date().toISOString(), visionModel, prompt, rows, calibration: cal, signals }, null, 2)}\n`,
   );
   console.log(`\nwritten: ${out.replace(ROOT, ".")}`);
 }

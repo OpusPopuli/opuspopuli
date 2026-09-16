@@ -118,10 +118,13 @@ const STOPWORDS = new Set([
 ]);
 
 function contentWords(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9á-úñü]+/i)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+  return (
+    text
+      .toLowerCase()
+      // `ñ` (U+00F1) already falls inside á-ú; `ü` (U+00FC) does not.
+      .split(/[^a-z0-9á-úü]+/i)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+  );
 }
 
 /**

@@ -59,6 +59,27 @@ const MEASURES = [
   "ACA 22",
 ];
 
+/**
+ * What an `external_id` is allowed to look like before it is spliced into SQL.
+ *
+ * The ids come from a committed fixture or the const above, so this is not a
+ * trust boundary today — but `--symmetry` reads them from a JSON file, and a
+ * quote in one would break the query rather than be rejected. Validating is
+ * cheaper than establishing the habit of interpolating whatever a file says.
+ */
+const EXTERNAL_ID = /^[A-Za-z0-9][A-Za-z0-9 .-]*$/;
+
+export function assertSafeExternalIds(ids: string[]): void {
+  const bad = ids.filter((id) => !EXTERNAL_ID.test(id));
+  if (bad.length > 0) {
+    throw new Error(
+      `Refusing to build a query from ${bad.length} malformed external id(s): ` +
+        `${bad.map((b) => JSON.stringify(b)).join(", ")}. Expected letters, ` +
+        "digits, spaces, dots and hyphens.",
+    );
+  }
+}
+
 interface Row {
   externalId: string;
   title: string;
@@ -85,6 +106,8 @@ async function main(): Promise<void> {
   const outFile = symmetry
     ? "fixtures/symmetry-sources.json"
     : "fixtures/fulltext-propositions.json";
+
+  assertSafeExternalIds(measures);
 
   const sql = `
 select json_agg(j order by j->>'externalId') from (
@@ -167,7 +190,10 @@ select json_agg(j order by j->>'externalId') from (
   );
 }
 
-main().catch((e: unknown) => {
-  console.error(e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+// Guarded so the module can be imported by its spec without running a build.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((e: unknown) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+}

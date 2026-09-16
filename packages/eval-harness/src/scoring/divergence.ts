@@ -45,7 +45,14 @@ export interface DivergenceResult {
   vlmMissing: string[];
   /** Emitted by the VLM, absent from Tesseract. Mostly VLM quality. */
   vlmOnly: string[];
-  /** vlmMissing / tesseract content tokens. The guard's signal. */
+  /**
+   * vlmMissing / tesseract content tokens.
+   *
+   * A measurement, NOT a verdict: at this sample size it is dominated by
+   * Tesseract's noise floor. Nothing may gate on it directly — go through
+   * `omissionSignal()`, which refuses to produce a verdict until a baseline
+   * exists.
+   */
   omissionRate: number;
   /** Jaccard over content words. Reported, not gated on. */
   overlap: number;
@@ -63,7 +70,8 @@ export function contentTokens(text: string): Set<string> {
   return new Set(
     (text ?? "")
       .toLowerCase()
-      .split(/[^a-zá-úñü]+/i)
+      // `ñ` (U+00F1) already falls inside á-ú; `ü` (U+00FC) does not.
+      .split(/[^a-zá-úü]+/i)
       .filter((t) => t.length >= 4),
   );
 }
@@ -144,5 +152,54 @@ export function calibrateDivergence(samples: number[]): DivergenceCalibration {
       ? `Baseline omission rate over ${samples.length} known-good pairs: mean ${mean.toFixed(3)}, max ${max.toFixed(3)}. A guard could fire above ${(max * 1.25).toFixed(3)}.`
       : `Only ${samples.length} pair(s) measured; ${MIN_CALIBRATION_SAMPLES} are needed before a threshold means anything. ` +
         `A guard calibrated on this little would encode these specific images, fire on everything else, and be switched off within a week — worse than no guard, because it would be remembered as having been tried.`,
+  };
+}
+
+export interface OmissionSignal {
+  /** Whether a verdict is available at all. False until calibrated. */
+  available: boolean;
+  /** The rate, exposed only once it means something. */
+  omissionRate: number | null;
+  /** True only when available AND above the calibrated threshold. */
+  flagged: boolean;
+  reason: string;
+}
+
+/**
+ * The guard's verdict on one pair — the only supported way to act on
+ * `omissionRate`.
+ *
+ * `scoreDivergence` measures; this decides. They are separate because the
+ * measurement is real and worth recording while the decision is not yet
+ * available: the OCR leg established that at present the signal sits inside
+ * Tesseract's noise floor, so a threshold drawn from these numbers would
+ * encode the images it was drawn from. A future reader who wires the rate into
+ * a gate without reading that finding gets refused here rather than getting a
+ * plausible-looking boolean.
+ */
+export function omissionSignal(
+  result: DivergenceResult,
+  calibration: DivergenceCalibration,
+): OmissionSignal {
+  if (!calibration.usable || calibration.suggestedThreshold === null) {
+    return {
+      available: false,
+      omissionRate: null,
+      flagged: false,
+      reason:
+        `Not calibrated: ${calibration.samples.length} known-good pair(s) measured, ` +
+        `${MIN_CALIBRATION_SAMPLES} needed. The rate is recorded but no verdict ` +
+        "is available, and none should be inferred from it.",
+    };
+  }
+
+  const flagged = result.omissionRate > calibration.suggestedThreshold;
+  return {
+    available: true,
+    omissionRate: result.omissionRate,
+    flagged,
+    reason: flagged
+      ? `omission rate ${result.omissionRate.toFixed(3)} is above the calibrated ${calibration.suggestedThreshold.toFixed(3)} — content Tesseract read is missing from the VLM transcription`
+      : `omission rate ${result.omissionRate.toFixed(3)} is within the calibrated baseline (threshold ${calibration.suggestedThreshold.toFixed(3)})`,
   };
 }
