@@ -427,61 +427,66 @@ and the model stopped early. So 12.7 agg tok/s is not comparable to the 20–26 
 generation leg reports on full analyses. The across-lane comparison is unaffected: all lanes run
 identical prompts.
 
-## Is there headroom for a faster runtime? (the MLX question, step 1)
+## MLX vs Ollama — measured, with a correction to how it was first framed
 
-Before installing anything or migrating a runtime, the cheap question: **is a speedup even
-available?** If decode is memory-bandwidth-bound and already near the ceiling, no runtime can
-conjure throughput, and MLX or vLLM-Metal would buy nothing. If it is well under, headroom
-exists and is worth chasing.
+### Correction: the step-1 headroom figure was computed from the wrong number
 
-### Decode is bandwidth-dominated
+An earlier revision of this section reported decode running at **36–45% of achievable
+bandwidth with 2.2–2.8× of headroom**. That was wrong, and the error is worth naming because it
+is the same shape as several others this harness has caught.
 
-If decode is bandwidth-bound, `weights × tok/s` should be roughly **constant** across model
-sizes. Measured, single stream, all `Q4_K_M` on the same Ollama build:
+It used the throughput leg's **aggregate** tok/s — which includes prompt processing and
+per-request overhead — as though it were the decode rate. On this workload the model answers in
+two sentences and stops after ~65 tokens, so a 4,000-character prompt dominates the measurement.
+Ollama reports the two phases separately, and decode-only is **26.97 tok/s, not 12.9**. Implied
+bandwidth is therefore **178 GB/s, not 85**.
 
-| model | weights | tok/s | implied GB/s |
+The corrected conclusion is different in kind: Ollama is much closer to the memory ceiling than
+the first pass suggested, and the available win is smaller than advertised — but it is real, and
+MLX captures it.
+
+### The two phases behave oppositely
+
+`qwen3.5:9b`, same prompt, decode-only and prefill-only measured separately:
+
+| phase | Ollama `Q4_K_M` (6.59 GB) | MLX 4-bit (5.95 GB) | winner |
 | --- | --- | --- | --- |
-| `olmo-3:7b-instruct` | 4.47 GB | 20.3 | 90.7 |
-| `qwen3.5:9b` | 6.59 GB | 12.9 | 85.0 |
-| `olmo-3.1:32b-instruct` | 19.48 GB | 5.4 | 105.2 |
+| **decode** | 26.97 tok/s · 178 GB/s implied | **49.32 tok/s · 293 GB/s implied** | **MLX 1.83×** |
+| **prefill** | **1,087 tok/s** | 442 tok/s | **Ollama 2.46×** |
 
-**85–105 GB/s across a 4.4× range of model sizes** — 24% variation. That is the signature of
-bandwidth-bound decode. A bandwidth model fitted on the two small models predicted 4.5 tok/s for
-the 32B; it measured 5.4, within 20%. The largest model shows the *highest* implied bandwidth,
-which is what fixed per-token overheads amortising over a longer step looks like.
+**MLX is not simply faster.** It wins the bandwidth-bound phase decisively and *loses* the
+compute-bound phase by almost as much. Reporting a single "MLX is 3× faster" — which is what the
+naive aggregate comparison produced before the phases were separated — would have been wrong in
+both directions at once.
 
-### There is headroom, and it is bounded at roughly 2×
+Note the quantisations are not identical (`Q4_K_M` k-quant vs MLX affine `group_size=64`), so
+MLX's weights are 10% smaller and a raw tok/s comparison flatters it. The implied-bandwidth
+column normalises that; MLX still leads 1.65× on bytes moved per second.
 
-Achievable memory bandwidth, measured on this machine rather than taken from a spec sheet
-(512 MB parallel `memcpy`, read+write):
+### What it means for the actual workload
 
-```
-parallel memcpy (read+write): 235 GB/s
-```
+| workload | Ollama | MLX | |
+| --- | --- | --- | --- |
+| short prompt / short output (709 / 400) | 15.5s | 9.7s | **1.59×** |
+| proposition analysis, typical (2,500 / 1,400) | 54.2s | 34.0s | **1.59×** |
+| long measure (6,000 / 1,400) | 57.4s | 42.0s | **1.37×** |
 
-So decode runs at **36–45% of achievable bandwidth**, leaving **2.2–2.8×** of headroom *if* a
-runtime could saturate memory.
+**Crossover: Ollama wins whenever output is under ~8% of prompt length.** Nothing in the
+analysis pipeline is near that — proposition analysis generates about 56% of its prompt length —
+so MLX wins there. But it is worth knowing the shape exists, because an extraction task with a
+huge document and a small structured payload sits on the other side of it, and so might OCR.
 
-### What this does and does not license
+### Reading this against the other runtime findings
 
-**It does not settle the MLX question — it bounds it.** A speedup is available in principle, and
-anyone promising an order of magnitude is wrong. Whether MLX captures any of it is an empirical
-question this measurement cannot answer, for three reasons worth stating:
-
-- **`Q4_K_M` dequantises on the fly.** Part of the 55–64% gap is compute per weight read, not
-  memory inefficiency, and MLX pays that cost too. How much of the gap is dequant versus kernel
-  overhead is not separable from outside.
-- **The traffic figure understates itself.** Decode also reads the KV cache and writes
-  activations, so real bytes-per-token exceed the weight size — meaning true utilisation is
-  somewhat higher than 36–45% and the headroom somewhat smaller.
-- **The 235 GB/s ceiling is CPU-side.** On unified memory the GPU's achievable bandwidth is
-  related but not identical, so this is a reference point rather than the GPU's exact ceiling.
-
-The useful conclusion for R7: a runtime migration could plausibly be worth **up to about 2×**,
-against the real costs §1.8 records — a native host process outside compose, and therefore
-outside `op-deploy` and its observability. That is a tractable trade to argue about. It is a very
-different conversation from the 10× a benchmark headline might suggest, and it is now grounded in
-three measurements rather than a claim.
+- **This is kernel efficiency, not batching.** Concurrency is dead on this hardware for both
+  architectures (see above), so MLX's win is entirely per-token and would not compound with
+  parallel requests.
+- **~1.6× end-to-end is a real number to weigh** against §1.8's cost: a native host process
+  outside compose, and therefore outside `op-deploy` and its observability.
+- **`implied GB/s` is an upper bound on traffic.** Embedding and `lm_head` matrices are not fully
+  read per token, so both figures overstate bytes moved — which is why MLX's 293 GB/s can exceed
+  the 235 GB/s CPU-side `memcpy` ceiling without either number being wrong. The *ratio* is the
+  trustworthy part.
 
 ## Model provenance
 
