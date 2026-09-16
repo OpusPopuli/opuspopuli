@@ -177,29 +177,55 @@ export interface OmissionSignal {
  * a gate without reading that finding gets refused here rather than getting a
  * plausible-looking boolean.
  */
+/**
+ * Whether the guard can produce a verdict at all — a property of the
+ * calibration alone, not of any one pair.
+ *
+ * Exported so a caller reporting over many pairs can ask once, rather than
+ * reading the answer off whichever row happens to be first and quietly
+ * depending on every row sharing a calibration.
+ */
+export function guardAvailability(calibration: DivergenceCalibration): {
+  available: boolean;
+  reason: string;
+} {
+  if (calibration.usable && calibration.suggestedThreshold !== null) {
+    return {
+      available: true,
+      reason: `Calibrated over ${calibration.samples.length} known-good pair(s); threshold ${calibration.suggestedThreshold.toFixed(3)}.`,
+    };
+  }
+  return {
+    available: false,
+    reason:
+      `Not calibrated: ${calibration.samples.length} known-good pair(s) measured, ` +
+      `${MIN_CALIBRATION_SAMPLES} needed. The rate is recorded but no verdict ` +
+      "is available, and none should be inferred from it.",
+  };
+}
+
 export function omissionSignal(
   result: DivergenceResult,
   calibration: DivergenceCalibration,
 ): OmissionSignal {
-  if (!calibration.usable || calibration.suggestedThreshold === null) {
+  const gate = guardAvailability(calibration);
+  const threshold = calibration.suggestedThreshold;
+  if (!gate.available || threshold === null) {
     return {
       available: false,
       omissionRate: null,
       flagged: false,
-      reason:
-        `Not calibrated: ${calibration.samples.length} known-good pair(s) measured, ` +
-        `${MIN_CALIBRATION_SAMPLES} needed. The rate is recorded but no verdict ` +
-        "is available, and none should be inferred from it.",
+      reason: gate.reason,
     };
   }
 
-  const flagged = result.omissionRate > calibration.suggestedThreshold;
+  const flagged = result.omissionRate > threshold;
   return {
     available: true,
     omissionRate: result.omissionRate,
     flagged,
     reason: flagged
-      ? `omission rate ${result.omissionRate.toFixed(3)} is above the calibrated ${calibration.suggestedThreshold.toFixed(3)} — content Tesseract read is missing from the VLM transcription`
-      : `omission rate ${result.omissionRate.toFixed(3)} is within the calibrated baseline (threshold ${calibration.suggestedThreshold.toFixed(3)})`,
+      ? `omission rate ${result.omissionRate.toFixed(3)} is above the calibrated ${threshold.toFixed(3)} — content Tesseract read is missing from the VLM transcription`
+      : `omission rate ${result.omissionRate.toFixed(3)} is within the calibrated baseline (threshold ${threshold.toFixed(3)})`,
   };
 }

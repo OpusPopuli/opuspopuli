@@ -24,6 +24,7 @@ import {
   scoreDivergence,
   calibrateDivergence,
   omissionSignal,
+  guardAvailability,
   type DivergenceResult,
 } from "./scoring/divergence.js";
 
@@ -245,11 +246,13 @@ async function main(): Promise<void> {
     id: r.id,
     signal: omissionSignal(r.divergence, cal),
   }));
-  const [first] = signals;
-  if (first && !first.signal.available) {
+  // Asked of the calibration, not of a row: availability is the same for every
+  // pair, and reading it off signals[0] would hide that assumption.
+  const gate = guardAvailability(cal);
+  if (!gate.available) {
     lines.push(
       "",
-      `GUARD: unavailable — ${first.signal.reason}`,
+      `GUARD: unavailable — ${gate.reason}`,
       "No threshold is emitted, and none should be inferred from these numbers.",
     );
   } else {

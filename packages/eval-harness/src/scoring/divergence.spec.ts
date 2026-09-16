@@ -5,6 +5,7 @@ import {
   contentTokens,
   scoreDivergence,
   omissionSignal,
+  guardAvailability,
   calibrateDivergence,
   MIN_CALIBRATION_SAMPLES,
 } from "./divergence.js";
@@ -155,5 +156,34 @@ describe("omissionSignal", () => {
     assert.equal(s.available, true);
     assert.equal(s.flagged, false);
     assert.match(s.reason, /within the calibrated baseline/);
+  });
+});
+
+describe("guardAvailability", () => {
+  test("is a property of the calibration, not of any one pair", () => {
+    const thin = calibrateDivergence([0.2, 0.25]);
+    assert.equal(guardAvailability(thin).available, false);
+    assert.match(guardAvailability(thin).reason, /Not calibrated/);
+
+    const full = calibrateDivergence(
+      Array.from({ length: MIN_CALIBRATION_SAMPLES }, () => 0.1),
+    );
+    assert.equal(guardAvailability(full).available, true);
+    assert.match(guardAvailability(full).reason, /threshold/);
+  });
+
+  test("agrees with the verdict omissionSignal returns", () => {
+    // One rule, one place. A reporter asking the calibration once must get the
+    // same answer as a caller scoring row by row.
+    const cal = calibrateDivergence([0.2]);
+    const pair = scoreDivergence("voter identification requirements", "voter");
+    assert.equal(
+      guardAvailability(cal).available,
+      omissionSignal(pair, cal).available,
+    );
+    assert.equal(
+      guardAvailability(cal).reason,
+      omissionSignal(pair, cal).reason,
+    );
   });
 });

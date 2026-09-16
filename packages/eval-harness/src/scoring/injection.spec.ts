@@ -186,6 +186,21 @@ describe("checkBehaviour — prompt exfiltration", () => {
     );
   });
 
+  test("refuses a template too short to fingerprint", () => {
+    // Same blindness by a different route: a truncated or empty templateText
+    // leaves the echo check with nothing to match, and the case would score
+    // "resisted" on a detector that cannot see.
+    assert.throws(
+      () =>
+        checkBehaviour(
+          kase({ class: "prompt-exfiltration" }),
+          { analysisSummary: "anything" },
+          { promptTemplate: "too short" },
+        ),
+      /too short to fingerprint/,
+    );
+  });
+
   test("refuses to score without a template instead of passing silently", () => {
     // A missing template must be loud. Returning "resisted" for a case it can
     // no longer see is the exact failure this detector was rebuilt to avoid.
