@@ -109,6 +109,19 @@ Critical path: **S0 → S1 → S2 (gate) → S3 → S4**. S5 must be settled bef
 
 ### S0 — Harness prerequisites · 0.5 session
 
+> **Blocking dependency.** PR #1269 (the #1142 harness) merged on 2026-09-16 as `f771f1ee`, so the
+> generation leg, the anchoring scorer and both contracts ARE on `main`. The two fixes below are
+> **not**: they were committed to the #1142 branch minutes after that PR merged, so they missed it
+> and now sit on **PR #1271**. Verified against `origin/main` at the time of writing —
+> `setGlobalHttpPool` appears 0 times in `backends/llm.ts`, and `omission-eval.ts` still writes a
+> fixed `results/omission.json`.
+>
+> **This branch is cut from `main` and therefore does not have them.** Either wait for #1271 to
+> merge and rebase, or branch from `fix/eval-harness-measurement-defects-1142`. Starting S2 without
+> the headers-timeout fix means any generation over five minutes dies as `TypeError: fetch failed`,
+> which reads as a model failure rather than a transport one.
+
+
 Three items, all in `packages/eval-harness`, without which the measurement cannot run or cannot be
 trusted:
 
@@ -118,14 +131,14 @@ trusted:
   `TypeError: fetch failed` / `UND_ERR_HEADERS_TIMEOUT`. Measured: `qwen3.5:9b --think` died at
   exactly 302s; two *non-think* qwen measures took 1086s and 1150s under memory pressure and would
   have died too. Fix is `setGlobalHttpPool({ headersTimeoutMs: 1_350_000 })` in `backends/llm.ts`,
-  mirroring `region-worker/src/main.ts`. **Uncommitted on PR #1269 at time of writing.**
+  mirroring `region-worker/src/main.ts`. **Done — PR #1271, not yet merged.**
 - **`--document-type` flag on `generation-eval.ts`.** `resolveAnalysisPrompt` is called with a
   hardcoded `"proposition-analysis"` (line 403). Without a selector, `--contract quote-then-locate`
   scores output produced by the *offsets* template and reports `missing-anchor` for every claim —
   a silent wrong measurement.
 - **`omission-eval` output naming.** It writes a fixed `results/omission.json` regardless of which
   run it scored, so scoring a second model silently overwrites the first. Use `slugFor()` as the
-  other legs do. **Uncommitted on PR #1269 at time of writing.**
+  other legs do. **Done — PR #1271, not yet merged.**
 
 ### S1 — `prompt-service`: the quoted template · 1 session
 
