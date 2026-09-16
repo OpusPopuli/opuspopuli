@@ -25,6 +25,24 @@ From roadmap R3, verbatim:
 Both are addressed on the critical path (S0 → S1 → S2 → S3 → S4). Everything after S4 is
 completeness, and S8 is the designated cut if the exits come under time pressure.
 
+### 1.1 Exit status — 2026-09-16: both met
+
+| Exit | Status | Evidence |
+| ---- | ------ | -------- |
+| ≥50 gold items, end to end | **Met — 56** (35 EN + 21 ES) | `fixtures/retrieval-propositions.json`, re-baselined post-#1261 across 69 documents |
+| Symmetry metrics produce numbers | **Met** | `src/symmetry-eval.ts`, `src/scoring/symmetry.ts`; 5 pairs / 10 measures, control pair clean (length ratio 0.95, provisions 5-v-5) |
+
+All ten subtasks landed, S0 through S9. S8 — the designated cut — was run rather than dropped and
+returned a **negative** result: the Tesseract/VLM divergence signal sits inside Tesseract's own
+noise floor, so `scoring/divergence.ts` records the measurement but `omissionSignal()` refuses to
+return a verdict until `MIN_CALIBRATION_SAMPLES` known-good pairs exist. A negative result recorded
+is the outcome this harness exists to make possible.
+
+Two things this work produced that belong to other issues, filed rather than patched here per §3:
+**#1263** (proponent contact details in `propositions.full_text` reach the analysis prompt and the
+public page unredacted in production) and the anchoring measurement — **8/121, under 7%** — that
+argues for prioritising **#1212**.
+
 ## 2. Starting state — what exists and what does not
 
 | Leg                                                        | State                                                                                     |
