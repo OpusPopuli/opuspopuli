@@ -328,6 +328,30 @@ export class RegionResolver {
   }
 
   /**
+   * Backfill proposition summaries from the Legislative Counsel's Digest
+   * already stored on `fullText` (#1261). Returns how many were written.
+   *
+   * Exists because the sync path can only repair a measure its source still
+   * lists. Five Secretary of State measures were dropped from the
+   * qualified-ballot-measures page when it rolled to the next election cycle;
+   * they are real measures, they still have rows, and re-syncing will never
+   * touch them again. This reads their digest from the database instead.
+   *
+   * Safe to re-run: only a blank or title-echo summary is replaced, so a
+   * genuine Attorney General title-and-summary is never overwritten and a
+   * second run finds nothing to do.
+   */
+  @Mutation(() => Int)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 50 })
+  async backfillPropositionSummaries(
+    @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
+  ): Promise<number> {
+    return this.regionService.backfillPropositionSummaries(limit);
+  }
+
+  /**
    * Get paginated meetings
    */
   @Public()

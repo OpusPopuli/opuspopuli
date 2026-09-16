@@ -931,6 +931,20 @@ export class RegionSyncService implements OnModuleDestroy {
   }
 
   /**
+   * Backfill proposition summaries from the Legislative Counsel's Digest
+   * stored on `fullText` (#1261). Delegates to
+   * {@link PropositionsSyncService}. Returns how many were written.
+   *
+   * Repairs rows the sync path cannot reach: a measure delisted from its
+   * source is never re-extracted, so its summary can only be fixed from text
+   * already in the database.
+   */
+  async backfillPropositionSummaries(limit?: number): Promise<number> {
+    if (!this.propositionsSyncService) return 0;
+    return this.propositionsSyncService.backfillSummariesFromDigest(limit);
+  }
+
+  /**
    * Enqueue force-summary jobs for existing minutes rows (#813). Delegates to
    * {@link MeetingsSyncService}. Returns the number of jobs enqueued.
    */

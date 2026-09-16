@@ -8944,6 +8944,31 @@
             "args": [
               {
                 "defaultValue": null,
+                "name": "limit",
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "backfillPropositionSummaries",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
                 "name": "input",
                 "type": {
                   "kind": "NON_NULL",
