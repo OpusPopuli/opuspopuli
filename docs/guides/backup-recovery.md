@@ -35,8 +35,8 @@ running docker.
 # Local dev — typically the external SSD
 mkdir -p /Volumes/OpusPopuli/Development/db-backups
 
-# Mac Studio production
-mkdir -p /Users/opuspopuli/backups
+# Mac Studio production (this is what BACKUPS_DIR_HOST is set to on us-ca)
+mkdir -p /Volumes/OpusPopuli/backups
 ```
 
 ### 2. Configure environment variables
@@ -122,26 +122,26 @@ The scheduler runs `backup-db.sh` once per day at 03:00 in
 docker logs -f opuspopuli-backup
 
 # History (queryable with jq)
-tail -f /Volumes/OpusPopuli/Development/db-backups/backup.log | jq -c .
+tail -f "${BACKUPS_DIR_HOST}"/backup.log | jq -c .
 
 # Recent successful backups
-jq -c 'select(.status == "ok") | {ts, file, bytes, duration_ms}' \
-   /Volumes/OpusPopuli/Development/db-backups/backup.log | tail -7
+jq -c 'select(.status == "ok") | {ts, file, bytes, duration_s}' \
+   "${BACKUPS_DIR_HOST}"/backup.log | tail -7
 ```
 
 ### What success looks like
 
 ```json
 {
-  "ts": "2026-06-08T10:00:00Z",
+  "ts": "2026-09-16T10:02:50Z",
   "event": "backup",
   "status": "ok",
-  "file": "opuspopuli-db-8b0cb16-20260608T100000Z.dump.gz",
-  "bytes": 3852177,
-  "duration_ms": 4129,
-  "git_sha": "8b0cb16",
+  "file": "opuspopuli-db-unknown-20260916T100000Z.dump.gz",
+  "bytes": 1960059069,
+  "duration_s": 170,
+  "git_sha": "unknown",
   "retention_days": 7,
-  "retention_purged": 1
+  "retention_purged": 0
 }
 ```
 
@@ -370,7 +370,7 @@ docker exec opuspopuli-backup pgrep -af pg_dump
 If no `pg_dump` is running, remove the stale lockfile:
 
 ```bash
-rm /Volumes/OpusPopuli/Development/db-backups/.backup.lock
+rm "${BACKUPS_DIR_HOST}"/.backup.lock
 ```
 
 ## See also
