@@ -586,6 +586,70 @@ makes that fail loudly instead.
 Scoring reads payloads retained by a previous generation run, so adding this metric cost an
 embedding pass rather than another round of inference.
 
+## OCR cross-check (E-24) — the metric did not work, and found something else
+
+The idea: run Tesseract alongside the vision model as a censorship/omission guard. A VLM is far
+better at reading a photograph — Tesseract matched **0 of 5** real production scans — but it is
+better in a way that carries risk: it *understands* the page, so it can paraphrase, normalise
+and in principle omit. Tesseract cannot decide part of a page is uninteresting. So a token
+Tesseract read and the VLM did not emit should be a token that was on the page.
+
+### The signal is swamped by Tesseract's noise floor
+
+| scan | tess tokens | vlm tokens | shared | "omission" | overlap |
+| --- | --- | --- | --- | --- | --- |
+| `0007A1-full-frame` | 104 | 221 | 38 | 0.635 | 0.132 |
+| `0007A1-cropped` | 111 | 88 | 15 | 0.865 | 0.082 |
+
+Those omission rates are **not measurements of omission**. Look at what the metric says the VLM
+"dropped":
+
+```
+tothe, arms, rare, crea, sary, erat, chro, epes, salo, ommend, ions, nous
+surmitted, voth, arne, lovin, lcuain, semmary, gemma, postal, deri, regrets, coir, tonal
+```
+
+That is Tesseract mis-reading words — `tothe` for "to the", `semmary` for "summary",
+`surmitted` for "submitted", `ommend` for a fragment of "recommend". The four-character filter
+was meant to hold this back and does not come close. **On a photograph, Tesseract's error rate
+is high enough that its output cannot serve as ground truth for what was on the page**, which
+is the assumption the whole guard rests on.
+
+Recorded as a negative result rather than dressed up: 0.635 and 0.865 describe Tesseract, not
+the VLM. A guard shipped on these numbers would fire constantly and be switched off within a
+week. The harness refuses to emit a threshold (it wants ≥10 known-good pairs and has 2, both of
+one blank form), so nothing here is load-bearing — but the deeper problem is not sample size,
+it is that the second reader is too noisy to referee the first.
+
+If E-24 is still wanted, it needs a different second reader, or matching at a level coarser
+than tokens (line or field presence), not more images.
+
+### What it did find: the production OCR prompt triggers a runaway
+
+The cropped scan produced **167,787 characters containing 88 unique content words** — roughly
+**1,907 characters per unique word**. That is a degenerate repetition loop, not a transcription.
+The full-frame scan of the same document came back at 122 chars per unique word, which is
+normal.
+
+It is **prompt-dependent**. The shipped `ocr-transcription-document` prompt is 41 characters —
+*"Return the natural text of this document."* — and on this image it runs past ten minutes
+producing repetition. The instruction `"Transcribe all visible text verbatim."` returns a clean
+**20,253-character** transcription of the same image in **88 seconds**.
+
+**The existing OCR leg cannot see this.** It scores by embedding the transcription and checking
+which measure it retrieves, and repeated-but-correct text still embeds and retrieves fine —
+which is why qwen2.5vl has been recorded as rank-1 on every run. A runaway that costs minutes
+of inference and returns garbage to a citizen scores as a pass.
+
+### A correctness fix that came out of the plumbing
+
+The first two runs died with a bare `fetch failed`. Ollama sends no response headers on a
+non-streaming request until generation completes, and undici's `headersTimeout` is 300s and is
+**not** governed by `AbortSignal.timeout` — so the timeout knob the harness offered could never
+have helped, and the error read as the server being down. The call now streams, as
+`OllamaLLMProvider` does, so headers arrive immediately and the only limit that applies is the
+gap between chunks.
+
 ## Model provenance
 
 Every run against a served model records what actually answered:
