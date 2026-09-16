@@ -427,6 +427,62 @@ and the model stopped early. So 12.7 agg tok/s is not comparable to the 20–26 
 generation leg reports on full analyses. The across-lane comparison is unaffected: all lanes run
 identical prompts.
 
+## Is there headroom for a faster runtime? (the MLX question, step 1)
+
+Before installing anything or migrating a runtime, the cheap question: **is a speedup even
+available?** If decode is memory-bandwidth-bound and already near the ceiling, no runtime can
+conjure throughput, and MLX or vLLM-Metal would buy nothing. If it is well under, headroom
+exists and is worth chasing.
+
+### Decode is bandwidth-dominated
+
+If decode is bandwidth-bound, `weights × tok/s` should be roughly **constant** across model
+sizes. Measured, single stream, all `Q4_K_M` on the same Ollama build:
+
+| model | weights | tok/s | implied GB/s |
+| --- | --- | --- | --- |
+| `olmo-3:7b-instruct` | 4.47 GB | 20.3 | 90.7 |
+| `qwen3.5:9b` | 6.59 GB | 12.9 | 85.0 |
+| `olmo-3.1:32b-instruct` | 19.48 GB | 5.4 | 105.2 |
+
+**85–105 GB/s across a 4.4× range of model sizes** — 24% variation. That is the signature of
+bandwidth-bound decode. A bandwidth model fitted on the two small models predicted 4.5 tok/s for
+the 32B; it measured 5.4, within 20%. The largest model shows the *highest* implied bandwidth,
+which is what fixed per-token overheads amortising over a longer step looks like.
+
+### There is headroom, and it is bounded at roughly 2×
+
+Achievable memory bandwidth, measured on this machine rather than taken from a spec sheet
+(512 MB parallel `memcpy`, read+write):
+
+```
+parallel memcpy (read+write): 235 GB/s
+```
+
+So decode runs at **36–45% of achievable bandwidth**, leaving **2.2–2.8×** of headroom *if* a
+runtime could saturate memory.
+
+### What this does and does not license
+
+**It does not settle the MLX question — it bounds it.** A speedup is available in principle, and
+anyone promising an order of magnitude is wrong. Whether MLX captures any of it is an empirical
+question this measurement cannot answer, for three reasons worth stating:
+
+- **`Q4_K_M` dequantises on the fly.** Part of the 55–64% gap is compute per weight read, not
+  memory inefficiency, and MLX pays that cost too. How much of the gap is dequant versus kernel
+  overhead is not separable from outside.
+- **The traffic figure understates itself.** Decode also reads the KV cache and writes
+  activations, so real bytes-per-token exceed the weight size — meaning true utilisation is
+  somewhat higher than 36–45% and the headroom somewhat smaller.
+- **The 235 GB/s ceiling is CPU-side.** On unified memory the GPU's achievable bandwidth is
+  related but not identical, so this is a reference point rather than the GPU's exact ceiling.
+
+The useful conclusion for R7: a runtime migration could plausibly be worth **up to about 2×**,
+against the real costs §1.8 records — a native host process outside compose, and therefore
+outside `op-deploy` and its observability. That is a tractable trade to argue about. It is a very
+different conversation from the 10× a benchmark headline might suggest, and it is now grounded in
+three measurements rather than a claim.
+
 ## Model provenance
 
 Every run against a served model records what actually answered:
