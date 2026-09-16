@@ -427,66 +427,69 @@ and the model stopped early. So 12.7 agg tok/s is not comparable to the 20–26 
 generation leg reports on full analyses. The across-lane comparison is unaffected: all lanes run
 identical prompts.
 
-## MLX vs Ollama — measured, with a correction to how it was first framed
+## MLX vs Ollama — definitive: the win is the model, not the runtime
 
-### Correction: the step-1 headroom figure was computed from the wrong number
+One protocol for every number below: warm on prompt 0, measure on prompts 1–3, take the median,
+never reuse a prompt. Prefill and decode separated, because they behave differently.
 
-An earlier revision of this section reported decode running at **36–45% of achievable
-bandwidth with 2.2–2.8× of headroom**. That was wrong, and the error is worth naming because it
-is the same shape as several others this harness has caught.
+| runtime | model | weights | prefill | decode | implied |
+| --- | --- | --- | --- | --- | --- |
+| Ollama | `olmo-3:7b-instruct` `Q4_K_M` | 4.47 GB | 454/s | 42.44/s | 190 GB/s |
+| MLX | `Olmo-3-7B-Instruct-4bit` | 4.11 GB | 446/s | 48.44/s | 199 GB/s |
+| Ollama | `qwen3.5:9b` `Q4_K_M` | 6.59 GB | 331/s | 19.93/s | 131 GB/s |
+| MLX | `Qwen3.5-9B-4bit` | 5.95 GB | 375/s | 42.96/s | 256 GB/s |
 
-It used the throughput leg's **aggregate** tok/s — which includes prompt processing and
-per-request overhead — as though it were the decode rate. On this workload the model answers in
-two sentences and stops after ~65 tokens, so a 4,000-character prompt dominates the measurement.
-Ollama reports the two phases separately, and decode-only is **26.97 tok/s, not 12.9**. Implied
-bandwidth is therefore **178 GB/s, not 85**.
+### MLX's advantage is almost entirely qwen-specific
 
-The corrected conclusion is different in kind: Ollama is much closer to the memory ceiling than
-the first pass suggested, and the available win is smaller than advertised — but it is real, and
-MLX captures it.
+- **On OLMo — the architecture the roadmap nominates — MLX and Ollama are equivalent.** 48.44 vs
+  42.44 tok/s is 1.14×, and on bytes moved per second it is **1.05×**. Prefill is a dead heat
+  (446 vs 454).
+- **On qwen it is large**: 2.16× decode, 1.95× on bytes/s.
 
-### The two phases behave oppositely
+The asymmetry is Ollama's, not MLX's. Ollama reaches **190 GB/s** implied on OLMo and only
+**131 GB/s** on qwen — its `qwen35` support is the outlier. That is consistent with the other
+qwen-specific defect measured here: Ollama logs *"model architecture does not currently support
+parallel requests"* for `qwen35` and silently loads with `Parallel:1`, while `olmo3` gets its
+four KV slots. Both point at `qwen35` being newly and incompletely supported in this build.
 
-`qwen3.5:9b`, same prompt, decode-only and prefill-only measured separately:
+### The decision this settles
 
-| phase | Ollama `Q4_K_M` (6.59 GB) | MLX 4-bit (5.95 GB) | winner |
-| --- | --- | --- | --- |
-| **decode** | 26.97 tok/s · 178 GB/s implied | **49.32 tok/s · 293 GB/s implied** | **MLX 1.83×** |
-| **prefill** | **1,087 tok/s** | 442 tok/s | **Ollama 2.46×** |
+| change | speedup |
+| --- | --- |
+| stay on Ollama, switch `qwen3.5:9b` → `olmo-3:7b-instruct` | **2.13×** |
+| keep `qwen3.5:9b`, migrate the runtime to MLX | 2.16× |
 
-**MLX is not simply faster.** It wins the bandwidth-bound phase decisively and *loses* the
-compute-bound phase by almost as much. Reporting a single "MLX is 3× faster" — which is what the
-naive aggregate comparison produced before the phases were separated — would have been wrong in
-both directions at once.
+**These are the same win.** The model switch delivers essentially all of it; the runtime
+migration adds about 1% on top — and costs what §1.8 records: a native host process outside
+compose, and therefore outside `op-deploy` and its observability.
 
-Note the quantisations are not identical (`Q4_K_M` k-quant vs MLX affine `group_size=64`), so
-MLX's weights are 10% smaller and a raw tok/s comparison flatters it. The implied-bandwidth
-column normalises that; MLX still leads 1.65× on bytes moved per second.
+And the model switch is a direction the project already wants for provenance reasons. So on
+throughput grounds there is **no case for migrating off Ollama**. If the platform moves to OLMo,
+Ollama serves it at parity with MLX.
 
-### What it means for the actual workload
+### Two earlier framings on this page were wrong, and why
 
-| workload | Ollama | MLX | |
-| --- | --- | --- | --- |
-| short prompt / short output (709 / 400) | 15.5s | 9.7s | **1.59×** |
-| proposition analysis, typical (2,500 / 1,400) | 54.2s | 34.0s | **1.59×** |
-| long measure (6,000 / 1,400) | 57.4s | 42.0s | **1.37×** |
+Recorded rather than quietly replaced, because both errors are instructive:
 
-**Crossover: Ollama wins whenever output is under ~8% of prompt length.** Nothing in the
-analysis pipeline is near that — proposition analysis generates about 56% of its prompt length —
-so MLX wins there. But it is worth knowing the shape exists, because an extraction task with a
-huge document and a small structured payload sits on the other side of it, and so might OCR.
+1. **"36–45% of achievable bandwidth, 2.2–2.8× headroom."** Computed from the throughput leg's
+   *aggregate* tok/s, which includes prefill and per-request overhead. On this workload the model
+   answers in two sentences and stops, so a 4,000-character prompt dominated the figure.
+2. **"Ollama prefills 2.46× faster than MLX."** That 1,087 tok/s came from a measurement whose
+   warm-up used the *same prompt*, so Ollama's prompt cache served it and prefill was largely
+   skipped. Measured on an unseen prompt it is 331 tok/s — and MLX is slightly *ahead* on prefill,
+   not far behind.
 
-### Reading this against the other runtime findings
+Both were single-sample measurements of the wrong quantity, and both pointed somewhere real.
+Variance is worth noting too: qwen decode read 27.07 tok/s single-sample and 19.93 as a
+median-of-three. The OLMo-versus-qwen gap of ~2.1× is far larger than that noise; nothing else
+here should be quoted to two significant figures.
 
-- **This is kernel efficiency, not batching.** Concurrency is dead on this hardware for both
-  architectures (see above), so MLX's win is entirely per-token and would not compound with
-  parallel requests.
-- **~1.6× end-to-end is a real number to weigh** against §1.8's cost: a native host process
-  outside compose, and therefore outside `op-deploy` and its observability.
-- **`implied GB/s` is an upper bound on traffic.** Embedding and `lm_head` matrices are not fully
-  read per token, so both figures overstate bytes moved — which is why MLX's 293 GB/s can exceed
-  the 235 GB/s CPU-side `memcpy` ceiling without either number being wrong. The *ratio* is the
-  trustworthy part.
+### Still unmeasured
+
+Quality at matched quantisation — the 8-bit comparison R3 actually asked for — and the 32B at
+either runtime. These numbers also live outside the harness: they were produced by scripts in a
+scratchpad, not by `results/` with recorded provenance, because `probeModel()` is Ollama-only.
+By this package's own standard that makes them a well-supported claim rather than evidence.
 
 ## Model provenance
 
