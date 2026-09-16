@@ -24,7 +24,8 @@
  * Usage:
  *   PROMPT_SERVICE_URL=http://localhost:3210 PROMPT_SERVICE_API_KEY=... \
  *     pnpm --filter @opuspopuli/eval-harness eval:generation -- \
- *       --model qwen3.5:9b [--think] [--limit 3] [--contract quote-then-locate]
+ *       --model qwen3.5:9b [--think] [--limit 3] \
+ *       [--contract quote-then-locate] [--document-type proposition-analysis-quoted]
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -59,6 +60,9 @@ import { scoreSourceHierarchy } from "./scoring/source-hierarchy.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
+
+/** The template production runs. Overridden with --document-type to measure a variant. */
+const DEFAULT_DOCUMENT_TYPE = "proposition-analysis";
 
 interface SourceItem {
   externalId: string;
@@ -357,6 +361,12 @@ async function main(): Promise<void> {
   const thinkWasExplicit =
     argv.includes("--think") || argv.includes("--no-think");
   const contract = (arg("contract") ?? "offsets") as AnchorContract;
+  // Which prompt-service template to measure. `resolveAnalysisPrompt` resolves
+  // `document-analysis-<documentType>`; this was pinned to the default, so
+  // --contract quote-then-locate scored output produced by the OFFSETS template
+  // and reported missing-anchor for every claim. A contract the prompt never
+  // asked for measures nothing, and reads as the contract failing (#1212).
+  const documentType = arg("document-type") ?? DEFAULT_DOCUMENT_TYPE;
   const limit = arg("limit") ? Number.parseInt(arg("limit")!, 10) : undefined;
   const pick = arg("measures")
     ?.split(",")
@@ -400,7 +410,7 @@ async function main(): Promise<void> {
       // cannot silently change the instruction being measured.
       prompt = await resolveAnalysisPrompt(
         db,
-        "proposition-analysis",
+        documentType,
         formatPropData(item),
       );
 
@@ -434,6 +444,7 @@ async function main(): Promise<void> {
     think,
     maxTokens: backend.maxTokens,
     contract,
+    documentType,
     calibration: scoreCalibration(results.flatMap((r) => r.claims)),
     prompt: prompt && {
       name: prompt.templateName,
@@ -446,8 +457,15 @@ async function main(): Promise<void> {
 
   mkdirSync(join(ROOT, "results"), { recursive: true });
   // The slug carries the quantization: two quantizations of one model are
-  // different measurements and must not overwrite each other.
-  const slug = `${slugFor(provenance)}${think ? "-think" : ""}-${contract}`;
+  // different measurements and must not overwrite each other. The template
+  // joins it for the same reason — two templates scored under one contract are
+  // two measurements — but only when non-default, so the recorded baselines
+  // keep their filenames and stay comparable.
+  const typeSuffix =
+    documentType === DEFAULT_DOCUMENT_TYPE
+      ? ""
+      : `-${documentType.replace(/[^a-z0-9]+/gi, "-")}`;
+  const slug = `${slugFor(provenance)}${think ? "-think" : ""}-${contract}${typeSuffix}`;
   const path = join(ROOT, "results", `generation-${slug}.json`);
   writeFileSync(path, `${JSON.stringify(out, null, 2)}\n`);
   console.log(`\nwritten: ${path.replace(ROOT, ".")}`);
