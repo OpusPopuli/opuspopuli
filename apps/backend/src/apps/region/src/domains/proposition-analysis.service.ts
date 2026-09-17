@@ -4,6 +4,8 @@ import {
   type PropositionAnalysisClaim,
   type PropositionAnalysisSection,
   type PropositionExistingVsProposed,
+  locateQuote,
+  findContactDetails,
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
@@ -455,21 +457,11 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       prop.fullText ?? '',
     );
 
-    const claims = Array.isArray(parsed.analysisClaims)
-      ? parsed.analysisClaims
-          .filter(
-            (c): c is PropositionAnalysisClaim =>
-              !!c && typeof c.claim === 'string' && typeof c.field === 'string',
-          )
-          .map((c) => ({
-            claim: c.claim,
-            field: c.field,
-            sourceStart: clamp(c.sourceStart),
-            sourceEnd: clamp(c.sourceEnd),
-            confidence: c.confidence,
-          }))
-          .filter((c) => c.sourceEnd > c.sourceStart)
-      : [];
+    const claims = this.normalizeClaims(
+      Array.isArray(parsed.analysisClaims) ? parsed.analysisClaims : [],
+      prop.fullText ?? '',
+      clamp,
+    );
 
     return {
       analysisSummary: summary,
@@ -505,6 +497,123 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
    * isn't in fullText fall back to clamped LLM offsets but still get
    * gap-closed against neighbours.
    */
+  /**
+   * Turn the model's claims into citations, deriving offsets from the quote.
+   *
+   * Under the quote-then-locate contract (#1212) the model emits a verbatim
+   * `sourceQuote` and no offsets, because offsets are arithmetic over tokens
+   * and it cannot do them — measured anchoring under the old contract was 2%.
+   * Code locates the quote instead, exactly as `normalizeSections` below
+   * already does for section headings ("LLMs cannot count characters
+   * precisely"). The locator is shared with the eval harness via
+   * @opuspopuli/common so the measured rate describes this code path.
+   *
+   * Fails CLOSED. A quote that cannot be located is dropped rather than
+   * rendered, matching the petition-verification precedent where an unmatched
+   * scan degrades to unverified instead of guessing. The old contract's
+   * behaviour — clamping asserted offsets into range — is what let a cited
+   * span of `1240..5400` silently become `1240..2799` and render as precise
+   * attribution, so it is never applied to a quoted claim.
+   *
+   * Claims produced under the OLD contract (no `sourceQuote`) keep the legacy
+   * clamped path, so rows generated before the cutover still render while
+   * regeneration is pending.
+   */
+  private normalizeClaims(
+    raw: unknown[],
+    fullText: string,
+    clamp: (n: number | undefined) => number,
+  ): PropositionAnalysisClaim[] {
+    const valid = raw.filter(
+      (c): c is PropositionAnalysisClaim =>
+        !!c &&
+        typeof c === 'object' &&
+        typeof (c as PropositionAnalysisClaim).claim === 'string' &&
+        typeof (c as PropositionAnalysisClaim).field === 'string',
+    );
+
+    // Which contract produced this payload. Decided per PAYLOAD, not per
+    // claim: one template generates all of them, so a single quoted claim
+    // means the rest were meant to be quoted too. Without this, a model on
+    // the quoted contract that ignored the instruction and emitted offsets
+    // for one claim would fall through to the legacy clamped path and get a
+    // precise-looking citation from an asserted span — exactly the defect
+    // #1212 removes. Non-compliance is not hypothetical: 25-48% of quotes
+    // carried an ellipsis the template forbade.
+    const quotedContract = valid.some((c) => !!c.sourceQuote?.trim());
+
+    const out: PropositionAnalysisClaim[] = [];
+    let unlocatable = 0;
+    let redacted = 0;
+
+    for (const c of valid) {
+      const quote = c.sourceQuote?.trim();
+
+      if (!quote) {
+        if (quotedContract) {
+          // Quoted contract, but this claim carries no quote. There is
+          // nothing to verify against, so it cannot be a citation.
+          unlocatable++;
+          continue;
+        }
+        // Legacy offsets contract — unchanged behaviour.
+        const legacy = {
+          claim: c.claim,
+          field: c.field,
+          sourceStart: clamp(c.sourceStart),
+          sourceEnd: clamp(c.sourceEnd),
+          confidence: c.confidence,
+        };
+        if (legacy.sourceEnd > legacy.sourceStart) out.push(legacy);
+        continue;
+      }
+
+      // A verbatim quote copies whatever it cites. Measured citation zones
+      // put 2-5% of citations in the AG transmittal letter, which is exactly
+      // where full_text carries proponent postal addresses, emails and phone
+      // numbers unredacted (#1263). Under the offsets contract those were
+      // fabricated positions; under this one they would be a disclosure path
+      // into analysis_claims and onto the public page. Refuse rather than
+      // redact: a citation that cannot be shown in full is not a citation.
+      // Scan the claim text as well as the quote. The claim is model-written
+      // FROM the same source, so it can restate a proponent's email or phone
+      // in its own words even when the quoted span is clean — checking only
+      // the quote would leave the shorter path to disclosure open.
+      if (
+        findContactDetails(quote).length > 0 ||
+        findContactDetails(c.claim).length > 0
+      ) {
+        redacted++;
+        continue;
+      }
+
+      const located = locateQuote(quote, fullText);
+      if (!located) {
+        unlocatable++;
+        continue;
+      }
+
+      out.push({
+        claim: c.claim,
+        field: c.field,
+        sourceStart: located.start,
+        sourceEnd: located.end,
+        sourceQuote: quote,
+        verified: true,
+        confidence: c.confidence,
+      });
+    }
+
+    if (unlocatable > 0 || redacted > 0) {
+      this.logger.warn(
+        `Claim citations dropped: ${unlocatable} unlocatable, ${redacted} ` +
+          `containing contact details (of ${valid.length} claims)`,
+      );
+    }
+
+    return out;
+  }
+
   private normalizeSections(
     raw: unknown[],
     fullText: string,
