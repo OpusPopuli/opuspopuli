@@ -194,5 +194,9 @@
       "title": "Buscar",
       "meta": "Encuentra proyectos de ley y propuestas en tu región"
     }
+  },
+  "claims": {
+    "seeSourceQuote": "Ver el pasaje citado: «{{quote}}»",
+    "seeSourcePassage": "Ver el pasaje citado en el texto original"
   }
 }

@@ -111,6 +111,16 @@ export interface PropositionAnalysisClaim {
   field: string;
   sourceStart: number;
   sourceEnd: number;
+  /**
+   * The passage quoted verbatim from the source (#1212). Offsets above are
+   * derived from it, so this is what the reader should be shown — "chars
+   * 1432-1587" tells a voter nothing.
+   *
+   * Absent on analyses generated under the older offsets contract.
+   */
+  sourceQuote?: string;
+  /** True when the citation was verified by locating the quote in the source. */
+  verified?: boolean;
   confidence?: string;
 }
 
@@ -813,6 +823,8 @@ export const GET_PROPOSITION = gql`
         field
         sourceStart
         sourceEnd
+        sourceQuote
+        verified
         confidence
       }
       analysisSource
@@ -988,6 +1000,8 @@ export const REGENERATE_PROPOSITION_ANALYSIS = gql`
         field
         sourceStart
         sourceEnd
+        sourceQuote
+        verified
         confidence
       }
       analysisSource

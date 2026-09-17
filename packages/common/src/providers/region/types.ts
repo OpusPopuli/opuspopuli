@@ -135,6 +135,24 @@ export interface PropositionAnalysisClaim {
   sourceStart: number;
   /** Exclusive char offset where the supporting passage ends. */
   sourceEnd: number;
+  /**
+   * The passage the model quoted verbatim, under the quote-then-locate
+   * contract (#1212). Offsets above are DERIVED from this by locating it in
+   * `fullText` — the model no longer asserts them, because asking it for
+   * character positions produced a measured 2% accuracy.
+   *
+   * Absent on rows generated under the older offsets contract.
+   */
+  sourceQuote?: string;
+  /**
+   * Whether the citation was verified by locating `sourceQuote` in the source.
+   *
+   * Only ever true for a quote that code found. A claim that cannot be
+   * verified must not be rendered as a citation — fail closed, matching the
+   * petition-verification precedent where an unmatched scan degrades to
+   * unverified rather than guessing.
+   */
+  verified?: boolean;
   confidence?: "high" | "medium" | "low";
 }
 

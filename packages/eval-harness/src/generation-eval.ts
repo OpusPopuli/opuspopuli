@@ -61,6 +61,36 @@ import { scoreSourceHierarchy } from "./scoring/source-hierarchy.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
+/**
+ * Narrow the model's raw `analysisClaims` to the shape the scorers read.
+ *
+ * Deliberately explicit rather than `as EmittedClaim[]`. A cast cannot catch
+ * the producer and the scorer disagreeing about a field name, and that is
+ * exactly how quote-then-locate shipped: the scorer read `claim.quote` while
+ * the template emits `sourceQuote`, so every claim scored `missing-anchor`
+ * and the S2 gate could only report 0% (#1212). Naming the fields here makes
+ * a future rename a compile error instead of a silent zero.
+ */
+function toEmittedClaims(raw: unknown): EmittedClaim[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const c = (entry ?? {}) as Record<string, unknown>;
+    return {
+      claim: typeof c.claim === "string" ? c.claim : "",
+      field: typeof c.field === "string" ? c.field : "",
+      sourceStart:
+        typeof c.sourceStart === "number" ? c.sourceStart : undefined,
+      sourceEnd: typeof c.sourceEnd === "number" ? c.sourceEnd : undefined,
+      sourceQuote:
+        typeof c.sourceQuote === "string" ? c.sourceQuote : undefined,
+      confidence:
+        typeof c.confidence === "string" || typeof c.confidence === "number"
+          ? c.confidence
+          : undefined,
+    };
+  });
+}
+
 /** The template production runs. Overridden with --document-type to measure a variant. */
 const DEFAULT_DOCUMENT_TYPE = "proposition-analysis";
 
@@ -96,6 +126,8 @@ export interface MeasureResult {
     total: number;
     byVerdict: Record<string, number>;
     looksPartitioned: boolean;
+    /** True when no claim carried an anchor at all — see AnchoringScore. */
+    looksUnmapped: boolean;
     medianSpanChars?: number;
   };
   ms: number;
@@ -176,19 +208,32 @@ export function scoreOne(
   const grounding = scoreGrounding(prose, item.fullText);
   const abstention = scoreAbstention(payload, gold.fieldExpectations);
 
-  const claims: EmittedClaim[] = Array.isArray(payload.analysisClaims)
-    ? (payload.analysisClaims as EmittedClaim[])
-    : [];
+  const claims = toEmittedClaims(payload.analysisClaims);
   const anchoring = scoreAnchoring(claims, item.fullText, contract);
   // Where a citation POINTS matters as much as whether it resolves: a claim
   // about what the measure does, sourced from the proponent's covering letter,
   // cites a campaign document as if it were statute.
+  // Zone attribution runs on the span the citation RESOLVES to, not the one
+  // the model asserted. Under quote-then-locate the model emits no offsets at
+  // all — the locator derives them — so reading c.sourceStart scored zero
+  // claims and reported every zone as 0, which reads as "no transmittal
+  // citations" rather than "not measured". Under the offsets contract the
+  // resolved span is the validated one, so this is the better input there too.
   const hierarchy = scoreSourceHierarchy(
-    claims.map((c) => ({
-      claim: c.claim,
-      field: c.field,
-      sourceStart: c.sourceStart,
-      sourceEnd: c.sourceEnd,
+    anchoring.results.map((r, i) => ({
+      claim: r.claim,
+      field: r.field,
+      // Prefer the RESOLVED span, fall back to what the model asserted.
+      // Under quote-then-locate the model emits no offsets at all — the
+      // locator derives them — so the raw fields are always undefined and
+      // zone attribution scored zero claims, reporting every zone as 0. That
+      // reads as "no transmittal citations" rather than "not measured".
+      // The fallback matters for the offsets contract: `resolved` is unset
+      // for an out-of-range citation, and dropping those would silently move
+      // the recorded baselines in the plan's §2 rather than just fixing a
+      // dead measurement.
+      sourceStart: r.resolved?.start ?? claims[i]?.sourceStart,
+      sourceEnd: r.resolved?.end ?? claims[i]?.sourceEnd,
     })),
     item.fullText,
   );
@@ -216,6 +261,7 @@ export function scoreOne(
       total: anchoring.total,
       byVerdict: anchoring.byVerdict,
       looksPartitioned: anchoring.looksPartitioned,
+      looksUnmapped: anchoring.looksUnmapped,
       medianSpanChars: median(
         anchoring.results
           .map((r) => r.spanChars)
@@ -277,6 +323,14 @@ function report(results: MeasureResult[], header: string[]): string {
     `JSON valid        ${valid}/${n}`,
     `Claims anchored   ${anchoredTotal}/${claimsTotal}` +
       (claimsTotal ? ` (${pct(anchoredTotal / claimsTotal)})` : ""),
+    ...(results.some((r) => r.anchoring.looksUnmapped)
+      ? [
+          "  !! EVERY claim scored missing-anchor. That is far likelier to be a",
+          "     producer/scorer field mismatch than a model result — check that",
+          "     the template emits the field the scorer reads. A 0% here is NOT",
+          "     evidence the contract failed (#1212).",
+        ]
+      : []),
     `Fabricated figures ${fabricatedFigures.length}` +
       (fabricatedFigures.length ? ` — ${fabricatedFigures.join(", ")}` : ""),
     `Fabricated fields  ${abstainFab} (populated where the source cannot support it)`,

@@ -356,6 +356,157 @@ describe('PropositionAnalysisService', () => {
       expect(claims).toHaveLength(1);
     });
 
+    describe('quote-then-locate contract (#1212)', () => {
+      const quoted = (claims: unknown[]): string =>
+        JSON.stringify({
+          analysisSummary: 'Plain language summary of what the measure does.',
+          keyProvisions: ['Raises tax'],
+          fiscalImpact: '',
+          yesOutcome: 'A yes vote means change.',
+          noOutcome: 'A no vote means status quo.',
+          existingVsProposed: { current: 'Today', proposed: 'Tomorrow' },
+          analysisSections: [],
+          analysisClaims: claims,
+        });
+
+      const claimsFrom = async (
+        llmText: string,
+      ): Promise<Array<Record<string, unknown>>> => {
+        const built = await buildService({ llmText });
+        await built.service.generate('prop-1');
+        return built.db.proposition.update.mock.calls[0][0].data
+          .analysisClaims as Array<Record<string, unknown>>;
+      };
+
+      it('derives offsets from the quote instead of trusting the model', async () => {
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'ballots carry one question',
+              field: 'keyProvisions',
+              sourceQuote: 'shall consist of a single question.',
+              confidence: 'high',
+            },
+          ]),
+        );
+
+        expect(claims).toHaveLength(1);
+        expect(claims[0].verified).toBe(true);
+        // The offsets must slice the SOURCE back to the quoted passage — that
+        // is the whole contract: the model quotes, code locates.
+        const start = claims[0].sourceStart as number;
+        const end = claims[0].sourceEnd as number;
+        expect(FULL_TEXT.slice(start, end)).toBe(
+          'shall consist of a single question.',
+        );
+        expect(claims[0].sourceQuote).toBe(
+          'shall consist of a single question.',
+        );
+      });
+
+      it('tolerates a quote the model reflowed', async () => {
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'ballots carry one question',
+              field: 'keyProvisions',
+              sourceQuote: 'shall consist of\n   a single question.',
+            },
+          ]),
+        );
+        expect(claims).toHaveLength(1);
+        expect(claims[0].verified).toBe(true);
+      });
+
+      it('drops a claim whose quote is not in the source — fail closed', async () => {
+        // A paraphrase is the expected failure of this contract. It must not
+        // become a citation: the old contract clamped a bad span into range
+        // and rendered it as precise attribution, which is the defect #1212
+        // exists to remove.
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'invented',
+              field: 'keyProvisions',
+              sourceQuote: 'all homework is hereby abolished forthwith',
+            },
+          ]),
+        );
+        expect(claims).toHaveLength(0);
+      });
+
+      it('drops a quote carrying contact details (#1263)', async () => {
+        // A verbatim quote copies whatever it cites, and full_text carries
+        // proponent emails/phones/addresses unredacted. Refuse rather than
+        // publish them through a new field.
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'contact the proponent',
+              field: 'keyProvisions',
+              sourceQuote:
+                'Questions to jane.doe@example.com or (916) 555-0134',
+            },
+          ]),
+        );
+        expect(claims).toHaveLength(0);
+      });
+
+      it('drops a quote-less claim when the payload is on the quoted contract', async () => {
+        // One template generates the whole payload. A model that ignored the
+        // instruction and asserted offsets for one claim must not get a
+        // clamped, precise-looking citation via the legacy path.
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'properly quoted',
+              field: 'keyProvisions',
+              sourceQuote: 'A vacancy shall be filled.',
+            },
+            {
+              claim: 'asserted offsets, no quote',
+              field: 'keyProvisions',
+              sourceStart: 0,
+              sourceEnd: 40,
+            },
+          ]),
+        );
+        expect(claims).toHaveLength(1);
+        expect(claims[0].claim).toBe('properly quoted');
+      });
+
+      it('drops a claim whose own TEXT carries contact details', async () => {
+        // The claim is model-written from a source that contains them, so it
+        // can restate a phone number even when the quoted span is clean.
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'Proponents may be reached at (916) 555-0134',
+              field: 'keyProvisions',
+              sourceQuote: 'A vacancy shall be filled.',
+            },
+          ]),
+        );
+        expect(claims).toHaveLength(0);
+      });
+
+      it('still honours the legacy offsets contract when no quote is present', async () => {
+        const claims = await claimsFrom(
+          quoted([
+            {
+              claim: 'legacy claim',
+              field: 'keyProvisions',
+              sourceStart: 0,
+              sourceEnd: 20,
+            },
+          ]),
+        );
+        expect(claims).toHaveLength(1);
+        expect(claims[0].verified).toBeUndefined();
+        expect(claims[0].sourceEnd).toBe(20);
+      });
+    });
+
     it('returns false and records the reason when the LLM throws', async () => {
       const built = await buildService({
         llmThrows: new Error('LLM boom'),
@@ -440,6 +591,54 @@ describe('PropositionAnalysisService', () => {
       await built.service.generateMissing();
       expect(built.llm.generate).toHaveBeenCalledTimes(2);
       expect(built.db.proposition.update).toHaveBeenCalledTimes(2);
+    });
+
+    describe('prompt-revision staleness (#1212 S5)', () => {
+      // A revised template must actually cause regeneration. Before S5 this
+      // selected only rows with no analysis at all, so a prompt change
+      // regenerated nothing — while the backfill script's own comment claimed
+      // it handled exactly that case.
+      it('selects analyses written under a different prompt', async () => {
+        const built = await buildService({ findMany: [] });
+
+        await built.service.generateMissing();
+
+        const where = built.db.proposition.findMany.mock.calls[0][0]
+          .where as Record<string, unknown>;
+        expect(where.OR).toEqual(
+          expect.arrayContaining([
+            { analysisGeneratedAt: null },
+            { analysisPromptHash: null },
+            { analysisPromptHash: { not: PROMPT_HASH } },
+          ]),
+        );
+      });
+
+      it('resolves the live prompt hash once per batch, not once per row', async () => {
+        const built = await buildService({
+          findMany: [baseProp({ id: 'p1' }), baseProp({ id: 'p2' })],
+        });
+
+        await built.service.generateMissing();
+
+        expect(built.promptClient.getPromptHash).toHaveBeenCalledTimes(1);
+      });
+
+      it('falls back to never-analysed rows when the hash lookup fails', async () => {
+        // Failing open here would regenerate EVERY analysis on every run —
+        // hours of LLM time triggered by a transient prompt-service blip.
+        const built = await buildService({ findMany: [] });
+        built.promptClient.getPromptHash.mockRejectedValueOnce(
+          new Error('prompt-service unreachable'),
+        );
+
+        await built.service.generateMissing();
+
+        const where = built.db.proposition.findMany.mock.calls[0][0]
+          .where as Record<string, unknown>;
+        expect(where.OR).toBeUndefined();
+        expect(where.analysisGeneratedAt).toBeNull();
+      });
     });
 
     it('respects the maxPropsOverride cap when provided', async () => {

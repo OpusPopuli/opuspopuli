@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { redactContactDetails, findContactDetails } from "./redaction.js";
+import { redactContactDetails, findContactDetails } from "@opuspopuli/common";
 
 const run = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");

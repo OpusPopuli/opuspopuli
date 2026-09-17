@@ -194,5 +194,9 @@
       "title": "Search",
       "meta": "Find bills and propositions across your region"
     }
+  },
+  "claims": {
+    "seeSourceQuote": "See the cited passage: “{{quote}}”",
+    "seeSourcePassage": "See the cited passage in the source text"
   }
 }
