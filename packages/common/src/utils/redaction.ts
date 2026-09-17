@@ -6,6 +6,13 @@
  *
  * `propositions.full_text` is not only measure text. For AG-filed California
  * initiatives it includes the proponent's transmittal letter, and that letter
+ * Lives in @opuspopuli/common, not in the eval harness, because both the
+ * harness AND the region service need the same patterns: the harness to keep
+ * contact details out of committed fixtures, and the claim locator to refuse
+ * a quote that would copy them into analysis_claims and publish them
+ * (opuspopuli#1263, opuspopuli#1212 S3). Two copies would drift, and the
+ * copy that drifts is the one guarding production.
+ *
  * carries a named individual's postal address, personal email address and
  * phone number. Nine of the ten measures in `fulltext-propositions.json`
  * contain at least one; two carry street addresses that read as residential

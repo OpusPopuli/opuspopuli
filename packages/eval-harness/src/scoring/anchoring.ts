@@ -26,6 +26,7 @@
  * parameter so the same fixtures produce a before/after number instead of
  * being re-instrumented after the fact.
  */
+import { locateQuote } from "@opuspopuli/common";
 
 export type AnchorContract = "offsets" | "quote-then-locate";
 
@@ -235,61 +236,6 @@ function scoreOffsetClaim(claim: EmittedClaim, fullText: string): AnchorResult {
   };
 }
 
-/**
- * Shortest fragment worth treating as evidence of a location.
- *
- * A handful of characters matches almost anywhere in a statute; requiring a
- * real clause is what stops elision handling from degenerating into "find any
- * substring".
- */
-const MIN_FRAGMENT_CHARS = 20;
-
-/**
- * Locate a quote the model elided with an ellipsis.
- *
- * Models abbreviate mid-quote despite being told not to — 16 of 35 quotes in
- * the first measured run of the #1212 contract did, and that single behaviour
- * accounted for most of `quote-not-found`. An elided quote is not a
- * miscitation: the model is pointing at real, contiguous spans and dropping
- * the middle. Refusing it measures the model's formatting, not its citing.
- *
- * Deliberately strict, so this cannot become a way to anchor anything:
- *   - every fragment must be present, and IN ORDER (each search resumes where
- *     the previous fragment ended), so reordered or invented text fails;
- *   - fragments below MIN_FRAGMENT_CHARS are discarded rather than matched;
- *   - fewer than two surviving fragments is not an elision, so it falls
- *     through to the ordinary not-found path;
- *   - support is scored on what the model actually QUOTED, not on the spanned
- *     region, so bridging a wide gap cannot inflate it.
- *
- * Returns the outer span (first fragment start → last fragment end) alongside
- * the quoted text, so callers can see an over-broad citation via spanChars.
- */
-function locateElidedQuote(
-  needle: string,
-  haystack: string,
-): { start: number; end: number; quoted: string } | null {
-  const fragments = needle
-    .split(/\s*(?:\.\.\.|\u2026)\s*/)
-    .map((f) => f.trim())
-    .filter((f) => f.length >= MIN_FRAGMENT_CHARS);
-
-  if (fragments.length < 2) return null;
-
-  let cursor = 0;
-  let start = -1;
-  let end = -1;
-  for (const fragment of fragments) {
-    const at = haystack.indexOf(fragment, cursor);
-    if (at === -1) return null;
-    if (start === -1) start = at;
-    end = at + fragment.length;
-    cursor = end;
-  }
-
-  return { start, end, quoted: fragments.join(" ") };
-}
-
 function scoreQuoteClaim(claim: EmittedClaim, fullText: string): AnchorResult {
   const base = {
     claim: claim.claim,
@@ -303,41 +249,30 @@ function scoreQuoteClaim(claim: EmittedClaim, fullText: string): AnchorResult {
     return { ...base, verdict: "missing-anchor", anchored: false };
   }
 
-  // Code locates the quote — the whole point of #1212. Whitespace is
-  // normalized because a model reflowing a line break is not a wrong citation.
-  const needle = quote.replace(/\s+/g, " ");
-  const haystack = fullText.replace(/\s+/g, " ");
-  const at = haystack.indexOf(needle);
-
-  if (at === -1) {
-    const elided = locateElidedQuote(needle, haystack);
-    if (!elided) {
-      return { ...base, verdict: "quote-not-found", anchored: false };
-    }
-    // Support is scored on the quoted fragments, NOT on the spanned region:
-    // the material the model elided is not evidence it cited anything.
-    const elidedSupport = supportRatio(claim.claim, elided.quoted);
-    return {
-      ...base,
-      verdict: elidedSupport >= MIN_SUPPORT ? "anchored" : "unsupported",
-      anchored: elidedSupport >= MIN_SUPPORT,
-      resolved: {
-        start: elided.start,
-        end: elided.end,
-        text: haystack.slice(elided.start, elided.end),
-      },
-      spanChars: elided.end - elided.start,
-      support: elidedSupport,
-    };
+  // Code locates the quote — the whole point of #1212. The locator is shared
+  // with the region service via @opuspopuli/common, so this measures exactly
+  // what production will do rather than a harness-local approximation.
+  const located = locateQuote(quote, fullText);
+  if (!located) {
+    return { ...base, verdict: "quote-not-found", anchored: false };
   }
 
-  const support = supportRatio(claim.claim, needle);
+  // Support is scored on what the model actually QUOTED, never on the spanned
+  // region: material it elided is not evidence that it cited anything, and
+  // bridging a wide gap must not be able to inflate the score.
+  const support = supportRatio(claim.claim, located.quoted);
   return {
     ...base,
     verdict: support >= MIN_SUPPORT ? "anchored" : "unsupported",
     anchored: support >= MIN_SUPPORT,
-    resolved: { start: at, end: at + needle.length, text: needle },
-    spanChars: needle.length,
+    resolved: {
+      // Offsets are into the raw text, so slice the raw text. Slicing the
+      // normalised form with them mis-reports wherever the two differ.
+      start: located.start,
+      end: located.end,
+      text: fullText.slice(located.start, located.end),
+    },
+    spanChars: located.end - located.start,
     support,
   };
 }
