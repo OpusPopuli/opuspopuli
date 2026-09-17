@@ -109,23 +109,23 @@ Critical path: **S0 → S1 → S2 (gate) → S3 → S4**. S5 must be settled bef
 
 ### S0 — Harness prerequisites · 0.5 session
 
-> **Blocking dependency.** PR #1269 (the #1142 harness) merged on 2026-09-16 as `f771f1ee`, so the
-> generation leg, the anchoring scorer and both contracts ARE on `main`. The two fixes below are
-> **not**: they were committed to the #1142 branch minutes after that PR merged, so they missed it
-> and now sit on **PR #1271**. Verified against `origin/main` at the time of writing —
-> `setGlobalHttpPool` appears 0 times in `backends/llm.ts`, and `omission-eval.ts` still writes a
-> fixed `results/omission.json`.
+> **S0 is complete and merged — nothing here blocks you.** PR #1269 (the #1142 harness) merged as
+> `f771f1ee`, putting the generation leg, the anchoring scorer and both contracts on `main`. The
+> three fixes below missed that merge by minutes and landed separately in **PR #1271**
+> (`fb0d74d4`). Both are on `main`, and this branch is rebased onto it.
 >
-> **All three S0 items are now on PR #1271, and this branch — cut from `main` — has none of
-> them.** Either wait for #1271 to merge and rebase, or branch from
-> `fix/eval-harness-measurement-defects-1142`.
+> Verified against `origin/main` rather than assumed: `setGlobalHttpPool` appears in
+> `backends/llm.ts`, `--document-type` in `generation-eval.ts`, and `omission-eval.ts` writes a
+> per-run filename.
 >
-> The `--document-type` flag is a **hard** blocker: without it the S2 gate cannot point at the new
-> template at all. The headers-timeout fix is a **soft** one for S2 specifically — that gate runs
-> `olmo-3:7b-instruct --no-think` at ~26s per measure, far under the 300s ceiling — but two
-> *non-think* measures in the 2026-09-16 sweep still took 1086s and 1150s under memory pressure,
-> and would have died as `TypeError: fetch failed`, which reads as a model failure rather than a
-> transport one.
+> Kept here because the *reasons* still matter if any of it is ever reverted or re-derived. The
+> `--document-type` flag was the hard blocker — without it the S2 gate cannot point at the new
+> template at all. The headers-timeout fix was the soft one for S2 specifically, since that gate
+> runs `olmo-3:7b-instruct --no-think` at ~26s per measure, far under the 300s ceiling — but two
+> *non-think* measures in the 2026-09-16 sweep still took 1086s and 1150s under memory pressure and
+> would have died as `TypeError: fetch failed`, which reads as a model failure rather than a
+> transport one. That ceiling is still live in `knowledge`, `documents` and
+> `structural-analysis-worker` — filed as #1273.
 
 
 Three items, all in `packages/eval-harness`, without which the measurement cannot run or cannot be
@@ -137,16 +137,16 @@ trusted:
   `TypeError: fetch failed` / `UND_ERR_HEADERS_TIMEOUT`. Measured: `qwen3.5:9b --think` died at
   exactly 302s; two *non-think* qwen measures took 1086s and 1150s under memory pressure and would
   have died too. Fix is `setGlobalHttpPool({ headersTimeoutMs: 1_350_000 })` in `backends/llm.ts`,
-  mirroring `region-worker/src/main.ts`. **Done — PR #1271, not yet merged.**
+  mirroring `region-worker/src/main.ts`. **Done — merged in #1271 (`fb0d74d4`).**
 - **`--document-type` flag on `generation-eval.ts`.** `resolveAnalysisPrompt` was called with a
   hardcoded `"proposition-analysis"`. Without a selector, `--contract quote-then-locate` scores
   output produced by the *offsets* template and reports `missing-anchor` for every claim — a silent
   wrong measurement, and a false negative on the S2 gate below. The template now also joins the
   results slug when non-default, so two templates under one contract cannot overwrite each other.
-  **Done — PR #1271, not yet merged.**
+  **Done — merged in #1271 (`fb0d74d4`).**
 - **`omission-eval` output naming.** It writes a fixed `results/omission.json` regardless of which
   run it scored, so scoring a second model silently overwrites the first. Use `slugFor()` as the
-  other legs do. **Done — PR #1271, not yet merged.**
+  other legs do. **Done — merged in #1271 (`fb0d74d4`).**
 
 ### S1 — `prompt-service`: the quoted template · 1 session
 
