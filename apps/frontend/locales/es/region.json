@@ -1,89 +1,11 @@
 {
-  "search": {
-    "placeholder": "Buscar proyectos…",
-    "inputLabel": "Buscar proyectos de ley y proposiciones",
-    "pagePlaceholder": "Buscar proyectos de ley y proposiciones…",
-    "shortcutHint": "Pulsa / para buscar",
-    "jumpToBill": "Ir al proyecto",
-    "seeAll": "Ver todos los resultados de «{{query}}»",
-    "types": {
-      "all": "Todos · {{count}}",
-      "bills": "Proyectos · {{count}}",
-      "propositions": "Proposiciones · {{count}}"
-    },
-    "typeFilterLabel": "Tipo de resultado",
-    "summary_one": "{{total}} resultado para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
-    "electionLabel": "Elección: {{date}}",
-    "authorLabel": "Autor(a): {{name}}",
-    "empty": {
-      "title": "Sin resultados para «{{query}}»",
-      "body": "Prueba con menos palabras, otra frase o un número de proyecto como «AB 1236».",
-      "languageNote": "Por ahora, la búsqueda funciona mejor en inglés."
-    },
-    "error": {
-      "title": "La búsqueda no está disponible en este momento",
-      "body": "Ocurrió un error al ejecutar tu búsqueda — esto no significa «sin resultados». Inténtalo de nuevo."
-    },
-    "prompt": "Escribe para buscar proyectos de ley y proposiciones.",
-    "summary_other": "{{total}} resultados para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
-    "propChip": "PROP",
-    "summaryFiltered_one": "{{total}} resultado para «{{query}}»",
-    "summaryFiltered_other": "{{total}} resultados para «{{query}}»",
-    "billsInputLabel": "Buscar proyectos por título, número o autor",
-    "billsPlaceholder": "Buscar proyectos (p. ej. «vivienda», «AB 1236»)…",
-    "propositionsInputLabel": "Buscar proposiciones por título o texto",
-    "propositionsPlaceholder": "Buscar proposiciones (p. ej. «incendios»)…",
-    "clearFilters": "Borrar filtros",
-    "statusFilterLabel": "Filtrar por estado",
-    "allStatuses": "Todos los estados",
-    "electionYearFilterLabel": "Filtrar por año electoral",
-    "allElections": "Todas las elecciones",
-    "matchCount_one": "{{count}} resultado para «{{query}}»",
-    "matchCount_other": "{{count}} resultados para «{{query}}»",
-    "outsideList": "¿Buscas algo fuera de esta lista?",
-    "searchEverything": "Buscar en todo"
-  },
-  "lifecycle": {
-    "passed": "Aprobado",
-    "historical": "Histórico"
-  },
   "breadcrumb": {
     "region": "Dónde vives",
     "label": "Ruta de navegación"
   },
-  "propositionStatus": {
-    "PENDING": "Pendiente",
-    "PASSED": "Aprobada",
-    "FAILED": "Rechazada",
-    "WITHDRAWN": "Retirada"
-  },
-  "stack": {
-    "entity": "tus jurisdicciones",
-    "title": "Dónde vives",
-    "subtitle": "Tres gobiernos reclaman tu dirección. Se enumeran de menor a mayor, porque los pequeños son los que responden.",
-    "open": "Abrir →",
-    "levels": {
-      "county": "Condado",
-      "state": "Estado",
-      "federal": "Federal"
-    },
-    "count": {
-      "thisWeek": "{{value}} esta semana",
-      "unavailable": "Aún sin contar"
-    },
-    "county": {
-      "board": "Junta de Supervisores",
-      "yourSeat": "Tu escaño",
-      "seatValue": "Distrito {{district}} — {{name}}",
-      "wrongSeat": "¿No es correcto?"
-    },
-    "federal": {
-      "subtitle": "Cámara de Representantes y Senado de EE. UU."
-    },
-    "noAddress": {
-      "title": "Todavía no sabemos dónde vives",
-      "body": "Agrega tu dirección en la configuración y esta página mostrará los gobiernos que la reclaman."
-    }
+  "claims": {
+    "seeSourcePassage": "Ver el pasaje citado en el texto original",
+    "seeSourceQuote": "Ver el pasaje citado: «{{quote}}»"
   },
   "layer": {
     "recent": "Recientemente",
@@ -138,16 +60,9 @@
     },
     "when": "Cuándo"
   },
-  "switcher": {
-    "home": "Tu condado",
-    "choose": "Elige un condado",
-    "visiting": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en {{home}}, donde cuenta tu firma.",
-    "visitingNoHome": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en tu propio condado, donde cuenta tu firma.",
-    "unknown": {
-      "title": "No reconocemos ese condado",
-      "body": "Ningún condado de California coincide con el código «{{fips}}». No hay ningún error: probablemente el enlace se escribió mal o quedó obsoleto.",
-      "back": "Volver a {{home}}"
-    }
+  "lifecycle": {
+    "passed": "Aprobado",
+    "historical": "Histórico"
   },
   "pages": {
     "bills": {
@@ -193,6 +108,95 @@
     "search": {
       "title": "Buscar",
       "meta": "Encuentra proyectos de ley y propuestas en tu región"
+    }
+  },
+  "propositionStatus": {
+    "PENDING": "Pendiente",
+    "PASSED": "Aprobada",
+    "FAILED": "Rechazada",
+    "WITHDRAWN": "Retirada"
+  },
+  "search": {
+    "placeholder": "Buscar proyectos…",
+    "inputLabel": "Buscar proyectos de ley y proposiciones",
+    "pagePlaceholder": "Buscar proyectos de ley y proposiciones…",
+    "shortcutHint": "Pulsa / para buscar",
+    "jumpToBill": "Ir al proyecto",
+    "seeAll": "Ver todos los resultados de «{{query}}»",
+    "types": {
+      "all": "Todos · {{count}}",
+      "bills": "Proyectos · {{count}}",
+      "propositions": "Proposiciones · {{count}}"
+    },
+    "typeFilterLabel": "Tipo de resultado",
+    "summary_one": "{{total}} resultado para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
+    "electionLabel": "Elección: {{date}}",
+    "authorLabel": "Autor(a): {{name}}",
+    "empty": {
+      "title": "Sin resultados para «{{query}}»",
+      "body": "Prueba con menos palabras, otra frase o un número de proyecto como «AB 1236».",
+      "languageNote": "Por ahora, la búsqueda funciona mejor en inglés."
+    },
+    "error": {
+      "title": "La búsqueda no está disponible en este momento",
+      "body": "Ocurrió un error al ejecutar tu búsqueda — esto no significa «sin resultados». Inténtalo de nuevo."
+    },
+    "prompt": "Escribe para buscar proyectos de ley y proposiciones.",
+    "summary_other": "{{total}} resultados para «{{query}}» — {{bills}} proyectos · {{propositions}} proposiciones",
+    "propChip": "PROP",
+    "summaryFiltered_one": "{{total}} resultado para «{{query}}»",
+    "summaryFiltered_other": "{{total}} resultados para «{{query}}»",
+    "billsInputLabel": "Buscar proyectos por título, número o autor",
+    "billsPlaceholder": "Buscar proyectos (p. ej. «vivienda», «AB 1236»)…",
+    "propositionsInputLabel": "Buscar proposiciones por título o texto",
+    "propositionsPlaceholder": "Buscar proposiciones (p. ej. «incendios»)…",
+    "clearFilters": "Borrar filtros",
+    "statusFilterLabel": "Filtrar por estado",
+    "allStatuses": "Todos los estados",
+    "electionYearFilterLabel": "Filtrar por año electoral",
+    "allElections": "Todas las elecciones",
+    "matchCount_one": "{{count}} resultado para «{{query}}»",
+    "matchCount_other": "{{count}} resultados para «{{query}}»",
+    "outsideList": "¿Buscas algo fuera de esta lista?",
+    "searchEverything": "Buscar en todo"
+  },
+  "stack": {
+    "entity": "tus jurisdicciones",
+    "title": "Dónde vives",
+    "subtitle": "Tres gobiernos reclaman tu dirección. Se enumeran de menor a mayor, porque los pequeños son los que responden.",
+    "open": "Abrir →",
+    "levels": {
+      "county": "Condado",
+      "state": "Estado",
+      "federal": "Federal"
+    },
+    "count": {
+      "thisWeek": "{{value}} esta semana",
+      "unavailable": "Aún sin contar"
+    },
+    "county": {
+      "board": "Junta de Supervisores",
+      "yourSeat": "Tu escaño",
+      "seatValue": "Distrito {{district}} — {{name}}",
+      "wrongSeat": "¿No es correcto?"
+    },
+    "federal": {
+      "subtitle": "Cámara de Representantes y Senado de EE. UU."
+    },
+    "noAddress": {
+      "title": "Todavía no sabemos dónde vives",
+      "body": "Agrega tu dirección en la configuración y esta página mostrará los gobiernos que la reclaman."
+    }
+  },
+  "switcher": {
+    "home": "Tu condado",
+    "choose": "Elige un condado",
+    "visiting": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en {{home}}, donde cuenta tu firma.",
+    "visitingNoHome": "No vives aquí. Las cifras y los registros públicos se muestran completos; las herramientas para actuar permanecen en tu propio condado, donde cuenta tu firma.",
+    "unknown": {
+      "title": "No reconocemos ese condado",
+      "body": "Ningún condado de California coincide con el código «{{fips}}». No hay ningún error: probablemente el enlace se escribió mal o quedó obsoleto.",
+      "back": "Volver a {{home}}"
     }
   }
 }
