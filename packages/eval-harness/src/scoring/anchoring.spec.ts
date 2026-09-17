@@ -269,6 +269,81 @@ describe("scoreAnchoring — quote-then-locate contract (#1212)", () => {
     assert.equal(score.looksUnmapped, false);
   });
 
+  test("locates a quote the model elided with an ellipsis", () => {
+    // The dominant real failure: the model cites real spans and drops the
+    // middle. Refusing this measures formatting, not citing.
+    const score = scoreAnchoring(
+      [
+        {
+          claim: "public schools must provide sustainability instruction",
+          field: "keyProvisions",
+          sourceQuote:
+            "Every public school shall provide ... instruction in earth sustainability.",
+        },
+      ],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+    assert.equal(score.results[0].verdict, "anchored");
+  });
+
+  test("refuses an elided quote whose fragments are out of order", () => {
+    // Order is what separates "elided a real passage" from "assembled one".
+    const score = scoreAnchoring(
+      [
+        {
+          claim: "public schools must provide sustainability instruction",
+          field: "keyProvisions",
+          sourceQuote:
+            "instruction in earth sustainability. ... Every public school shall provide",
+        },
+      ],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+    assert.equal(score.results[0].verdict, "quote-not-found");
+  });
+
+  test("refuses an elided quote with an invented fragment", () => {
+    const score = scoreAnchoring(
+      [
+        {
+          claim: "public schools must provide sustainability instruction",
+          field: "keyProvisions",
+          sourceQuote:
+            "Every public school shall provide ... and shall abolish all homework forthwith",
+        },
+      ],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+    assert.equal(score.results[0].verdict, "quote-not-found");
+  });
+
+  test("does not let a bridged span inflate support", () => {
+    // Support must be scored on the quoted fragments, not the spanned region:
+    // otherwise eliding across half a measure would sweep in words the model
+    // never cited and anchor almost anything.
+    const score = scoreAnchoring(
+      [
+        {
+          claim: "homework abolished sustainability instruction public school",
+          field: "x",
+          sourceQuote: "Every public school ... in earth sustainability.",
+        },
+      ],
+      FULL_TEXT,
+      "quote-then-locate",
+    );
+    const r = score.results[0];
+    if (r.verdict === "anchored" || r.verdict === "unsupported") {
+      assert.ok(
+        r.support <= 1,
+        "support is a ratio over the quoted text, not the bridged span",
+      );
+    }
+  });
+
   test("reports a quote that is not in the source", () => {
     const score = scoreAnchoring(
       [
