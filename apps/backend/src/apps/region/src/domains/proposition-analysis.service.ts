@@ -191,11 +191,41 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         ? maxPropsOverride
         : this.maxProps;
 
-    const pending = await this.db.proposition.findMany({
+    // Resolve the live prompt hash ONCE for the whole batch. A prompt
+    // revision makes every stored analysis stale simultaneously, so paying
+    // for one lookup and comparing in memory beats a lookup per row.
+    let currentHash: string | undefined;
+    try {
+      currentHash = await this.promptClient.getPromptHash(
+        'document-analysis-proposition-analysis',
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Prompt hash lookup failed; regenerating only never-analysed ` +
+          `propositions this run: ${(error as Error).message}`,
+      );
+    }
+
+    const candidates = await this.db.proposition.findMany({
       where: {
         deletedAt: null,
         fullText: { not: null },
-        analysisGeneratedAt: null,
+        // Never analysed, OR analysed under a different prompt. The second
+        // arm is what makes a template revision actually take effect: this
+        // previously selected only `analysisGeneratedAt: null`, so a revised
+        // prompt regenerated nothing while the backfill script claimed it
+        // handled exactly that case (#1212 S5). Rows touched since their
+        // analysis are caught by the isCurrent() filter below, which Prisma
+        // cannot express as a column-to-column comparison.
+        ...(currentHash
+          ? {
+              OR: [
+                { analysisGeneratedAt: null },
+                { analysisPromptHash: null },
+                { analysisPromptHash: { not: currentHash } },
+              ],
+            }
+          : { analysisGeneratedAt: null }),
       },
       select: {
         id: true,
@@ -209,6 +239,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       orderBy: { electionDate: 'desc' },
       take: cap,
     });
+
+    const pending = candidates;
 
     if (pending.length === 0) return;
 

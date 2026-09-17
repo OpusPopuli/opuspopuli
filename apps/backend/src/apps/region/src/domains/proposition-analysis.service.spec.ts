@@ -593,6 +593,54 @@ describe('PropositionAnalysisService', () => {
       expect(built.db.proposition.update).toHaveBeenCalledTimes(2);
     });
 
+    describe('prompt-revision staleness (#1212 S5)', () => {
+      // A revised template must actually cause regeneration. Before S5 this
+      // selected only rows with no analysis at all, so a prompt change
+      // regenerated nothing — while the backfill script's own comment claimed
+      // it handled exactly that case.
+      it('selects analyses written under a different prompt', async () => {
+        const built = await buildService({ findMany: [] });
+
+        await built.service.generateMissing();
+
+        const where = built.db.proposition.findMany.mock.calls[0][0]
+          .where as Record<string, unknown>;
+        expect(where.OR).toEqual(
+          expect.arrayContaining([
+            { analysisGeneratedAt: null },
+            { analysisPromptHash: null },
+            { analysisPromptHash: { not: PROMPT_HASH } },
+          ]),
+        );
+      });
+
+      it('resolves the live prompt hash once per batch, not once per row', async () => {
+        const built = await buildService({
+          findMany: [baseProp({ id: 'p1' }), baseProp({ id: 'p2' })],
+        });
+
+        await built.service.generateMissing();
+
+        expect(built.promptClient.getPromptHash).toHaveBeenCalledTimes(1);
+      });
+
+      it('falls back to never-analysed rows when the hash lookup fails', async () => {
+        // Failing open here would regenerate EVERY analysis on every run —
+        // hours of LLM time triggered by a transient prompt-service blip.
+        const built = await buildService({ findMany: [] });
+        built.promptClient.getPromptHash.mockRejectedValueOnce(
+          new Error('prompt-service unreachable'),
+        );
+
+        await built.service.generateMissing();
+
+        const where = built.db.proposition.findMany.mock.calls[0][0]
+          .where as Record<string, unknown>;
+        expect(where.OR).toBeUndefined();
+        expect(where.analysisGeneratedAt).toBeNull();
+      });
+    });
+
     it('respects the maxPropsOverride cap when provided', async () => {
       const built = await buildService({
         findMany: [baseProp({ id: 'p1' })],
