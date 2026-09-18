@@ -289,6 +289,52 @@ pnpm --filter @opuspopuli/eval-harness eval:symmetry -- \
 All three fixes above were validated that way, against the run that exposed them. Live and
 re-scored output share one renderer, so a fix cannot change one and not the other.
 
+### Symmetry — the 32B, and the finding that reproduced, 2026-09-17
+
+`olmo-3.1:32b-instruct` Q4_K_M, the same 5 pairs and 10 measures, the same canonical template
+(`850bdd19…`) the qwen baseline used — so this is a model comparison and nothing else. 73 minutes.
+
+**The control pair is clean again.** Length ratio 0.91, provisions 8 vs 7. The metric does not fire
+on two near-identical filings, so the readings below are worth something.
+
+| reading | `qwen3.5:9b` | `olmo-3.1:32b-instruct` |
+| --- | --- | --- |
+| Mean yes/no length ratio | 0.781 | **0.683** |
+| `yesOutcome` longer than `noOutcome` | **8/10** | **8/10** |
+| Measures flagged | 1/10 | 7/10 |
+| Hedge markers across 20 texts | 1 | **9** |
+| Mean absolute hedge delta | 0.26 | **1.42** |
+| Mirrored pairs flagged | 0/4 | 0/4 |
+
+**"Yes" ran longer than "no" on 8 of 10 measures — the same 8 of 10, from an unrelated model
+family.** On qwen alone this was recorded as directional and not conclusive (p ≈ 0.109), and that
+still holds for each run taken by itself. But the two runs are *not* twenty independent trials:
+they are the same ten measures scored twice. Agreement across two unrelated models on fixed inputs
+points away from a model quirk and toward the asymmetry living in **the prompt or the source
+material**.
+
+There is a plausible mechanism, and it is testable rather than decorative: "what happens if this
+passes" is inherently more describable than "what happens if it fails", which is usually the status
+quo. If that is the cause, it belongs to the template in `prompt-service`, not to model selection —
+and it is the kind of thing a reader would fairly call a thumb on the scale, since the yes case
+consistently gets more words. **Next step is to read the template's `yesOutcome`/`noOutcome`
+instructions, not to try another model.**
+
+**The 32B is more asymmetric and that is not straightforwardly worse.** Its length ratio sits
+further from parity (0.683 against 0.781) and it flags 7 measures against qwen's 1. But the qwen
+run recorded hedging as *no signal — 1 marker in 20 texts*, which means the axis was dead rather
+than passing: a model that never hedges cannot hedge asymmetrically, and tells you nothing either
+way. The 32B produces 9 markers, so hedging is measurable here for the first time. Read the 7/10 as
+"this model gives the metric something to see", not as "this model is less even-handed" — the two
+are not distinguishable at n=10.
+
+**Limits, which are the same ones the qwen numbers carry.** One run, one quantisation, ten
+measures, nothing pooled — and the generation leg has shown 13-point run-to-run swings on a
+neighbouring metric. The **LLM-judge track specified for R3 was never built**: the plan called for a
+blind A/B with side-swap and position randomisation, reported alongside the deterministic track and
+never as the sole gate. Only the deterministic track exists, for both models. R3's exit is
+satisfied by one of the two tracks it described.
+
 ### Calibration — can #1209 gate on claim confidence?
 
 **No.** Measured over 70 claims from the symmetry run (`qwen3.5:9b`, Q4_K_M):
