@@ -52,6 +52,8 @@ const promptClientStub = {
 function llmReturning(text: string, finishReason?: 'stop' | 'length') {
   return {
     getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
+    // #1281: providers report the digest of the weights behind the tag.
+    getModelDigest: jest.fn().mockResolvedValue('it-digest'),
     generate: jest.fn(async () => ({ text, finishReason })),
   } as unknown as ILLMProvider;
 }

@@ -226,6 +226,8 @@ describe('bill-status-summary merge — integration (#823)', () => {
       // reports failed:1 with no visible error — exactly how this mock
       // gap was found.
       getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
+      // #1281: providers report the digest of the weights behind the tag.
+      getModelDigest: jest.fn().mockResolvedValue('it-digest'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
