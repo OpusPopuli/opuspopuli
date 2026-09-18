@@ -2204,6 +2204,57 @@ model IndependentExpenditure {
 /// AI-derived structural manifests for scraping civic data.
 /// Each manifest describes how to extract a specific data type from a specific URL.
 /// Versioned with structure hashing for change detection.
+/// A fetched source artifact, content-addressed and append-only (#1276).
+///
+/// Stores the bytes a claim can be checked against. Without it the only
+/// witness to a cited passage is whatever `fullText` holds now, and that is
+/// upserted in place on every re-scrape — so the artifact the scrape actually
+/// read is gone by the time anyone asks.
+///
+/// `contentHash` is SHA-256 over the raw response body, taken before decoding,
+/// and is the table's identity: an unchanged re-fetch matches an existing row
+/// and stores nothing, so size tracks how often sources *change* rather than
+/// how often we look at them.
+///
+/// Rows are never updated or deleted. `sourceUrl`, `fetchedAt` and the
+/// validators therefore describe the fetch that *first* captured these bytes.
+/// Two URLs serving byte-identical content collapse to one row naming
+/// whichever was seen first — correct for a content address, but it means this
+/// table answers "what were these bytes" rather than "everywhere they were
+/// served from". A later re-fetch finding them unchanged is likewise not
+/// recorded: no acceptance criterion in #1276 asks for re-observation history,
+/// and adding it would mean a second table.
+///
+/// Content is public civic material, but note it can contain personal data:
+/// proponent contact details live in `Proposition.fullText` (#1263) because
+/// they are in the source document. Nothing renders these bytes today; any
+/// future render path must redact first.
+model SourceVersion {
+  id           String   @id @default(uuid())
+  contentHash  String   @unique @map("content_hash") @db.VarChar(64)
+  content      Bytes
+  byteSize     Int      @map("byte_size")
+  contentType  String?  @map("content_type") @db.VarChar(255)
+  sourceUrl    String   @map("source_url") @db.VarChar(1000)
+  fetchedAt    DateTime @map("fetched_at") @db.Timestamptz
+  etag         String?  @db.Text
+  lastModified String?  @map("last_modified") @db.VarChar(255)
+  regionId     String?  @map("region_id") @db.VarChar(100)
+  dataType     String?  @map("data_type") @db.VarChar(50)
+  executionId  String?  @map("execution_id")
+  manifestId   String?  @map("manifest_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  execution PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  manifest  StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
+  @@index([sourceUrl, fetchedAt])
+  @@index([executionId])
+  @@index([manifestId])
+  @@index([regionId, dataType])
+  @@map("source_versions")
+}
+
 model StructuralManifest {
   id              String    @id @default(uuid())
   regionId        String    @map("region_id") @db.VarChar(100)
@@ -2226,6 +2277,8 @@ model StructuralManifest {
   lastCheckedAt   DateTime? @map("last_checked_at") @db.Timestamptz
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  sourceVersions SourceVersion[]
 
   @@unique([regionId, sourceUrl, dataType, version], name: "uq_manifest_version")
   @@index([regionId, sourceUrl, dataType, isActive], name: "idx_manifest_active_lookup")
@@ -2260,6 +2313,7 @@ model PipelineExecution {
   pipelineJobId     String?                  @map("pipeline_job_id")
   pipelineJob       PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
   batches           PipelineExecutionBatch[]
+  sourceVersions    SourceVersion[]
 
   @@index([regionId, dataType, executedAt])
   @@index([manifestId])

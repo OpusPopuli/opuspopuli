@@ -41,10 +41,12 @@ import {
   FetchOptions,
   RetryOptions,
   CachedFetchResult,
+  FetchProvenance,
   FetchError,
   FetchFunction,
 } from "./types.js";
 import { normalizeUrl } from "./utils/url-normalize.js";
+import { decodeUtf8, hashContentBytes } from "./utils/content-bytes.js";
 
 /**
  * Remove NUL bytes (0x00) from extracted text. Postgres `text`/`utf8` columns
@@ -127,7 +129,13 @@ export class ExtractionProvider {
       redisUrl: config?.redisUrl,
       cacheOptions: this.config.cache,
       rateLimitOptions: this.config.rateLimit,
-      keyPrefix: "extraction:cache:",
+      // Versioned prefix. Cached entries are JSON and survive a deploy in
+      // Redis, so widening CachedFetchResult silently changes the shape of
+      // what a hit returns: entries written before #1276 carry no
+      // contentHash/fetchedAt, and would deserialise into an object whose
+      // type claims both are present. Bump this whenever the cached shape
+      // changes — old keys are then simply never read and expire on TTL.
+      keyPrefix: "extraction:cache:v2:",
       rateLimiterKey: "extraction:ratelimit",
     });
 
@@ -195,7 +203,7 @@ export class ExtractionProvider {
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching ${url}`);
 
-    const fetched = await this.fetchAndDecode(url, options, (r) => r.text());
+    const fetched = await this.fetchAndDecode(url, options, decodeUtf8);
     const result: CachedFetchResult = { ...fetched, fromCache: false };
 
     await this.cache.set(cacheKey, result);
@@ -254,20 +262,20 @@ export class ExtractionProvider {
   async fetchBytes(
     url: string,
     options: FetchOptions = {},
-  ): Promise<{
-    content: Buffer;
-    statusCode: number;
-    contentType: string;
-    finalUrl?: string;
-    redirectedFrom?: string;
-  }> {
+  ): Promise<
+    {
+      content: Buffer;
+      statusCode: number;
+      contentType: string;
+      finalUrl?: string;
+      redirectedFrom?: string;
+    } & FetchProvenance
+  > {
     url = normalizeUrl(url);
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching bytes from ${url}`);
 
-    return this.fetchAndDecode(url, options, async (r) =>
-      Buffer.from(await r.arrayBuffer()),
-    );
+    return this.fetchAndDecode(url, options, (bytes) => bytes);
   }
 
   /**
@@ -278,13 +286,15 @@ export class ExtractionProvider {
   async fetchBytesWithRetry(
     url: string,
     options: RetryOptions = {},
-  ): Promise<{
-    content: Buffer;
-    statusCode: number;
-    contentType: string;
-    finalUrl?: string;
-    redirectedFrom?: string;
-  }> {
+  ): Promise<
+    {
+      content: Buffer;
+      statusCode: number;
+      contentType: string;
+      finalUrl?: string;
+      redirectedFrom?: string;
+    } & FetchProvenance
+  > {
     return this.retryStandard(url, options, () =>
       this.fetchBytes(url, options),
     );
@@ -381,14 +391,16 @@ export class ExtractionProvider {
   private async fetchAndDecode<T>(
     url: string,
     options: FetchOptions,
-    decodeBody: (response: Response) => Promise<T>,
-  ): Promise<{
-    content: T;
-    statusCode: number;
-    contentType: string;
-    finalUrl?: string;
-    redirectedFrom?: string;
-  }> {
+    decodeBody: (bytes: Buffer) => T,
+  ): Promise<
+    {
+      content: T;
+      statusCode: number;
+      contentType: string;
+      finalUrl?: string;
+      redirectedFrom?: string;
+    } & FetchProvenance
+  > {
     return this.circuitBreaker.execute(async () => {
       const timeout = options.timeout ?? this.config.defaultTimeout;
       const response = await this.fetchFn(url, {
@@ -404,8 +416,18 @@ export class ExtractionProvider {
         );
       }
 
-      const content = await decodeBody(response);
+      // Read the body once as bytes and hash it *before* decoding. Both the
+      // text and binary paths come through here, so this is the single point
+      // where a fetched artifact can be content-addressed against what the
+      // server actually sent (#1276). Decoding first and hashing the result
+      // would attest to our interpretation of the bytes, not to the bytes.
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const contentHash = hashContentBytes(bytes);
+      const fetchedAt = new Date().toISOString();
+      const content = decodeBody(bytes);
       const contentType = response.headers.get("content-type") || "unknown";
+      const etag = response.headers.get("etag") ?? undefined;
+      const lastModified = response.headers.get("last-modified") ?? undefined;
       const finalUrl = response.url;
       const wasRedirected =
         !!finalUrl && normalizeUrl(finalUrl) !== normalizeUrl(url);
@@ -426,6 +448,10 @@ export class ExtractionProvider {
         content,
         statusCode: response.status,
         contentType,
+        contentHash,
+        fetchedAt,
+        ...(etag && { etag }),
+        ...(lastModified && { lastModified }),
         ...(wasRedirected && { redirectedFrom: url, finalUrl }),
       };
     });

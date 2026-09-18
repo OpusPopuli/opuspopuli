@@ -110,9 +110,43 @@ export const DEFAULT_EXTRACTION_CONFIG: ExtractionConfig = {
 };
 
 /**
+ * Provenance captured at the moment a URL is fetched.
+ *
+ * Content-addresses the artifact so a cited source can be pinned to the exact
+ * bytes a claim was drawn from (#1276). `contentHash` is taken over the raw
+ * response body *before* decoding — hashing decoded text would attest to our
+ * interpretation rather than to what the server sent, and would collapse
+ * bodies that decode alike but differ on the wire.
+ *
+ * The HTTP validators are recorded rather than acted on: they let a later
+ * re-fetch be conditional, and they evidence what the server claimed about
+ * the artifact at fetch time.
+ */
+export interface FetchProvenance {
+  /** SHA-256 of the raw response body, hex-encoded */
+  contentHash: string;
+  /**
+   * When the body was received, ISO 8601.
+   *
+   * A string rather than a `Date` on purpose: fetch results are cached, and
+   * the Redis cache round-trips them through `JSON.stringify`/`JSON.parse`
+   * (`redis-cache.ts:87,104`). A `Date` would return from that cache as a
+   * string still *typed* as `Date` — and the in-memory cache would preserve
+   * the real `Date`, so the two backends would disagree about the type of the
+   * same field. ISO 8601 round-trips identically through both, and Prisma
+   * accepts it directly for a `DateTime` column.
+   */
+  fetchedAt: string;
+  /** ETag response header, if the server sent one */
+  etag?: string;
+  /** Last-Modified response header, if the server sent one */
+  lastModified?: string;
+}
+
+/**
  * Result from a cached fetch operation
  */
-export interface CachedFetchResult {
+export interface CachedFetchResult extends FetchProvenance {
   /** The fetched content */
   content: string;
   /** Whether the result was served from cache */
