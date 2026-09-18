@@ -525,7 +525,8 @@ model RepresentativeRelevanceCache {
 
   llmProvider String? @map("llm_provider") @db.VarChar(50)
 
-  llmModel  String? @map("llm_model") @db.VarChar(80)
+  llmModel String? @map("llm_model") @db.VarChar(80)
+
   variantId String? @map("variant_id") @db.VarChar(50)
   tokensIn  Int?    @map("tokens_in")
   tokensOut Int?    @map("tokens_out")
@@ -568,7 +569,8 @@ model CommitteeRelevanceCache {
 
   llmProvider String? @map("llm_provider") @db.VarChar(50)
 
-  llmModel  String? @map("llm_model") @db.VarChar(80)
+  llmModel String? @map("llm_model") @db.VarChar(80)
+
   variantId String? @map("variant_id") @db.VarChar(50)
   tokensIn  Int?    @map("tokens_in")
   tokensOut Int?    @map("tokens_out")
@@ -1569,6 +1571,7 @@ model CivicsBlock {
   promptVersion   String?  @map("prompt_version") @db.VarChar(20)
   /// LLM model + provider used (e.g. "ollama/qwen3.5:9b"). Audit trail.
   llmModel        String?  @map("llm_model") @db.VarChar(80)
+  llmDigest       String?  @map("llm_digest") @db.VarChar(80)
   extractedAt     DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz

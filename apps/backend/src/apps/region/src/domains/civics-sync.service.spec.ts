@@ -139,6 +139,37 @@ describe('CivicsSyncService', () => {
     expect(result).toEqual({ processed: 1, created: 1, updated: 0 });
   });
 
+  it('stamps the full attribution set from the base class (#1281)', async () => {
+    // CivicsSyncService used to only MIRROR LlmGeneratorBase's constructor and
+    // assemble its own stamp. That is how it ended up carrying llmModel but
+    // would not have picked up the digest: an addition to the attribution set
+    // reached every generator that inherited, and not this one. It now
+    // inherits, so the set arrives here by construction.
+    const { mockDb } = await drivePage(
+      JSON.stringify({
+        chambers: [{ name: 'Assembly' }],
+        measureTypes: [],
+        lifecycleStages: [],
+        glossary: [],
+        sessionScheme: null,
+      }),
+    );
+
+    expect(mockDb.civicsBlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          promptHash: 'hash',
+          llmModel: 'qwen-test',
+          llmDigest: 'stub-digest',
+        }),
+        update: expect.objectContaining({
+          llmModel: 'qwen-test',
+          llmDigest: 'stub-digest',
+        }),
+      }),
+    );
+  });
+
   it('persists a block whose only content is the session scheme (#874)', async () => {
     // Mirrors real CA pages that yielded only sessionScheme — must NOT be
     // treated as empty.
