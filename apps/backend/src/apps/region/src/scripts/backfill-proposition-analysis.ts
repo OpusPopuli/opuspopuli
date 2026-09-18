@@ -1,9 +1,18 @@
 /**
  * One-off backfill: generate AI analysis for every proposition that has
- * fullText but no analysis yet. Also handles the case where the prompt
- * template has been revised and the existing analyses are now stale
- * (the isCurrent() check inside PropositionAnalysisService compares the
- * stored analysisPromptHash against the live prompt-service hash).
+ * fullText and either no analysis yet, or an analysis written under a
+ * different prompt.
+ *
+ * The second case is how a template revision takes effect — generateMissing()
+ * compares each row's stored analysisPromptHash against the hash
+ * prompt-service returns today and regenerates the mismatches. Until #1212 S5
+ * it selected only rows with no analysis at all, so a revised prompt
+ * regenerated nothing while this comment claimed otherwise.
+ *
+ * NOT covered: a proposition whose text was edited after its analysis was
+ * written. That is a different staleness axis (#1207 item 2, bind claims to
+ * the text version they cite); the single-proposition generate() path checks
+ * it, this batch path does not.
  *
  * Usage:
  *   pnpm --filter backend build:region

@@ -26,6 +26,7 @@
  * parameter so the same fixtures produce a before/after number instead of
  * being re-instrumented after the fact.
  */
+import { locateQuote } from "@opuspopuli/common";
 
 export type AnchorContract = "offsets" | "quote-then-locate";
 
@@ -36,8 +37,19 @@ export interface EmittedClaim {
   /** `offsets` contract: character positions into fullText, unclamped. */
   sourceStart?: number;
   sourceEnd?: number;
-  /** `quote-then-locate` contract: the span the model says it is citing. */
-  quote?: string;
+  /**
+   * `quote-then-locate` contract: the span the model says it is citing.
+   *
+   * Named `sourceQuote` because that is the contract the prompt template asks
+   * for and the name S3's consumer will read — it sits alongside the offsets
+   * contract's `sourceStart`/`sourceEnd`. This interface previously called it
+   * `quote`, which no producer ever emits: `generation-eval` casts the model's
+   * `analysisClaims` straight to this type with no field mapping, so the field
+   * was always undefined and EVERY claim scored `missing-anchor`. The gate
+   * could only ever report 0%, which reads as "the contract failed" — the one
+   * result that would wrongly force the segment-id fallback.
+   */
+  sourceQuote?: string;
   confidence?: string | number;
 }
 
@@ -82,6 +94,19 @@ export interface AnchoringScore {
   byVerdict: Record<string, number>;
   /** Evidence for "the model is partitioning, not locating" — see below. */
   looksPartitioned: boolean;
+  /**
+   * Evidence for "nothing is producing the anchor field at all".
+   *
+   * Under `quote-then-locate`, EVERY claim scoring `missing-anchor` is far
+   * likelier to mean the scorer and the producer disagree about the field name
+   * than that a model which emitted valid JSON independently omitted the quote
+   * from all of them. That is not hypothetical: `generation-eval` casts model
+   * output straight to `EmittedClaim`, so a cast cannot catch the mismatch,
+   * and this scorer read `claim.quote` while the template emits `sourceQuote`
+   * — the S2 gate could only ever report 0%, indistinguishable from "models
+   * cannot quote". Surfacing it turns a silent wrong answer into a loud one.
+   */
+  looksUnmapped: boolean;
 }
 
 const STOPWORDS = new Set([
@@ -218,29 +243,36 @@ function scoreQuoteClaim(claim: EmittedClaim, fullText: string): AnchorResult {
     confidence: claim.confidence,
     support: 0,
   };
-  const quote = claim.quote?.trim();
+  const quote = claim.sourceQuote?.trim();
 
   if (!quote) {
     return { ...base, verdict: "missing-anchor", anchored: false };
   }
 
-  // Code locates the quote — the whole point of #1212. Whitespace is
-  // normalized because a model reflowing a line break is not a wrong citation.
-  const needle = quote.replace(/\s+/g, " ");
-  const haystack = fullText.replace(/\s+/g, " ");
-  const at = haystack.indexOf(needle);
-
-  if (at === -1) {
+  // Code locates the quote — the whole point of #1212. The locator is shared
+  // with the region service via @opuspopuli/common, so this measures exactly
+  // what production will do rather than a harness-local approximation.
+  const located = locateQuote(quote, fullText);
+  if (!located) {
     return { ...base, verdict: "quote-not-found", anchored: false };
   }
 
-  const support = supportRatio(claim.claim, needle);
+  // Support is scored on what the model actually QUOTED, never on the spanned
+  // region: material it elided is not evidence that it cited anything, and
+  // bridging a wide gap must not be able to inflate the score.
+  const support = supportRatio(claim.claim, located.quoted);
   return {
     ...base,
     verdict: support >= MIN_SUPPORT ? "anchored" : "unsupported",
     anchored: support >= MIN_SUPPORT,
-    resolved: { start: at, end: at + needle.length, text: needle },
-    spanChars: needle.length,
+    resolved: {
+      // Offsets are into the raw text, so slice the raw text. Slicing the
+      // normalised form with them mis-reports wherever the two differ.
+      start: located.start,
+      end: located.end,
+      text: fullText.slice(located.start, located.end),
+    },
+    spanChars: located.end - located.start,
     support,
   };
 }
@@ -272,5 +304,9 @@ export function scoreAnchoring(
     rate: results.length === 0 ? 0 : anchored / results.length,
     byVerdict,
     looksPartitioned: contract === "offsets" && detectPartitioning(claims),
+    looksUnmapped:
+      contract === "quote-then-locate" &&
+      results.length > 0 &&
+      byVerdict["missing-anchor"] === results.length,
   };
 }

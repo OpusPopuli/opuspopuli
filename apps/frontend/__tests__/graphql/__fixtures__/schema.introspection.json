@@ -13540,6 +13540,17 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "sourceQuote",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "sourceStart",
             "type": {
               "kind": "NON_NULL",
@@ -13549,6 +13560,17 @@
                 "name": "Int",
                 "ofType": null
               }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "verified",
+            "type": {
+              "kind": "SCALAR",
+              "name": "Boolean",
+              "ofType": null
             }
           }
         ],
