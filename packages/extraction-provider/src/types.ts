@@ -38,6 +38,20 @@ export interface FetchOptions {
    * logged at debug instead of warn.
    */
   fromConfig?: boolean;
+  /**
+   * Archive this fetch as a cited source (#1276).
+   *
+   * Opt-in per call rather than on by default: the store is sized for the
+   * artifacts claims actually reference, and archiving every list page and
+   * link-discovery crawl would fill it with pages nothing cites.
+   *
+   * Setting this also bypasses the read cache. Archiving needs the raw bytes,
+   * and a cache hit has only the decoded text — so a cached read could not
+   * capture the artifact, and would leave a cited source unarchived depending
+   * on nothing more than whether something else happened to fetch it in the
+   * last few minutes.
+   */
+  archive?: ArchiveContext;
 }
 
 /**
@@ -141,6 +155,53 @@ export interface FetchProvenance {
   etag?: string;
   /** Last-Modified response header, if the server sent one */
   lastModified?: string;
+}
+
+/**
+ * DI token for the optional source archive.
+ *
+ * Bound the same way OCR_SERVICE is — via `ExtractionModule.forRoot`'s
+ * `extraProviders`, because providers declared at an outer module's scope are
+ * not visible inside ExtractionModule's own DI scope. Left unbound, fetches
+ * simply are not archived.
+ */
+export const SOURCE_ARCHIVE = "SOURCE_ARCHIVE";
+
+/** Which run and which region a fetch belongs to. */
+export interface ArchiveContext {
+  /** Region whose sync performed the fetch */
+  regionId?: string;
+  /** Pipeline data type (propositions, meetings, bills, …) */
+  dataType?: string;
+  /** PipelineExecution that performed the fetch */
+  executionId?: string;
+  /** StructuralManifest in force at fetch time */
+  manifestId?: string;
+}
+
+/**
+ * Durable store for fetched artifacts (#1276).
+ *
+ * An interface rather than a concrete service because extraction-provider must
+ * not learn about the database — the implementation lives in the region
+ * service, which owns that bounded context.
+ *
+ * Implementations must not throw: archiving is evidence capture alongside the
+ * fetch, and a failure to record must never take down the scrape that was the
+ * caller's actual goal.
+ */
+export interface ISourceArchive {
+  archive(
+    input: FetchProvenance &
+      ArchiveContext & {
+        /** Raw bytes exactly as received */
+        content: Buffer;
+        /** URL that produced them */
+        sourceUrl: string;
+        /** Response Content-Type, if any */
+        contentType?: string;
+      },
+  ): Promise<void>;
 }
 
 /**

@@ -360,7 +360,12 @@ export class MinutesIngestHandler {
     regionId: string,
   ): Promise<Minutes> {
     this.logger.log(`Fetching PDF: ${candidate.url}`);
-    const rawText = await this.extraction.fetchPdfText(candidate.url);
+    // Minutes PDFs are cited sources: a meeting summary's claims point back
+    // at this document, and `rawText` below is truncated at 256 kB, so the
+    // archived bytes are the only complete copy (#1276).
+    const rawText = await this.extraction.fetchPdfText(candidate.url, {
+      archive: { regionId, dataType: source.dataType },
+    });
     const truncated =
       rawText.length > MAX_RAW_TEXT_CHARS
         ? rawText.slice(0, MAX_RAW_TEXT_CHARS)

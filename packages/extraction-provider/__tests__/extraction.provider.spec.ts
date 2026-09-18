@@ -324,6 +324,127 @@ describe("ExtractionProvider", () => {
     });
   });
 
+  describe("source archive (#1276)", () => {
+    const body = "<html>Measure A</html>";
+    const expectedHash = createHash("sha256")
+      .update(Buffer.from(body, "utf8"))
+      .digest("hex");
+    let archive: { archive: jest.Mock };
+    let archivingProvider: ExtractionProvider;
+
+    beforeEach(() => {
+      archive = { archive: jest.fn().mockResolvedValue(undefined) };
+      archivingProvider = new ExtractionProvider(
+        { cacheProvider: "memory" },
+        undefined,
+        archive,
+      );
+    });
+
+    afterEach(async () => {
+      await archivingProvider.onModuleDestroy?.();
+    });
+
+    it("archives the raw bytes, not the decoded text", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { regionId: "us-ca", dataType: "propositions" },
+      });
+
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+      const [recorded] = archive.archive.mock.calls[0];
+      expect(Buffer.isBuffer(recorded.content)).toBe(true);
+      expect(recorded.content.equals(Buffer.from(body, "utf8"))).toBe(true);
+      expect(recorded.contentHash).toBe(expectedHash);
+    });
+
+    it("passes the run context through to the archive", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: {
+          regionId: "us-ca",
+          dataType: "propositions",
+          executionId: "exec-1",
+          manifestId: "manifest-1",
+        },
+      });
+
+      expect(archive.archive).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceUrl: "https://example.gov/a",
+          regionId: "us-ca",
+          dataType: "propositions",
+          executionId: "exec-1",
+          manifestId: "manifest-1",
+        }),
+      );
+    });
+
+    it("does not archive a fetch that did not ask to be archived", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a");
+
+      // The store is sized for artifacts claims cite. Archiving every list
+      // page and discovery crawl would fill it with pages nothing cites.
+      expect(archive.archive).not.toHaveBeenCalled();
+    });
+
+    it("goes to the network even when the body is cached", async () => {
+      mockFetch.mockImplementation(async () => httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a");
+      await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      // A cache hit carries decoded text only — archiving from it is
+      // impossible, so an archived fetch must not be served from cache.
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns content even when archiving fails", async () => {
+      archive.archive.mockRejectedValue(new Error("database unavailable"));
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      // Evidence capture runs alongside the fetch. A sync must not die
+      // because the archive was down — the caller asked for content.
+      expect(result.content).toBe(body);
+    });
+
+    it("never returns the raw buffer to callers", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      // The buffer is carried out of the circuit breaker only so archiving can
+      // happen outside it. If it escaped, it would be JSON-serialised into
+      // Redis on every fetch for a value nothing downstream reads.
+      expect(
+        (result as unknown as Record<string, unknown>).bytes,
+      ).toBeUndefined();
+    });
+
+    it("is inert when no archive is bound", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await provider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      expect(result.content).toBe(body);
+    });
+  });
+
   describe("fetchWithRetry", () => {
     it("should retry on failure and succeed", async () => {
       mockFetch

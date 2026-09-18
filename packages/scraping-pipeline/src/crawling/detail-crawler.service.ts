@@ -17,6 +17,7 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
+import type { ArchiveContext } from "@opuspopuli/extraction-provider";
 import * as cheerio from "cheerio";
 import type {
   DataSourceConfig,
@@ -67,6 +68,7 @@ export class DetailCrawlerService {
   async enrichSummaries(
     rawResult: RawExtractionResult,
     source: DataSourceConfig,
+    archive?: ArchiveContext,
   ): Promise<RawExtractionResult> {
     const items = rawResult.items.filter(
       (item) => typeof item.summaryUrl === "string" && item.summaryUrl,
@@ -85,7 +87,7 @@ export class DetailCrawlerService {
       );
       try {
         const { text, reason } = extractAgSummary(
-          await this.fetchDetailContent(url),
+          await this.fetchDetailContent(url, archive),
         );
         if (text) {
           item.summary = text;
@@ -114,6 +116,7 @@ export class DetailCrawlerService {
     rawResult: RawExtractionResult,
     source: DataSourceConfig,
     llm: ILLMProvider,
+    archive?: ArchiveContext,
   ): Promise<RawExtractionResult> {
     const itemsWithDetail = rawResult.items.filter(
       (item) => item.detailUrl && typeof item.detailUrl === "string",
@@ -148,6 +151,7 @@ export class DetailCrawlerService {
         llm,
         rawResult.warnings,
         detailFailures,
+        archive,
       );
 
       // Rate limit between fetches
@@ -179,12 +183,13 @@ export class DetailCrawlerService {
     llm: ILLMProvider,
     warnings: string[],
     failures?: Map<string, SelectorFailure>,
+    archive?: ArchiveContext,
   ): Promise<Record<string, string | StructuredFieldConfig> | null> {
     const rawUrl = item.detailUrl as string;
     const detailUrl = DetailCrawlerService.resolveUrl(rawUrl, source.url);
 
     try {
-      const pageContent = await this.fetchDetailContent(detailUrl);
+      const pageContent = await this.fetchDetailContent(detailUrl, archive);
       const isHtml = pageContent.trimStart().startsWith("<");
 
       extractionPlan ??= await this.resolveExtractionPlan(
@@ -348,21 +353,32 @@ export class DetailCrawlerService {
    * but turn out to be PDF responses, we re-fetch as bytes since the
    * first fetch's content is already corrupted.
    */
-  private async fetchDetailContent(detailUrl: string): Promise<string> {
+  private async fetchDetailContent(
+    detailUrl: string,
+    archive?: ArchiveContext,
+  ): Promise<string> {
+    // Detail pages and their PDFs are the artifacts claims actually cite —
+    // `fullText` comes from here — so these are the fetches worth archiving
+    // (#1276). List and discovery pages deliberately are not.
+    const options = archive ? { archive } : {};
+
     if (detailUrl.toLowerCase().endsWith(".pdf")) {
-      const text = await this.extraction.fetchPdfText(detailUrl);
+      const text = await this.extraction.fetchPdfText(detailUrl, options);
       this.logger.debug(
         `Extracted ${text.length} chars from PDF: ${detailUrl}`,
       );
       return text;
     }
 
-    const fetchResult = await this.extraction.fetchWithRetry(detailUrl);
+    const fetchResult = await this.extraction.fetchWithRetry(
+      detailUrl,
+      options,
+    );
     if (fetchResult.content.startsWith("%PDF")) {
       // URL didn't advertise .pdf but the response body is one — refetch
       // as bytes. The text-mode body is already corrupted; we can't
       // recover it via Buffer.from(content, "binary").
-      const text = await this.extraction.fetchPdfText(detailUrl);
+      const text = await this.extraction.fetchPdfText(detailUrl, options);
       this.logger.debug(
         `Extracted ${text.length} chars from PDF: ${detailUrl} (content-sniffed)`,
       );

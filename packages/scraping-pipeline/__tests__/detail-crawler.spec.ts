@@ -304,6 +304,7 @@ describe("DetailCrawlerService", () => {
       );
       expect((mockExtraction as any).fetchPdfText).toHaveBeenCalledWith(
         "https://elections.cdn.sos.ca.gov/ballot-measures/pdf/sb-42.pdf",
+        {},
       );
       // Should NOT have used the broken text-fetch path
       expect(mockExtraction.fetchWithRetry).not.toHaveBeenCalled();
@@ -335,6 +336,7 @@ describe("DetailCrawlerService", () => {
       // Sniffed PDFs trigger a second fetch as bytes
       expect((mockExtraction as any).fetchPdfText).toHaveBeenCalledWith(
         "https://example.com/document/12345",
+        {},
       );
     });
   });
@@ -565,6 +567,60 @@ describe("DetailCrawlerService", () => {
       expect(offices[0].email).toBe("senator@senate.ca.gov");
     });
   });
+
+  describe("source archiving (#1276)", () => {
+    const ARCHIVE = {
+      regionId: "us-ca",
+      dataType: "propositions",
+      manifestId: "manifest-1",
+    };
+
+    it("asks for the detail page to be archived", async () => {
+      const rawResult = createRawResult([
+        { externalId: "prop-1", detailUrl: "https://example.com/prop/1" },
+      ]);
+
+      await crawler.enrichItems(rawResult, createSource(), mockLlm, ARCHIVE);
+
+      // Detail pages are where `fullText` comes from — the artifact a claim
+      // cites. The context is threaded through four call layers, and if any
+      // of them drops it archiving silently becomes a no-op with nothing
+      // else failing, so it is asserted rather than assumed.
+      expect(mockExtraction.fetchWithRetry).toHaveBeenCalledWith(
+        "https://example.com/prop/1",
+        { archive: ARCHIVE },
+      );
+    });
+
+    it("asks for a detail PDF to be archived", async () => {
+      (mockExtraction as any).fetchPdfText = jest
+        .fn()
+        .mockResolvedValue("Extracted PDF text.");
+      const rawResult = createRawResult([
+        { externalId: "prop-1", detailUrl: "https://example.com/prop/1.pdf" },
+      ]);
+
+      await crawler.enrichItems(rawResult, createSource(), mockLlm, ARCHIVE);
+
+      expect((mockExtraction as any).fetchPdfText).toHaveBeenCalledWith(
+        "https://example.com/prop/1.pdf",
+        { archive: ARCHIVE },
+      );
+    });
+
+    it("does not ask for archiving when no context is supplied", async () => {
+      const rawResult = createRawResult([
+        { externalId: "prop-1", detailUrl: "https://example.com/prop/1" },
+      ]);
+
+      await crawler.enrichItems(rawResult, createSource(), mockLlm);
+
+      expect(mockExtraction.fetchWithRetry).toHaveBeenCalledWith(
+        "https://example.com/prop/1",
+        {},
+      );
+    });
+  });
 });
 
 describe("detail field failure diagnostics (#966 W1)", () => {
@@ -595,9 +651,7 @@ describe("detail field failure diagnostics (#966 W1)", () => {
     expect(failure).toBeDefined();
     expect(failure!.field).toBe("fullText");
     expect(failure!.selector).toBe("div:nth-child(");
-    expect(
-      result.warnings.some((w) => w.includes('"fullText"')),
-    ).toBe(true);
+    expect(result.warnings.some((w) => w.includes('"fullText"'))).toBe(true);
     // The valid selector still extracted
     expect(result.items[0].summary).toBeDefined();
   });

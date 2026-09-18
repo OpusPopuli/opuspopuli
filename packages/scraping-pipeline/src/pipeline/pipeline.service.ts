@@ -42,6 +42,7 @@ import {
   MANIFEST_MISSING_CALLBACK,
   type ManifestMissingArgs,
 } from "../scraping-pipeline.module.js";
+import type { ArchiveContext } from "@opuspopuli/extraction-provider";
 
 @Injectable()
 export class ScrapingPipelineService {
@@ -216,7 +217,13 @@ export class ScrapingPipelineService {
     //
     // Nothing errored. The run got FASTER — 3 seconds instead of 44 — which is
     // exactly what a silently skipped stage looks like from the outside.
-    const rawResult = await this.enrichWithDetails(extracted, source);
+    // No manifestId: this path's manifest is synthetic (`static-<region>-<type>`)
+    // and has no structural_manifests row, so linking it would fail the FK and
+    // lose the artifact to a warning.
+    const rawResult = await this.enrichWithDetails(extracted, source, {
+      regionId,
+      dataType: source.dataType,
+    });
 
     const duration = Date.now() - pipelineStart;
     this.logger.log(
@@ -322,7 +329,11 @@ export class ScrapingPipelineService {
     }
 
     // Stage 3.5: Enrich items with detail page content (if detailUrl extracted)
-    rawResult = await this.enrichWithDetails(rawResult, source);
+    rawResult = await this.enrichWithDetails(rawResult, source, {
+      regionId,
+      dataType: source.dataType,
+      manifestId: manifest.id,
+    });
 
     // Stage 4: Map to domain types
     let result = this.mapper.map<T>(rawResult, source);
@@ -344,7 +355,11 @@ export class ScrapingPipelineService {
       );
       const healed = await this.healManifest(source, regionId, html, manifest);
       healAttempted = true;
-      const healedRaw = await this.enrichWithDetails(healed.rawResult, source);
+      const healedRaw = await this.enrichWithDetails(healed.rawResult, source, {
+        regionId,
+        dataType: source.dataType,
+        manifestId: manifest.id,
+      });
       const remapped = this.mapper.map<T>(healedRaw, source);
       // Keep whichever outcome mapped more items — a failed heal must not
       // discard the (partial) original result.
@@ -473,6 +488,7 @@ export class ScrapingPipelineService {
   private async enrichWithDetails(
     rawResult: RawExtractionResult,
     source: DataSourceConfig,
+    archive?: ArchiveContext,
   ): Promise<RawExtractionResult> {
     for (const item of rawResult.items) {
       if (!item.detailUrl) {
@@ -483,12 +499,21 @@ export class ScrapingPipelineService {
     }
     let result = rawResult;
     if (result.items.some((item) => item.detailUrl)) {
-      result = await this.detailCrawler.enrichItems(result, source, this.llm);
+      result = await this.detailCrawler.enrichItems(
+        result,
+        source,
+        this.llm,
+        archive,
+      );
     }
     // The AG title-and-summary is a second, different PDF on the same row —
     // it feeds `summary`, where detailUrl feeds `fullText` (#1219).
     if (result.items.some((item) => item.summaryUrl)) {
-      result = await this.detailCrawler.enrichSummaries(result, source);
+      result = await this.detailCrawler.enrichSummaries(
+        result,
+        source,
+        archive,
+      );
     }
     if (source.dataType === DataType.PROPOSITIONS) {
       this.deriveSummariesFromDigest(result);

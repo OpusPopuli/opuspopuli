@@ -22,6 +22,7 @@ import {
   CacheFactory,
   FallbackCache,
   OCR_SERVICE,
+  SOURCE_ARCHIVE,
 } from '@opuspopuli/extraction-provider';
 import { MemoryCache } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
@@ -52,6 +53,7 @@ import { CommitteeSummaryGeneratorService } from './committee-summary-generator.
 import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionEmbeddingService } from './proposition-embedding.service';
+import { SourceVersionService } from './source-version.service';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -70,6 +72,7 @@ import { GeoportalFetcher } from './boundary-fetchers/geoportal.fetcher';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
+import { PrismaSourceArchive } from '../infrastructure/prisma-source-archive';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { PrismaExecutionTrackerRepository } from '../infrastructure/prisma-execution-tracker-repository';
 import { REGION_CACHE } from './region.tokens';
@@ -133,6 +136,15 @@ const promptClientAsyncConfig = {
             {
               provide: OCR_SERVICE,
               useExisting: OcrService,
+            },
+            // SOURCE_ARCHIVE must be declared here, not at an outer scope,
+            // for the same reason OCR_SERVICE is: ExtractionProvider injects
+            // it from inside ExtractionModule's own DI scope (#1276).
+            SourceVersionService,
+            PrismaSourceArchive,
+            {
+              provide: SOURCE_ARCHIVE,
+              useExisting: PrismaSourceArchive,
             },
           ],
         }),
