@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ExtractionProvider, stripNulBytes } from "../src/extraction.provider";
 import { FetchError } from "../src/types";
@@ -5,6 +6,49 @@ import { FetchError } from "../src/types";
 // Mock fetch globally
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
+
+/**
+ * Build a real `Response` for the fetch mock.
+ *
+ * Deliberately a genuine `Response` rather than an object literal: the
+ * provider reads the body as bytes and decodes it itself (#1276), so `text()`
+ * and `arrayBuffer()` must come from the same body and `headers` must have
+ * real `Headers` semantics. The hand-rolled fakes this replaced stubbed
+ * `text()` directly, which meant no test here could observe decoding at all.
+ *
+ * Note a real body can only be read once, so a persistent mock must build a
+ * fresh response per call (`mockImplementation`) rather than resolve the same
+ * instance repeatedly — the old stubs allowed `text()` to be called forever.
+ *
+ * `url` is defined only when a redirect is being simulated — a real
+ * `Response` reports `""`, which is what the provider treats as "no redirect".
+ */
+function httpResponse(
+  body: string | Buffer,
+  {
+    status = 200,
+    statusText = "OK",
+    contentType = "text/html",
+    url,
+  }: {
+    status?: number;
+    statusText?: string;
+    contentType?: string | null;
+    url?: string;
+  } = {},
+): Response {
+  const response = new Response(body, {
+    status,
+    statusText,
+    headers: contentType ? { "content-type": contentType } : {},
+  });
+
+  if (url !== undefined) {
+    Object.defineProperty(response, "url", { value: url });
+  }
+
+  return response;
+}
 
 // Mock pdf-parse v2 API
 jest.mock("pdf-parse", () => ({
@@ -46,13 +90,7 @@ describe("ExtractionProvider", () => {
 
   describe("fetchUrl", () => {
     it("should fetch URL and return content", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("<html>content</html>"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockResolvedValueOnce(httpResponse("<html>content</html>"));
 
       const result = await provider.fetchUrl("https://example.com");
 
@@ -68,13 +106,7 @@ describe("ExtractionProvider", () => {
     });
 
     it("should return cached result on second call", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockResolvedValueOnce(httpResponse("content"));
 
       // First call
       await provider.fetchUrl("https://example.com");
@@ -87,13 +119,7 @@ describe("ExtractionProvider", () => {
     });
 
     it("should bypass cache when option is set", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockImplementation(async () => httpResponse("content"));
 
       // First call
       await provider.fetchUrl("https://example.com");
@@ -108,14 +134,11 @@ describe("ExtractionProvider", () => {
     });
 
     it("should detect URL redirect and include redirect info in result", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        url: "https://example.com/new-path",
-        text: () => Promise.resolve("<html>redirected</html>"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockResolvedValueOnce(
+        httpResponse("<html>redirected</html>", {
+          url: "https://example.com/new-path",
+        }),
+      );
 
       const result = await provider.fetchUrl("https://example.com/old-path");
 
@@ -125,14 +148,9 @@ describe("ExtractionProvider", () => {
     });
 
     it("should not set redirect fields when URL is unchanged", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        url: "https://example.com",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockResolvedValueOnce(
+        httpResponse("content", { url: "https://example.com" }),
+      );
 
       const result = await provider.fetchUrl("https://example.com");
 
@@ -141,11 +159,9 @@ describe("ExtractionProvider", () => {
     });
 
     it("should throw FetchError on non-ok response", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-      });
+      mockFetch.mockResolvedValueOnce(
+        httpResponse("", { status: 404, statusText: "Not Found" }),
+      );
 
       await expect(
         provider.fetchUrl("https://example.com/notfound"),
@@ -153,13 +169,7 @@ describe("ExtractionProvider", () => {
     });
 
     it("should include custom headers", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockResolvedValueOnce(httpResponse("content"));
 
       await provider.fetchUrl("https://example.com", {
         headers: { Authorization: "Bearer token" },
@@ -174,13 +184,7 @@ describe("ExtractionProvider", () => {
     });
 
     it("should use different cache keys for different headers", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockImplementation(async () => httpResponse("content"));
 
       await provider.fetchUrl("https://example.com", {
         headers: { Accept: "text/html" },
@@ -198,13 +202,7 @@ describe("ExtractionProvider", () => {
         rateLimit: { requestsPerSecond: 2, burstSize: 2 },
       });
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockImplementation(async () => httpResponse("content"));
 
       // Exhaust burst
       await limitedProvider.fetchUrl("https://example.com/1", {
@@ -228,17 +226,230 @@ describe("ExtractionProvider", () => {
     });
   });
 
+  describe("fetch provenance (#1276)", () => {
+    const body = "<html>Measure A</html>";
+    const expectedHash = createHash("sha256")
+      .update(Buffer.from(body, "utf8"))
+      .digest("hex");
+
+    it("content-addresses the fetched body", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await provider.fetchUrl("https://example.com");
+
+      expect(result.contentHash).toBe(expectedHash);
+      expect(result.content).toBe(body);
+    });
+
+    it("records when the body was received, as an ISO string", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await provider.fetchUrl("https://example.com");
+
+      // A string, not a Date: fetch results round-trip through a JSON cache.
+      expect(typeof result.fetchedAt).toBe("string");
+      expect(new Date(result.fetchedAt).toISOString()).toBe(result.fetchedAt);
+    });
+
+    it("captures HTTP validators when the server sends them", async () => {
+      const response = httpResponse(body);
+      response.headers.set("etag", '"abc123"');
+      response.headers.set("last-modified", "Wed, 17 Sep 2026 10:00:00 GMT");
+      mockFetch.mockResolvedValueOnce(response);
+
+      const result = await provider.fetchUrl("https://example.com");
+
+      expect(result.etag).toBe('"abc123"');
+      expect(result.lastModified).toBe("Wed, 17 Sep 2026 10:00:00 GMT");
+    });
+
+    it("omits validators the server did not send", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await provider.fetchUrl("https://example.com");
+
+      expect(result.etag).toBeUndefined();
+      expect(result.lastModified).toBeUndefined();
+    });
+
+    it("hashes the raw bytes, not the decoded text", async () => {
+      // A BOM-prefixed body decodes to the same string as a bare one. Hashing
+      // decoded text would call these one source; they are two versions.
+      const bommed = Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from(body, "utf8"),
+      ]);
+      mockFetch.mockResolvedValueOnce(httpResponse(bommed));
+
+      const result = await provider.fetchUrl("https://example.com");
+
+      expect(result.content).toBe(body);
+      expect(result.contentHash).not.toBe(expectedHash);
+      expect(result.contentHash).toBe(
+        createHash("sha256").update(bommed).digest("hex"),
+      );
+    });
+
+    it("preserves the original hash and fetch time across a cache hit", async () => {
+      jest.setSystemTime(new Date("2026-09-18T10:00:00.000Z"));
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+      const fresh = await provider.fetchUrl("https://example.com");
+
+      // Move the clock before the cache hit. Comparing the two results alone
+      // would pass even if the cached value were re-stamped, because both
+      // calls land in the same millisecond under fake timers.
+      jest.setSystemTime(new Date("2026-09-18T10:05:00.000Z"));
+      const cached = await provider.fetchUrl("https://example.com");
+
+      // A cache hit received no bytes, so it must not claim a fresh fetch
+      // time or recompute a hash from decoded text.
+      expect(cached.fromCache).toBe(true);
+      expect(cached.contentHash).toBe(fresh.contentHash);
+      expect(cached.fetchedAt).toBe("2026-09-18T10:00:00.000Z");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("carries provenance on the binary path too", async () => {
+      const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+      mockFetch.mockResolvedValueOnce(
+        httpResponse(pdf, { contentType: "application/pdf" }),
+      );
+
+      const result = await provider.fetchBytes("https://example.com/a.pdf");
+
+      expect(result.contentHash).toBe(
+        createHash("sha256").update(pdf).digest("hex"),
+      );
+      expect(result.content.equals(pdf)).toBe(true);
+    });
+  });
+
+  describe("source archive (#1276)", () => {
+    const body = "<html>Measure A</html>";
+    const expectedHash = createHash("sha256")
+      .update(Buffer.from(body, "utf8"))
+      .digest("hex");
+    let archive: { archive: jest.Mock };
+    let archivingProvider: ExtractionProvider;
+
+    beforeEach(() => {
+      archive = { archive: jest.fn().mockResolvedValue(undefined) };
+      archivingProvider = new ExtractionProvider(
+        { cacheProvider: "memory" },
+        undefined,
+        archive,
+      );
+    });
+
+    afterEach(async () => {
+      await archivingProvider.onModuleDestroy?.();
+    });
+
+    it("archives the raw bytes, not the decoded text", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { regionId: "us-ca", dataType: "propositions" },
+      });
+
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+      const [recorded] = archive.archive.mock.calls[0];
+      expect(Buffer.isBuffer(recorded.content)).toBe(true);
+      expect(recorded.content.equals(Buffer.from(body, "utf8"))).toBe(true);
+      expect(recorded.contentHash).toBe(expectedHash);
+    });
+
+    it("passes the run context through to the archive", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: {
+          regionId: "us-ca",
+          dataType: "propositions",
+          executionId: "exec-1",
+          manifestId: "manifest-1",
+        },
+      });
+
+      expect(archive.archive).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceUrl: "https://example.gov/a",
+          regionId: "us-ca",
+          dataType: "propositions",
+          executionId: "exec-1",
+          manifestId: "manifest-1",
+        }),
+      );
+    });
+
+    it("does not archive a fetch that did not ask to be archived", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a");
+
+      // The store is sized for artifacts claims cite. Archiving every list
+      // page and discovery crawl would fill it with pages nothing cites.
+      expect(archive.archive).not.toHaveBeenCalled();
+    });
+
+    it("goes to the network even when the body is cached", async () => {
+      mockFetch.mockImplementation(async () => httpResponse(body));
+
+      await archivingProvider.fetchUrl("https://example.gov/a");
+      await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      // A cache hit carries decoded text only — archiving from it is
+      // impossible, so an archived fetch must not be served from cache.
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns content even when archiving fails", async () => {
+      archive.archive.mockRejectedValue(new Error("database unavailable"));
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      // Evidence capture runs alongside the fetch. A sync must not die
+      // because the archive was down — the caller asked for content.
+      expect(result.content).toBe(body);
+    });
+
+    it("never returns the raw buffer to callers", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await archivingProvider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      // The buffer is carried out of the circuit breaker only so archiving can
+      // happen outside it. If it escaped, it would be JSON-serialised into
+      // Redis on every fetch for a value nothing downstream reads.
+      expect(
+        (result as unknown as Record<string, unknown>).bytes,
+      ).toBeUndefined();
+    });
+
+    it("is inert when no archive is bound", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse(body));
+
+      const result = await provider.fetchUrl("https://example.gov/a", {
+        archive: { dataType: "propositions" },
+      });
+
+      expect(result.content).toBe(body);
+    });
+  });
+
   describe("fetchWithRetry", () => {
     it("should retry on failure and succeed", async () => {
       mockFetch
         .mockRejectedValueOnce(new Error("Network error"))
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          text: () => Promise.resolve("content"),
-          headers: new Map([["content-type", "text/html"]]),
-        });
+        .mockResolvedValueOnce(httpResponse("content"));
 
       const promise = provider.fetchWithRetry("https://example.com", {
         bypassCache: true,
@@ -353,14 +564,12 @@ describe("ExtractionProvider", () => {
 
     it("returns the response body as a Buffer with bytes preserved exactly", async () => {
       const original = pdfishBuffer();
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        url: "https://example.com/test.pdf",
-        arrayBuffer: () => Promise.resolve(asArrayBuffer(original)),
-        headers: new Map([["content-type", "application/pdf"]]),
-      });
+      mockFetch.mockResolvedValueOnce(
+        httpResponse(original, {
+          contentType: "application/pdf",
+          url: "https://example.com/test.pdf",
+        }),
+      );
 
       const result = await provider.fetchBytes("https://example.com/test.pdf");
 
@@ -388,14 +597,12 @@ describe("ExtractionProvider", () => {
         };
       });
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        url: "https://example.com/test.pdf",
-        arrayBuffer: () => Promise.resolve(asArrayBuffer(original)),
-        headers: new Map([["content-type", "application/pdf"]]),
-      });
+      mockFetch.mockResolvedValueOnce(
+        httpResponse(original, {
+          contentType: "application/pdf",
+          url: "https://example.com/test.pdf",
+        }),
+      );
 
       const text = await provider.fetchPdfText("https://example.com/test.pdf");
 
@@ -408,14 +615,12 @@ describe("ExtractionProvider", () => {
       const original = pdfishBuffer();
       mockFetch
         .mockRejectedValueOnce(new Error("Network error"))
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          url: "https://example.com/x.pdf",
-          arrayBuffer: () => Promise.resolve(asArrayBuffer(original)),
-          headers: new Map([["content-type", "application/pdf"]]),
-        });
+        .mockResolvedValueOnce(
+          httpResponse(original, {
+            contentType: "application/pdf",
+            url: "https://example.com/x.pdf",
+          }),
+        );
 
       const promise = provider.fetchBytesWithRetry(
         "https://example.com/x.pdf",
@@ -435,14 +640,14 @@ describe("ExtractionProvider", () => {
     });
 
     it("throws FetchError on non-2xx response", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-        url: "https://example.com/missing.pdf",
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-        headers: new Map(),
-      });
+      mockFetch.mockResolvedValueOnce(
+        httpResponse(Buffer.alloc(0), {
+          status: 404,
+          statusText: "Not Found",
+          contentType: null,
+          url: "https://example.com/missing.pdf",
+        }),
+      );
 
       await expect(
         provider.fetchBytes("https://example.com/missing.pdf"),
@@ -526,13 +731,7 @@ describe("ExtractionProvider", () => {
 
   describe("cache management", () => {
     it("should get cache stats", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockImplementation(async () => httpResponse("content"));
 
       await provider.fetchUrl("https://example.com");
 
@@ -542,13 +741,7 @@ describe("ExtractionProvider", () => {
     });
 
     it("should clear cache", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockImplementation(async () => httpResponse("content"));
 
       await provider.fetchUrl("https://example.com");
       await provider.clearCache();
@@ -622,13 +815,7 @@ describe("ExtractionProvider", () => {
       }
 
       // Then succeed
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve("content"),
-        headers: new Map([["content-type", "text/html"]]),
-      });
+      mockFetch.mockImplementation(async () => httpResponse("content"));
 
       // Advance time past half-open period (60 seconds for extraction)
       await jest.advanceTimersByTimeAsync(61000);

@@ -41,10 +41,15 @@ import {
   FetchOptions,
   RetryOptions,
   CachedFetchResult,
+  FetchProvenance,
+  ISourceArchive,
+  SOURCE_ARCHIVE,
+  ArchiveContext,
   FetchError,
   FetchFunction,
 } from "./types.js";
 import { normalizeUrl } from "./utils/url-normalize.js";
+import { decodeUtf8, hashContentBytes } from "./utils/content-bytes.js";
 
 /**
  * Remove NUL bytes (0x00) from extracted text. Postgres `text`/`utf8` columns
@@ -104,6 +109,18 @@ export class ExtractionProvider {
     @Optional()
     @Inject(OCR_SERVICE)
     private readonly ocrService?: IOcrProviderForPdf,
+    /**
+     * Optional. When bound, fetches made with `options.archive` are recorded
+     * in the content-addressed source store (#1276). When absent, that option
+     * is inert — nothing is archived and nothing fails.
+     *
+     * Bound via ExtractionModule.forRoot's `extraProviders`, like OCR_SERVICE:
+     * providers declared at an outer module's scope are not visible inside
+     * ExtractionModule's own DI scope.
+     */
+    @Optional()
+    @Inject(SOURCE_ARCHIVE)
+    private readonly sourceArchive?: ISourceArchive,
   ) {
     this.config = {
       ...DEFAULT_EXTRACTION_CONFIG,
@@ -127,7 +144,13 @@ export class ExtractionProvider {
       redisUrl: config?.redisUrl,
       cacheOptions: this.config.cache,
       rateLimitOptions: this.config.rateLimit,
-      keyPrefix: "extraction:cache:",
+      // Versioned prefix. Cached entries are JSON and survive a deploy in
+      // Redis, so widening CachedFetchResult silently changes the shape of
+      // what a hit returns: entries written before #1276 carry no
+      // contentHash/fetchedAt, and would deserialise into an object whose
+      // type claims both are present. Bump this whenever the cached shape
+      // changes — old keys are then simply never read and expire on TTL.
+      keyPrefix: "extraction:cache:v2:",
       rateLimiterKey: "extraction:ratelimit",
     });
 
@@ -170,6 +193,36 @@ export class ExtractionProvider {
   }
 
   /**
+   * Record a fetched artifact in the source archive, if one is bound.
+   *
+   * Never throws. Archiving is evidence capture running alongside the fetch;
+   * a sync must not fail because the archive was unavailable, and the caller
+   * asked for content, not for a durable copy. Gaps are visible as a
+   * shortfall in the store's own metrics rather than as a dead pipeline.
+   */
+  private async archiveFetch(
+    bytes: Buffer,
+    url: string,
+    contentType: string,
+    provenance: FetchProvenance,
+    context: ArchiveContext,
+  ): Promise<void> {
+    if (!this.sourceArchive) return;
+
+    try {
+      await this.sourceArchive.archive({
+        ...provenance,
+        ...context,
+        content: bytes,
+        sourceUrl: url,
+        contentType,
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to archive ${url}: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * Fetch URL content with caching and rate limiting
    *
    * @param url - URL to fetch
@@ -183,8 +236,11 @@ export class ExtractionProvider {
     url = normalizeUrl(url);
     const cacheKey = this.getCacheKey(url, options);
 
-    // Check cache first (unless bypassed)
-    if (!options.bypassCache) {
+    // Check cache first (unless bypassed). A fetch that must be archived
+    // always goes to the network: a cache hit carries decoded text only, so
+    // reading from cache would silently leave a cited source unarchived
+    // depending on whether something else fetched it in the last few minutes.
+    if (!options.bypassCache && !options.archive) {
       const cached = await this.cache.get(cacheKey);
       if (cached) {
         this.logger.debug(`Cache hit for ${url}`);
@@ -195,7 +251,7 @@ export class ExtractionProvider {
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching ${url}`);
 
-    const fetched = await this.fetchAndDecode(url, options, (r) => r.text());
+    const fetched = await this.fetchAndDecode(url, options, decodeUtf8);
     const result: CachedFetchResult = { ...fetched, fromCache: false };
 
     await this.cache.set(cacheKey, result);
@@ -254,20 +310,20 @@ export class ExtractionProvider {
   async fetchBytes(
     url: string,
     options: FetchOptions = {},
-  ): Promise<{
-    content: Buffer;
-    statusCode: number;
-    contentType: string;
-    finalUrl?: string;
-    redirectedFrom?: string;
-  }> {
+  ): Promise<
+    {
+      content: Buffer;
+      statusCode: number;
+      contentType: string;
+      finalUrl?: string;
+      redirectedFrom?: string;
+    } & FetchProvenance
+  > {
     url = normalizeUrl(url);
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching bytes from ${url}`);
 
-    return this.fetchAndDecode(url, options, async (r) =>
-      Buffer.from(await r.arrayBuffer()),
-    );
+    return this.fetchAndDecode(url, options, (bytes) => bytes);
   }
 
   /**
@@ -278,13 +334,15 @@ export class ExtractionProvider {
   async fetchBytesWithRetry(
     url: string,
     options: RetryOptions = {},
-  ): Promise<{
-    content: Buffer;
-    statusCode: number;
-    contentType: string;
-    finalUrl?: string;
-    redirectedFrom?: string;
-  }> {
+  ): Promise<
+    {
+      content: Buffer;
+      statusCode: number;
+      contentType: string;
+      finalUrl?: string;
+      redirectedFrom?: string;
+    } & FetchProvenance
+  > {
     return this.retryStandard(url, options, () =>
       this.fetchBytes(url, options),
     );
@@ -381,15 +439,17 @@ export class ExtractionProvider {
   private async fetchAndDecode<T>(
     url: string,
     options: FetchOptions,
-    decodeBody: (response: Response) => Promise<T>,
-  ): Promise<{
-    content: T;
-    statusCode: number;
-    contentType: string;
-    finalUrl?: string;
-    redirectedFrom?: string;
-  }> {
-    return this.circuitBreaker.execute(async () => {
+    decodeBody: (bytes: Buffer) => T,
+  ): Promise<
+    {
+      content: T;
+      statusCode: number;
+      contentType: string;
+      finalUrl?: string;
+      redirectedFrom?: string;
+    } & FetchProvenance
+  > {
+    const fetched = await this.circuitBreaker.execute(async () => {
       const timeout = options.timeout ?? this.config.defaultTimeout;
       const response = await this.fetchFn(url, {
         headers: options.headers,
@@ -404,8 +464,18 @@ export class ExtractionProvider {
         );
       }
 
-      const content = await decodeBody(response);
+      // Read the body once as bytes and hash it *before* decoding. Both the
+      // text and binary paths come through here, so this is the single point
+      // where a fetched artifact can be content-addressed against what the
+      // server actually sent (#1276). Decoding first and hashing the result
+      // would attest to our interpretation of the bytes, not to the bytes.
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const contentHash = hashContentBytes(bytes);
+      const fetchedAt = new Date().toISOString();
+      const content = decodeBody(bytes);
       const contentType = response.headers.get("content-type") || "unknown";
+      const etag = response.headers.get("etag") ?? undefined;
+      const lastModified = response.headers.get("last-modified") ?? undefined;
       const finalUrl = response.url;
       const wasRedirected =
         !!finalUrl && normalizeUrl(finalUrl) !== normalizeUrl(url);
@@ -424,11 +494,36 @@ export class ExtractionProvider {
 
       return {
         content,
+        bytes,
         statusCode: response.status,
         contentType,
+        contentHash,
+        fetchedAt,
+        ...(etag && { etag }),
+        ...(lastModified && { lastModified }),
         ...(wasRedirected && { redirectedFrom: url, finalUrl }),
       };
     });
+
+    // Archive outside the circuit breaker. The breaker exists to stop
+    // hammering a failing remote host; archiving talks to our own database,
+    // and letting its latency or an outage count as the host failing would
+    // trip the breaker and halt fetching altogether (#1276).
+    if (options.archive) {
+      await this.archiveFetch(
+        fetched.bytes,
+        url,
+        fetched.contentType,
+        fetched,
+        options.archive,
+      );
+    }
+
+    // `bytes` never leaves this method. Callers want decoded content, and the
+    // raw buffer would otherwise ride along into the cache — JSON-serialised
+    // into Redis on every fetch, for a value nothing downstream reads.
+    const { bytes: _rawBytes, ...result } = fetched;
+    return result;
   }
 
   /** Standard retry wrapper used by fetchWithRetry and fetchBytesWithRetry. */

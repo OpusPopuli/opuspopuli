@@ -3,6 +3,7 @@ import { URLExtractor } from "../src/extractors/url.extractor";
 import { ExtractionError, TextExtractionInput } from "@opuspopuli/common";
 import { ExtractionProvider } from "../src/extraction.provider";
 import { FetchError } from "../src/types";
+import { hashContentBytes } from "../src/utils/content-bytes.js";
 
 // Mock NestJS Logger
 jest.mock("@nestjs/common", () => ({
@@ -95,6 +96,8 @@ describe("URLExtractor", () => {
         statusCode: 200,
         contentType: "text/html",
         fromCache: false,
+        contentHash: hashContentBytes(Buffer.from(htmlContent, "utf8")),
+        fetchedAt: new Date("2026-09-18T00:00:00.000Z").toISOString(),
       });
 
       // Create a real cheerio instance for parseHtml
@@ -172,6 +175,8 @@ describe("URLExtractor", () => {
         statusCode: 200,
         contentType: "text/html",
         fromCache: false,
+        contentHash: hashContentBytes(Buffer.from(htmlContent, "utf8")),
+        fetchedAt: new Date("2026-09-18T00:00:00.000Z").toISOString(),
       });
 
       const cheerio = await import("cheerio");
@@ -197,6 +202,8 @@ describe("URLExtractor", () => {
         statusCode: 200,
         contentType: "text/html",
         fromCache: true,
+        contentHash: hashContentBytes(Buffer.from(htmlContent, "utf8")),
+        fetchedAt: new Date("2026-09-18T00:00:00.000Z").toISOString(),
       });
 
       const cheerio = await import("cheerio");
@@ -229,6 +236,8 @@ describe("URLExtractor", () => {
         statusCode: 200,
         contentType: "text/html",
         fromCache: false,
+        contentHash: hashContentBytes(Buffer.from(htmlContent, "utf8")),
+        fetchedAt: new Date("2026-09-18T00:00:00.000Z").toISOString(),
       });
 
       const cheerio = await import("cheerio");

@@ -38,6 +38,20 @@ export interface FetchOptions {
    * logged at debug instead of warn.
    */
   fromConfig?: boolean;
+  /**
+   * Archive this fetch as a cited source (#1276).
+   *
+   * Opt-in per call rather than on by default: the store is sized for the
+   * artifacts claims actually reference, and archiving every list page and
+   * link-discovery crawl would fill it with pages nothing cites.
+   *
+   * Setting this also bypasses the read cache. Archiving needs the raw bytes,
+   * and a cache hit has only the decoded text — so a cached read could not
+   * capture the artifact, and would leave a cited source unarchived depending
+   * on nothing more than whether something else happened to fetch it in the
+   * last few minutes.
+   */
+  archive?: ArchiveContext;
 }
 
 /**
@@ -110,9 +124,90 @@ export const DEFAULT_EXTRACTION_CONFIG: ExtractionConfig = {
 };
 
 /**
+ * Provenance captured at the moment a URL is fetched.
+ *
+ * Content-addresses the artifact so a cited source can be pinned to the exact
+ * bytes a claim was drawn from (#1276). `contentHash` is taken over the raw
+ * response body *before* decoding — hashing decoded text would attest to our
+ * interpretation rather than to what the server sent, and would collapse
+ * bodies that decode alike but differ on the wire.
+ *
+ * The HTTP validators are recorded rather than acted on: they let a later
+ * re-fetch be conditional, and they evidence what the server claimed about
+ * the artifact at fetch time.
+ */
+export interface FetchProvenance {
+  /** SHA-256 of the raw response body, hex-encoded */
+  contentHash: string;
+  /**
+   * When the body was received, ISO 8601.
+   *
+   * A string rather than a `Date` on purpose: fetch results are cached, and
+   * the Redis cache round-trips them through `JSON.stringify`/`JSON.parse`
+   * (`redis-cache.ts:87,104`). A `Date` would return from that cache as a
+   * string still *typed* as `Date` — and the in-memory cache would preserve
+   * the real `Date`, so the two backends would disagree about the type of the
+   * same field. ISO 8601 round-trips identically through both, and Prisma
+   * accepts it directly for a `DateTime` column.
+   */
+  fetchedAt: string;
+  /** ETag response header, if the server sent one */
+  etag?: string;
+  /** Last-Modified response header, if the server sent one */
+  lastModified?: string;
+}
+
+/**
+ * DI token for the optional source archive.
+ *
+ * Bound the same way OCR_SERVICE is — via `ExtractionModule.forRoot`'s
+ * `extraProviders`, because providers declared at an outer module's scope are
+ * not visible inside ExtractionModule's own DI scope. Left unbound, fetches
+ * simply are not archived.
+ */
+export const SOURCE_ARCHIVE = "SOURCE_ARCHIVE";
+
+/** Which run and which region a fetch belongs to. */
+export interface ArchiveContext {
+  /** Region whose sync performed the fetch */
+  regionId?: string;
+  /** Pipeline data type (propositions, meetings, bills, …) */
+  dataType?: string;
+  /** PipelineExecution that performed the fetch */
+  executionId?: string;
+  /** StructuralManifest in force at fetch time */
+  manifestId?: string;
+}
+
+/**
+ * Durable store for fetched artifacts (#1276).
+ *
+ * An interface rather than a concrete service because extraction-provider must
+ * not learn about the database — the implementation lives in the region
+ * service, which owns that bounded context.
+ *
+ * Implementations must not throw: archiving is evidence capture alongside the
+ * fetch, and a failure to record must never take down the scrape that was the
+ * caller's actual goal.
+ */
+export interface ISourceArchive {
+  archive(
+    input: FetchProvenance &
+      ArchiveContext & {
+        /** Raw bytes exactly as received */
+        content: Buffer;
+        /** URL that produced them */
+        sourceUrl: string;
+        /** Response Content-Type, if any */
+        contentType?: string;
+      },
+  ): Promise<void>;
+}
+
+/**
  * Result from a cached fetch operation
  */
-export interface CachedFetchResult {
+export interface CachedFetchResult extends FetchProvenance {
   /** The fetched content */
   content: string;
   /** Whether the result was served from cache */
