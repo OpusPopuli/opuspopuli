@@ -59,7 +59,22 @@ export interface AiOutputProvenance {
   readonly promptVersion: string;
   /** Bare model name from `getModelName()` — the CivicsBlock convention. */
   readonly llmModel: string | null;
+  /**
+   * Content digest of the weights that ran it (#1281, M1 scope item 5).
+   *
+   * A tag is not a pin: `ollama pull` can replace the weights behind an
+   * unchanged name, so `llmModel` alone cannot answer "which model produced
+   * this" — including retrospectively, for rows already written.
+   *
+   * `UNKNOWN_MODEL_DIGEST` when the provider could not resolve one. Recorded
+   * rather than omitted, because "we could not determine it" and "we never
+   * asked" are different claims and only one of them is honest.
+   */
+  readonly llmModelDigest: string;
 }
+
+/** Recorded when a provider cannot resolve its digest — never left blank. */
+export const UNKNOWN_MODEL_DIGEST = 'unknown';
 
 export abstract class LlmGeneratorBase {
   constructor(
@@ -106,14 +121,44 @@ export abstract class LlmGeneratorBase {
    * failure this primitive retrofits away. Call it with the full prompt
    * response; thread the result to the persist call.
    */
-  protected outputProvenance(prompt: {
+  protected async outputProvenance(prompt: {
     promptHash: string;
     promptVersion: string;
-  }): AiOutputProvenance {
+  }): Promise<AiOutputProvenance> {
     return {
       promptHash: prompt.promptHash,
       promptVersion: prompt.promptVersion,
       llmModel: this.llm?.getModelName() ?? null,
+      // Async because resolving the digest is an HTTP call on first use. The
+      // provider caches it for the life of the process, so this costs one
+      // round-trip per run, not one per generation.
+      llmModelDigest:
+        (await this.llm?.getModelDigest()) ?? UNKNOWN_MODEL_DIGEST,
     };
+  }
+
+  /**
+   * Attach provenance to a persist payload.
+   *
+   * THE write path for AI output (#1281). `outputProvenance` alone was
+   * opt-in, and opt-in drifted within three months: five of six generators
+   * called it and `proposition-analysis` quietly rebuilt the same fields
+   * inline, so a change to the attribution set reached five of them.
+   *
+   * Routing the payload through here means the columns and the provenance are
+   * assembled in one place, and a generator that forgets is visible as a
+   * generator that did not call it — rather than as a row that looks written
+   * correctly until someone asks which prompt produced it.
+   *
+   * `map` exists because a table carrying several AI outputs needs prefixed
+   * columns (`bio_prompt_hash`, `summary_prompt_hash`, …) to say WHICH output
+   * a hash attributes.
+   */
+  protected async withProvenance<TData extends object, TOut extends object>(
+    data: TData,
+    prompt: { promptHash: string; promptVersion: string },
+    map: (provenance: AiOutputProvenance) => TOut,
+  ): Promise<TData & TOut> {
+    return { ...data, ...map(await this.outputProvenance(prompt)) };
   }
 }

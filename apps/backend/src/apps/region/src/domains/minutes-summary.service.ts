@@ -156,6 +156,7 @@ export class MinutesSummaryService extends LlmGeneratorBase {
           summaryPromptHash: generated.provenance.promptHash,
           summaryPromptVersion: generated.provenance.promptVersion,
           summaryLlmModel: generated.provenance.llmModel,
+          summaryLlmDigest: generated.provenance.llmModelDigest,
         },
       });
       return true;
@@ -195,7 +196,7 @@ export class MinutesSummaryService extends LlmGeneratorBase {
 
     const payload = this.parsePayload(result.text, row);
     if (!payload) return undefined;
-    return { payload, provenance: this.outputProvenance(prompt) };
+    return { payload, provenance: await this.outputProvenance(prompt) };
   }
 
   private formatMinutes(row: MinutesForSummary): string {

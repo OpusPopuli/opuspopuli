@@ -139,6 +139,7 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
           committeesSummaryPromptHash: generated.provenance.promptHash,
           committeesSummaryPromptVersion: generated.provenance.promptVersion,
           committeesSummaryLlmModel: generated.provenance.llmModel,
+          committeesSummaryLlmDigest: generated.provenance.llmModelDigest,
         },
       });
       return true;
@@ -168,7 +169,7 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
 
     const summary = this.parseSummaryFromResponse(result.text);
     if (!summary) return undefined;
-    return { summary, provenance: this.outputProvenance(prompt) };
+    return { summary, provenance: await this.outputProvenance(prompt) };
   }
 
   /**

@@ -32,6 +32,8 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
+      // #1281: the weights behind the tag, resolved by the provider.
+      getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
       generate: jest.fn(),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -206,6 +208,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
           descriptionPromptHash: 'hash',
           descriptionPromptVersion: '1.0.0',
           descriptionLlmModel: 'qwen-test:9b',
+          descriptionLlmDigest: 'stub-digest',
         },
       });
     });
@@ -236,6 +239,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
           descriptionPromptHash: 'hash',
           descriptionPromptVersion: '1.0.0',
           descriptionLlmModel: 'qwen-test:9b',
+          descriptionLlmDigest: 'stub-digest',
         },
       });
     });
@@ -274,6 +278,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
           descriptionPromptHash: 'hash',
           descriptionPromptVersion: '1.0.0',
           descriptionLlmModel: 'qwen-test:9b',
+          descriptionLlmDigest: 'stub-digest',
         },
       });
     });

@@ -204,6 +204,50 @@ export class OllamaLLMProvider implements ILLMProvider {
   }
 
   /**
+   * Content digest of the weights behind `config.model`.
+   *
+   * Read from `/api/tags`, NOT `/api/show` — the digest lives on the manifest
+   * listing and `show` does not return it. Resolved at most once per process:
+   * the weights behind a tag can only change via `ollama pull`, which does not
+   * happen mid-run, and paying an HTTP round-trip per generation to learn a
+   * value that cannot move would be a poor trade.
+   *
+   * Returns `undefined` rather than throwing. A provenance stamp is not worth
+   * failing a generation over — the caller records "unknown", which is an
+   * honest statement, where a thrown error would lose the output entirely.
+   */
+  private modelDigest: string | undefined | null = null;
+
+  async getModelDigest(): Promise<string | undefined> {
+    if (this.modelDigest !== null) return this.modelDigest;
+
+    try {
+      const response = await this.fetchWithTimeout(
+        `${this.config.url}/api/tags`,
+        { method: "GET" },
+        this.requestTimeoutMs,
+        "getModelDigest",
+      );
+      const body = (await response.json()) as {
+        models?: Array<{ name?: string; digest?: string }>;
+      };
+      const match = body.models?.find((m) => m.name === this.config.model);
+      // Normalise: ollama has used both `sha256:` and `sha256-` prefixes.
+      this.modelDigest = match?.digest
+        ? match.digest.replace(/^sha256[:-]/, "")
+        : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve model digest for ${this.config.model}; ` +
+          `provenance will record it as unknown: ${(error as Error).message}`,
+      );
+      this.modelDigest = undefined;
+    }
+
+    return this.modelDigest;
+  }
+
+  /**
    * Execute a fetch with an AbortController timeout, mapping AbortErrors
    * to a LLMError. Shared by generate() and chat() to avoid duplicating
    * the identical controller/timeout/clearTimeout block.

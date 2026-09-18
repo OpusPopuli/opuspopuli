@@ -30,6 +30,8 @@ describe('CivicsSyncService', () => {
     const mockLlm = {
       generate: jest.fn(),
       getModelName: jest.fn().mockReturnValue('qwen-test'),
+      // #1281: the weights behind the tag, resolved by the provider.
+      getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
     } as unknown as jest.Mocked<ILLMProvider>;
     const mockDb = createMock<DbService>();
 

@@ -41,6 +41,8 @@ function makeLlmStub(): LlmStub {
     },
     getName: () => 'stub',
     getModelName: () => 'stub-1',
+    // #1281: providers report the digest of the weights behind the tag.
+    getModelDigest: () => Promise.resolve('stub-digest'),
     async isAvailable() {
       return true;
     },

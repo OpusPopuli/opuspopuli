@@ -190,6 +190,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
         bioPromptHash: provenance.promptHash,
         bioPromptVersion: provenance.promptVersion,
         bioLlmModel: provenance.llmModel,
+        bioLlmDigest: provenance.llmModelDigest,
       },
     });
   }
@@ -220,7 +221,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
     const parsed = this.parseBioFromResponse(result.text);
     if (!parsed) return undefined;
     this.logClaimsSummary(rep, parsed);
-    return { parsed, provenance: this.outputProvenance(prompt) };
+    return { parsed, provenance: await this.outputProvenance(prompt) };
   }
 
   /**

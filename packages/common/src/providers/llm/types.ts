@@ -79,6 +79,25 @@ export interface ILLMProvider {
   getModelName(): string;
 
   /**
+   * Content digest of the weights currently behind `getModelName()`.
+   *
+   * A tag is not a pin. `ollama pull` can replace the weights behind an
+   * unchanged tag, so "which model produced this output" is unanswerable from
+   * the name alone — including retrospectively, for outputs already stored
+   * (#1281, M1 scope item 5).
+   *
+   * That is not hypothetical precision: claim anchoring measured 24.8% on
+   * `olmo-3:7b-instruct` and 52.9% on `olmo-3.1:32b-instruct` (#1212).
+   * Comparisons like that only mean something if the weights behind each tag
+   * are identified.
+   *
+   * Returns `undefined` when the provider cannot determine it. Callers must
+   * record that as "unknown" rather than omitting the field — a missing
+   * digest and an unrecorded one are different claims.
+   */
+  getModelDigest(): Promise<string | undefined>;
+
+  /**
    * Generate text completion from a prompt
    */
   generate(prompt: string, options?: GenerateOptions): Promise<GenerateResult>;

@@ -37,6 +37,8 @@ describe('CommitteeSummaryGeneratorService', () => {
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
+      // #1281: the weights behind the tag, resolved by the provider.
+      getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
       generate: jest.fn(),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -140,6 +142,7 @@ describe('CommitteeSummaryGeneratorService', () => {
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
+          committeesSummaryLlmDigest: 'stub-digest',
         },
       });
     });
@@ -303,6 +306,7 @@ describe('CommitteeSummaryGeneratorService', () => {
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
+          committeesSummaryLlmDigest: 'stub-digest',
         },
       });
     });
@@ -322,6 +326,7 @@ describe('CommitteeSummaryGeneratorService', () => {
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
+          committeesSummaryLlmDigest: 'stub-digest',
         },
       });
     });
@@ -342,6 +347,7 @@ describe('CommitteeSummaryGeneratorService', () => {
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
+          committeesSummaryLlmDigest: 'stub-digest',
         },
       });
     });
@@ -380,6 +386,7 @@ describe('CommitteeSummaryGeneratorService', () => {
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
+          committeesSummaryLlmDigest: 'stub-digest',
         },
       });
     });

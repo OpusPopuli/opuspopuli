@@ -105,6 +105,7 @@ export class LegislativeCommitteeDescriptionGeneratorService extends LlmGenerato
           descriptionPromptHash: generated.provenance.promptHash,
           descriptionPromptVersion: generated.provenance.promptVersion,
           descriptionLlmModel: generated.provenance.llmModel,
+          descriptionLlmDigest: generated.provenance.llmModelDigest,
         },
       });
       return true;
@@ -136,7 +137,7 @@ export class LegislativeCommitteeDescriptionGeneratorService extends LlmGenerato
 
     const description = this.parseDescriptionFromResponse(result.text);
     if (!description) return undefined;
-    return { description, provenance: this.outputProvenance(prompt) };
+    return { description, provenance: await this.outputProvenance(prompt) };
   }
 
   /**

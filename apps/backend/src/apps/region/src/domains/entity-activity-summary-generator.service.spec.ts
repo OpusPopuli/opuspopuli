@@ -59,6 +59,8 @@ describe('EntityActivitySummaryGeneratorService', () => {
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
+      // #1281: the weights behind the tag, resolved by the provider.
+      getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
       generate: jest.fn().mockResolvedValue({ text: llmText, tokensUsed: 100 }),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -181,6 +183,7 @@ describe('EntityActivitySummaryGeneratorService', () => {
           activitySummaryPromptHash: 'hash',
           activitySummaryPromptVersion: '1.0.0',
           activitySummaryLlmModel: 'qwen-test:9b',
+          activitySummaryLlmDigest: 'stub-digest',
         }),
       }),
     );
@@ -218,6 +221,7 @@ describe('EntityActivitySummaryGeneratorService', () => {
           activitySummaryPromptHash: 'hash',
           activitySummaryPromptVersion: '1.0.0',
           activitySummaryLlmModel: 'qwen-test:9b',
+          activitySummaryLlmDigest: 'stub-digest',
         }),
       }),
     );

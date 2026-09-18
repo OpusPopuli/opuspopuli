@@ -131,6 +131,8 @@ describe('pgvector index strategy + width assertion (#1150)', () => {
       {
         getName: () => 'test',
         getModelName: () => 'test-model',
+        // #1281: providers report the digest of the weights behind the tag.
+        getModelDigest: () => Promise.resolve('stub-digest'),
       } as unknown as ConstructorParameters<typeof KnowledgeService>[2],
       {} as unknown as ConstructorParameters<typeof KnowledgeService>[3],
     );

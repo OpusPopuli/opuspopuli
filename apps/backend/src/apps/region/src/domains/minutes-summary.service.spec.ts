@@ -52,6 +52,8 @@ function build(opts: { llmText?: string; findUnique?: unknown } = {}): Mocks {
 
   const llm = {
     getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
+    // #1281: the weights behind the tag, resolved by the provider.
+    getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
     generate: jest.fn(async () => ({ text: llmText })),
   } as unknown as ILLMProvider & { generate: jest.Mock };
 
