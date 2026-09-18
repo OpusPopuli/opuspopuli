@@ -63,6 +63,8 @@ describe('generator provenance write-through (#1149)', () => {
 
     const llm = {
       getModelName: jest.fn().mockReturnValue('qwen3.5-test:9b'),
+      // #1281: providers report the digest of the weights behind the tag.
+      getModelDigest: jest.fn().mockResolvedValue('it-digest'),
       generate: jest.fn().mockResolvedValue({
         text: '{"bio":"Jane Smith represents District 5.","claims":[]}',
       }),

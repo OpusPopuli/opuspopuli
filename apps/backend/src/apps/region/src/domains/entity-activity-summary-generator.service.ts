@@ -274,6 +274,7 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
       activitySummaryPromptHash: generated.provenance.promptHash,
       activitySummaryPromptVersion: generated.provenance.promptVersion,
       activitySummaryLlmModel: generated.provenance.llmModel,
+      activitySummaryLlmDigest: generated.provenance.llmModelDigest,
     };
   }
 
@@ -298,7 +299,7 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
     });
     const summary = this.parseSummary(result.text);
     if (!summary) return undefined;
-    return { summary, provenance: this.outputProvenance(prompt) };
+    return { summary, provenance: await this.outputProvenance(prompt) };
   }
 
   /**

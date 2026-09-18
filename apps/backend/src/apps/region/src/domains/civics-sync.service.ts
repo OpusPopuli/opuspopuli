@@ -8,6 +8,7 @@ import {
 } from '@opuspopuli/common';
 import { DataType } from '@opuspopuli/region-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
+import { LlmGeneratorBase } from './llm-generator.base';
 import { civicsSyncTracker } from './sync-phase-logger';
 
 /**
@@ -49,29 +50,38 @@ export interface CivicsCrawlHelpers {
  * glossary upserts.
  */
 @Injectable()
-export class CivicsSyncService {
+export class CivicsSyncService extends LlmGeneratorBase {
   private readonly logger = new Logger(CivicsSyncService.name, {
     timestamp: true,
   });
 
   constructor(
-    private readonly db: DbService,
-    @Optional() private readonly promptClient?: PromptClientService,
+    db: DbService,
+    @Optional() promptClient?: PromptClientService,
     // ILLMProvider is an interface (erased at runtime), so there is no
     // implicit injection token — NestJS resolves it by the explicit
     // 'LLM_PROVIDER' token that LLMModule provides. Without @Inject here,
-    // @Optional() silently yields `undefined` and civics sync no-ops.
-    // Mirrors LlmGeneratorBase. See #869.
-    @Optional() @Inject('LLM_PROVIDER') private readonly llm?: ILLMProvider,
-  ) {}
+    // @Optional() silently yields `undefined` and civics sync no-ops. See #869.
+    @Optional() @Inject('LLM_PROVIDER') llm?: ILLMProvider,
+  ) {
+    // This class used to only *mirror* LlmGeneratorBase's constructor. It now
+    // inherits it (#1281), so civics extraction goes through the same
+    // attribution write path as every other generator instead of assembling
+    // its own — which is how `llm_model` came to be stamped here but the
+    // digest would not have been.
+    super(undefined, promptClient, llm, db);
+  }
 
   async sync(
     plugin: CivicsProvider,
     helpers: CivicsCrawlHelpers,
   ): Promise<{ processed: number; created: number; updated: number }> {
-    if (!this.promptClient || !this.llm) {
+    // `db` joins this guard because LlmGeneratorBase declares it optional —
+    // a generator can legitimately be constructed without one. Civics sync
+    // cannot, so it refuses here rather than asserting its way through.
+    if (!this.promptClient || !this.llm || !this.db) {
       this.logger.warn(
-        'Civics sync requires PromptClient and LLM provider; skipping',
+        'Civics sync requires PromptClient, LLM provider and DbService; skipping',
       );
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -242,7 +252,7 @@ export class CivicsSyncService {
         return 'skipped';
       }
 
-      const existing = await this.db.civicsBlock.findUnique({
+      const existing = await this.db!.civicsBlock.findUnique({
         where: { regionId_sourceUrl: { regionId, sourceUrl } },
         select: { id: true },
       });
@@ -253,26 +263,34 @@ export class CivicsSyncService {
         lifecycleStages: toJsonField(block.lifecycleStages),
         sessionScheme: toJsonField(block.sessionScheme),
         glossary: toJsonField(block.glossary),
-        // Provenance: stamp which model produced this block, alongside
-        // promptHash/promptVersion, so re-ranking/re-extraction can tell what
-        // came from where. `llm` is non-null past the guard above. See #873.
-        llmModel: this.llm.getModelName(),
       };
 
-      await this.db.civicsBlock.upsert({
+      // Built by the base class, not assembled here (#1281). `llm` is
+      // non-null past the guard above; the digest identifies WHICH weights
+      // produced the block, because `ollama pull` can move a tag.
+      const provenance = await this.outputProvenance({
+        promptHash,
+        promptVersion,
+      });
+
+      await this.db!.civicsBlock.upsert({
         where: { regionId_sourceUrl: { regionId, sourceUrl } },
         create: {
           regionId,
           sourceUrl,
           ...fields,
-          promptHash,
-          promptVersion,
+          promptHash: provenance.promptHash,
+          promptVersion: provenance.promptVersion,
+          llmModel: provenance.llmModel,
+          llmDigest: provenance.llmModelDigest,
           extractedAt: new Date(),
         },
         update: {
           ...fields,
-          promptHash,
-          promptVersion,
+          promptHash: provenance.promptHash,
+          promptVersion: provenance.promptVersion,
+          llmModel: provenance.llmModel,
+          llmDigest: provenance.llmModelDigest,
           extractedAt: new Date(),
         },
       });
@@ -332,7 +350,7 @@ export class CivicsSyncService {
     }
     const now = new Date();
     await batchTransaction(
-      this.db,
+      this.db!,
       valid.map((entry) => {
         // Shared fields are identical between create and update — extract
         // once to keep the upsert body deduplicated.
@@ -350,7 +368,7 @@ export class CivicsSyncService {
           promptVersion,
           extractedAt: now,
         };
-        return this.db.glossaryEntry.upsert({
+        return this.db!.glossaryEntry.upsert({
           where: { regionId_slug: { regionId, slug: entry.slug } },
           create: { regionId, slug: entry.slug, ...shared },
           update: shared,

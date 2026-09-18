@@ -55,6 +55,8 @@ describe('MinutesSummaryService (integration)', () => {
   } as unknown as PromptClientService;
   const llm = {
     getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
+    // #1281: providers report the digest of the weights behind the tag.
+    getModelDigest: jest.fn().mockResolvedValue('it-digest'),
     generate: jest.fn().mockResolvedValue({ text: LLM_JSON, tokensUsed: 321 }),
   } as unknown as ILLMProvider;
   const config = { get: jest.fn(() => undefined) } as unknown as ConfigService;

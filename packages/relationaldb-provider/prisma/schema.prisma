@@ -525,7 +525,8 @@ model RepresentativeRelevanceCache {
 
   llmProvider String? @map("llm_provider") @db.VarChar(50)
 
-  llmModel  String? @map("llm_model") @db.VarChar(80)
+  llmModel String? @map("llm_model") @db.VarChar(80)
+
   variantId String? @map("variant_id") @db.VarChar(50)
   tokensIn  Int?    @map("tokens_in")
   tokensOut Int?    @map("tokens_out")
@@ -568,7 +569,8 @@ model CommitteeRelevanceCache {
 
   llmProvider String? @map("llm_provider") @db.VarChar(50)
 
-  llmModel  String? @map("llm_model") @db.VarChar(80)
+  llmModel String? @map("llm_model") @db.VarChar(80)
+
   variantId String? @map("variant_id") @db.VarChar(50)
   tokensIn  Int?    @map("tokens_in")
   tokensOut Int?    @map("tokens_out")
@@ -1065,9 +1067,11 @@ model Representative {
   bioPromptHash                  String?   @map("bio_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `bio`
   bioPromptVersion               String?   @map("bio_prompt_version") @db.VarChar(20)
   bioLlmModel                    String?   @map("bio_llm_model") @db.VarChar(80)
+  bioLlmDigest                   String?   @map("bio_llm_digest") @db.VarChar(80)
   committeesSummaryPromptHash    String?   @map("committees_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `committeesSummary`
   committeesSummaryPromptVersion String?   @map("committees_summary_prompt_version") @db.VarChar(20)
   committeesSummaryLlmModel      String?   @map("committees_summary_llm_model") @db.VarChar(80)
+  committeesSummaryLlmDigest     String?   @map("committees_summary_llm_digest") @db.VarChar(80)
   /// AI-generated 2-3 sentence summary of recent legislative activity
   /// (presence + amendments + hearings + reports linked to this rep).
   /// Refreshed by run-generate-activity-summaries when new minutes
@@ -1080,6 +1084,7 @@ model Representative {
   activitySummaryPromptHash      String?   @map("activity_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `activitySummary`
   activitySummaryPromptVersion   String?   @map("activity_summary_prompt_version") @db.VarChar(20)
   activitySummaryLlmModel        String?   @map("activity_summary_llm_model") @db.VarChar(80)
+  activitySummaryLlmDigest       String?   @map("activity_summary_llm_digest") @db.VarChar(80)
   createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt                      DateTime? @map("deleted_at") @db.Timestamptz
@@ -1117,6 +1122,7 @@ model LegislativeCommittee {
   descriptionPromptHash        String?   @map("description_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `description`
   descriptionPromptVersion     String?   @map("description_prompt_version") @db.VarChar(20)
   descriptionLlmModel          String?   @map("description_llm_model") @db.VarChar(80)
+  descriptionLlmDigest         String?   @map("description_llm_digest") @db.VarChar(80)
   /// AI-generated 2-3 sentence summary of recent committee activity
   /// (hearings, bill reports, amendments). Refreshed by
   /// run-generate-activity-summaries when new minutes ingest.
@@ -1127,6 +1133,7 @@ model LegislativeCommittee {
   activitySummaryPromptHash    String?   @map("activity_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `activitySummary`
   activitySummaryPromptVersion String?   @map("activity_summary_prompt_version") @db.VarChar(20)
   activitySummaryLlmModel      String?   @map("activity_summary_llm_model") @db.VarChar(80)
+  activitySummaryLlmDigest     String?   @map("activity_summary_llm_digest") @db.VarChar(80)
   createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt                    DateTime? @map("deleted_at") @db.Timestamptz
@@ -1239,6 +1246,7 @@ model Proposition {
   analysisPromptVersion  String?   @map("analysis_prompt_version") @db.VarChar(20)
   /// Model that produced the analysis (#1149).
   analysisLlmModel       String?   @map("analysis_llm_model") @db.VarChar(80)
+  analysisLlmDigest      String?   @map("analysis_llm_digest") @db.VarChar(80)
   analysisGeneratedAt    DateTime? @map("analysis_generated_at") @db.Timestamptz
   /// Why the last analysis attempt was refused, or NULL if none was. Vocabulary
   /// is owned by GenerationFailureReason in llm-generator.base.ts (#1085);
@@ -1340,6 +1348,7 @@ model Minutes {
   summaryPromptHash    String?   @map("summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `summary`
   summaryPromptVersion String?   @map("summary_prompt_version") @db.VarChar(20)
   summaryLlmModel      String?   @map("summary_llm_model") @db.VarChar(80)
+  summaryLlmDigest     String?   @map("summary_llm_digest") @db.VarChar(80)
   parsedAt             DateTime? @map("parsed_at") @db.Timestamptz
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -1562,6 +1571,7 @@ model CivicsBlock {
   promptVersion   String?  @map("prompt_version") @db.VarChar(20)
   /// LLM model + provider used (e.g. "ollama/qwen3.5:9b"). Audit trail.
   llmModel        String?  @map("llm_model") @db.VarChar(80)
+  llmDigest       String?  @map("llm_digest") @db.VarChar(80)
   extractedAt     DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz

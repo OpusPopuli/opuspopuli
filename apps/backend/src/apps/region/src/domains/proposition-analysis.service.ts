@@ -361,6 +361,16 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         return this.reportFailure(prop, outcome.failure);
       }
 
+      // Built by the base class rather than assembled here (#1281). This
+      // service previously rebuilt the same fields inline, which is how it
+      // came to be the one generator of six that did not use the shared
+      // helper — and how a change to the attribution set would have reached
+      // five of them.
+      const provenance = await this.outputProvenance({
+        promptHash: outcome.promptHash,
+        promptVersion: outcome.promptVersion,
+      });
+
       await this.db!.proposition.update({
         where: { id: prop.id },
         data: {
@@ -377,7 +387,10 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
           analysisClaims: outcome.payload
             .analysisClaims as unknown as Prisma.InputJsonValue,
           analysisSource: 'ai-generated',
-          analysisPromptHash: outcome.promptHash,
+          analysisPromptHash: provenance.promptHash,
+          analysisPromptVersion: provenance.promptVersion,
+          analysisLlmModel: provenance.llmModel,
+          analysisLlmDigest: provenance.llmModelDigest,
           // Which text version this analysis — and therefore every claim
           // offset derived from it — was generated against (#1279). Without
           // this, a later in-place rewrite of fullText leaves citations
@@ -385,8 +398,6 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
           analysisSourceTextHash: PropositionAnalysisService.sourceTextHash(
             prop.fullText,
           ),
-          analysisPromptVersion: outcome.promptVersion,
-          analysisLlmModel: this.llm?.getModelName() ?? null,
           analysisGeneratedAt: new Date(),
           // A measure that analyses now is no longer unanalysable. Clearing in
           // the same update is what keeps the column from accumulating stale

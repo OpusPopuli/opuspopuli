@@ -42,6 +42,8 @@ describe('BioGeneratorService', () => {
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
+      // #1281: the weights behind the tag, resolved by the provider.
+      getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
       generate: jest.fn(),
     } as unknown as jest.Mocked<ILLMProvider>;
 
@@ -144,6 +146,7 @@ describe('BioGeneratorService', () => {
             bioPromptHash: 'hash',
             bioPromptVersion: '1.0.0',
             bioLlmModel: 'qwen-test:9b',
+            bioLlmDigest: 'stub-digest',
           }),
         }),
       );
