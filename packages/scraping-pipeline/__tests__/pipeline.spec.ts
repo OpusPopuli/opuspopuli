@@ -863,6 +863,39 @@ describe("ScrapingPipelineService", () => {
       );
     });
 
+    it("stamps every item with the run that produced it", async () => {
+      const repo = createRepo();
+
+      const result = await createPipeline(repo).execute(
+        createSource(),
+        "california",
+      );
+
+      // Per item, not per source: fetchByDataType merges the items of several
+      // sources into one array, so per-source attribution would be lost in the
+      // merge and a row from the AG initiatives page would be
+      // indistinguishable from one off a county registrar.
+      expect(result.items.length).toBeGreaterThan(0);
+      for (const item of result.items) {
+        expect((item as Record<string, unknown>).pipelineExecutionId).toBe(
+          "exec-1",
+        );
+      }
+    });
+
+    it("leaves items unstamped when tracking is unavailable", async () => {
+      const result = await createPipeline(null).execute(
+        createSource(),
+        "california",
+      );
+
+      for (const item of result.items) {
+        expect(
+          (item as Record<string, unknown>).pipelineExecutionId,
+        ).toBeUndefined();
+      }
+    });
+
     it("leaves the result unstamped when tracking is unavailable", async () => {
       const result = await createPipeline(null).execute(
         createSource(),

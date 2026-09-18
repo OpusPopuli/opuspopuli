@@ -68,6 +68,7 @@ import {
   type BillSyncPhase,
 } from './sync-phase-logger';
 import { readPositiveInt } from './config-helpers';
+import { rowProvenance } from './row-provenance';
 
 /**
  * Parse "AB 96" out of the externalId "202520260AB96" (CA leginfo format)
@@ -2473,6 +2474,10 @@ export class RegionSyncService implements OnModuleDestroy {
         isDead: isBillDead(lifecycleInput, lifecycleCtx),
         isActive: isBillActive(lifecycleInput, lifecycleCtx),
         extractedAt: now,
+        // Which run produced this version of the row (#1280) — applied on
+        // update as well as create, because during an incident the question
+        // is which run wrote what is there now.
+        ...rowProvenance(raw),
       };
       const bill = await this.db.bill.upsert({
         where: { externalId },

@@ -22,7 +22,7 @@ import type {
 } from "@opuspopuli/common";
 // Value import: DataType is a string enum and is compared against, not only
 // used in type position.
-import { DataType } from "@opuspopuli/common";
+import { DataType, RowProvenance } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { StructuralAnalyzerService } from "../analysis/structural-analyzer.service.js";
 import { computeStructureHash } from "../analysis/structure-hasher.js";
@@ -47,6 +47,25 @@ import {
   type ExecutionSession,
 } from "./execution-tracker.service.js";
 import type { ArchiveContext } from "@opuspopuli/extraction-provider";
+
+/**
+ * Stamp each item with the run that produced it (#1280).
+ *
+ * Applied per item rather than returned once per source because
+ * `fetchByDataType` merges the items of several sources into a single array —
+ * attribution recorded per source would be lost in that merge, and a row from
+ * the AG initiatives page would be indistinguishable from one scraped off a
+ * county registrar.
+ *
+ * Non-object items are returned untouched: nothing in the civic model is a
+ * bare string today, but a mapper returning one should not crash a sync over
+ * bookkeeping.
+ */
+function stampProvenance<T>(items: T[], provenance: RowProvenance): T[] {
+  return items.map((item) =>
+    item && typeof item === "object" ? { ...item, ...provenance } : item,
+  );
+}
 
 @Injectable()
 export class ScrapingPipelineService {
@@ -203,9 +222,17 @@ export class ScrapingPipelineService {
         extractionTimeMs: result.extractionTimeMs,
       });
 
-      return session.executionId
-        ? { ...result, executionId: session.executionId }
-        : result;
+      if (!session.executionId) return result;
+
+      return {
+        ...result,
+        executionId: session.executionId,
+        items: stampProvenance(result.items, {
+          pipelineExecutionId: session.executionId,
+          manifestId: result.manifestId,
+          manifestVersion: result.manifestVersion,
+        }),
+      };
     } catch (error) {
       // A run that threw still happened, and the rows it half-wrote are
       // exactly the ones someone will need to find.
@@ -444,6 +471,10 @@ export class ScrapingPipelineService {
       }
     }
     result.manifestVersion = effectiveVersion;
+    // The manifest a row was extracted under. Region config is baked into the
+    // image, so this points at a deployed artifact rather than a mutable local
+    // value (#1280).
+    result.manifestId = manifest.id;
 
     const totalMs = Date.now() - pipelineStart;
     this.logger.log(
