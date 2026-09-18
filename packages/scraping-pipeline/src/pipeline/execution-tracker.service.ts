@@ -12,8 +12,15 @@ export interface ExecutionTrackerRepository {
     sourceUrl: string,
   ): Promise<ExecutionRecord | null>;
 
+  /**
+   * `pipelineJobId` is optional: a cron-triggered sync has no job row, and an
+   * execution without one is still a real run worth recording. The unique
+   * index on (pipeline_job_id, source_url) is partial —
+   * `WHERE pipeline_job_id IS NOT NULL` — so job-less rows are unconstrained
+   * by design and need no migration.
+   */
   createExecution(args: {
-    pipelineJobId: string;
+    pipelineJobId?: string | null;
     regionId: string;
     sourceUrl: string;
     dataType: string;
@@ -49,18 +56,30 @@ export interface ExecutionStats {
 
 export const EXECUTION_TRACKER_REPOSITORY = "EXECUTION_TRACKER_REPOSITORY";
 
+/** Logger for the static session path, where no tracker instance may exist. */
+const sessionLogger = new Logger("ExecutionSession");
+
 /**
  * Per-source execution context returned from beginSession. Handlers call
  * recordBatch/finalize without re-checking null state — disabled sessions
  * are silent no-ops with an empty appliedBatches set.
  */
 export interface ExecutionSession {
+  /**
+   * The run this session records, or null when tracking is unavailable.
+   *
+   * Exposed so rows and archived sources can point back at the run that
+   * produced them (#1280, #1276) — the reason the linkage was impossible
+   * before is that this id never left the tracker.
+   */
+  readonly executionId: string | null;
   readonly appliedBatches: ReadonlySet<number>;
   recordBatch(batchIndex: number, itemCount: number): Promise<void>;
   finalize(success: boolean, stats: ExecutionStats): Promise<void>;
 }
 
 const NO_OP_SESSION: ExecutionSession = {
+  executionId: null,
   appliedBatches: new Set(),
   async recordBatch() {},
   async finalize() {},
@@ -85,14 +104,29 @@ export class ExecutionTrackerService {
     pipelineJobId: string | undefined,
     args: { regionId: string; sourceUrl: string; dataType: string },
   ): Promise<ExecutionSession> {
-    if (!pipelineJobId || !tracker?.isEnabled) return NO_OP_SESSION;
+    if (!tracker?.isEnabled) {
+      // Say so. This used to return silently, and a run that recorded nothing
+      // was indistinguishable from a healthy one — which is how every data
+      // type but campaign finance ended up with zero executions on record
+      // (#1280).
+      sessionLogger.warn(
+        `Execution tracking unavailable — run for ${args.regionId}/${args.dataType} ` +
+          `(${args.sourceUrl}) will not be recorded and its rows cannot be traced to it`,
+      );
+      return NO_OP_SESSION;
+    }
 
+    // A missing pipelineJobId used to mean "record nothing", which silently
+    // excluded every cron-triggered sync. A job-less run is still a real run:
+    // it is recorded, it just cannot be resumed, because resume keys on
+    // (job, source).
     const { executionId, appliedBatches } = await tracker.startExecution({
-      pipelineJobId,
+      pipelineJobId: pipelineJobId ?? null,
       ...args,
     });
 
     return {
+      executionId,
       appliedBatches,
       recordBatch: (batchIndex, itemCount) =>
         tracker.recordBatch(executionId, batchIndex, itemCount).then(() => {}),
@@ -111,13 +145,29 @@ export class ExecutionTrackerService {
    * the set of batch indexes already applied in a prior run.
    */
   async startExecution(args: {
-    pipelineJobId: string;
+    pipelineJobId?: string | null;
     regionId: string;
     sourceUrl: string;
     dataType: string;
   }): Promise<{ executionId: string; appliedBatches: Set<number> }> {
     const { pipelineJobId, regionId, sourceUrl, dataType } = args;
     const repo = this.repository!;
+
+    // Without a job there is nothing to resume: the idempotency key is
+    // (job, source), and the unique index that enforces it is partial on
+    // `pipeline_job_id IS NOT NULL`. Record a fresh run and move on.
+    if (!pipelineJobId) {
+      const created = await repo.createExecution({
+        pipelineJobId: null,
+        regionId,
+        sourceUrl,
+        dataType,
+      });
+      this.logger.debug(
+        `Started job-less execution ${created.id} for ${regionId}/${dataType}`,
+      );
+      return { executionId: created.id, appliedBatches: new Set() };
+    }
 
     const existing = await repo.findExecution(pipelineJobId, sourceUrl);
 

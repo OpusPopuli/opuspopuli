@@ -21,7 +21,7 @@ export class PrismaExecutionTrackerRepository implements ExecutionTrackerReposit
   }
 
   async createExecution(args: {
-    pipelineJobId: string;
+    pipelineJobId?: string | null;
     regionId: string;
     sourceUrl: string;
     dataType: string;
@@ -31,7 +31,10 @@ export class PrismaExecutionTrackerRepository implements ExecutionTrackerReposit
         regionId: args.regionId,
         sourceUrl: args.sourceUrl,
         dataType: args.dataType,
-        pipelineJobId: args.pipelineJobId,
+        // Null for a cron-triggered run with no job row. The column is
+        // nullable and its unique index is partial on NOT NULL, so this is
+        // supported without a migration (#1280).
+        pipelineJobId: args.pipelineJobId ?? null,
         status: 'running',
       },
       select: { id: true },

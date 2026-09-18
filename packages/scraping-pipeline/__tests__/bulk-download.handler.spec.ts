@@ -729,18 +729,23 @@ describe("BulkDownloadHandler", () => {
       );
     });
 
-    it("should not track when pipelineJobId is absent", async () => {
+    it("tracks a run that has no pipelineJobId (#1280)", async () => {
       const tracker = createTracker();
       handler = new BulkDownloadHandler(mapper, tracker);
 
       const onBatch = jest.fn().mockResolvedValue(undefined);
-      // No pipelineJobId → tracker should not be engaged
       await handler.execute(createBatchSource(), "california", onBatch);
 
-      expect(tracker.startExecution).not.toHaveBeenCalled();
-      expect(tracker.recordBatch).not.toHaveBeenCalled();
-      expect(tracker.finalizeExecution).not.toHaveBeenCalled();
-      // But onBatch should still fire normally
+      // This asserted the opposite until #1280. A missing pipelineJobId meant
+      // "record nothing", which silently excluded every cron-triggered sync —
+      // the reason campaign finance stopped recording executions in August
+      // 2026 while continuing to report success. A job-less run is still a
+      // real run; it is recorded with a null job id, and only loses resume,
+      // which keys on (job, source).
+      expect(tracker.startExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ pipelineJobId: null }),
+      );
+      expect(tracker.finalizeExecution).toHaveBeenCalled();
       expect(onBatch).toHaveBeenCalledTimes(3);
     });
 

@@ -1,3 +1,4 @@
+import { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service.js";
 import { ScrapingPipelineService } from "../src/pipeline/pipeline.service";
 import type { StructuralAnalyzerService } from "../src/analysis/structural-analyzer.service";
 import type { ManifestStoreService } from "../src/manifest/manifest-store.service";
@@ -770,6 +771,108 @@ describe("ScrapingPipelineService", () => {
     it("does not consult link discovery for plain html_scrape sources", async () => {
       await pipeline.execute(createSource(), "california");
       expect(mockLinkDiscovery.discover).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("execution tracking (#1280)", () => {
+    function createRepo() {
+      return {
+        findExecution: jest.fn().mockResolvedValue(null),
+        createExecution: jest.fn().mockResolvedValue({ id: "exec-1" }),
+        updateExecutionStatus: jest.fn().mockResolvedValue(undefined),
+        findAppliedBatches: jest.fn().mockResolvedValue([]),
+        createBatch: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    function createPipeline(repo: ReturnType<typeof createRepo> | null) {
+      const tracker = new ExecutionTrackerService(repo as never);
+      return new ScrapingPipelineService(
+        { generate: jest.fn() } as any,
+        mockExtraction,
+        mockAnalyzer,
+        mockStore,
+        mockExtractor,
+        mockMapper,
+        mockHealing,
+        {} as unknown as BulkDownloadHandler,
+        {} as unknown as ApiIngestHandler,
+        {} as any,
+        {} as any,
+        { enrichItems: jest.fn().mockImplementation((r: any) => r) } as any,
+        mockLinkDiscovery as any,
+        null,
+        tracker,
+      );
+    }
+
+    it("records a run for an html_scrape source", async () => {
+      // Before #1280 no html_scrape run was ever recorded — beginSession was
+      // called only from the api-ingest and bulk-download handlers, which is
+      // why propositions, meetings and bills had zero executions on record.
+      const repo = createRepo();
+
+      await createPipeline(repo).execute(createSource(), "california");
+
+      expect(repo.createExecution).toHaveBeenCalledWith(
+        expect.objectContaining({
+          regionId: "california",
+          dataType: "propositions",
+        }),
+      );
+    });
+
+    it("stamps the producing run onto the result", async () => {
+      const repo = createRepo();
+
+      const result = await createPipeline(repo).execute(
+        createSource(),
+        "california",
+      );
+
+      // This id is what lets a row point back at the run that produced it.
+      expect(result.executionId).toBe("exec-1");
+    });
+
+    it("finalizes the run with its item count", async () => {
+      const repo = createRepo();
+
+      const result = await createPipeline(repo).execute(
+        createSource(),
+        "california",
+      );
+
+      expect(repo.finalizeExecution).toHaveBeenCalledWith(
+        "exec-1",
+        true,
+        expect.objectContaining({ itemsExtracted: result.items.length }),
+      );
+    });
+
+    it("records a run that has no pipelineJobId", async () => {
+      const repo = createRepo();
+
+      await createPipeline(repo).execute(createSource(), "california");
+
+      // A cron-triggered sync carries no job row. Recording nothing is what
+      // made those runs invisible; the run is recorded with a null job id and
+      // only loses resume, which keys on (job, source).
+      expect(repo.createExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ pipelineJobId: null }),
+      );
+    });
+
+    it("leaves the result unstamped when tracking is unavailable", async () => {
+      const result = await createPipeline(null).execute(
+        createSource(),
+        "california",
+      );
+
+      // Null is honest. A fabricated reference would be indistinguishable from
+      // a real one.
+      expect(result.executionId).toBeUndefined();
+      expect(result.items.length).toBeGreaterThan(0);
     });
   });
 });
