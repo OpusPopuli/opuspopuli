@@ -1189,6 +1189,19 @@ model Proposition {
   /// all 52 rows to produce identical vectors.
   embeddingSourceHash String? @map("embedding_source_hash")
 
+  /// SHA-256 of `fullText`, maintained by POSTGRES — `GENERATED ALWAYS AS
+  /// (encode(sha256(full_text::bytea),'hex')) STORED`, declared in the
+  /// 20260917200000_analysis_source_text_hash migration because Prisma cannot
+  /// express a generated column.
+  ///
+  /// NEVER written by application code. It exists so "has the source text
+  /// changed since we analysed it" is a comparison of two short hashes rather
+  /// than a timestamp guess — see analysisSourceTextHash below (#1279).
+  /// Hashing in application code would drift the moment a new fullText write
+  /// site forgot to update it, and the failure mode is a row that reports
+  /// fresh while being stale.
+  fullTextHash String? @map("full_text_hash")
+
   /// GENERATED ALWAYS ... STORED weighted tsvector (A: external_id+title,
   /// B: summary, D: full_text capped at 256 kB) — the lexical search leg
   /// (#1153). Never written by application code; GIN index
@@ -1201,30 +1214,37 @@ model Proposition {
   sourceUrl    String?   @map("source_url")
 
   /// AI-generated plain-language one-liner; populates Layer 1 "Quick View".
-  analysisSummary       String?   @map("analysis_summary") @db.Text
+  analysisSummary        String?   @map("analysis_summary") @db.Text
   /// "This would..." bullets; string[] as JSONB.
-  keyProvisions         Json?     @map("key_provisions")
-  fiscalImpact          String?   @map("fiscal_impact") @db.Text
-  yesOutcome            String?   @map("yes_outcome") @db.Text
-  noOutcome             String?   @map("no_outcome") @db.Text
+  keyProvisions          Json?     @map("key_provisions")
+  fiscalImpact           String?   @map("fiscal_impact") @db.Text
+  yesOutcome             String?   @map("yes_outcome") @db.Text
+  noOutcome              String?   @map("no_outcome") @db.Text
   /// { current, proposed } JSONB for Layer 2 existing-law comparison.
-  existingVsProposed    Json?     @map("existing_vs_proposed")
+  existingVsProposed     Json?     @map("existing_vs_proposed")
   /// AI-segmented section anchors into fullText; [{heading,startOffset,endOffset}] as JSONB.
-  analysisSections      Json?     @map("analysis_sections")
+  analysisSections       Json?     @map("analysis_sections")
   /// Per-claim attribution with char-offset citations into fullText; mirrors BioClaim[] pattern.
-  analysisClaims        Json?     @map("analysis_claims")
-  analysisSource        String?   @map("analysis_source") @db.VarChar(20) /// 'ai-generated' | 'manual'
+  analysisClaims         Json?     @map("analysis_claims")
+  analysisSource         String?   @map("analysis_source") @db.VarChar(20) /// 'ai-generated' | 'manual'
   /// SHA-256 of the prompt template text used for this run; used to detect stale analyses.
-  analysisPromptHash    String?   @map("analysis_prompt_hash") @db.VarChar(64)
-  analysisPromptVersion String?   @map("analysis_prompt_version") @db.VarChar(20)
+  analysisPromptHash     String?   @map("analysis_prompt_hash") @db.VarChar(64)
+  /// SHA-256 of the `fullText` this analysis was generated against (#1279).
+  ///
+  /// Claim citations are offsets into that text, derived by locating a verbatim
+  /// quote (#1212). If fullText is later replaced, the offsets silently address
+  /// different characters — so an analysis is stale when this differs from
+  /// `fullTextHash`. NULL means "unknown", which is treated as stale.
+  analysisSourceTextHash String?   @map("analysis_source_text_hash") @db.VarChar(64)
+  analysisPromptVersion  String?   @map("analysis_prompt_version") @db.VarChar(20)
   /// Model that produced the analysis (#1149).
-  analysisLlmModel      String?   @map("analysis_llm_model") @db.VarChar(80)
-  analysisGeneratedAt   DateTime? @map("analysis_generated_at") @db.Timestamptz
+  analysisLlmModel       String?   @map("analysis_llm_model") @db.VarChar(80)
+  analysisGeneratedAt    DateTime? @map("analysis_generated_at") @db.Timestamptz
   /// Why the last analysis attempt was refused, or NULL if none was. Vocabulary
   /// is owned by GenerationFailureReason in llm-generator.base.ts (#1085);
   /// deliberately text rather than an enum while the reasons are still moving.
-  analysisFailureReason String?   @map("analysis_failure_reason")
-  analysisFailedAt      DateTime? @map("analysis_failed_at") @db.Timestamptz
+  analysisFailureReason  String?   @map("analysis_failure_reason")
+  analysisFailedAt       DateTime? @map("analysis_failed_at") @db.Timestamptz
 
   /// Resolved lifecycle stage id from civics data. Null for ballot measures
   /// or bills whose status hasn't been matched against civics.lifecycleStages
