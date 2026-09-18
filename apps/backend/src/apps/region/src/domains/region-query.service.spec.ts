@@ -77,6 +77,10 @@ describe('RegionQueryService — caching', () => {
         fullText: null,
         embeddingModel: null,
         embeddingSourceHash: null,
+        // #1279: the text version an analysis was generated against, and
+        // the Postgres-maintained hash of the current text.
+        fullTextHash: null,
+        analysisSourceTextHash: null,
         analysisFailureReason: null,
         analysisFailedAt: null,
         status: 'pending',
@@ -186,6 +190,10 @@ describe('RegionQueryService — query methods', () => {
           status: 'pending',
           fullText: null,
           embeddingSourceHash: null,
+          // #1279: the text version an analysis was generated against, and
+          // the Postgres-maintained hash of the current text.
+          fullTextHash: null,
+          analysisSourceTextHash: null,
           analysisFailureReason: null,
           analysisFailedAt: null,
           electionDate: null,
@@ -229,6 +237,10 @@ describe('RegionQueryService — query methods', () => {
         fullText: null,
         embeddingModel: null,
         embeddingSourceHash: null,
+        // #1279: the text version an analysis was generated against, and
+        // the Postgres-maintained hash of the current text.
+        fullTextHash: null,
+        analysisSourceTextHash: null,
         analysisFailureReason: null,
         analysisFailedAt: null,
         electionDate: null,

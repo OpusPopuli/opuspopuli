@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable, Logger } from '@nestjs/common';
 import {
   extractJsonObjectSlice,
@@ -37,6 +39,8 @@ interface PropForAnalysis {
   title: string;
   fullText: string | null;
   analysisPromptHash: string | null;
+  analysisSourceTextHash: string | null;
+  fullTextHash: string | null;
   analysisGeneratedAt: Date | null;
   updatedAt: Date;
 }
@@ -155,6 +159,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         title: true,
         fullText: true,
         analysisPromptHash: true,
+        analysisSourceTextHash: true,
+        fullTextHash: true,
         analysisGeneratedAt: true,
         updatedAt: true,
       },
@@ -217,15 +223,34 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         // handled exactly that case (#1212 S5). Rows touched since their
         // analysis are caught by the isCurrent() filter below, which Prisma
         // cannot express as a column-to-column comparison.
-        ...(currentHash
-          ? {
-              OR: [
-                { analysisGeneratedAt: null },
+        OR: [
+          { analysisGeneratedAt: null },
+          // Prompt axis (#1212 S5) — only when the live hash resolved.
+          ...(currentHash
+            ? [
                 { analysisPromptHash: null },
                 { analysisPromptHash: { not: currentHash } },
-              ],
-            }
-          : { analysisGeneratedAt: null }),
+              ]
+            : []),
+          // Source-text axis (#1279). `fullTextHash` is maintained by Postgres
+          // as a generated column, so this compares two stored hashes rather
+          // than re-reading every fullText to apply a cap — which is why S5
+          // could not do it.
+          //
+          // BOTH arms are required. `NOT { equals: ref }` compiles to
+          // `hash <> full_text_hash`, and in SQL three-valued logic a NULL on
+          // either side yields NULL, not true — so a row that has never
+          // recorded which text it analysed matches NEITHER arm and would be
+          // silently treated as fresh. Verified against seeded rows.
+          { analysisSourceTextHash: null },
+          {
+            NOT: {
+              analysisSourceTextHash: {
+                equals: this.db.proposition.fields.fullTextHash,
+              },
+            },
+          },
+        ],
       },
       select: {
         id: true,
@@ -233,6 +258,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         title: true,
         fullText: true,
         analysisPromptHash: true,
+        analysisSourceTextHash: true,
+        fullTextHash: true,
         analysisGeneratedAt: true,
         updatedAt: true,
       },
@@ -279,6 +306,20 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   }
 
   /**
+   * SHA-256 of the text an analysis was generated against.
+   *
+   * MUST stay byte-identical to the `full_text_hash` generated column, which
+   * Postgres computes as `encode(sha256(full_text::bytea),'hex')`. Verified
+   * equal across ASCII, smart quotes, em-dashes, Spanish accents and the
+   * empty string — if the two ever diverged, every row would compare unequal
+   * and regenerate on every run, which on a 32B model is hours of work.
+   */
+  private static sourceTextHash(fullText: string | null): string | null {
+    if (fullText === null || fullText === undefined) return null;
+    return createHash('sha256').update(fullText, 'utf8').digest('hex');
+  }
+
+  /**
    * Decide whether a stored analysis is still current: the prompt hash
    * matches what the prompt-service returns today AND the proposition row
    * hasn't been touched since the analysis was written. Either miss
@@ -289,6 +330,15 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
     if (prop.updatedAt.getTime() > prop.analysisGeneratedAt.getTime()) {
       return false;
     }
+    // Source-text axis (#1279): the analysis is stale if the text it was
+    // generated against is not the text stored now. Computed here rather than
+    // read from `fullTextHash` so the single-proposition path does not depend
+    // on the caller having selected that column.
+    const sourceHash = PropositionAnalysisService.sourceTextHash(
+      prop.fullText ?? null,
+    );
+    if (!prop.analysisSourceTextHash) return false;
+    if (prop.analysisSourceTextHash !== sourceHash) return false;
     try {
       const currentHash = await this.promptClient!.getPromptHash(
         'document-analysis-proposition-analysis',
@@ -328,6 +378,13 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
             .analysisClaims as unknown as Prisma.InputJsonValue,
           analysisSource: 'ai-generated',
           analysisPromptHash: outcome.promptHash,
+          // Which text version this analysis — and therefore every claim
+          // offset derived from it — was generated against (#1279). Without
+          // this, a later in-place rewrite of fullText leaves citations
+          // addressing different characters with nothing to detect it.
+          analysisSourceTextHash: PropositionAnalysisService.sourceTextHash(
+            prop.fullText,
+          ),
           analysisPromptVersion: outcome.promptVersion,
           analysisLlmModel: this.llm?.getModelName() ?? null,
           analysisGeneratedAt: new Date(),

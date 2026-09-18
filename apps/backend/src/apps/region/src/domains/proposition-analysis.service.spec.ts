@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
@@ -66,10 +68,22 @@ interface PropRow {
   title: string;
   fullText: string | null;
   analysisPromptHash: string | null;
+  analysisSourceTextHash: string | null;
+  fullTextHash: string | null;
   analysisGeneratedAt: Date | null;
   updatedAt: Date;
   deletedAt?: Date | null;
 }
+
+/**
+ * SHA-256 of FULL_TEXT — what a *current* analysis must carry in
+ * `analysisSourceTextHash` (#1279). Kept in the spec rather than imported so
+ * the test asserts the value independently of the implementation that
+ * produces it; it must also equal the Postgres-generated `full_text_hash`.
+ */
+const FULL_TEXT_HASH = createHash('sha256')
+  .update(FULL_TEXT, 'utf8')
+  .digest('hex');
 
 const baseProp = (overrides: Partial<PropRow> = {}): PropRow => ({
   id: 'prop-1',
@@ -77,6 +91,8 @@ const baseProp = (overrides: Partial<PropRow> = {}): PropRow => ({
   title: 'Test measure',
   fullText: FULL_TEXT,
   analysisPromptHash: null,
+  analysisSourceTextHash: null,
+  fullTextHash: FULL_TEXT_HASH,
   analysisGeneratedAt: null,
   updatedAt: new Date('2026-04-20T00:00:00Z'),
   deletedAt: null,
@@ -157,6 +173,19 @@ describe('PropositionAnalysisService', () => {
         findUnique: jest.fn().mockResolvedValue(findUnique),
         findMany: jest.fn().mockResolvedValue(findMany),
         update: jest.fn().mockResolvedValue(undefined),
+        // Prisma field references (#1279). The real client exposes these so a
+        // query can compare two COLUMNS — `analysis_source_text_hash` against
+        // the Postgres-generated `full_text_hash` — without raw SQL. Shaped
+        // like the real thing so a where-clause assertion is meaningful.
+        fields: {
+          fullTextHash: {
+            modelName: 'Proposition',
+            name: 'fullTextHash',
+            typeName: 'String',
+            isList: false,
+            isEnum: false,
+          },
+        },
       },
     } as unknown as DbService;
 
@@ -233,6 +262,8 @@ describe('PropositionAnalysisService', () => {
         findUnique: baseProp({
           analysisGeneratedAt: generatedAt,
           analysisPromptHash: PROMPT_HASH,
+          // Current on the SOURCE-TEXT axis too, not just the prompt axis.
+          analysisSourceTextHash: FULL_TEXT_HASH,
           updatedAt: new Date('2026-04-20T00:00:00Z'),
         }),
       });
@@ -241,12 +272,91 @@ describe('PropositionAnalysisService', () => {
       expect(built.llm.generate).not.toHaveBeenCalled();
     });
 
+    describe('source-text staleness (#1279)', () => {
+      it('records which text version the analysis was generated against', async () => {
+        const built = await buildService({
+          findUnique: baseProp({ analysisGeneratedAt: null }),
+        });
+
+        await built.service.generate('prop-1');
+
+        const data = built.db.proposition.update.mock.calls[0][0].data;
+        expect(data.analysisSourceTextHash).toBe(FULL_TEXT_HASH);
+      });
+
+      it('regenerates when fullText changed since the analysis was written', async () => {
+        // The failure this exists to stop: sync rewrites fullText in place,
+        // and claim offsets — derived by locating a quote (#1212) — silently
+        // address different characters with nothing to detect it.
+        const built = await buildService({
+          findUnique: baseProp({
+            analysisGeneratedAt: new Date('2026-04-21T00:00:00Z'),
+            analysisPromptHash: PROMPT_HASH,
+            analysisSourceTextHash: createHash('sha256')
+              .update('the text that WAS analysed', 'utf8')
+              .digest('hex'),
+            updatedAt: new Date('2026-04-20T00:00:00Z'),
+          }),
+        });
+
+        await expect(built.service.generate('prop-1')).resolves.toBe(true);
+        expect(built.llm.generate).toHaveBeenCalled();
+      });
+
+      it('treats a missing source-text hash as stale, not as fresh', async () => {
+        // Rows written before this column existed. Unknown must never read as
+        // verified — the same fail-closed posture as the prompt axis.
+        const built = await buildService({
+          findUnique: baseProp({
+            analysisGeneratedAt: new Date('2026-04-21T00:00:00Z'),
+            analysisPromptHash: PROMPT_HASH,
+            analysisSourceTextHash: null,
+            updatedAt: new Date('2026-04-20T00:00:00Z'),
+          }),
+        });
+
+        await expect(built.service.generate('prop-1')).resolves.toBe(true);
+      });
+
+      it('computes the same digest Postgres does', () => {
+        // Load-bearing invariant. `full_text_hash` is GENERATED ALWAYS AS
+        // encode(sha256(full_text::bytea),'hex'); if this diverged from it,
+        // every row would compare unequal and regenerate on every run —
+        // hours of LLM time, with nothing obviously broken.
+        //
+        // Golden values measured directly from PostgreSQL 17.6 on
+        // 2026-09-17, covering the encodings the corpus actually contains.
+        const golden: Array<[string, string]> = [
+          [
+            'hello',
+            '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+          ],
+          [
+            'SECTION 1. \u201cSmart quotes\u201d \u2014 \u00f1',
+            'b4ed5b29ffb05c6cb2b8ac1467f0a38f56f2ea022d31f09fc7ce791f142219e8',
+          ],
+          [
+            '',
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          ],
+        ];
+
+        for (const [text, expected] of golden) {
+          expect(createHash('sha256').update(text, 'utf8').digest('hex')).toBe(
+            expected,
+          );
+        }
+      });
+    });
+
     it('regenerates when force is true even if analysis is current', async () => {
       const generatedAt = new Date('2026-04-21T00:00:00Z');
       const built = await buildService({
         findUnique: baseProp({
           analysisGeneratedAt: generatedAt,
           analysisPromptHash: PROMPT_HASH,
+          // Current on the SOURCE-TEXT axis too, not just the prompt axis.
+          analysisSourceTextHash: FULL_TEXT_HASH,
           updatedAt: new Date('2026-04-20T00:00:00Z'),
         }),
       });
@@ -624,9 +734,12 @@ describe('PropositionAnalysisService', () => {
         expect(built.promptClient.getPromptHash).toHaveBeenCalledTimes(1);
       });
 
-      it('falls back to never-analysed rows when the hash lookup fails', async () => {
-        // Failing open here would regenerate EVERY analysis on every run —
-        // hours of LLM time triggered by a transient prompt-service blip.
+      it('drops only the PROMPT arms when the hash lookup fails', async () => {
+        // Failing open on the prompt axis would regenerate EVERY analysis on
+        // every run — hours of LLM time from a transient prompt-service blip.
+        // But the source-text axis does not depend on prompt-service at all,
+        // so it must keep working: a proposition whose text changed is still
+        // stale whether or not the prompt hash could be resolved (#1279).
         const built = await buildService({ findMany: [] });
         built.promptClient.getPromptHash.mockRejectedValueOnce(
           new Error('prompt-service unreachable'),
@@ -634,10 +747,19 @@ describe('PropositionAnalysisService', () => {
 
         await built.service.generateMissing();
 
-        const where = built.db.proposition.findMany.mock.calls[0][0]
-          .where as Record<string, unknown>;
-        expect(where.OR).toBeUndefined();
-        expect(where.analysisGeneratedAt).toBeNull();
+        const where = built.db.proposition.findMany.mock.calls[0][0].where as {
+          OR: Array<Record<string, unknown>>;
+        };
+        const serialised = JSON.stringify(where.OR);
+
+        expect(serialised).not.toContain('analysisPromptHash');
+        expect(where.OR).toEqual(
+          expect.arrayContaining([
+            { analysisGeneratedAt: null },
+            { analysisSourceTextHash: null },
+          ]),
+        );
+        expect(serialised).toContain('fullTextHash');
       });
     });
 
