@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConfigService } from "@nestjs/config";
 import { R2StorageProvider } from "../src/providers/r2.provider";
@@ -200,6 +201,42 @@ describe("R2StorageProvider", () => {
       await expect(
         provider.getSignedUrl("test-bucket", "user1/file.txt", false),
       ).rejects.toThrow(StorageError);
+    });
+  });
+
+  describe("putStream (#1277)", () => {
+    const openStream = () =>
+      Readable.from([Buffer.from("archive-bytes")]) as NodeJS.ReadableStream;
+
+    it("sends a PutObject carrying the body and its exact length", async () => {
+      mockSend.mockResolvedValue({});
+
+      await provider.putStream("archives", "bulk/abc.zip", openStream, {
+        contentLength: 13,
+        contentType: "application/zip",
+      });
+
+      // ContentLength is not optional: without it the SDK buffers the whole
+      // body to discover the length, which for a ~1 GB export means holding a
+      // gigabyte in memory.
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          Bucket: "archives",
+          Key: "bulk/abc.zip",
+          ContentLength: 13,
+          ContentType: "application/zip",
+        }),
+      );
+    });
+
+    it("propagates an upload failure", async () => {
+      mockSend.mockRejectedValue(new Error("network down"));
+
+      await expect(
+        provider.putStream("archives", "bulk/abc.zip", openStream, {
+          contentLength: 13,
+        }),
+      ).rejects.toThrow();
     });
   });
 

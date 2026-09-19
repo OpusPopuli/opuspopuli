@@ -26,6 +26,10 @@ import { ExtractionValidator } from "./extraction/extraction-validator.js";
 import { DomainMapperService } from "./mapping/domain-mapper.service.js";
 import { SelfHealingService } from "./healing/self-healing.service.js";
 import { BulkDownloadHandler } from "./handlers/bulk-download.handler.js";
+import {
+  BULK_ARCHIVE,
+  type IBulkArchive,
+} from "./handlers/bulk-archive.port.js";
 import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 import { MinutesIngestHandler } from "./handlers/minutes-ingest.handler.js";
@@ -113,10 +117,19 @@ export class ScrapingPipelineModule {
           useFactory: (
             mapper: DomainMapperService,
             tracker?: ExecutionTrackerService,
-          ) => new BulkDownloadHandler(mapper, tracker ?? null),
+            // Optional (#1277): left unbound, bulk exports are ingested
+            // exactly as before and nothing is retained.
+            bulkArchive?: IBulkArchive,
+          ) =>
+            new BulkDownloadHandler(
+              mapper,
+              tracker ?? null,
+              bulkArchive ?? null,
+            ),
           inject: [
             DomainMapperService,
             { token: ExecutionTrackerService, optional: true },
+            { token: BULK_ARCHIVE, optional: true },
           ],
         },
         {

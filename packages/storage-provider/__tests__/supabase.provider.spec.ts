@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ConfigService } from "@nestjs/config";
 import { SupabaseStorageProvider } from "../src/providers/supabase.provider";
@@ -10,6 +11,7 @@ const mockStorage = {
   createSignedUrl: jest.fn(),
   createSignedUploadUrl: jest.fn(),
   remove: jest.fn(),
+  upload: jest.fn(),
 };
 
 jest.mock("@supabase/supabase-js", () => ({
@@ -204,6 +206,47 @@ describe("SupabaseStorageProvider", () => {
       await expect(
         provider.getSignedUrl("test-bucket", "user1/file.txt", true),
       ).rejects.toThrow(StorageError);
+    });
+  });
+
+  describe("putStream (#1277)", () => {
+    const openStream = () =>
+      Readable.from([Buffer.from("archive-bytes")]) as NodeJS.ReadableStream;
+
+    it("uploads the stream to the given bucket and key", async () => {
+      mockStorage.upload.mockResolvedValue({
+        data: { path: "k" },
+        error: null,
+      });
+
+      await provider.putStream("archives", "bulk/abc.zip", openStream, {
+        contentLength: 13,
+        contentType: "application/zip",
+      });
+
+      expect(mockStorage.from).toHaveBeenCalledWith("archives");
+      expect(mockStorage.upload).toHaveBeenCalledWith(
+        "bulk/abc.zip",
+        expect.anything(),
+        expect.objectContaining({ contentType: "application/zip" }),
+      );
+    });
+
+    it("surfaces an upload failure rather than swallowing it", async () => {
+      // Supabase Storage enforces a per-file limit (50 MB by default) and a
+      // bulk export exceeds it. The caller records the snapshot either way, so
+      // a silently-failed upload would leave a row claiming bytes that are not
+      // there.
+      mockStorage.upload.mockResolvedValue({
+        data: null,
+        error: new Error("Payload too large"),
+      });
+
+      await expect(
+        provider.putStream("archives", "bulk/abc.zip", openStream, {
+          contentLength: 1_073_741_824,
+        }),
+      ).rejects.toThrow();
     });
   });
 

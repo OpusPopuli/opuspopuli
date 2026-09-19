@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
-import type { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
+import { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
 import { Readable } from "node:stream";
 import {
   DataType,
@@ -70,6 +71,10 @@ function mockStreamResponse(content: string, ok = true, status = 200) {
     ok,
     status,
     statusText: ok ? "OK" : "Not Found",
+    // Real Headers: the handler reads Content-Type off the response, and a
+    // fake without them made every test fail for a reason unrelated to what
+    // they were asserting.
+    headers: new Headers({ "content-type": "text/csv" }),
     body: stream,
   };
 }
@@ -88,6 +93,195 @@ describe("BulkDownloadHandler", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  describe("snapshot archiving (#1277)", () => {
+    const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500";
+    let archive: { archive: jest.Mock };
+
+    beforeEach(() => {
+      archive = { archive: jest.fn().mockResolvedValue(undefined) };
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+    });
+
+    it("offers the downloaded export with its content hash and size", async () => {
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(candidate.contentHash).toBe(
+        createHash("sha256").update(Buffer.from(csv)).digest("hex"),
+      );
+      expect(candidate.byteSize).toBe(Buffer.byteLength(csv));
+      expect(candidate.sourceUrl).toBe("https://example.com/data.csv");
+      expect(candidate.regionId).toBe("california");
+    });
+
+    it("hands over a stream that still reads the file", async () => {
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      // The temp file is deleted as soon as ingest finishes, so the archive
+      // has to be able to read it while this call is awaited. A stream that
+      // opens too late reads nothing and stores an empty object.
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(typeof candidate.openStream).toBe("function");
+    });
+
+    it("links the snapshot to the run that fetched it", async () => {
+      const repo = {
+        findExecution: jest.fn().mockResolvedValue(null),
+        createExecution: jest.fn().mockResolvedValue({ id: "exec-bulk-1" }),
+        updateExecutionStatus: jest.fn().mockResolvedValue(undefined),
+        findAppliedBatches: jest.fn().mockResolvedValue([]),
+        createBatch: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      };
+      const handlerWithArchive = new BulkDownloadHandler(
+        mapper,
+        new ExecutionTrackerService(repo as never),
+        archive,
+      );
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      // This id is what joins the snapshot to the finance rows it produced:
+      // row -> execution <- snapshot (#1280).
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(candidate.executionId).toBe("exec-bulk-1");
+    });
+
+    it("ingests normally when archiving fails", async () => {
+      archive.archive.mockRejectedValue(new Error("storage unavailable"));
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      const result = await handlerWithArchive.execute(
+        createSource(),
+        "california",
+      );
+
+      // Retaining a snapshot is bookkeeping alongside the ingest that is the
+      // caller's actual goal. A finance sync measured in tens of hours (#1037)
+      // must not be failed by an archive that was unavailable.
+      expect(result.items.length).toBeGreaterThan(0);
+    });
+
+    it("finalizes the run when the download itself fails", async () => {
+      const repo = {
+        findExecution: jest.fn().mockResolvedValue(null),
+        createExecution: jest.fn().mockResolvedValue({ id: "exec-bulk-1" }),
+        updateExecutionStatus: jest.fn().mockResolvedValue(undefined),
+        findAppliedBatches: jest.fn().mockResolvedValue([]),
+        createBatch: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      };
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse("", false, 500),
+      );
+      const tracked = new BulkDownloadHandler(
+        mapper,
+        new ExecutionTrackerService(repo as never),
+        archive,
+      );
+
+      await tracked.execute(createSource(), "california");
+
+      // The session now opens before the download, so a failure that happens
+      // before streaming starts would otherwise leave the execution row stuck
+      // at "running" forever — indistinguishable from a run still in flight.
+      expect(repo.finalizeExecution).toHaveBeenCalledWith(
+        "exec-bulk-1",
+        false,
+        expect.anything(),
+      );
+    });
+
+    it("ingests normally when no archive is bound", async () => {
+      const result = await handler.execute(createSource(), "california");
+
+      expect(result.items.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("per-record source hashes (#1277)", () => {
+    const LINE = "C001,Jane Doe,500";
+    const csv = `CMTE_ID,NAME,AMOUNT\n${LINE}\nC002,John Smith,1000`;
+
+    function sha256(value: string): string {
+      return createHash("sha256").update(value, "utf8").digest("hex");
+    }
+
+    it("hashes the raw export line, not the parsed record", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      // The hash must witness what the export said, not our interpretation of
+      // it — that is what makes a discrepancy auditable after the fact rather
+      // than re-arguable (#991, #992).
+      const first = result.items[0] as Record<string, unknown>;
+      expect(first.sourceRecordHash).toBe(sha256(LINE));
+    });
+
+    it("gives every ingested record a hash", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      expect(result.items.length).toBeGreaterThan(0);
+      for (const item of result.items) {
+        expect((item as Record<string, unknown>).sourceRecordHash).toMatch(
+          /^[0-9a-f]{64}$/,
+        );
+      }
+    });
+
+    it("gives different lines different hashes", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      const hashes = result.items.map(
+        (i) => (i as Record<string, unknown>).sourceRecordHash,
+      );
+      expect(new Set(hashes).size).toBe(hashes.length);
+    });
+
+    it("hashes records reaching persistence through the batch callback", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+
+      await handler.execute(
+        createSource({
+          bulk: {
+            format: "csv",
+            columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+            batchSize: 10,
+          },
+        }),
+        "california",
+        onBatch,
+      );
+
+      // Batch-mode records never appear in the returned result — they reach
+      // the database only through this callback, so the hash has to be on
+      // them here or it is nowhere.
+      const batched = onBatch.mock.calls[0][0] as Record<string, unknown>[];
+      expect(batched[0].sourceRecordHash).toBe(sha256(LINE));
+    });
   });
 
   describe("execute — successful CSV download", () => {

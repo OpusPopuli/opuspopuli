@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import type { Readable } from "node:stream";
 import { ConfigService } from "@nestjs/config";
 import {
   S3Client,
@@ -14,6 +15,7 @@ import {
   IStorageFile,
   ISignedUrlOptions,
   StorageError,
+  IPutStreamOptions,
 } from "@opuspopuli/common";
 import { BaseStorageProvider } from "./base-storage.provider";
 
@@ -108,6 +110,31 @@ export class R2StorageProvider extends BaseStorageProvider {
         });
 
     return getSignedUrl(this.client, command, { expiresIn });
+  }
+
+  protected async putStreamImpl(
+    bucket: string,
+    key: string,
+    openStream: () => NodeJS.ReadableStream,
+    options: IPutStreamOptions,
+  ): Promise<void> {
+    // ContentLength is mandatory for a streamed PUT: without it the SDK has to
+    // buffer the whole body to discover the length, which for a ~1 GB export
+    // means holding a gigabyte in memory. The caller archives a file whose
+    // size it already knows, so it is passed in rather than discovered.
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        // The SDK wants a concrete node:stream Readable; the port declares
+        // the looser global type so the shared interface does not pull a Node
+        // module type into packages that may be bundled for the browser. The
+        // narrowing is safe and confined to this server-only provider.
+        Body: openStream() as Readable,
+        ContentLength: options.contentLength,
+        ...(options.contentType && { ContentType: options.contentType }),
+      }),
+    );
   }
 
   protected async deleteFileImpl(
