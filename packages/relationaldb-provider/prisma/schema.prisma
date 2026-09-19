@@ -1276,11 +1276,25 @@ model Proposition {
   legislativeActions      LegislativeAction[]
   relevanceCache          PropositionRelevanceCache[]
 
+  /// Which pipeline run produced this row (#1280). Null where the run
+  /// predates provenance recording, or ran without execution tracking — a
+  /// null is honest, a back-dated guess would look like evidence.
+  pipelineExecutionId String? @map("pipeline_execution_id")
+  /// The StructuralManifest the extraction ran under, where one exists.
+  manifestId          String? @map("manifest_id")
+  /// The manifest version used. Region config is baked into the image, so
+  /// this points at a deployed artifact rather than a mutable local value.
+  manifestVersion     Int?    @map("manifest_version")
+
+  pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+  producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
   @@unique([regionPluginName, externalId])
   @@index([status])
   @@index([electionDate])
   @@index([lifecycleStageId])
   @@index([regionPluginName])
+  @@index([pipelineExecutionId])
   @@map("propositions")
 }
 
@@ -1357,11 +1371,25 @@ model Minutes {
   meeting   Meeting?              @relation(fields: [meetingId], references: [id], onDelete: SetNull)
   actions   LegislativeAction[]
 
+  /// Which pipeline run produced this row (#1280). Null where the run
+  /// predates provenance recording, or ran without execution tracking — a
+  /// null is honest, a back-dated guess would look like evidence.
+  pipelineExecutionId String? @map("pipeline_execution_id")
+  /// The StructuralManifest the extraction ran under, where one exists.
+  manifestId          String? @map("manifest_id")
+  /// The manifest version used. Region config is baked into the image, so
+  /// this points at a deployed artifact rather than a mutable local value.
+  manifestVersion     Int?    @map("manifest_version")
+
+  pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+  producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
   @@index([date(sort: Desc)])
   @@index([body, date(sort: Desc)])
   @@index([committeeId, date(sort: Desc)])
   @@index([meetingId])
   @@index([isActive])
+  @@index([pipelineExecutionId])
   @@map("minutes")
 }
 
@@ -1746,6 +1774,19 @@ model Bill {
   actions            LegislativeAction[]
   billRelevanceCache BillRelevanceCache[]
 
+  /// Which pipeline run produced this row (#1280). Null where the run
+  /// predates provenance recording, or ran without execution tracking — a
+  /// null is honest, a back-dated guess would look like evidence.
+  pipelineExecutionId String? @map("pipeline_execution_id")
+  /// The StructuralManifest the extraction ran under, where one exists.
+  manifestId          String? @map("manifest_id")
+  /// The manifest version used. Region config is baked into the image, so
+  /// this points at a deployed artifact rather than a mutable local value.
+  manifestVersion     Int?    @map("manifest_version")
+
+  pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+  producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
   @@index([regionId, sessionYear])
   @@index([regionId, measureTypeCode])
   @@index([authorId])
@@ -1758,6 +1799,7 @@ model Bill {
   /// express partial-WHERE indexes natively. is_dead is uncovered by an
   /// index — no query filters on it; it's used by the bill-detail banner
   /// + admin surfaces only.
+  @@index([pipelineExecutionId])
   @@map("bills")
 }
 
@@ -2099,6 +2141,19 @@ model Contribution {
 
   committee Committee? @relation(fields: [committeeId], references: [id], onDelete: Restrict)
 
+  /// Which pipeline run produced this row (#1280). Null where the run
+  /// predates provenance recording, or ran without execution tracking — a
+  /// null is honest, a back-dated guess would look like evidence.
+  pipelineExecutionId String? @map("pipeline_execution_id")
+  /// The StructuralManifest the extraction ran under, where one exists.
+  manifestId          String? @map("manifest_id")
+  /// The manifest version used. Region config is baked into the image, so
+  /// this points at a deployed artifact rather than a mutable local value.
+  manifestVersion     Int?    @map("manifest_version")
+
+  pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+  producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
   @@index([committeeId])
   @@index([filingId])
   @@index([filingId, amendId])
@@ -2107,6 +2162,7 @@ model Contribution {
   @@index([date])
   @@index([amount])
   @@index([sourceSystem])
+  @@index([pipelineExecutionId])
   @@map("contributions")
 }
 
@@ -2279,6 +2335,10 @@ model StructuralManifest {
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   sourceVersions SourceVersion[]
+  propositions   Proposition[]
+  minutes        Minutes[]
+  bills          Bill[]
+  contributions  Contribution[]
 
   @@unique([regionId, sourceUrl, dataType, version], name: "uq_manifest_version")
   @@index([regionId, sourceUrl, dataType, isActive], name: "idx_manifest_active_lookup")
@@ -2314,6 +2374,10 @@ model PipelineExecution {
   pipelineJob       PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
   batches           PipelineExecutionBatch[]
   sourceVersions    SourceVersion[]
+  propositions      Proposition[]
+  minutes           Minutes[]
+  bills             Bill[]
+  contributions     Contribution[]
 
   @@index([regionId, dataType, executedAt])
   @@index([manifestId])

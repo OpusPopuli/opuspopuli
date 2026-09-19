@@ -22,7 +22,7 @@ import type {
 } from "@opuspopuli/common";
 // Value import: DataType is a string enum and is compared against, not only
 // used in type position.
-import { DataType } from "@opuspopuli/common";
+import { DataType, RowProvenance } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { StructuralAnalyzerService } from "../analysis/structural-analyzer.service.js";
 import { computeStructureHash } from "../analysis/structure-hasher.js";
@@ -42,7 +42,30 @@ import {
   MANIFEST_MISSING_CALLBACK,
   type ManifestMissingArgs,
 } from "../scraping-pipeline.module.js";
+import {
+  ExecutionTrackerService,
+  type ExecutionSession,
+} from "./execution-tracker.service.js";
 import type { ArchiveContext } from "@opuspopuli/extraction-provider";
+
+/**
+ * Stamp each item with the run that produced it (#1280).
+ *
+ * Applied per item rather than returned once per source because
+ * `fetchByDataType` merges the items of several sources into a single array —
+ * attribution recorded per source would be lost in that merge, and a row from
+ * the AG initiatives page would be indistinguishable from one scraped off a
+ * county registrar.
+ *
+ * Non-object items are returned untouched: nothing in the civic model is a
+ * bare string today, but a mapper returning one should not crash a sync over
+ * bookkeeping.
+ */
+function stampProvenance<T>(items: T[], provenance: RowProvenance): T[] {
+  return items.map((item) =>
+    item && typeof item === "object" ? { ...item, ...provenance } : item,
+  );
+}
 
 @Injectable()
 export class ScrapingPipelineService {
@@ -67,6 +90,13 @@ export class ScrapingPipelineService {
     private readonly onManifestMissing:
       | ((args: ManifestMissingArgs) => Promise<void>)
       | null,
+    /**
+     * Records which run produced which rows (#1280). Optional so the pipeline
+     * still runs where nothing is bound; a run then records nothing, and
+     * beginSession says so rather than failing silently.
+     */
+    @Optional()
+    private readonly executionTracker: ExecutionTrackerService | null = null,
   ) {}
 
   /**
@@ -143,10 +173,75 @@ export class ScrapingPipelineService {
       case "pdf":
         return this.executePdfExtract<T>(source, regionId);
       case "pdf_archive":
-        return this.executePdfArchive<T>(source, regionId, options);
+        return this.trackRun(source, regionId, pipelineJobId, (session) =>
+          this.executePdfArchive<T>(source, regionId, options, session),
+        );
       case "html_scrape":
       default:
-        return this.executeHtmlScrape<T>(source, regionId);
+        return this.trackRun(source, regionId, pipelineJobId, (session) =>
+          this.executeHtmlScrape<T>(source, regionId, session),
+        );
+    }
+  }
+
+  /**
+   * Record a pipeline_executions row around a scrape, and stamp its id onto
+   * the result.
+   *
+   * The session opens here rather than inside executeHtmlScrape because that
+   * method has several exits — static manifest, self-heal, link discovery —
+   * and recurses once per leaf page. Opening it per call would produce one
+   * execution row per leaf and leave the early exits unfinalised; opening it here
+   * gives exactly one run per configured source, which is what
+   * `pipeline_executions` is keyed on.
+   *
+   * bulk_download and api ingestion are absent deliberately: their handlers
+   * already open their own sessions, with resume semantics this path has no
+   * use for.
+   */
+  private async trackRun<T>(
+    source: DataSourceConfig,
+    regionId: string,
+    pipelineJobId: string | undefined,
+    run: (session: ExecutionSession) => Promise<ExtractionResult<T>>,
+  ): Promise<ExtractionResult<T>> {
+    const session = await ExecutionTrackerService.beginSession(
+      this.executionTracker,
+      pipelineJobId,
+      { regionId, sourceUrl: source.url, dataType: source.dataType },
+    );
+
+    const startedAt = Date.now();
+
+    try {
+      const result = await run(session);
+
+      await session.finalize(result.success, {
+        itemsExtracted: result.itemCount ?? result.items.length,
+        itemsFailed: result.errors.length,
+        extractionTimeMs: result.extractionTimeMs,
+      });
+
+      if (!session.executionId) return result;
+
+      return {
+        ...result,
+        executionId: session.executionId,
+        items: stampProvenance(result.items, {
+          pipelineExecutionId: session.executionId,
+          manifestId: result.manifestId,
+          manifestVersion: result.manifestVersion,
+        }),
+      };
+    } catch (error) {
+      // A run that threw still happened, and the rows it half-wrote are
+      // exactly the ones someone will need to find.
+      await session.finalize(false, {
+        itemsExtracted: 0,
+        itemsFailed: 1,
+        extractionTimeMs: Date.now() - startedAt,
+      });
+      throw error;
     }
   }
 
@@ -160,11 +255,15 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
     options?: ArchiveIngestOptions,
+    session?: ExecutionSession,
   ): Promise<ExtractionResult<T>> {
+    // Pass the run through so archived minutes PDFs are linked to it, the
+    // same way detail pages are (#1276 left this unset; #1280 supplies it).
     return this.minutesIngest.execute(
       source,
       regionId,
       options,
+      session?.executionId ?? undefined,
     ) as unknown as Promise<ExtractionResult<T>>;
   }
 
@@ -177,6 +276,7 @@ export class ScrapingPipelineService {
     regionId: string,
     html: string,
     pipelineStart: number,
+    session?: ExecutionSession,
   ): Promise<ExtractionResult<T>> {
     const sm = source.staticManifest!;
     const syntheticManifest = {
@@ -223,6 +323,7 @@ export class ScrapingPipelineService {
     const rawResult = await this.enrichWithDetails(extracted, source, {
       regionId,
       dataType: source.dataType,
+      ...(session?.executionId && { executionId: session.executionId }),
     });
 
     const duration = Date.now() - pipelineStart;
@@ -239,11 +340,12 @@ export class ScrapingPipelineService {
   private async executeHtmlScrape<T>(
     source: DataSourceConfig,
     regionId: string,
+    session?: ExecutionSession,
   ): Promise<ExtractionResult<T>> {
     // Hub-shaped source (#1164): resolve the real extraction targets first,
     // then run this same pipeline once per leaf page.
     if (source.linkDiscovery) {
-      return this.executeLinkDiscovery<T>(source, regionId);
+      return this.executeLinkDiscovery<T>(source, regionId, session);
     }
 
     const pipelineStart = Date.now();
@@ -264,6 +366,7 @@ export class ScrapingPipelineService {
         regionId,
         html,
         pipelineStart,
+        session,
       );
     }
 
@@ -333,6 +436,7 @@ export class ScrapingPipelineService {
       regionId,
       dataType: source.dataType,
       manifestId: manifest.id,
+      ...(session?.executionId && { executionId: session.executionId }),
     });
 
     // Stage 4: Map to domain types
@@ -359,6 +463,7 @@ export class ScrapingPipelineService {
         regionId,
         dataType: source.dataType,
         manifestId: manifest.id,
+        ...(session?.executionId && { executionId: session.executionId }),
       });
       const remapped = this.mapper.map<T>(healedRaw, source);
       // Keep whichever outcome mapped more items — a failed heal must not
@@ -369,6 +474,10 @@ export class ScrapingPipelineService {
       }
     }
     result.manifestVersion = effectiveVersion;
+    // The manifest a row was extracted under. Region config is baked into the
+    // image, so this points at a deployed artifact rather than a mutable local
+    // value (#1280).
+    result.manifestId = manifest.id;
 
     const totalMs = Date.now() - pipelineStart;
     this.logger.log(
@@ -395,6 +504,7 @@ export class ScrapingPipelineService {
   private async executeLinkDiscovery<T>(
     source: DataSourceConfig,
     regionId: string,
+    session?: ExecutionSession,
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     this.logger.log(
@@ -434,7 +544,11 @@ export class ScrapingPipelineService {
 
       let leafResult: ExtractionResult<T>;
       try {
-        leafResult = await this.executeHtmlScrape<T>(leafSource, regionId);
+        leafResult = await this.executeHtmlScrape<T>(
+          leafSource,
+          regionId,
+          session,
+        );
       } catch (error) {
         // Soft-fail per leaf, matching the discovery walk and the detail
         // crawler: a leaf that 404s mid-cycle must not discard the measures

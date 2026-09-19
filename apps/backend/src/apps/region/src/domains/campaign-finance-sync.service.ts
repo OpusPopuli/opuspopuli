@@ -462,6 +462,10 @@ export class CampaignFinanceSyncService {
           'electionType',
           'contributionType',
           'sourceSystem',
+          // Which run produced this row (#1280). `fields` is an allowlist —
+          // `pick` copies only what is named here, so an unlisted column is
+          // silently dropped no matter what the stream carries.
+          'pipelineExecutionId',
         ],
       },
       {

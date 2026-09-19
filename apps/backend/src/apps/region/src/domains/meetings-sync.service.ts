@@ -13,6 +13,7 @@ import {
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { meetingSyncTracker, minutesSyncTracker } from './sync-phase-logger';
 import type { UpsertByExternalId } from './propositions-sync.service';
+import { rowProvenance } from './row-provenance';
 
 /**
  * Minimal contract for the provider this service pulls meetings + minutes
@@ -232,7 +233,10 @@ export class MeetingsSyncService {
       bundles.length,
     );
     const upsertedIds: string[] = [];
-    for (const { minutes } of bundles) {
+    for (const bundle of bundles) {
+      // Provenance rides on the bundle, not the inner minutes: items are
+      // stamped uniformly at the top level as they leave the pipeline (#1280).
+      const { minutes } = bundle;
       const wasExisting = existingExternalIds.has(minutes.externalId);
       const row = await this.db.minutes.upsert({
         where: { externalId: minutes.externalId },
@@ -245,6 +249,7 @@ export class MeetingsSyncService {
           sourceUrl: minutes.sourceUrl,
           rawText: minutes.rawText,
           parsedAt: minutes.parsedAt ?? new Date(),
+          ...rowProvenance(bundle),
         },
         create: {
           externalId: minutes.externalId,
@@ -256,6 +261,7 @@ export class MeetingsSyncService {
           sourceUrl: minutes.sourceUrl,
           rawText: minutes.rawText,
           parsedAt: minutes.parsedAt ?? new Date(),
+          ...rowProvenance(bundle),
         },
         select: { id: true },
       });

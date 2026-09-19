@@ -167,7 +167,29 @@ export interface PropositionExistingVsProposed {
 /**
  * Proposition/ballot measure data
  */
-export interface Proposition {
+/**
+ * Which pipeline run produced a civic row (#1280).
+ *
+ * Stamped onto items as they leave the pipeline, so that when a scrape goes
+ * wrong — a selector breaks, a manifest changes shape, an extraction silently
+ * yields nothing — the affected rows can be listed and a re-run scoped to
+ * them. Without it the blast radius of a bad run is "unknown", which in
+ * practice means "everything" (#1219, #1220).
+ *
+ * Every field is optional and may legitimately be absent: a run with no
+ * execution tracking bound records nothing, and a null is honest where a
+ * fabricated reference would be indistinguishable from a real one.
+ */
+export interface RowProvenance {
+  /** The `PipelineExecution` that produced this row. */
+  pipelineExecutionId?: string;
+  /** The `StructuralManifest` the extraction ran under, where one exists. */
+  manifestId?: string;
+  /** The manifest version used. */
+  manifestVersion?: number;
+}
+
+export interface Proposition extends RowProvenance {
   externalId: string;
   title: string;
   summary: string;
@@ -198,7 +220,7 @@ export interface Proposition {
 /**
  * Legislative meeting data
  */
-export interface Meeting {
+export interface Meeting extends RowProvenance {
   externalId: string;
   title: string;
   body: string;
@@ -293,7 +315,7 @@ export interface Representative {
  * `revisionSeq=1` and `isActive=true`; the original's `isActive` is
  * flipped to false.
  */
-export interface Minutes {
+export interface Minutes extends RowProvenance {
   externalId: string;
   /** "Assembly" | "Senate" — V1 is CA Assembly only. */
   body: string;
@@ -464,7 +486,12 @@ export interface LegislativeAction {
  * so the parent→children relationship is explicit through the pipeline
  * boundary (before any DB ids exist).
  */
-export interface MinutesWithActions {
+/**
+ * Carries RowProvenance on the wrapper, not only on the inner `minutes`:
+ * items are stamped uniformly at the top level as they leave the pipeline
+ * (#1280), and the persist path reads it from wherever it lands.
+ */
+export interface MinutesWithActions extends RowProvenance {
   minutes: Minutes;
   actions: LegislativeAction[];
 }
@@ -515,7 +542,7 @@ export interface BillVote {
  * `committeeNames` are the raw strings from the bill page used to link
  * against LegislativeCommittee records at sync time.
  */
-export interface Bill {
+export interface Bill extends RowProvenance {
   /** Stable key: sessionYear + measureTypeCode + number, e.g. "20232024AB1234". */
   externalId: string;
   /** Human-readable bill number, e.g. "AB 1234". */

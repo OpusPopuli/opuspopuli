@@ -9,6 +9,7 @@ import {
   detectSummaryEcho,
   extractLegislativeDigest,
 } from '@opuspopuli/scraping-pipeline';
+import { rowProvenance } from './row-provenance';
 
 /**
  * Compiled lifecycle-stage matcher. Each entry maps a region-defined stage
@@ -211,6 +212,11 @@ export class PropositionsSyncService {
               electionDate: prop.electionDate,
               sourceUrl: prop.sourceUrl,
               lifecycleStageId,
+              // Which run produced this version of the row (#1280). Updated
+              // on every upsert, not just on create: the question that
+              // matters during an incident is which run wrote what is there
+              // now, not which one first created it.
+              ...rowProvenance(prop),
             },
             create: {
               externalId: prop.externalId,
@@ -222,6 +228,7 @@ export class PropositionsSyncService {
               sourceUrl: prop.sourceUrl,
               lifecycleStageId,
               regionPluginName: pluginName,
+              ...rowProvenance(prop),
             },
           });
         }),

@@ -216,7 +216,25 @@ export class BulkDownloadHandler {
               // onBatch (upsert) runs before recordBatch intentionally:
               // if recordBatch fails transiently, the upsert is idempotent
               // and the batch will be re-applied on retry — acceptable.
-              await onBatch(items);
+              //
+              // Items are stamped with the producing run here rather than in
+              // the pipeline's trackRun, because batch-mode items never
+              // appear in the returned result — they reach the persistence
+              // layer only through this callback (#1280).
+              // Always stamped, null included. An omitted key leaves whatever
+              // the previous run wrote, so a row rewritten by an untracked run
+              // would keep pointing at the last tracked one — a stale
+              // reference that reads as current.
+              await onBatch(
+                items.map((item) =>
+                  item && typeof item === "object"
+                    ? {
+                        ...item,
+                        pipelineExecutionId: session.executionId ?? null,
+                      }
+                    : item,
+                ),
+              );
               totalItems += items.length;
 
               await session.recordBatch(currentBatch, items.length);

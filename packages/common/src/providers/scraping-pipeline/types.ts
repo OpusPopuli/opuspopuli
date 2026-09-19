@@ -1066,6 +1066,14 @@ export interface ExtractionResult<T> {
   items: T[];
   /** The manifest version used */
   manifestVersion: number;
+  /**
+   * The `PipelineExecution` that produced these items, when one was recorded
+   * (#1280). Absent when execution tracking is unavailable — a null is honest,
+   * and downstream must persist it as null rather than guessing.
+   */
+  executionId?: string;
+  /** The `StructuralManifest` the extraction ran under, when one exists. */
+  manifestId?: string;
   /** Whether extraction succeeded fully */
   success: boolean;
   /** Per-item extraction warnings (non-fatal) */
