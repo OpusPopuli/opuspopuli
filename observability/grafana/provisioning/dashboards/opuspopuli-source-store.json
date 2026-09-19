@@ -1,0 +1,237 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "schemaVersion": 39,
+  "tags": ["opuspopuli", "provenance", "storage"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "OPUSPOPULI Source Store",
+  "uid": "opuspopuli-source-store",
+  "version": 1,
+  "weekStart": "",
+  "refresh": "5m",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Store size by tier",
+      "description": "Bytes actually held, per tier. Separate series on purpose: the tiers have different retention policies, so an aggregate would hide which one is growing (#1278).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "source_store_bytes{location=\"postgres\"}",
+          "legendFormat": "cited (postgres, compressed)",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "source_store_bytes{location=\"object-storage\"}",
+          "legendFormat": "bulk (object storage)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Growth against sizing",
+      "description": "Growth rate per tier over 7d. The epic sized this store as 'no hardware purchase required' on ~1-3 GB/yr cited and ~12-13 GB/yr bulk; the alert thresholds are 2x those rates (190 B/s and 825 B/s).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "deriv(source_store_bytes{location=\"postgres\"}[7d])",
+          "legendFormat": "cited B/s",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "deriv(source_store_bytes{location=\"object-storage\"}[7d])",
+          "legendFormat": "bulk B/s",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Artifacts held",
+      "description": "Object counts. 'pruned' rows survive their payloads by design, and 'unstored' means a snapshot was recorded but its bytes never uploaded \u2014 expected to be zero.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "source_store_objects{state=\"present\"}",
+          "legendFormat": "{{tier}} present",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "source_store_objects{state=\"pruned\"}",
+          "legendFormat": "{{tier}} pruned",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "source_store_objects{state=\"unstored\"}",
+          "legendFormat": "{{tier}} unstored",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Compression achieved at rest",
+      "description": "Measured, not configured. The cited tier gets ~3.15x from Postgres TOAST with no application code; the bulk tier stores ZIPs, which are already compressed, so it reports 1x. This is why app-level zstd was dropped from #1278's scope.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "source_store_compression_ratio",
+          "legendFormat": "{{tier}} ({{method}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Measurement freshness",
+      "description": "Seconds since each tier was last measured. A size gauge that stops updating keeps reporting its last value forever, which is how the 2026-07-23 backup outage stayed invisible for 49 days (#1217). Alerts at 1h against a 5m collection interval.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - source_store_last_measured_timestamp_seconds",
+          "legendFormat": "{{tier}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

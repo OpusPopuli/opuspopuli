@@ -56,6 +56,7 @@ import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionEmbeddingService } from './proposition-embedding.service';
 import { SourceVersionService } from './source-version.service';
 import { SnapshotRetentionService } from './snapshot-retention.service';
+import { SourceStoreMetricsService } from './source-store-metrics.service';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -264,6 +265,7 @@ const promptClientAsyncConfig = {
     PropositionAnalysisService,
     PropositionEmbeddingService,
     SnapshotRetentionService,
+    SourceStoreMetricsService,
     MinutesSummaryService,
     PropositionFinanceLinkerService,
     CandidateCommitteeLinkerService,

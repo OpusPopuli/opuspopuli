@@ -106,6 +106,44 @@ export class MetricsModule {
         // Tighter buckets for GraphQL: same as HTTP for consistency
         buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
       }),
+      /**
+       * Source-store size and growth, per tier (#1278).
+       *
+       * Per tier rather than aggregated, because the two have different
+       * retention policies — cited sources are immutable forever, bulk
+       * snapshots are pruned to latest plus monthly — and an aggregate hides
+       * which one is growing.
+       *
+       * Declared before the store has volume on purpose. Production backups
+       * stopped on 2026-07-23 and went unnoticed for 49 days because nothing
+       * measured freshness (#1217); a capacity decision should be read off a
+       * graph rather than estimated.
+       */
+      makeGaugeProvider({
+        name: 'source_store_bytes',
+        help: 'Bytes held by the source store, by tier and storage location',
+        labelNames: ['tier', 'location'],
+      }),
+      makeGaugeProvider({
+        name: 'source_store_objects',
+        help: 'Artifacts held by the source store, by tier and state',
+        labelNames: ['tier', 'state'],
+      }),
+      makeGaugeProvider({
+        name: 'source_store_compression_ratio',
+        help: 'Compression achieved at rest: logical bytes over stored bytes',
+        labelNames: ['tier', 'method'],
+      }),
+      /**
+       * Freshness of the measurement itself. A gauge that silently stops
+       * updating reports its last value forever, which is how #1217 stayed
+       * invisible for 49 days — the number looked fine because it was stale.
+       */
+      makeGaugeProvider({
+        name: 'source_store_last_measured_timestamp_seconds',
+        help: 'Unix time of the last successful source-store measurement',
+        labelNames: ['tier'],
+      }),
       makeGaugeProvider({
         name: 'circuit_breaker_state',
         help: 'Circuit breaker state (0=closed, 0.5=half-open, 1=open)',
@@ -246,7 +284,22 @@ export class MetricsModule {
         }),
       ],
       providers,
-      exports: [MetricsService, 'METRICS_OPTIONS'],
+      // Every custom metric provider is exported, not just MetricsService.
+      // `global: true` shares only what a module exports, so a service in
+      // another module using @InjectMetric could not resolve the token at all
+      // — Nest failed to construct it and the service refused to boot (#1278).
+      // MetricsService worked only because it injects them from inside here.
+      exports: [
+        MetricsService,
+        'METRICS_OPTIONS',
+        ...providers
+          .filter(
+            (provider): provider is Extract<Provider, { provide: unknown }> =>
+              typeof provider === 'object' && 'provide' in provider,
+          )
+          .map((provider) => provider.provide)
+          .filter((token) => token !== APP_INTERCEPTOR),
+      ],
     };
   }
 }
