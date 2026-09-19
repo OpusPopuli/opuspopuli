@@ -20,6 +20,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
+import { Transform } from "node:stream";
+import type {
+  BulkSnapshotCandidate,
+  IBulkArchive,
+} from "./bulk-archive.port.js";
 import { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import yauzl from "yauzl";
@@ -96,7 +101,33 @@ export class BulkDownloadHandler {
   constructor(
     private readonly mapper: DomainMapperService,
     private readonly executionTracker: ExecutionTrackerService | null = null,
+    /**
+     * Retains downloaded exports (#1277). Optional: left unbound, bulk
+     * ingestion behaves exactly as it did before the archive existed.
+     */
+    private readonly bulkArchive: IBulkArchive | null = null,
   ) {}
+
+  /**
+   * Offer a downloaded export to the bulk archive, if one is bound.
+   *
+   * Never throws. Retaining a snapshot is bookkeeping alongside an ingest that
+   * is the caller's actual goal, and a finance sync measured in tens of hours
+   * (#1037) must not be failed by an archive that was unavailable.
+   */
+  private async archiveSnapshot(
+    candidate: BulkSnapshotCandidate,
+  ): Promise<void> {
+    if (!this.bulkArchive) return;
+
+    try {
+      await this.bulkArchive.archive(candidate);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to archive ${candidate.sourceUrl}: ${(error as Error).message}`,
+      );
+    }
+  }
 
   async execute<T>(
     source: DataSourceConfig,
@@ -135,6 +166,26 @@ export class BulkDownloadHandler {
     const errors: string[] = [];
     const tmpPath = join(tmpdir(), `opus-bulk-${randomUUID()}.tmp`);
 
+    // Opened before the download rather than after it: the run began when it
+    // began, not when a gigabyte finished transferring, and the archived
+    // snapshot needs this id to join to the rows it produced (#1277, #1280).
+    //
+    // The resume session is keyed by (job, sourceUrl) and `batchIndex` restarts
+    // at 0 for each source, so the tracked identity must be unique per source.
+    // See sessionSourceKey for why url + filePattern alone is insufficient
+    // (#950, #984).
+    const trackingUrl = sessionSourceKey(source, bulk.filePattern);
+    const session: ExecutionSession =
+      await ExecutionTrackerService.beginSession(
+        this.executionTracker,
+        pipelineJobId,
+        {
+          regionId,
+          sourceUrl: trackingUrl,
+          dataType: source.dataType,
+        },
+      );
+
     try {
       // 1. Stream download to temp file (no memory buffering)
       this.logger.log(`Downloading ${source.url}...`);
@@ -158,12 +209,47 @@ export class BulkDownloadHandler {
               response.body as import("node:stream/web").ReadableStream,
             );
 
-      await pipeline(bodyStream, createWriteStream(tmpPath));
+      // Hash while the bytes stream past, rather than re-reading a gigabyte
+      // from disk afterwards purely to content-address it (#1277).
+      //
+      // A Transform, not a PassThrough with a "data" listener: attaching that
+      // listener switches the stream into flowing mode and consumes chunks
+      // before pipeline() has wired them to the write stream, which silently
+      // produces an empty file.
+      const digest = createHash("sha256");
+      const hashStream = new Transform({
+        transform(chunk, _encoding, callback) {
+          digest.update(chunk);
+          callback(null, chunk);
+        },
+      });
+
+      await pipeline(bodyStream, hashStream, createWriteStream(tmpPath));
+      const contentHash = digest.digest("hex");
 
       const fileSize = (await stat(tmpPath)).size;
       this.logger.log(
         `Downloaded ${(fileSize / 1024 / 1024).toFixed(1)}MB to temp file`,
       );
+
+      // Archived before ingest, not after. The export is worth retaining
+      // whether or not parsing it succeeds — a run that failed partway is
+      // exactly the case where someone needs the bytes that caused it
+      // (#991, #992). The temp file is deleted in the finally below, so this
+      // is the only window in which it can be read.
+      await this.archiveSnapshot({
+        contentHash,
+        sourceUrl: source.url,
+        byteSize: fileSize,
+        fetchedAt: new Date().toISOString(),
+        // Optional metadata, read defensively: a missing or unusual header
+        // must not fail an ingest measured in tens of hours.
+        contentType: response.headers?.get("content-type") ?? undefined,
+        regionId,
+        dataType: source.dataType,
+        ...(session.executionId && { executionId: session.executionId }),
+        openStream: () => createReadStream(tmpPath),
+      });
 
       // 2. Get a readable stream for the target content
       let contentStream: Readable;
@@ -187,18 +273,6 @@ export class BulkDownloadHandler {
         // restarts at 0 for each source, so the tracked identity must be
         // unique per source. See sessionSourceKey for why url + filePattern
         // alone is insufficient (#950, #984).
-        const trackingUrl = sessionSourceKey(source, bulk.filePattern);
-        const session: ExecutionSession =
-          await ExecutionTrackerService.beginSession(
-            this.executionTracker,
-            pipelineJobId,
-            {
-              regionId,
-              sourceUrl: trackingUrl,
-              dataType: source.dataType,
-            },
-          );
-
         let batchIndex = 0;
         let streamSuccess = false;
 

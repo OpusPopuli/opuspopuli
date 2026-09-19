@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
-import type { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
+import { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
 import { Readable } from "node:stream";
 import {
   DataType,
@@ -71,6 +71,10 @@ function mockStreamResponse(content: string, ok = true, status = 200) {
     ok,
     status,
     statusText: ok ? "OK" : "Not Found",
+    // Real Headers: the handler reads Content-Type off the response, and a
+    // fake without them made every test fail for a reason unrelated to what
+    // they were asserting.
+    headers: new Headers({ "content-type": "text/csv" }),
     body: stream,
   };
 }
@@ -89,6 +93,89 @@ describe("BulkDownloadHandler", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  describe("snapshot archiving (#1277)", () => {
+    const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500";
+    let archive: { archive: jest.Mock };
+
+    beforeEach(() => {
+      archive = { archive: jest.fn().mockResolvedValue(undefined) };
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+    });
+
+    it("offers the downloaded export with its content hash and size", async () => {
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(candidate.contentHash).toBe(
+        createHash("sha256").update(Buffer.from(csv)).digest("hex"),
+      );
+      expect(candidate.byteSize).toBe(Buffer.byteLength(csv));
+      expect(candidate.sourceUrl).toBe("https://example.com/data.csv");
+      expect(candidate.regionId).toBe("california");
+    });
+
+    it("hands over a stream that still reads the file", async () => {
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      // The temp file is deleted as soon as ingest finishes, so the archive
+      // has to be able to read it while this call is awaited. A stream that
+      // opens too late reads nothing and stores an empty object.
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(typeof candidate.openStream).toBe("function");
+    });
+
+    it("links the snapshot to the run that fetched it", async () => {
+      const repo = {
+        findExecution: jest.fn().mockResolvedValue(null),
+        createExecution: jest.fn().mockResolvedValue({ id: "exec-bulk-1" }),
+        updateExecutionStatus: jest.fn().mockResolvedValue(undefined),
+        findAppliedBatches: jest.fn().mockResolvedValue([]),
+        createBatch: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      };
+      const handlerWithArchive = new BulkDownloadHandler(
+        mapper,
+        new ExecutionTrackerService(repo as never),
+        archive,
+      );
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      // This id is what joins the snapshot to the finance rows it produced:
+      // row -> execution <- snapshot (#1280).
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(candidate.executionId).toBe("exec-bulk-1");
+    });
+
+    it("ingests normally when archiving fails", async () => {
+      archive.archive.mockRejectedValue(new Error("storage unavailable"));
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      const result = await handlerWithArchive.execute(
+        createSource(),
+        "california",
+      );
+
+      // Retaining a snapshot is bookkeeping alongside the ingest that is the
+      // caller's actual goal. A finance sync measured in tens of hours (#1037)
+      // must not be failed by an archive that was unavailable.
+      expect(result.items.length).toBeGreaterThan(0);
+    });
+
+    it("ingests normally when no archive is bound", async () => {
+      const result = await handler.execute(createSource(), "california");
+
+      expect(result.items.length).toBeGreaterThan(0);
+    });
   });
 
   describe("per-record source hashes (#1277)", () => {

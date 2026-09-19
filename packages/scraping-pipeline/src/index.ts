@@ -102,3 +102,8 @@ export type {
   PipelineMetrics,
   PromptServiceResponse,
 } from "@opuspopuli/common";
+export {
+  BULK_ARCHIVE,
+  type IBulkArchive,
+  type BulkSnapshotCandidate,
+} from "./handlers/bulk-archive.port.js";
