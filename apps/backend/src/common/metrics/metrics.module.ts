@@ -284,7 +284,22 @@ export class MetricsModule {
         }),
       ],
       providers,
-      exports: [MetricsService, 'METRICS_OPTIONS'],
+      // Every custom metric provider is exported, not just MetricsService.
+      // `global: true` shares only what a module exports, so a service in
+      // another module using @InjectMetric could not resolve the token at all
+      // — Nest failed to construct it and the service refused to boot (#1278).
+      // MetricsService worked only because it injects them from inside here.
+      exports: [
+        MetricsService,
+        'METRICS_OPTIONS',
+        ...providers
+          .filter(
+            (provider): provider is Extract<Provider, { provide: unknown }> =>
+              typeof provider === 'object' && 'provide' in provider,
+          )
+          .map((provider) => provider.provide)
+          .filter((token) => token !== APP_INTERCEPTOR),
+      ],
     };
   }
 }
