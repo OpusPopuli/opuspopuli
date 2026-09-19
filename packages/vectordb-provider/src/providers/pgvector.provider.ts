@@ -1,3 +1,4 @@
+import { EMBEDDING_DIMENSIONS } from "@opuspopuli/common";
 import { Injectable, Logger } from "@nestjs/common";
 import {
   IVectorDBProvider,
@@ -36,7 +37,10 @@ export class PgVectorProvider implements IVectorDBProvider {
   constructor(
     private readonly client: IRawQueryClient,
     private readonly collectionName: string,
-    dimensions: number = 384, // Default for Xenova/all-MiniLM-L6-v2
+    // 768 since the #1156 cutover. The old 384 default named MiniLM, which no
+    // selectable provider produces any more — a fallback that fires would
+    // create a table the running model cannot insert into.
+    dimensions: number = EMBEDDING_DIMENSIONS,
   ) {
     this.dimensions = dimensions;
     // Sanitize collection name for use as table name
@@ -72,8 +76,22 @@ export class PgVectorProvider implements IVectorDBProvider {
           user_id VARCHAR(255) NOT NULL,
           content TEXT NOT NULL,
           embedding vector(${this.dimensions}) NOT NULL,
+          -- Which model produced this vector (#1289). Without it a model
+          -- swap leaves a corpus whose mixed state cannot even be detected,
+          -- let alone excluded from a ranking.
+          embedding_model VARCHAR(80),
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         )
+      `);
+
+      // This table is created by the provider rather than by a migration, so
+      // a deployment that already ran an older version has one without the
+      // column. Nullable and added separately: existing rows genuinely do
+      // not know which model produced them, and a default would assert
+      // otherwise.
+      await this.client.$executeRawUnsafe(`
+        ALTER TABLE "${this.tableName}"
+        ADD COLUMN IF NOT EXISTS embedding_model VARCHAR(80)
       `);
 
       // HNSW, not IVFFlat (#1150).
@@ -125,6 +143,7 @@ export class PgVectorProvider implements IVectorDBProvider {
     documentId: string,
     embeddings: number[][],
     content: string[],
+    embeddingModel: string,
   ): Promise<boolean> {
     try {
       this.logger.log(
@@ -150,19 +169,27 @@ export class PgVectorProvider implements IVectorDBProvider {
           const embeddingStr = `[${embeddings[j].join(",")}]`;
 
           values.push(
-            `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}::vector)`,
+            `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}::vector, $${paramIndex + 5})`,
           );
-          params.push(id, documentId, userId, content[j], embeddingStr);
-          paramIndex += 5;
+          params.push(
+            id,
+            documentId,
+            userId,
+            content[j],
+            embeddingStr,
+            embeddingModel,
+          );
+          paramIndex += 6;
         }
 
         await this.client.$executeRawUnsafe(
           `
-          INSERT INTO "${this.tableName}" (id, document_id, user_id, content, embedding)
+          INSERT INTO "${this.tableName}" (id, document_id, user_id, content, embedding, embedding_model)
           VALUES ${values.join(", ")}
           ON CONFLICT (id) DO UPDATE SET
             content = EXCLUDED.content,
             embedding = EXCLUDED.embedding,
+            embedding_model = EXCLUDED.embedding_model,
             created_at = NOW()
         `,
           ...params,
@@ -188,12 +215,22 @@ export class PgVectorProvider implements IVectorDBProvider {
     queryEmbedding: number[],
     userId: string,
     nResults: number = 5,
+    embeddingModel?: string,
   ): Promise<IVectorDocument[]> {
     try {
       this.logger.log(`Querying pgvector for top ${nResults} results`);
 
       const embeddingStr = `[${queryEmbedding.join(",")}]`;
 
+      // Rank only within one model's vector space when the caller names one
+      // (#1289).
+      //
+      // Cosine distance between vectors from two different models is a number,
+      // not a measurement: the spaces are unrelated, so the nearest row is
+      // arbitrary while looking exactly like a real match. Omitting the model
+      // preserves the old behaviour for any caller that has not been updated,
+      // which is a ranking that cannot be trusted across a model change.
+      //
       // Use cosine distance for similarity search
       // pgvector uses <=> for cosine distance (lower is more similar)
       const results = await this.client.$queryRawUnsafe<{
@@ -214,12 +251,14 @@ export class PgVectorProvider implements IVectorDBProvider {
           1 - (embedding <=> $1::vector) as similarity
         FROM "${this.tableName}"
         WHERE user_id = $2
+          AND ($4::text IS NULL OR embedding_model = $4)
         ORDER BY embedding <=> $1::vector
         LIMIT $3
       `,
         embeddingStr,
         userId,
         nResults,
+        embeddingModel ?? null,
       );
 
       // Transform results into IVectorDocument format
