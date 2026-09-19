@@ -15,6 +15,7 @@ import {
   ScrapingPipelineService,
   MANIFEST_MISSING_CALLBACK,
   EXECUTION_TRACKER_REPOSITORY,
+  BULK_ARCHIVE,
   type ManifestMissingArgs,
 } from '@opuspopuli/scraping-pipeline';
 import {
@@ -73,6 +74,8 @@ import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { PrismaSourceArchive } from '../infrastructure/prisma-source-archive';
+import { PrismaBulkArchive } from '../infrastructure/prisma-bulk-archive';
+import { StorageModule } from '@opuspopuli/storage-provider';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { PrismaExecutionTrackerRepository } from '../infrastructure/prisma-execution-tracker-repository';
 import { REGION_CACHE } from './region.tokens';
@@ -152,6 +155,12 @@ const promptClientAsyncConfig = {
         // QueueModule must be imported here (not just at RegionDomainModule scope)
         // because ScrapingPipelineModule's DI scope cannot see sibling providers.
         QueueModule.forRootAsync(queueModuleAsyncConfig),
+        // Storage for the bulk-archive tier (#1277). Nothing in the region app
+        // imported this before — only users and documents did — so
+        // STORAGE_PROVIDER was unresolvable here and PrismaBulkArchive would
+        // have recorded every snapshot without its bytes, warning each time
+        // and otherwise looking like it worked.
+        StorageModule,
       ],
       providers: [
         PrismaManifestRepository,
@@ -168,6 +177,15 @@ const promptClientAsyncConfig = {
         {
           provide: EXECUTION_TRACKER_REPOSITORY,
           useExisting: PrismaExecutionTrackerRepository,
+        },
+        // Retains bulk exports (#1277). Declared inside the pipeline's own
+        // scope, like the repositories above, because BulkDownloadHandler
+        // resolves the token from there and providers declared at an outer
+        // scope are invisible to it.
+        PrismaBulkArchive,
+        {
+          provide: BULK_ARCHIVE,
+          useExisting: PrismaBulkArchive,
         },
         StructuralAnalysisJobService,
         {
