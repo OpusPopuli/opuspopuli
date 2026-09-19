@@ -333,6 +333,9 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
       | 'skipped_low_ocr_confidence'
       | 'skipped_no_text'
       | 'skipped_empty_corpus'
+      // Corpus embedded under a different model than the running one: a
+      // migration in progress, distinct from an absent corpus (#1282).
+      | 'skipped_model_space_mismatch'
       | 'failed',
     similarity?: number,
   ): void {

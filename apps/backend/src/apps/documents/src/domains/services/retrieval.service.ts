@@ -128,7 +128,11 @@ export interface RetrievalOutcome {
   readonly attempted: boolean;
   readonly match: RetrievalMatch | null;
   /** Present when retrieval was skipped, for telemetry and the verdict. */
-  readonly skippedReason?: 'low_ocr_confidence' | 'no_text' | 'empty_corpus';
+  readonly skippedReason?:
+    | 'low_ocr_confidence'
+    | 'no_text'
+    | 'empty_corpus'
+    | 'model_space_mismatch';
   /**
    * True when a match was found but could not be verified because the running
    * embedding model is not the one the threshold was calibrated against.
@@ -318,17 +322,60 @@ export class RetrievalService implements OnModuleInit {
       // and scans arrive at human pace.
       await this.publishEmbeddingCoverage();
 
+      // Rank only within the running model's own vector space (#1282).
+      //
+      // Cosine distance between vectors from two different models is a number,
+      // not a measurement — the spaces are unrelated, so the "nearest" row is
+      // arbitrary while looking exactly like a real match. Until now this query
+      // was safe only because every embedded row happened to share one model:
+      // safe by accident of the data, not by construction, and the first
+      // re-embed breaks it. Re-embedding is meant to be routine (#1207 item 6),
+      // so it must not be able to make this silently wrong.
+      const runningModel = this.embeddings.getProviderInfo().model;
+
       const rows = await this.db.$queryRaw<
         { id: string; external_id: string; title: string; distance: number }[]
       >`
         SELECT id, external_id, title, (embedding <=> ${literal}::vector) AS distance
         FROM propositions
-        WHERE embedding IS NOT NULL AND deleted_at IS NULL
+        WHERE embedding IS NOT NULL
+          AND deleted_at IS NULL
+          AND embedding_model = ${runningModel}
         ORDER BY distance ASC
         LIMIT 1
       `;
 
       if (rows.length === 0) {
+        // An empty result has two very different causes. A corpus that is
+        // simply unembedded is a gap; a corpus embedded under another model is
+        // a migration in progress, and reporting that as "empty" would hide
+        // the one state this guard exists to make visible.
+        const [other] = await this.db.$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*)::bigint AS count
+          FROM propositions
+          WHERE embedding IS NOT NULL
+            AND deleted_at IS NULL
+            AND embedding_model IS DISTINCT FROM ${runningModel}
+        `;
+
+        if (Number(other?.count ?? 0n) > 0) {
+          this.logger.warn(
+            `Petition retrieval skipped: the proposition corpus is embedded ` +
+              `under a different model than the running ${runningModel}. ` +
+              `Comparing across model spaces would produce an arbitrary match, ` +
+              `so no match is reported until the backfill completes.`,
+          );
+          this.metrics.recordPetitionRetrieval(
+            SERVICE,
+            'skipped_model_space_mismatch',
+          );
+          return {
+            attempted: true,
+            match: null,
+            skippedReason: 'model_space_mismatch',
+          };
+        }
+
         this.metrics.recordPetitionRetrieval(SERVICE, 'skipped_empty_corpus');
         return { attempted: true, match: null, skippedReason: 'empty_corpus' };
       }
@@ -348,7 +395,6 @@ export class RetrievalService implements OnModuleInit {
       // scanned it. Recalibration needs real photographs re-taken (scan images
       // are never persisted, by design), so the honest state until then is
       // "matched, not verified".
-      const runningModel = this.embeddings.getProviderInfo().model;
       const calibrated = runningModel === VERIFICATION_CALIBRATION.model;
       const verified = calibrated && similarity >= MIN_VERIFIED_SIMILARITY;
 
