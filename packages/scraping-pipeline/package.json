@@ -28,7 +28,7 @@
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "cheerio": "^1.1.2",
     "yauzl": "^3.3.0",
     "zod": "^3.23.0"
@@ -50,8 +50,8 @@
     "@types/node": "^22.0.0",
     "@types/yauzl": "^2.10.3",
     "domhandler": "^5.0.3",
-    "mupdf": "^1.27.0",
     "jest": "^30.0.0",
+    "mupdf": "^1.27.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "ts-jest": "^29.2.5",
