@@ -55,6 +55,7 @@ import { EntityActivitySummaryGeneratorService } from './entity-activity-summary
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionEmbeddingService } from './proposition-embedding.service';
 import { SourceVersionService } from './source-version.service';
+import { SnapshotRetentionService } from './snapshot-retention.service';
 import { EmbeddingsModule } from '@opuspopuli/embeddings-provider';
 import { MinutesSummaryService } from './minutes-summary.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
@@ -262,6 +263,7 @@ const promptClientAsyncConfig = {
     EntityActivitySummaryGeneratorService,
     PropositionAnalysisService,
     PropositionEmbeddingService,
+    SnapshotRetentionService,
     MinutesSummaryService,
     PropositionFinanceLinkerService,
     CandidateCommitteeLinkerService,
