@@ -84,7 +84,19 @@ function replaceIfNewer(
   candidate: RetainableSnapshot,
 ): void {
   const current = index.get(key);
-  if (!current || candidate.fetchedAt > current.fetchedAt) {
+  if (!current) {
     index.set(key, candidate);
+    return;
   }
+
+  // Ties break on id, not on arrival order. The sweep reads candidates with
+  // findMany, which guarantees no ordering, so two snapshots sharing a
+  // fetchedAt would otherwise be kept or pruned differently from one run to
+  // the next — nondeterminism in a destructive operation.
+  const newer =
+    candidate.fetchedAt > current.fetchedAt ||
+    (candidate.fetchedAt.getTime() === current.fetchedAt.getTime() &&
+      candidate.id > current.id);
+
+  if (newer) index.set(key, candidate);
 }

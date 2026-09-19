@@ -371,6 +371,16 @@ export class BulkDownloadHandler {
         pipelineStart,
       );
     } catch (error) {
+      // Finalize here too. The session now opens before the download (#1277),
+      // so a failure that happens before streaming starts — an HTTP error, an
+      // empty body, a dead connection — would otherwise leave the execution
+      // row stuck at status "running" forever. Nothing reaps those, and a row
+      // that never finishes is indistinguishable from a run still in flight.
+      await session.finalize(false, {
+        itemsExtracted: 0,
+        itemsFailed: 1,
+        extractionTimeMs: Date.now() - pipelineStart,
+      });
       return buildFailureResult<T>(error, warnings, errors, pipelineStart);
     } finally {
       // Always clean up temp file

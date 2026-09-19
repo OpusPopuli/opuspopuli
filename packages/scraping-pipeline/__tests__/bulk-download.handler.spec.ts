@@ -171,6 +171,36 @@ describe("BulkDownloadHandler", () => {
       expect(result.items.length).toBeGreaterThan(0);
     });
 
+    it("finalizes the run when the download itself fails", async () => {
+      const repo = {
+        findExecution: jest.fn().mockResolvedValue(null),
+        createExecution: jest.fn().mockResolvedValue({ id: "exec-bulk-1" }),
+        updateExecutionStatus: jest.fn().mockResolvedValue(undefined),
+        findAppliedBatches: jest.fn().mockResolvedValue([]),
+        createBatch: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      };
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse("", false, 500),
+      );
+      const tracked = new BulkDownloadHandler(
+        mapper,
+        new ExecutionTrackerService(repo as never),
+        archive,
+      );
+
+      await tracked.execute(createSource(), "california");
+
+      // The session now opens before the download, so a failure that happens
+      // before streaming starts would otherwise leave the execution row stuck
+      // at "running" forever — indistinguishable from a run still in flight.
+      expect(repo.finalizeExecution).toHaveBeenCalledWith(
+        "exec-bulk-1",
+        false,
+        expect.anything(),
+      );
+    });
+
     it("ingests normally when no archive is bound", async () => {
       const result = await handler.execute(createSource(), "california");
 

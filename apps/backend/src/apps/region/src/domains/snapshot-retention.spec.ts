@@ -88,6 +88,20 @@ describe('selectRetainedSnapshots', () => {
     expect([...forward].sort()).toEqual([...reversed].sort());
   });
 
+  it('breaks ties deterministically regardless of input order', () => {
+    const same = '2026-09-19T00:00:00Z';
+    const items = [snapshot('aaa', same), snapshot('zzz', same)];
+
+    // findMany guarantees no ordering, so a tie resolved by arrival order
+    // would keep a different snapshot on each sweep — nondeterminism in a
+    // destructive operation.
+    const forward = selectRetainedSnapshots(items);
+    const reversed = selectRetainedSnapshots([...items].reverse());
+
+    expect([...forward]).toEqual([...reversed]);
+    expect(forward.has('zzz')).toBe(true);
+  });
+
   it('returns nothing for no input', () => {
     expect(selectRetainedSnapshots([]).size).toBe(0);
   });
