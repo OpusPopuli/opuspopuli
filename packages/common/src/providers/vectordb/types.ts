@@ -45,6 +45,15 @@ export interface IVectorDBProvider {
     documentId: string,
     embeddings: number[][],
     content: string[],
+    /**
+     * Model that produced these vectors (#1289).
+     *
+     * Supplied by the caller rather than resolved here: the authoritative
+     * value is what the embeddings provider reports at runtime, and deriving
+     * it from config in this layer would duplicate the provider-selection
+     * logic and let the two drift.
+     */
+    embeddingModel: string,
   ): Promise<boolean>;
 
   /**
@@ -54,6 +63,16 @@ export interface IVectorDBProvider {
     queryEmbedding: number[],
     userId: string,
     nResults?: number,
+    /**
+     * Restrict the search to vectors produced by this model (#1289).
+     *
+     * Cosine distance between two models' vectors is a number, not a
+     * measurement — the spaces are unrelated, so an unfiltered search returns
+     * an arbitrary nearest neighbour that looks exactly like a real match.
+     * Optional so existing callers keep compiling, but a caller that omits it
+     * is asking for a ranking it cannot trust.
+     */
+    embeddingModel?: string,
   ): Promise<IVectorDocument[]>;
 
   /**

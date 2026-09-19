@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { IVectorDBProvider } from "@opuspopuli/common";
+import { EMBEDDING_DIMENSIONS, IVectorDBProvider } from "@opuspopuli/common";
 import { vectordbConfig } from "@opuspopuli/config-provider";
 import { DbService } from "@opuspopuli/relationaldb-provider";
 import { PgVectorProvider } from "./providers/pgvector.provider.js";
@@ -22,8 +22,11 @@ import { PgVectorProvider } from "./providers/pgvector.provider.js";
         configService: ConfigService,
         dbService: DbService,
       ): Promise<IVectorDBProvider> => {
+        // Falls back to the cutover width, not MiniLM's 384: a fallback that
+        // fires should produce a table the running model can actually use.
         const dimensions =
-          configService.get<number>("vectordb.dimensions") || 384;
+          configService.get<number>("vectordb.dimensions") ||
+          EMBEDDING_DIMENSIONS;
         const project = configService.get<string>("project") || "default";
         const collectionName = `${project}_embeddings`;
 

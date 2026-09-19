@@ -38,7 +38,10 @@ describe("PgVectorProvider", () => {
         mockClient,
         "test_embeddings",
       );
-      expect(defaultProvider.getDimensions()).toBe(384);
+      // 768 since the #1156 cutover: no selectable provider emits 384
+      // any more, so a fallback to it would create a table the running
+      // model cannot insert into (#1289).
+      expect(defaultProvider.getDimensions()).toBe(768);
     });
 
     it("should sanitize collection name for table name", () => {
@@ -98,6 +101,7 @@ describe("PgVectorProvider", () => {
           [0.3, 0.4],
         ],
         ["content 1", "content 2"],
+        "nomic-embed-text-v2-moe:latest",
       );
 
       expect(result).toBe(true);
@@ -108,11 +112,13 @@ describe("PgVectorProvider", () => {
         "user-1",
         "content 1",
         "[0.1,0.2]",
+        "nomic-embed-text-v2-moe:latest",
         "doc-1-1",
         "doc-1",
         "user-1",
         "content 2",
         "[0.3,0.4]",
+        "nomic-embed-text-v2-moe:latest",
       );
     });
 
@@ -123,7 +129,13 @@ describe("PgVectorProvider", () => {
       const embeddings = Array(150).fill([0.1, 0.2]);
       const contents = Array(150).fill("content");
 
-      await provider.createEmbeddings("user-1", "doc-1", embeddings, contents);
+      await provider.createEmbeddings(
+        "user-1",
+        "doc-1",
+        embeddings,
+        contents,
+        "nomic-embed-text-v2-moe:latest",
+      );
 
       // Should be called twice (100 + 50)
       expect(mockClient.$executeRawUnsafe).toHaveBeenCalledTimes(2);
@@ -135,7 +147,7 @@ describe("PgVectorProvider", () => {
       );
 
       await expect(
-        provider.createEmbeddings("user-1", "doc-1", [[0.1]], ["content"]),
+        provider.createEmbeddings("user-1", "doc-1", [[0.1]], ["content"], "m"),
       ).rejects.toThrow(VectorDBError);
     });
   });
@@ -174,6 +186,10 @@ describe("PgVectorProvider", () => {
         "[0.1,0.2]",
         "user-1",
         5,
+        // Null when the caller names no model: the filter is a no-op and the
+        // ranking spans whatever models the corpus holds, which is the old
+        // behaviour preserved for callers not yet updated (#1289).
+        null,
       );
       expect(results).toHaveLength(2);
       expect(results[0]).toEqual({
@@ -199,6 +215,43 @@ describe("PgVectorProvider", () => {
       await expect(
         provider.queryEmbeddings([0.1], "user-1", 5),
       ).rejects.toThrow(VectorDBError);
+    });
+
+    it("ranks only within the named model's space (#1289)", async () => {
+      mockClient.$queryRawUnsafe.mockResolvedValue([]);
+
+      await provider.queryEmbeddings(
+        [0.1, 0.2],
+        "user-1",
+        5,
+        "nomic-embed-text-v2-moe:latest",
+      );
+
+      // Cosine distance between two models' vectors is a number, not a
+      // measurement. Without the filter the nearest row is arbitrary while
+      // looking exactly like a real match.
+      const [sql, , , , model] = mockClient.$queryRawUnsafe.mock.calls[0];
+      expect(sql).toContain("embedding_model = $4");
+      expect(model).toBe("nomic-embed-text-v2-moe:latest");
+    });
+
+    it("records the model that produced each vector (#1289)", async () => {
+      mockClient.$executeRawUnsafe.mockResolvedValue(1);
+
+      await provider.createEmbeddings(
+        "user-1",
+        "doc-1",
+        [[0.1, 0.2]],
+        ["content"],
+        "nomic-embed-text-v2-moe:latest",
+      );
+
+      // A store with no model column cannot even detect a mixed corpus, let
+      // alone exclude one from a ranking — and it cannot be retrofitted
+      // honestly once it holds rows.
+      const [sql, ...params] = mockClient.$executeRawUnsafe.mock.calls.at(-1)!;
+      expect(sql).toContain("embedding_model");
+      expect(params).toContain("nomic-embed-text-v2-moe:latest");
     });
   });
 

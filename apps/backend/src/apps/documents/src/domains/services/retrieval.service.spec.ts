@@ -126,6 +126,66 @@ describe('RetrievalService', () => {
     expect(embeddings.getEmbeddingsForQuery).toHaveBeenCalled();
   });
 
+  describe('model-space guard (#1282)', () => {
+    it('ranks only rows embedded by the running model', async () => {
+      await service.findBestMatch('doc-1', 'petition text', 85);
+
+      // Cosine distance between two models' vectors is a number, not a
+      // measurement. The filter is what stops an arbitrary row being returned
+      // as if it were a match.
+      const sql = db.$queryRaw.mock.calls
+        .map(([strings]) => (strings as unknown as string[]).join('?'))
+        .find((text: string) => text.includes('FROM propositions'));
+      expect(sql).toContain('embedding_model =');
+    });
+
+    it('refuses to match when the corpus is in another model space', async () => {
+      // Dispatch on the SQL rather than call order: publishEmbeddingCoverage
+      // issues its own $queryRaw first, so positional mocks bind to the wrong
+      // query and the test passes or fails for the wrong reason.
+      db.$queryRaw.mockImplementation((strings: TemplateStringsArray) => {
+        const sql = (strings as unknown as string[]).join('?');
+        if (sql.includes('ORDER BY distance')) return Promise.resolve([]);
+        if (sql.includes('IS DISTINCT FROM')) {
+          return Promise.resolve([{ count: 69n }]);
+        }
+        return Promise.resolve([{ count: 0n }]);
+      });
+
+      const out = await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(out.match).toBeNull();
+      expect(out.skippedReason).toBe('model_space_mismatch');
+      expect(metrics.recordPetitionRetrieval).toHaveBeenCalledWith(
+        expect.anything(),
+        'skipped_model_space_mismatch',
+      );
+    });
+
+    it('still reports an empty corpus as empty, not as a mismatch', async () => {
+      // No rows in either space. Conflating this with a migration in progress
+      // would hide the state the guard exists to surface.
+      db.$queryRaw.mockImplementation((strings: TemplateStringsArray) => {
+        const sql = (strings as unknown as string[]).join('?');
+        if (sql.includes('ORDER BY distance')) return Promise.resolve([]);
+        return Promise.resolve([{ count: 0n }]);
+      });
+
+      const out = await service.findBestMatch('doc-1', 'petition text', 85);
+
+      expect(out.skippedReason).toBe('empty_corpus');
+    });
+
+    it('matches normally when the corpus shares the running model', async () => {
+      const out = await service.findBestMatch('doc-1', 'petition text', 85);
+
+      // The guard must not cost a match in the ordinary single-model case,
+      // which is every day outside a migration.
+      expect(out.match).not.toBeNull();
+      expect(out.skippedReason).toBeUndefined();
+    });
+  });
+
   it('skips empty text without calling the provider', async () => {
     const out = await service.findBestMatch('doc-1', '   ', 90);
 

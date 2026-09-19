@@ -127,8 +127,18 @@ describe('Petition retrieval negative control (real DB)', () => {
       });
       const { vector } = FIXTURE.vectors[`corpus:${measure.externalId}`];
       const literal = `[${vector.join(',')}]`;
+      // Stamp the model alongside the vector, exactly as the production
+      // writer does in one statement (proposition-embedding.service.ts).
+      // Retrieval now ranks only within the running model's space
+      // (#1282), so a fixture seeding a vector without its model
+      // describes a row that cannot exist in production — and would
+      // make this suite pass or fail for reasons unrelated to what it
+      // is testing.
       await db.$executeRaw`
-        UPDATE propositions SET embedding = ${literal}::vector WHERE id = ${row.id}
+        UPDATE propositions
+        SET embedding = ${literal}::vector,
+            embedding_model = ${FIXTURE.model}
+        WHERE id = ${row.id}
       `;
     }
   });

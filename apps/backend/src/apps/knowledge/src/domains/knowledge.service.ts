@@ -115,6 +115,11 @@ export class KnowledgeService implements OnModuleInit {
         documentId,
         result.embeddings,
         result.texts,
+        // The running model, not a config lookup: this service holds the
+        // embeddings provider and already asserts its width against the
+        // store at boot, so it is the one place that knows what actually
+        // produced these vectors (#1289).
+        this.embeddingsService.getProviderInfo().model,
       );
 
       this.logger.log(
@@ -242,6 +247,10 @@ export class KnowledgeService implements OnModuleInit {
         queryEmbedding,
         userId,
         count,
+        // Rank only against vectors this same model produced. A corpus
+        // left from a previous model would otherwise return an arbitrary
+        // nearest neighbour that reads as a real result (#1289).
+        this.embeddingsService.getProviderInfo().model,
       );
 
       this.logger.log(`Semantic search returned ${results.length} results`);

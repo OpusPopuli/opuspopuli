@@ -70,6 +70,14 @@ describe('KnowledgeService', () => {
     embeddingsService = module.get<EmbeddingsService>(EmbeddingsService);
     vectorDB = module.get<IVectorDBProvider>('VECTOR_DB_PROVIDER');
     llm = module.get<ILLMProvider>('LLM_PROVIDER');
+
+    // The vector store records the model that produced each vector and ranks
+    // only within its space (#1289), so every path through this service now
+    // asks the embeddings provider what is running.
+    embeddingsService.getProviderInfo = jest.fn().mockReturnValue({
+      model: 'nomic-embed-text-v2-moe:latest',
+      dimensions: 768,
+    });
   });
 
   /**
@@ -154,6 +162,7 @@ describe('KnowledgeService', () => {
         'doc-1',
         mockEmbeddings,
         mockTexts,
+        'nomic-embed-text-v2-moe:latest',
       );
     });
 
@@ -206,6 +215,7 @@ describe('KnowledgeService', () => {
         mockQueryEmbedding,
         'user-1',
         3,
+        'nomic-embed-text-v2-moe:latest',
       );
       expect(llm.generate).toHaveBeenCalled();
       expect(answer).toEqual({
@@ -378,6 +388,7 @@ describe('KnowledgeService', () => {
         mockQueryEmbedding,
         'user-1',
         11,
+        'nomic-embed-text-v2-moe:latest',
       );
     });
 
@@ -407,6 +418,7 @@ describe('KnowledgeService', () => {
         mockQueryEmbedding,
         'user-1',
         11,
+        'nomic-embed-text-v2-moe:latest',
       );
     });
 
