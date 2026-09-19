@@ -7,6 +7,7 @@ import {
   ISignedUrlOptions,
   StorageError,
   initSupabaseFromConfig,
+  IPutStreamOptions,
 } from "@opuspopuli/common";
 import { BaseStorageProvider } from "./base-storage.provider";
 
@@ -103,6 +104,32 @@ export class SupabaseStorageProvider extends BaseStorageProvider {
       }
 
       return data.signedUrl;
+    }
+  }
+
+  protected async putStreamImpl(
+    bucket: string,
+    key: string,
+    openStream: () => NodeJS.ReadableStream,
+    options: IPutStreamOptions,
+  ): Promise<void> {
+    // Supabase Storage enforces a per-file upload limit — 50 MB by default,
+    // raised per project. A ~1 GB bulk export (#1277) exceeds the default, and
+    // the resulting error must surface rather than be swallowed: the caller
+    // records the snapshot either way, and an upload that quietly did nothing
+    // would leave a row claiming bytes that are not there.
+    const { error } = await this.supabase.storage.from(bucket).upload(
+      key,
+      openStream() as unknown as ReadableStream,
+      {
+        duplex: "half",
+        upsert: true,
+        ...(options.contentType && { contentType: options.contentType }),
+      } as never,
+    );
+
+    if (error) {
+      throw error;
     }
   }
 

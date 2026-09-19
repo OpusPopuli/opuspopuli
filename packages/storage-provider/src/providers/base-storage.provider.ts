@@ -14,6 +14,7 @@ import {
   IListFilesResult,
   IStorageFile,
   ISignedUrlOptions,
+  IPutStreamOptions,
 } from "@opuspopuli/common";
 import {
   withSignedUrlError,
@@ -41,6 +42,21 @@ export abstract class BaseStorageProvider implements IStorageProvider {
   ): Promise<string> {
     return withSignedUrlError(this.logger, bucket, key, () =>
       this.getSignedUrlImpl(bucket, key, upload, options),
+    );
+  }
+
+  async putStream(
+    bucket: string,
+    key: string,
+    openStream: () => NodeJS.ReadableStream,
+    options: IPutStreamOptions,
+  ): Promise<void> {
+    return withStorageError(
+      this.logger,
+      "Error uploading file",
+      "PUT_ERROR",
+      `Failed to upload ${bucket}/${key}`,
+      () => this.putStreamImpl(bucket, key, openStream, options),
     );
   }
 
@@ -81,6 +97,13 @@ export abstract class BaseStorageProvider implements IStorageProvider {
     upload: boolean,
     options: ISignedUrlOptions,
   ): Promise<string>;
+
+  protected abstract putStreamImpl(
+    bucket: string,
+    key: string,
+    openStream: () => NodeJS.ReadableStream,
+    options: IPutStreamOptions,
+  ): Promise<void>;
 
   protected abstract deleteFileImpl(
     bucket: string,
