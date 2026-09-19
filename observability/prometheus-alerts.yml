@@ -146,3 +146,97 @@ groups:
           description: >-
             backup-db.sh exited non-zero. Inspect /backups/.backup.lasterr
             and backup.log. Staleness will escalate to critical at 36h.
+
+  # ── Source store (#1278) ────────────────────────────────────────────────
+  #
+  # The store is the one component whose growth is unbounded if the tiering
+  # is wrong, and the epic sized it as "no hardware purchase required" on
+  # the basis of ~1-3 GB/yr for cited sources and ~12-13 GB/yr for the bulk
+  # tier at latest-plus-monthly retention. These alerts fire when reality
+  # departs from that arithmetic, so the sizing is re-decided on evidence
+  # rather than discovered when a disk fills.
+  #
+  # Thresholds are stated as the sizing they defend, not as round numbers.
+  - name: opuspopuli-source-store
+    rules:
+      # 3 GB/yr is the top of the cited tier's sized range. Alerting at 2x
+      # that rate leaves room for a genuine burst of civic activity while
+      # still catching a tiering mistake within a week of it starting.
+      # 6 GB/yr = 6e9 / 365.25 / 86400 = ~190 B/s.
+      - alert: SourceStoreCitedGrowthExceedsSizing
+        expr: deriv(source_store_bytes{tier="cited",location="postgres"}[7d]) > 190
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cited source tier growing faster than it was sized for"
+          description: >-
+            The cited tier is growing at {{ $value | humanize }}B/s, which
+            annualises above 6 GB/yr against a sized 1-3 GB/yr. This tier is
+            immutable — nothing prunes it — so the growth compounds. Check
+            whether something is archiving pages that are not cited sources.
+            See docs/plans/1276-source-version-store.md.
+
+      # The bulk tier is pruned to latest + one per calendar month, so its
+      # steady state is bounded by snapshot size, not fetch frequency. Growth
+      # well above that means retention is not running, which is the failure
+      # this tier's whole design depends on not happening.
+      # 26 GB/yr (2x the sized 12-13) = ~825 B/s.
+      - alert: SourceStoreBulkGrowthExceedsSizing
+        expr: deriv(source_store_bytes{tier="bulk"}[7d]) > 825
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bulk archive growing as if retention were not running"
+          description: >-
+            The bulk tier is growing at {{ $value | humanize }}B/s, above the
+            ~12-13 GB/yr its retention schedule should bound it to. Most
+            likely the retention sweep is not being invoked. See
+            SnapshotRetentionService and docs/plans/1277-bulk-archive-tier.md.
+
+      # Snapshots recorded with no payload. Expected to be zero; a non-zero
+      # value means uploads are failing — on a Supabase-backed deployment,
+      # most likely the 50 MB per-file limit rejecting a ~1 GB export.
+      # Provenance still resolves, but the bytes are not being kept.
+      - alert: SourceStoreBulkUploadsFailing
+        expr: source_store_objects{tier="bulk",state="unstored"} > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bulk snapshots are being recorded without their bytes"
+          description: >-
+            {{ $value }} snapshot(s) have a row but no stored payload. The
+            provenance chain still resolves, but the export itself is not
+            being retained. Check the archive bucket's per-file size limit.
+
+      # The measurement itself stopping is the #1217 failure shape: a gauge
+      # that stops updating keeps reporting its last value, and the number
+      # looks fine because it is stale. Collection runs every 5 minutes.
+      - alert: SourceStoreMetricsStale
+        expr: time() - source_store_last_measured_timestamp_seconds > 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source-store metrics for {{ $labels.tier }} have stopped updating"
+          description: >-
+            No successful measurement of the {{ $labels.tier }} tier in over
+            an hour, against a 5-minute collection interval. The size gauges
+            are now stale and must not be trusted for a capacity decision.
+
+      # And the absent-series case, for the same reason BackupMissing exists:
+      # a service that never started reports nothing at all, which no
+      # threshold on the value itself can catch.
+      - alert: SourceStoreMetricsMissing
+        expr: absent(source_store_last_measured_timestamp_seconds)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source-store metrics absent — nothing is measuring the store"
+          description: >-
+            No source_store_last_measured_timestamp_seconds series is being
+            scraped. Either region-service is down or its metrics endpoint is
+            not reachable from Prometheus.
