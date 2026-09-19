@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
 import type { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
@@ -88,6 +89,82 @@ describe("BulkDownloadHandler", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  describe("per-record source hashes (#1277)", () => {
+    const LINE = "C001,Jane Doe,500";
+    const csv = `CMTE_ID,NAME,AMOUNT\n${LINE}\nC002,John Smith,1000`;
+
+    function sha256(value: string): string {
+      return createHash("sha256").update(value, "utf8").digest("hex");
+    }
+
+    it("hashes the raw export line, not the parsed record", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      // The hash must witness what the export said, not our interpretation of
+      // it — that is what makes a discrepancy auditable after the fact rather
+      // than re-arguable (#991, #992).
+      const first = result.items[0] as Record<string, unknown>;
+      expect(first.sourceRecordHash).toBe(sha256(LINE));
+    });
+
+    it("gives every ingested record a hash", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      expect(result.items.length).toBeGreaterThan(0);
+      for (const item of result.items) {
+        expect((item as Record<string, unknown>).sourceRecordHash).toMatch(
+          /^[0-9a-f]{64}$/,
+        );
+      }
+    });
+
+    it("gives different lines different hashes", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      const hashes = result.items.map(
+        (i) => (i as Record<string, unknown>).sourceRecordHash,
+      );
+      expect(new Set(hashes).size).toBe(hashes.length);
+    });
+
+    it("hashes records reaching persistence through the batch callback", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv),
+      );
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+
+      await handler.execute(
+        createSource({
+          bulk: {
+            format: "csv",
+            columnMappings: { CMTE_ID: "committeeId", NAME: "donorName" },
+            batchSize: 10,
+          },
+        }),
+        "california",
+        onBatch,
+      );
+
+      // Batch-mode records never appear in the returned result — they reach
+      // the database only through this callback, so the hash has to be on
+      // them here or it is nowhere.
+      const batched = onBatch.mock.calls[0][0] as Record<string, unknown>[];
+      expect(batched[0].sourceRecordHash).toBe(sha256(LINE));
+    });
   });
 
   describe("execute — successful CSV download", () => {

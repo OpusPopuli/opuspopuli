@@ -466,6 +466,7 @@ export class CampaignFinanceSyncService {
           // `pick` copies only what is named here, so an unlisted column is
           // silently dropped no matter what the stream carries.
           'pipelineExecutionId',
+          'sourceRecordHash',
         ],
       },
       {
@@ -486,6 +487,7 @@ export class CampaignFinanceSyncService {
           'propositionTitle',
           'supportOrOppose',
           'sourceSystem',
+          'sourceRecordHash',
         ],
       },
       {
@@ -503,6 +505,7 @@ export class CampaignFinanceSyncService {
           'electionDate',
           'description',
           'sourceSystem',
+          'sourceRecordHash',
         ],
       },
       {
@@ -515,6 +518,7 @@ export class CampaignFinanceSyncService {
           'ballotJurisdiction',
           'supportOrOppose',
           'sourceSystem',
+          'sourceRecordHash',
         ],
       },
       {
@@ -528,6 +532,7 @@ export class CampaignFinanceSyncService {
           'propositionTitle',
           'supportOrOppose',
           'sourceSystem',
+          'sourceRecordHash',
         ],
       },
       {
@@ -545,6 +550,7 @@ export class CampaignFinanceSyncService {
           'amountB',
           'amountC',
           'sourceSystem',
+          'sourceRecordHash',
         ],
       },
     ];

@@ -1990,6 +1990,17 @@ model Cvr2Filing {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
+  /// SHA-256 of the raw export line this row was parsed from (#1277).
+  ///
+  /// Taken before parsing, so it witnesses what the source said rather than
+  /// our interpretation of it — which is what lets a discrepancy be audited
+  /// after the fact (#991, #992) rather than re-argued.
+  ///
+  /// Null on rows ingested before hashing existed. Deliberately not
+  /// backfilled: a value computed later would claim the row was verified
+  /// against a source it never was.
+  sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
+
   @@index([filingId])
   @@index([ballotName])
   @@map("cvr2_filings")
@@ -2015,6 +2026,17 @@ model CvrFiling {
   sourceSystem     String   @map("source_system") @db.VarChar(20)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  /// SHA-256 of the raw export line this row was parsed from (#1277).
+  ///
+  /// Taken before parsing, so it witnesses what the source said rather than
+  /// our interpretation of it — which is what lets a discrepancy be audited
+  /// after the fact (#991, #992) rather than re-argued.
+  ///
+  /// Null on rows ingested before hashing existed. Deliberately not
+  /// backfilled: a value computed later would claim the row was verified
+  /// against a source it never was.
+  sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
   @@index([filerId])
   @@map("cvr_filings")
@@ -2052,6 +2074,17 @@ model FilingSummary {
   sourceSystem String   @map("source_system") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  /// SHA-256 of the raw export line this row was parsed from (#1277).
+  ///
+  /// Taken before parsing, so it witnesses what the source said rather than
+  /// our interpretation of it — which is what lets a discrepancy be audited
+  /// after the fact (#991, #992) rather than re-argued.
+  ///
+  /// Null on rows ingested before hashing existed. Deliberately not
+  /// backfilled: a value computed later would claim the row was verified
+  /// against a source it never was.
+  sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
   @@index([filingId])
   @@index([filingId, formType, lineItem])
@@ -2154,6 +2187,17 @@ model Contribution {
   pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
   producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
 
+  /// SHA-256 of the raw export line this row was parsed from (#1277).
+  ///
+  /// Taken before parsing, so it witnesses what the source said rather than
+  /// our interpretation of it — which is what lets a discrepancy be audited
+  /// after the fact (#991, #992) rather than re-argued.
+  ///
+  /// Null on rows ingested before hashing existed. Deliberately not
+  /// backfilled: a value computed later would claim the row was verified
+  /// against a source it never was.
+  sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
+
   @@index([committeeId])
   @@index([filingId])
   @@index([filingId, amendId])
@@ -2202,6 +2246,17 @@ model Expenditure {
   committee   Committee?   @relation(fields: [committeeId], references: [id], onDelete: Restrict)
   proposition Proposition? @relation(fields: [propositionId], references: [id], onDelete: SetNull)
 
+  /// SHA-256 of the raw export line this row was parsed from (#1277).
+  ///
+  /// Taken before parsing, so it witnesses what the source said rather than
+  /// our interpretation of it — which is what lets a discrepancy be audited
+  /// after the fact (#991, #992) rather than re-argued.
+  ///
+  /// Null on rows ingested before hashing existed. Deliberately not
+  /// backfilled: a value computed later would claim the row was verified
+  /// against a source it never was.
+  sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
+
   @@index([committeeId])
   @@index([filingId])
   @@index([filingId, amendId])
@@ -2241,6 +2296,17 @@ model IndependentExpenditure {
 
   committee   Committee?   @relation(fields: [committeeId], references: [id], onDelete: Restrict)
   proposition Proposition? @relation(fields: [propositionId], references: [id], onDelete: SetNull)
+
+  /// SHA-256 of the raw export line this row was parsed from (#1277).
+  ///
+  /// Taken before parsing, so it witnesses what the source said rather than
+  /// our interpretation of it — which is what lets a discrepancy be audited
+  /// after the fact (#991, #992) rather than re-argued.
+  ///
+  /// Null on rows ingested before hashing existed. Deliberately not
+  /// backfilled: a value computed later would claim the row was verified
+  /// against a source it never was.
+  sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
   @@index([committeeId])
   @@index([filingId])
@@ -2311,6 +2377,53 @@ model SourceVersion {
   @@map("source_versions")
 }
 
+/// A retained snapshot of a bulk export — the tier-2 source store (#1277).
+///
+/// Tier 1 (`SourceVersion`) keeps cited pages forever because they are small.
+/// The CAL-ACCESS export is ~1 GB per fetch, and keeping every one would be
+/// ~50 GB/yr — the only material growth driver in the store. Claims cite
+/// filings rather than the rolling export, so row-level provenance survives a
+/// retention schedule: latest plus one per calendar month.
+///
+/// **Rows here are never deleted, only their payloads.** `prunedAt` marks a
+/// snapshot whose bytes have aged out; the row stays so a finance row can still
+/// name the export it came from. Deleting the row would break the provenance
+/// chain that outliving the bytes is meant to preserve.
+///
+/// Payload lives in object storage rather than Postgres, the opposite of
+/// tier 1's call: 12-13 GB/yr inside the database would lengthen the restore
+/// time that #1217 measured. It has no off-node copy — a host loss degrades
+/// provenance to "we know which snapshot, we cannot re-read it".
+model BulkSnapshot {
+  id            String    @id @default(uuid())
+  contentHash   String    @unique @map("content_hash") @db.VarChar(64)
+  sourceUrl     String    @map("source_url") @db.VarChar(1000)
+  regionId      String?   @map("region_id") @db.VarChar(100)
+  dataType      String?   @map("data_type") @db.VarChar(50)
+  byteSize      BigInt    @map("byte_size")
+  contentType   String?   @map("content_type") @db.VarChar(255)
+  /// Object-storage bucket and key. Null once pruned.
+  storageBucket String?   @map("storage_bucket") @db.VarChar(255)
+  storageKey    String?   @map("storage_key") @db.VarChar(1000)
+  fetchedAt     DateTime  @map("fetched_at") @db.Timestamptz
+  etag          String?   @db.Text
+  lastModified  String?   @map("last_modified") @db.VarChar(255)
+  /// Set when the payload was pruned by the retention sweep. The row remains.
+  prunedAt      DateTime? @map("pruned_at") @db.Timestamptz
+  /// Marks the snapshot the retention sweep keeps for its calendar month.
+  isMonthly     Boolean   @default(false) @map("is_monthly")
+  executionId   String?   @map("execution_id")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  execution PipelineExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([sourceUrl, fetchedAt])
+  @@index([executionId])
+  @@index([regionId, dataType, fetchedAt])
+  @@index([prunedAt])
+  @@map("bulk_snapshots")
+}
+
 model StructuralManifest {
   id              String    @id @default(uuid())
   regionId        String    @map("region_id") @db.VarChar(100)
@@ -2374,6 +2487,7 @@ model PipelineExecution {
   pipelineJob       PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
   batches           PipelineExecutionBatch[]
   sourceVersions    SourceVersion[]
+  bulkSnapshots     BulkSnapshot[]
   propositions      Proposition[]
   minutes           Minutes[]
   bills             Bill[]

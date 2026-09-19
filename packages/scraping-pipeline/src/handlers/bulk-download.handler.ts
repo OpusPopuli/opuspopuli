@@ -18,7 +18,7 @@ import { createWriteStream, createReadStream } from "node:fs";
 import { unlink, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createInterface } from "node:readline";
@@ -75,6 +75,18 @@ interface ParseContext {
   filterIndices: Record<string, number>;
   compositeIndices: number[];
   sourceSystem: string | undefined;
+}
+
+/**
+ * SHA-256 of one raw export line, hex-encoded (#1277).
+ *
+ * The line as read from the decoded stream — bulk exports are read through a
+ * text decode, so per-record *bytes* are not separably addressable without
+ * re-reading the archive. This is the finest-grained honest witness available
+ * at ingest, and it is enough to locate the record in a retained snapshot.
+ */
+function hashSourceRecord(line: string): string {
+  return createHash("sha256").update(line, "utf8").digest("hex");
 }
 
 @Injectable()
@@ -536,7 +548,19 @@ export class BulkDownloadHandler {
         }
 
         lineNum++;
-        return processData(line, context());
+        const record = processData(line, context());
+
+        // Hash the line, not the parsed record (#1277). The hash has to
+        // witness what the export said rather than our interpretation of it —
+        // that is what lets a discrepancy be audited after the fact (#991,
+        // #992) instead of re-argued. Stamped here rather than at the two
+        // parse call sites so streaming and accumulation cannot diverge.
+        //
+        // Filtered-out lines return null and are not hashed: nothing was
+        // ingested, so there is no row whose provenance it would describe.
+        return record === null
+          ? null
+          : { ...record, sourceRecordHash: hashSourceRecord(line) };
       },
     };
   }
