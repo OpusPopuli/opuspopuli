@@ -1,3 +1,4 @@
+import { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service.js";
 import { ApiIngestHandler } from "../src/handlers/api-ingest.handler";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
 import {
@@ -72,6 +73,73 @@ describe("ApiIngestHandler", () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+  });
+
+  describe("execution tracking in accumulation mode (#1280)", () => {
+    function createRepo() {
+      return {
+        findExecution: jest.fn().mockResolvedValue(null),
+        createExecution: jest.fn().mockResolvedValue({ id: "exec-api-1" }),
+        updateExecutionStatus: jest.fn().mockResolvedValue(undefined),
+        findAppliedBatches: jest.fn().mockResolvedValue([]),
+        createBatch: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it("records a run when there is no onBatch callback", async () => {
+      // The session used to be opened inside the streaming branch, so an
+      // accumulation-mode run — how bills are fetched — recorded nothing at
+      // all and its rows could not be traced to it.
+      const repo = createRepo();
+      const tracked = new ApiIngestHandler(
+        mapper,
+        new ExecutionTrackerService(repo as never),
+      );
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: [{ externalId: "C1" }] }),
+      );
+
+      await tracked.execute(createSource(), "california");
+
+      expect(repo.createExecution).toHaveBeenCalled();
+      expect(repo.finalizeExecution).toHaveBeenCalledWith(
+        "exec-api-1",
+        true,
+        expect.objectContaining({ itemsExtracted: 1 }),
+      );
+    });
+
+    it("stamps accumulated items with the producing run", async () => {
+      const repo = createRepo();
+      const tracked = new ApiIngestHandler(
+        mapper,
+        new ExecutionTrackerService(repo as never),
+      );
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: [{ externalId: "C1" }] }),
+      );
+
+      const result = await tracked.execute(createSource(), "california");
+
+      expect(result.executionId).toBe("exec-api-1");
+      for (const item of result.items) {
+        expect((item as Record<string, unknown>).pipelineExecutionId).toBe(
+          "exec-api-1",
+        );
+      }
+    });
+
+    it("leaves items unstamped when no tracker is bound", async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: [{ externalId: "C1" }] }),
+      );
+
+      const result = await handler.execute(createSource(), "california");
+
+      // Null is honest; a fabricated reference would read as a real one.
+      expect(result.executionId).toBeUndefined();
+    });
   });
 
   describe("execute — successful single-page response", () => {

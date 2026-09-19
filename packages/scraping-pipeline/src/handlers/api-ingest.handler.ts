@@ -41,6 +41,21 @@ const REQUEST_TIMEOUT_MS = 120_000;
 /** Delay between paginated requests in milliseconds */
 const PAGE_DELAY_MS = 250;
 
+/**
+ * Stamp each item with the run that produced it (#1280).
+ *
+ * Always applied, null included: an omitted key leaves whatever the previous
+ * run wrote, so a row rewritten by an untracked run would keep pointing at the
+ * last tracked one — a stale reference that reads as current.
+ */
+function stampRun<T>(items: T[], executionId: string | null): T[] {
+  return items.map((item) =>
+    item && typeof item === "object"
+      ? { ...item, pipelineExecutionId: executionId }
+      : item,
+  );
+}
+
 @Injectable()
 export class ApiIngestHandler {
   private readonly logger = new Logger(ApiIngestHandler.name);
@@ -62,25 +77,28 @@ export class ApiIngestHandler {
     const errors: string[] = [];
     const sourceSystem = inferSourceSystem(source);
 
+    // Opened before the branch: accumulation mode is a real run and recorded
+    // nothing at all until #1280, which is part of why bills — fetched
+    // without an onBatch — had no executions on record.
+    const session: ExecutionSession =
+      await ExecutionTrackerService.beginSession(
+        this.executionTracker,
+        pipelineJobId,
+        {
+          regionId,
+          // Unique per source, not per URL — two API sources pointed at one
+          // endpoint would otherwise share an execution row and the second
+          // would skip its stream (#984).
+          sourceUrl: sessionSourceKey(source),
+          dataType: source.dataType,
+        },
+      );
+
     try {
       const apiKey = this.resolveApiKey(api);
 
       if (onBatch) {
         // Streaming mode: map and flush each page via callback.
-        const session: ExecutionSession =
-          await ExecutionTrackerService.beginSession(
-            this.executionTracker,
-            pipelineJobId,
-            {
-              regionId,
-              // Unique per source, not per URL — two API sources pointed at
-              // one endpoint would otherwise share an execution row and the
-              // second would skip its stream (#984).
-              sourceUrl: sessionSourceKey(source),
-              dataType: source.dataType,
-            },
-          );
-
         let totalItems = 0;
         let streamSuccess = false;
 
@@ -121,7 +139,11 @@ export class ApiIngestHandler {
               // onBatch (upsert) runs before recordBatch intentionally:
               // if recordBatch fails transiently, the upsert is idempotent
               // and the batch will be re-applied on retry — acceptable.
-              await onBatch(items);
+              // Stamped here rather than in the pipeline's trackRun: api
+              // ingestion opens its own session and never returns these
+              // items, so they reach persistence only through this callback
+              // (#1280).
+              await onBatch(stampRun(items, session.executionId));
               totalItems += items.length;
 
               await session.recordBatch(pageIndex, items.length);
@@ -173,7 +195,7 @@ export class ApiIngestHandler {
         }
       }
 
-      return mapAndReturn<T>(
+      const mapped = mapAndReturn<T>(
         allItems,
         warnings,
         errors,
@@ -181,7 +203,28 @@ export class ApiIngestHandler {
         this.mapper,
         pipelineStart,
       );
+
+      await session.finalize(mapped.success, {
+        itemsExtracted: mapped.items.length,
+        itemsFailed: mapped.errors.length,
+        extractionTimeMs: mapped.extractionTimeMs,
+      });
+
+      return session.executionId
+        ? {
+            ...mapped,
+            executionId: session.executionId,
+            items: stampRun(mapped.items, session.executionId),
+          }
+        : mapped;
     } catch (error) {
+      // A run that threw still happened, and the rows it half-wrote are
+      // exactly the ones someone will need to find.
+      await session.finalize(false, {
+        itemsExtracted: 0,
+        itemsFailed: 1,
+        extractionTimeMs: Date.now() - pipelineStart,
+      });
       return buildFailureResult<T>(error, warnings, errors, pipelineStart);
     }
   }

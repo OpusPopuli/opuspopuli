@@ -257,10 +257,13 @@ export class ScrapingPipelineService {
     options?: ArchiveIngestOptions,
     session?: ExecutionSession,
   ): Promise<ExtractionResult<T>> {
+    // Pass the run through so archived minutes PDFs are linked to it, the
+    // same way detail pages are (#1276 left this unset; #1280 supplies it).
     return this.minutesIngest.execute(
       source,
       regionId,
       options,
+      session?.executionId ?? undefined,
     ) as unknown as Promise<ExtractionResult<T>>;
   }
 
