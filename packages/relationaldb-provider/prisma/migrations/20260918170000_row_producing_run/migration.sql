@@ -42,6 +42,23 @@ CREATE INDEX "minutes_pipeline_execution_id_idx"
     ON "minutes"("pipeline_execution_id");
 CREATE INDEX "bills_pipeline_execution_id_idx"
     ON "bills"("pipeline_execution_id");
+-- Plain, not CONCURRENTLY and not partial, on a 7.5 GB / 18M-row table —
+-- deliberately, and measured rather than assumed:
+--
+--   * CONCURRENTLY is unavailable. Prisma runs each migration inside a
+--     transaction and Postgres rejects it there (SQLSTATE 25001).
+--   * A partial index (WHERE pipeline_execution_id IS NOT NULL) would be
+--     smaller, but Prisma cannot express a predicate in @@index, so the
+--     database would permanently disagree with the model. `migrate diff`
+--     then wants to recreate it on every comparison — the #1168 hazard that
+--     already cost this project every raw-SQL index in production once.
+--   * The cost is small. Building this index against the real 18M-row table
+--     took **7 seconds** and produced 119 MB. Migrations run during a deploy,
+--     when the service is restarting anyway.
+--
+-- Seven seconds of blocked writes is the cheaper side of that trade. If the
+-- table grows by an order of magnitude, revisit — the answer then is probably
+-- an out-of-band CONCURRENTLY build plus `migrate resolve`, not a predicate.
 CREATE INDEX "contributions_pipeline_execution_id_idx"
     ON "contributions"("pipeline_execution_id");
 
