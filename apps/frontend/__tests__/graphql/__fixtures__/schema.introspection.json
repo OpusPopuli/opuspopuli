@@ -2908,6 +2908,21 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "failed",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "minutes",
             "type": {
               "kind": "NON_NULL",
