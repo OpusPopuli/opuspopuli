@@ -70,7 +70,7 @@ describe('claim/evidence core (#1291)', () => {
         subjectId: 'prop-1',
         subjectField: 'fiscalImpact',
         text: 'The measure raises the transfer tax.',
-        confidence: 0.8,
+        confidence: 'high',
       },
     });
     const evidence = await db.evidence.create({

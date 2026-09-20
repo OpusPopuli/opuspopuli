@@ -291,7 +291,7 @@ interface LegislativeActionFeedItem {
   minutesExternalId: string;
 }
 
-interface LegislativeActionFeedPage {
+export interface LegislativeActionFeedPage {
   items: LegislativeActionFeedItem[];
   total: number;
   hasMore: boolean;

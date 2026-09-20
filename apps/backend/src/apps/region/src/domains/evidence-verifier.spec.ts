@@ -135,6 +135,28 @@ describe('verifyEvidence', () => {
       });
     });
 
+    it('verifies a quote that carried no span, deriving the offsets', () => {
+      const out = verifyEvidence(
+        claim,
+        evidence({ quotedText: QUOTE, spanStart: null, spanEnd: null }),
+        SOURCE,
+        HASH,
+      );
+
+      // `minutes.summary_claims` quotes verbatim and stores no offsets. A
+      // citation that never pointed anywhere was not *moved*, so calling this
+      // `snapped` would file the best-cited family in the platform as
+      // corrections — understating verification for exactly the claims that
+      // cite properly (#1293). Deriving offsets from a quote IS the #1212
+      // contract.
+      expect(out.state).toBe('verified');
+      expect(out.reason).toBe('supported');
+      expect(out.correctedSpan).toEqual({
+        start: SOURCE.indexOf(QUOTE),
+        end: SOURCE.indexOf(QUOTE) + QUOTE.length,
+      });
+    });
+
     it('refuses a quote that is not in the source at all', () => {
       const out = verifyEvidence(
         claim,

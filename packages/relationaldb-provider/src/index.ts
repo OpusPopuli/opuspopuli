@@ -86,6 +86,7 @@ export type {
   Jurisdiction,
   UserJurisdiction,
   SignalProfile,
+  StructuralManifest,
   SensitiveProfile,
   UserEvent,
 } from "@prisma/client";

@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { type ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
+import type { ClaimRecordInput, ClaimRecordOutcome } from './claim-normalisers';
+import { recordClaims } from './claim-recorder';
 
 /**
  * Shared constructor parameters for region AI-generator services.
@@ -97,6 +99,39 @@ export abstract class LlmGeneratorBase {
    * Subclasses log this with their own logger rather than the base owning one,
    * so adopting it changes nothing about where a service's lines come from.
    */
+  /**
+   * Mirror a generator's claims into the relational evidence model (#1293).
+   *
+   * **Never let this fail the generation.** The JSONB blob is authoritative
+   * and is written first; the relational rows are a second representation of
+   * the same claims, and losing an analysis because its mirror failed would
+   * trade the thing citizens read for the thing that is not yet read at all.
+   * Failures are logged and swallowed, and #1294's backfill is what repairs
+   * whatever this drops.
+   *
+   * Lives on the base rather than in an injected service on purpose: every
+   * generator already has `db` here, so adopting dual-write adds no provider
+   * to register and no module to export. Three separate failures in this
+   * milestone were wiring that typechecked and did nothing.
+   *
+   * @returns The verdict distribution, or null if the write was skipped or failed
+   */
+  protected async mirrorClaims(
+    input: ClaimRecordInput,
+    onError: (message: string) => void,
+  ): Promise<ClaimRecordOutcome | null> {
+    if (!this.db) return null;
+    try {
+      return await recordClaims(this.db, input);
+    } catch (error) {
+      onError(
+        `Claim dual-write failed for ${input.subjectType} ${input.subjectId}: ` +
+          `${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   protected formatGenerationFailure(
     subject: string,
     failure: GenerationFailure,

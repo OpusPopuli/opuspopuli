@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createMock, type DeepMocked } from '@golevelup/ts-jest';
@@ -6,6 +7,15 @@ import type { ILLMProvider, Representative } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import { BioGeneratorService } from './bio-generator.service';
+import { recordClaims } from './claim-recorder';
+
+jest.mock('./claim-recorder', () => ({
+  recordClaims: jest.fn().mockResolvedValue({ written: 0, byState: {} }),
+}));
+
+const recordClaimsMock = recordClaims as jest.MockedFunction<
+  typeof recordClaims
+>;
 
 describe('BioGeneratorService', () => {
   let service: BioGeneratorService;
@@ -525,6 +535,111 @@ describe('BioGeneratorService', () => {
       expect(result[0].bio).toBeUndefined();
       expect(result[1].bio).toBe('OK 2.');
       expect(result[2].bio).toBe('OK 3.');
+    });
+  });
+
+  describe('claim dual-write (#1293)', () => {
+    const BIO_WITH_CLAIMS = JSON.stringify({
+      bio: 'Jane Smith represents District 5. She is widely seen as a moderate.',
+      claims: [
+        {
+          sentence: 'Jane Smith represents District 5.',
+          origin: 'source',
+          sourceField: 'district',
+          confidence: 'high',
+        },
+        {
+          sentence: 'She is widely seen as a moderate.',
+          origin: 'training',
+          sourceHint: 'press coverage of the 2022 election',
+        },
+      ],
+    });
+
+    beforeEach(async () => {
+      // Own setup rather than leaning on a sibling describe's — without it
+      // these pass only on state left behind by the previous block, which is
+      // an accidental pass, not a guard.
+      const built = await buildService(true);
+      service = built.service;
+      promptClient = built.promptClient;
+      llm = built.llm;
+      db = built.db;
+
+      recordClaimsMock.mockClear();
+      recordClaimsMock.mockResolvedValue({ written: 0, byState: {} });
+      llm.generate.mockResolvedValue({
+        text: BIO_WITH_CLAIMS,
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+      (db.representative.update as unknown as jest.Mock).mockResolvedValue({
+        id: 'rep-row-1',
+      });
+    });
+
+    it('mirrors bio claims into the evidence graph', async () => {
+      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+
+      // The call itself. Three dual-writes in this milestone typechecked,
+      // passed their unit tests and wrote nothing.
+      expect(recordClaimsMock).toHaveBeenCalledTimes(1);
+      const input = recordClaimsMock.mock.calls[0][1];
+      expect(input.subjectType).toBe('representative');
+      // The row id from the write, not the external id — claims join on the
+      // table's own key.
+      expect(input.subjectId).toBe('rep-row-1');
+      expect(input.claims).toHaveLength(2);
+    });
+
+    it('passes no source text, because bios cite fields rather than a document', async () => {
+      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+
+      const input = recordClaimsMock.mock.calls[0][1];
+      expect(input.sourceText).toBeNull();
+      expect(input.sourceTextHash).toBeNull();
+    });
+
+    it('keeps a training-origin claim uncited so it cannot read as sourced', async () => {
+      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+
+      const input = recordClaimsMock.mock.calls[0][1];
+      const [sourced, recalled] = input.claims;
+
+      // The distinction #1208 requires to survive: one offered a citation that
+      // cannot be machine-checked, the other never offered one. `sourceHint`
+      // is the model describing its own recollection, not a citation.
+      expect(sourced.citation.citationHint).toBe('district');
+      expect(recalled.citation.citationHint).toBeNull();
+    });
+
+    it('keeps the bio when the dual-write fails', async () => {
+      recordClaimsMock.mockRejectedValue(new Error('evidence table is gone'));
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      const [rep] = await service.enrichBios(
+        [baseRep({ externalId: 'sen-5' })],
+        undefined,
+      );
+
+      // The bio is what citizens read; the mirror is read by nothing yet.
+      expect(db.representative.update).toHaveBeenCalledTimes(1);
+      expect(rep.bio).toContain('Jane Smith represents District 5.');
+
+      // Asserting the blob was written is not enough here — it happens before
+      // the mirror, so it survives either way. What the try/catch actually
+      // buys is that a mirror failure is not reported as a failed generation:
+      // without it the throw unwinds into the generator's own handler, which
+      // logs a bio that in fact succeeded as having failed and counts it as
+      // one. A misleading log about AI output is exactly the thing this
+      // milestone is trying to stop producing.
+      const messages = warn.mock.calls.map(String);
+      expect(messages.some((m) => m.includes('Claim dual-write failed'))).toBe(
+        true,
+      );
+      expect(messages.some((m) => m.includes('Bio generation failed'))).toBe(
+        false,
+      );
+
+      warn.mockRestore();
     });
   });
 });

@@ -52,7 +52,10 @@ import type {
   PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
 } from './legislative-committee.service';
 import { RegionSyncService } from './region-sync.service';
-import { RegionQueryService } from './region-query.service';
+import {
+  type LegislativeActionFeedPage,
+  RegionQueryService,
+} from './region-query.service';
 
 // ─── Module-level type aliases preserved for backward compatibility ───────────
 
@@ -482,7 +485,7 @@ export class RegionDomainService {
     includePresenceYes?: boolean;
     skip?: number;
     take?: number;
-  }) {
+  }): Promise<LegislativeActionFeedPage> {
     return this.queryService.getRepresentativeActivity(args);
   }
 
@@ -507,7 +510,7 @@ export class RegionDomainService {
     actionTypes?: string[];
     skip?: number;
     take?: number;
-  }) {
+  }): Promise<LegislativeActionFeedPage> {
     return this.queryService.getCommitteeActivity(args);
   }
 
@@ -516,7 +519,7 @@ export class RegionDomainService {
     actionTypes?: string[];
     skip?: number;
     take?: number;
-  }) {
+  }): Promise<LegislativeActionFeedPage> {
     return this.queryService.getBillActivity(args);
   }
 

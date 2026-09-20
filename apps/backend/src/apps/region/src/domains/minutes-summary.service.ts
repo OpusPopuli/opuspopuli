@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { extractJsonObjectSlice } from '@opuspopuli/common';
 import type {
@@ -6,6 +7,7 @@ import type {
   MinutesSummaryResult,
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
+import { normaliseSummaryClaims } from './claim-normalisers';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
@@ -159,6 +161,30 @@ export class MinutesSummaryService extends LlmGeneratorBase {
           summaryLlmDigest: generated.provenance.llmModelDigest,
         },
       });
+
+      // Dual-write into the evidence graph (#1293), after the authoritative
+      // blob and never inside its transaction. Minutes claims quote `rawText`
+      // verbatim, which makes this the one family the verifier can genuinely
+      // check today — propositions still cite by offset, bios cite structured
+      // fields.
+      //
+      // Hashed here because `Minutes` stores no hash of `rawText` — a gap
+      // #1279 closed for propositions only — so this is what makes a stale
+      // minutes summary detectable later at all.
+      const rawText = row.rawText ?? null;
+      await this.mirrorClaims(
+        {
+          subjectType: 'minutes',
+          subjectId: row.id,
+          claims: normaliseSummaryClaims(generated.payload.claims),
+          sourceText: rawText,
+          sourceTextHash: rawText
+            ? createHash('sha256').update(rawText, 'utf8').digest('hex')
+            : null,
+        },
+        (message) => this.logger.warn(message),
+      );
+
       return true;
     } catch (error) {
       this.logger.warn(

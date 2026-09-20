@@ -20,7 +20,13 @@ export interface VerificationOutcome {
   reason: VerifyReason;
   /** Vocabulary overlap between claim and cited text, 0-1. Always reported. */
   support: number;
-  /** Corrected span, set only when the state is `snapped`. */
+  /**
+   * Where the quote was actually found, set whenever that differs from what
+   * was stored — including when nothing was stored. The state says which of
+   * those it was: `snapped` corrects a span that pointed elsewhere, while a
+   * `verified` claim carrying one had its offsets *derived* from the quote,
+   * which is #1212's contract rather than a correction.
+   */
   correctedSpan?: { start: number; end: number };
 }
 
@@ -133,6 +139,24 @@ function verifyQuoted(
     return { state: 'unverified', reason: 'unsupported', support };
   }
 
+  const span = { start: located.start, end: located.end };
+  const hadSpan = evidence.spanStart !== null && evidence.spanEnd !== null;
+
+  // A citation that never carried a span did not point anywhere to be
+  // corrected from, so locating its quote is derivation, not relocation
+  // (#1293). Calling it `snapped` would understate verification for exactly
+  // the family that cites best — `minutes.summary_claims` quotes verbatim and
+  // stores no offsets, so every well-cited minutes claim would otherwise be
+  // filed as a citation we had to move.
+  if (!hadSpan) {
+    return {
+      state: 'verified',
+      reason: 'supported',
+      support,
+      correctedSpan: span,
+    };
+  }
+
   // Found, but somewhere other than where the stored span said. Recorded as a
   // correction rather than merged into `verified`: a reader deserves to know
   // the citation was moved, and silently rewriting it would make the model
@@ -145,7 +169,7 @@ function verifyQuoted(
         state: 'snapped',
         reason: 'quote-relocated',
         support,
-        correctedSpan: { start: located.start, end: located.end },
+        correctedSpan: span,
       }
     : { state: 'verified', reason: 'supported', support };
 }

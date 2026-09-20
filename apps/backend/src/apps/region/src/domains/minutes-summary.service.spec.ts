@@ -1,8 +1,18 @@
+import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { ILLMProvider } from '@opuspopuli/common';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { DbService } from '@opuspopuli/relationaldb-provider';
+import { recordClaims } from './claim-recorder';
 import { MinutesSummaryService } from './minutes-summary.service';
+
+jest.mock('./claim-recorder', () => ({
+  recordClaims: jest.fn().mockResolvedValue({ written: 0, byState: {} }),
+}));
+
+const recordClaimsMock = recordClaims as jest.MockedFunction<
+  typeof recordClaims
+>;
 
 const MINUTES_ROW = {
   id: 'm-1',
@@ -130,5 +140,59 @@ describe('MinutesSummaryService', () => {
     const { service, db } = build({ llmText: 'not json at all' });
     await expect(service.summarize('m-1')).resolves.toBe(false);
     expect(db.minutes.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('MinutesSummaryService — claim dual-write (#1293)', () => {
+  beforeEach(() => {
+    recordClaimsMock.mockClear();
+    recordClaimsMock.mockResolvedValue({ written: 0, byState: {} });
+  });
+
+  it('mirrors the surviving claims into the evidence graph', async () => {
+    const { service } = build();
+
+    await service.summarize('m-1');
+
+    // Asserting the call, not merely that the code exists. Three separate
+    // failures in this milestone were dual-writes that typechecked, passed
+    // their unit tests and wrote nothing.
+    expect(recordClaimsMock).toHaveBeenCalledTimes(1);
+    const input = recordClaimsMock.mock.calls[0][1];
+    expect(input.subjectType).toBe('minutes');
+    expect(input.subjectId).toBe('m-1');
+    // Same drops the blob got — one valid claim of the three offered.
+    expect(input.claims).toHaveLength(1);
+    expect(input.claims[0].text).toBe('Voted 5-2 to advance AB 1234');
+    expect(input.claims[0].citation.quotedText).toBe(
+      'voted 5-2 to advance AB 1234',
+    );
+  });
+
+  it('binds the verdict to the exact rawText it checked', async () => {
+    const { service } = build();
+
+    await service.summarize('m-1');
+
+    const input = recordClaimsMock.mock.calls[0][1];
+    expect(input.sourceText).toBe(MINUTES_ROW.rawText);
+    // `Minutes` stores no hash of rawText (#1279 covered propositions only),
+    // so hashing here is what makes a stale summary detectable later at all.
+    expect(input.sourceTextHash).toBe(
+      createHash('sha256').update(MINUTES_ROW.rawText, 'utf8').digest('hex'),
+    );
+  });
+
+  it('keeps the summary when the dual-write fails', async () => {
+    recordClaimsMock.mockRejectedValue(new Error('evidence table is gone'));
+    const { service, db } = build();
+
+    const ok = await service.summarize('m-1');
+
+    // The blob is what citizens read; the mirror is not read by anything yet.
+    // Losing the former to a failure of the latter is the wrong trade, and
+    // #1294's backfill is what repairs whatever this drops.
+    expect(ok).toBe(true);
+    expect(db.minutes.update).toHaveBeenCalledTimes(1);
   });
 });
