@@ -2369,6 +2369,7 @@ model SourceVersion {
 
   execution PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
   manifest  StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  evidence  Evidence[]
 
   @@index([sourceUrl, fetchedAt])
   @@index([executionId])
@@ -2422,6 +2423,172 @@ model BulkSnapshot {
   @@index([regionId, dataType, fetchedAt])
   @@index([prunedAt])
   @@map("bulk_snapshots")
+}
+
+/// How confident we are that a claim is supported by the source it cites.
+///
+/// There is no default and no "assumed verified": a claim acquires a state only
+/// by passing through the verifier (#1292). `unsourced` is not a failure — it
+/// is a claim that never had a citation, which `bio_claims`' `origin: 'training'`
+/// records today and which must not be laundered into looking checked (#1208).
+enum EvidenceState {
+  /// The cited span supports the claim, checked against the stored text.
+  verified
+  /// The claim's text was found elsewhere in the source; the span was corrected.
+  snapped
+  /// Checked and not supported, or not yet checked. Never promoted.
+  unverified
+  /// The claim never carried a citation. Distinct from a failed check.
+  unsourced
+
+  @@map("evidence_state")
+}
+
+/// What one claim asserts about another.
+enum ClaimRelationKind {
+  supports
+  contradicts
+  qualifies
+  supersedes
+
+  @@map("claim_relation_kind")
+}
+
+/// A single assertion, addressable and joinable (#1291, epic #1208).
+///
+/// Claims live today in three mutually incompatible JSONB columns —
+/// `propositions.analysis_claims`, `minutes.summary_claims`,
+/// `representatives.bio_claims` — with three different notions of anchoring and
+/// no way to join them. That is why "show every published assertion that lacks
+/// primary evidence" is not a hard query today but an impossible one.
+///
+/// The blobs remain the write-side cache during transition. Nothing reads this
+/// model as authoritative until the cutover (#1293/#1294).
+model Claim {
+  id String @id @default(uuid())
+
+  /// Which family this came from — propositions, minutes, representatives.
+  subjectType  String  @map("subject_type") @db.VarChar(50)
+  /// Row in that family. Deliberately not a foreign key: the three subjects
+  /// live in different tables, and a polymorphic FK would either need four
+  /// nullable columns or a constraint Prisma cannot express.
+  subjectId    String  @map("subject_id")
+  /// Field of the subject the claim was made about, where the source records
+  /// one (`analysis_claims.field`, `bio_claims.sourceField`).
+  subjectField String? @map("subject_field") @db.VarChar(100)
+
+  /// The assertion itself, as text.
+  text String @db.Text
+
+  /// The model's own confidence, where it reported one. Recorded, never used
+  /// as a substitute for verification.
+  confidence Float?
+
+  /// The run that produced this claim (#1280), so a bad generation can be
+  /// scoped rather than guessed at.
+  pipelineExecutionId String? @map("pipeline_execution_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+  evidence          ClaimEvidence[]
+  relationsFrom     ClaimRelation[]    @relation("ClaimRelationFrom")
+  relationsTo       ClaimRelation[]    @relation("ClaimRelationTo")
+
+  @@index([subjectType, subjectId])
+  @@index([pipelineExecutionId])
+  @@map("claims")
+}
+
+/// A citation: a span of source text offered in support of a claim.
+///
+/// Carries two references rather than one, and both are nullable for stated
+/// reasons (#1291 §2):
+///
+///   * `sourceVersionId` — the immutable fetched bytes this derives from.
+///     Null for every claim that exists today, because the archive (#1276)
+///     only began filling in this cycle. Null means "predates archiving", not
+///     "source unknown".
+///   * `sourceTextHash` — SHA-256 of the DERIVED text the span indexes into.
+///     A character offset into `propositions.fullText` is not an offset into
+///     the archived HTML, so the span needs the identity of the text it was
+///     measured against.
+///
+/// Read-time resolution loads the current derived text, verifies its hash
+/// matches, and only then slices. A mismatch is the answer, not an error: the
+/// text changed after the claim was made, so the evidence is stale. This is
+/// what #1279's `analysisSourceTextHash` was built to detect.
+model Evidence {
+  id String @id @default(uuid())
+
+  /// Immutable fetch this derives from, where one was archived.
+  sourceVersionId String? @map("source_version_id")
+  /// SHA-256 of the derived text `spanStart`/`spanEnd` index into.
+  sourceTextHash  String? @map("source_text_hash") @db.VarChar(64)
+
+  /// Character offsets into the derived text. Null for a claim with no span.
+  spanStart Int? @map("span_start")
+  spanEnd   Int? @map("span_end")
+
+  /// The exact text the generator quoted, where it quoted rather than pointed
+  /// (#1212's quote-then-locate). Kept so a span can be re-located if the
+  /// surrounding text shifts — never rendered in place of the live slice.
+  quotedText String? @map("quoted_text") @db.Text
+
+  /// Set only by the verifier (#1292). No default: evidence does not get to
+  /// assert its own state.
+  state EvidenceState
+
+  /// Free-text citation for sources that never carried offsets
+  /// (`minutes.summary_claims.citation`).
+  citationHint String? @map("citation_hint") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  sourceVersion SourceVersion?  @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
+  claims        ClaimEvidence[]
+
+  @@index([sourceVersionId])
+  @@index([sourceTextHash])
+  @@index([state])
+  @@map("evidence")
+}
+
+/// Many-to-many: one claim can cite several passages, one passage can support
+/// several claims.
+model ClaimEvidence {
+  claimId    String @map("claim_id")
+  evidenceId String @map("evidence_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  claim    Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([claimId, evidenceId])
+  @@index([evidenceId])
+  @@map("claim_evidence")
+}
+
+/// What one claim asserts about another — the graph edge.
+model ClaimRelation {
+  id String @id @default(uuid())
+
+  fromClaimId String            @map("from_claim_id")
+  toClaimId   String            @map("to_claim_id")
+  kind        ClaimRelationKind
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  fromClaim Claim @relation("ClaimRelationFrom", fields: [fromClaimId], references: [id], onDelete: Cascade)
+  toClaim   Claim @relation("ClaimRelationTo", fields: [toClaimId], references: [id], onDelete: Cascade)
+
+  /// One edge of a given kind between two claims. A second identical assertion
+  /// is not new information.
+  @@unique([fromClaimId, toClaimId, kind])
+  @@index([toClaimId])
+  @@map("claim_relations")
 }
 
 model StructuralManifest {
@@ -2492,6 +2659,7 @@ model PipelineExecution {
   minutes           Minutes[]
   bills             Bill[]
   contributions     Contribution[]
+  Claim             Claim[]
 
   @@index([regionId, dataType, executedAt])
   @@index([manifestId])
