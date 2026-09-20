@@ -283,6 +283,125 @@ describe('claim dual-write (#1293)', () => {
     ).resolves.not.toBeNull();
   });
 
+  it('serialises concurrent regenerations of the same subject', async () => {
+    const input = (title: string) => ({
+      subjectType: 'minutes' as const,
+      subjectId: 'min-race',
+      claims: normaliseSummaryClaims([
+        {
+          kind: 'decision' as const,
+          title,
+          detail: 'x',
+          citation: { quote: 'the motion carried 5-2' },
+        },
+      ]),
+      sourceText: MINUTES_TEXT,
+      sourceTextHash: MINUTES_HASH,
+    });
+
+    // Two writers racing on one subject. Under READ COMMITTED without the
+    // advisory lock both read the same stale id set, one delete wins and both
+    // inserts land, leaving two complete sets of claims side by side — both
+    // apparently current. The realistic collision is #1294's backfill sweeping
+    // a family while a generator regenerates a row in it.
+    await Promise.all([
+      recordClaims(db, input('Writer A')),
+      recordClaims(db, input('Writer B')),
+    ]);
+
+    const claims = await claimsFor('minutes', 'min-race');
+    expect(claims).toHaveLength(1);
+    // Whichever committed second is the survivor; which one is not the point.
+    expect(['Writer A', 'Writer B']).toContain(claims[0].text);
+
+    const orphans = await db.evidence.count({
+      where: { claims: { none: {} } },
+    });
+    expect(orphans).toBe(0);
+  });
+
+  it('clears superseded claims when a regeneration produces none', async () => {
+    const seeded = {
+      subjectType: 'representative' as const,
+      subjectId: 'rep-empty',
+      claims: normaliseBioClaims([
+        {
+          sentence: 'Represents District 5.',
+          origin: 'source' as const,
+          sourceField: 'district',
+        },
+      ]),
+      sourceText: null,
+      sourceTextHash: null,
+    };
+    await recordClaims(db, seeded);
+    expect(await claimsFor('representative', 'rep-empty')).toHaveLength(1);
+
+    await recordClaims(db, { ...seeded, claims: [] });
+
+    // An empty generation supersedes the previous one. Leaving the old claims
+    // standing would keep the relational model asserting what the blob no
+    // longer says.
+    expect(await claimsFor('representative', 'rep-empty')).toHaveLength(0);
+    expect(await db.evidence.count({ where: { claims: { none: {} } } })).toBe(
+      0,
+    );
+  });
+
+  it('keeps a claim whose confidence will not fit the column', async () => {
+    await recordClaims(db, {
+      subjectType: 'proposition',
+      subjectId: 'prop-conf',
+      claims: normaliseAnalysisClaims([
+        {
+          claim: 'The measure raises the documentary transfer tax.',
+          field: 'fiscalImpact',
+          sourceStart: PROP_TEXT.indexOf('raise'),
+          sourceEnd: PROP_TEXT.indexOf('raise') + 60,
+          confidence:
+            'extremely high indeed, beyond all reasonable doubt' as never,
+        },
+      ]),
+      sourceText: PROP_TEXT,
+      sourceTextHash: PROP_HASH,
+    });
+
+    const [claim] = await claimsFor('proposition', 'prop-conf');
+    // The claim survives; only the advisory field is dropped. Losing a claim
+    // over a value that is explicitly never a substitute for verification
+    // would be the wrong trade, and the dual-write swallows its own errors.
+    expect(claim).toBeDefined();
+    expect(claim.confidence).toBeNull();
+  });
+
+  it('treats a hostile subject id as data in the advisory lock', async () => {
+    // subjectId is a database-derived row id, so this is defence in depth
+    // rather than a live vector — but the lock is the one place the value
+    // reaches raw SQL, and `$executeRaw`'s parameterisation is worth proving
+    // rather than assuming.
+    const hostile = "x'); DROP TABLE claims; --";
+
+    await recordClaims(db, {
+      subjectType: 'minutes',
+      subjectId: hostile,
+      claims: normaliseSummaryClaims([
+        {
+          kind: 'decision',
+          title: 'Still here',
+          detail: 'x',
+          citation: { quote: 'the motion carried 5-2' },
+        },
+      ]),
+      sourceText: MINUTES_TEXT,
+      sourceTextHash: MINUTES_HASH,
+    });
+
+    // The table survives and the id round-trips verbatim.
+    const claims = await claimsFor('minutes', hostile);
+    expect(claims).toHaveLength(1);
+    expect(claims[0].subjectId).toBe(hostile);
+  });
+
   it('makes the verdict distribution a query across all three families', async () => {
     await recordClaims(db, {
       subjectType: 'minutes',

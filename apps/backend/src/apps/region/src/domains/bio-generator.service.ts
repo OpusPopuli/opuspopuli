@@ -205,7 +205,14 @@ export class BioGeneratorService extends LlmGeneratorBase {
     // `unsourced` and `origin: 'source'` lands `unverified`, which is exactly
     // the distinction #1208 requires to survive: a model's recollection must
     // never read as a citation that merely failed a check.
-    if (rep.bioClaims?.length) {
+    // `bioClaims` rather than `bioClaims?.length`: an empty array means the
+    // generation produced no claims, and the blob above writes that — so the
+    // mirror must clear the superseded rows too, or the relational model keeps
+    // claims the blob no longer has. `undefined` is the different case (tier-2
+    // salvage, where only the bio string survived parsing): the blob KEEPS its
+    // previous claims, so the mirror must leave them alone. The condition
+    // tracks the blob's own exactly.
+    if (rep.bioClaims) {
       await this.mirrorClaims(
         {
           subjectType: 'representative',
@@ -214,7 +221,10 @@ export class BioGeneratorService extends LlmGeneratorBase {
           sourceText: null,
           sourceTextHash: null,
         },
-        (message) => this.logger.warn(message),
+        // `error`, not `warn`: the claims were not written. A systematic
+        // failure here is otherwise invisible until something reads the
+        // tables, which nothing does yet (#1296).
+        (message) => this.logger.error(message),
       );
     }
   }

@@ -132,3 +132,36 @@ describe('normaliseBioClaims', () => {
     }
   });
 });
+
+describe('malformed JSONB', () => {
+  // These take raw JSONB: a generator can emit `"claims": "none"` and the blob
+  // stores it verbatim, and #1294's backfill reads columns written by years of
+  // different prompts. The typed signature is an assertion, not a guarantee.
+  const JUNK = [null, undefined, 'none', 42, { claim: 'not an array' }];
+
+  it.each(JUNK)('returns nothing for %p rather than throwing', (junk) => {
+    expect(normaliseAnalysisClaims(junk as never)).toEqual([]);
+    expect(normaliseSummaryClaims(junk as never)).toEqual([]);
+    expect(normaliseBioClaims(junk as never)).toEqual([]);
+  });
+
+  it('keeps the well-formed claims alongside a malformed one', () => {
+    const out = normaliseBioClaims([
+      {
+        sentence: 'Represents District 5.',
+        origin: 'source',
+        sourceField: 'district',
+      },
+      null as never,
+      { sentence: 'Chairs the budget committee.', origin: 'training' },
+    ]);
+
+    // A single bad element must not cost the subject its other claims — the
+    // caller swallows errors, so a throw here would silently discard all of
+    // them.
+    expect(out.map((c) => c.text)).toEqual([
+      'Represents District 5.',
+      'Chairs the budget committee.',
+    ]);
+  });
+});

@@ -44,10 +44,45 @@ const EMPTY_CITATION: NormalisedCitation = {
   citationHint: null,
 };
 
+/**
+ * The claims to iterate, or nothing.
+ *
+ * These take raw JSONB. A generator can emit `"claims": "none"` and the blob
+ * stores it verbatim, and #1294's backfill reads columns written by years of
+ * different prompts — so the argument is only typed by assertion. Returning
+ * an empty list beats throwing: the caller swallows errors, so a throw would
+ * lose every claim for that subject over one malformed row.
+ */
+function iterable<T>(claims: T[] | null | undefined): T[] {
+  return Array.isArray(claims) ? claims : [];
+}
+
+/** True for something that can carry claim fields at all. */
+function isRecord(claim: unknown): boolean {
+  return typeof claim === 'object' && claim !== null;
+}
+
 /** Trim to a non-empty string, or null. Whitespace is not a citation. */
 function text(value: string | null | undefined): string | null {
   const trimmed = (value ?? '').trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Longest confidence value the column holds. Mirrors `@db.VarChar(32)`. */
+const MAX_CONFIDENCE_CHARS = 32;
+
+/**
+ * The generator's confidence, or null if it will not fit the column.
+ *
+ * Dropped rather than truncated, and null rather than thrown: a value too
+ * long raises P2000, which the dual-write swallows — losing the whole claim
+ * over an advisory field that is explicitly never used as a substitute for
+ * verification. Truncating instead would keep a value the generator did not
+ * say. Losing the confidence is acceptable; losing the claim is not.
+ */
+function confidence(value: string | null | undefined): string | null {
+  const trimmed = text(value);
+  return trimmed && trimmed.length <= MAX_CONFIDENCE_CHARS ? trimmed : null;
 }
 
 /**
@@ -61,7 +96,8 @@ function text(value: string | null | undefined): string | null {
 export function normaliseAnalysisClaims(
   claims: PropositionAnalysisClaim[],
 ): NormalisedClaim[] {
-  return claims.flatMap((c) => {
+  return iterable(claims).flatMap((c) => {
+    if (!isRecord(c)) return [];
     const assertion = text(c.claim);
     if (!assertion) return [];
 
@@ -69,7 +105,7 @@ export function normaliseAnalysisClaims(
       {
         text: assertion,
         subjectField: text(c.field),
-        confidence: text(c.confidence),
+        confidence: confidence(c.confidence),
         citation: {
           spanStart: Number.isInteger(c.sourceStart) ? c.sourceStart : null,
           spanEnd: Number.isInteger(c.sourceEnd) ? c.sourceEnd : null,
@@ -93,7 +129,8 @@ export function normaliseAnalysisClaims(
 export function normaliseSummaryClaims(
   claims: MinutesSummaryClaim[],
 ): NormalisedClaim[] {
-  return claims.flatMap((c) => {
+  return iterable(claims).flatMap((c) => {
+    if (!isRecord(c)) return [];
     const assertion = text(c.title);
     if (!assertion) return [];
 
@@ -133,7 +170,8 @@ export function normaliseSummaryClaims(
  * stays in the JSONB blob, which remains authoritative.
  */
 export function normaliseBioClaims(claims: BioClaim[]): NormalisedClaim[] {
-  return claims.flatMap((c) => {
+  return iterable(claims).flatMap((c) => {
+    if (!isRecord(c)) return [];
     const assertion = text(c.sentence);
     if (!assertion) return [];
 
@@ -143,7 +181,7 @@ export function normaliseBioClaims(claims: BioClaim[]): NormalisedClaim[] {
       {
         text: assertion,
         subjectField: field,
-        confidence: text(c.confidence),
+        confidence: confidence(c.confidence),
         citation: { ...EMPTY_CITATION, citationHint: field },
       },
     ];
