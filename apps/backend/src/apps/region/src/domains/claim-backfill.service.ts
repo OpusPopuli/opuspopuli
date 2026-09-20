@@ -123,6 +123,11 @@ export class ClaimBackfillService {
   async readDistribution(): Promise<Record<VerifiedState, number>> {
     const rows = await this.db.evidence.groupBy({
       by: ['state'],
+      // Evidence belonging to the CURRENT generation only (#1295). Superseded
+      // claims keep their evidence as the record of what they cited, so
+      // counting all of it would inflate the distribution a little more with
+      // every regeneration and make the corpus look like it was growing.
+      where: { claims: { some: { claim: { validUntil: null } } } },
       _count: { state: true },
     });
 

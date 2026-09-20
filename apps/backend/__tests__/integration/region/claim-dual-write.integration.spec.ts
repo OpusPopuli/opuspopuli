@@ -48,10 +48,19 @@ describe('claim dual-write (#1293)', () => {
   });
 
   /** Every claim for a subject, with its evidence, in insertion order. */
+  /** The CURRENT generation's claims for a subject (#1295). */
   async function claimsFor(subjectType: string, subjectId: string) {
     return db.claim.findMany({
-      where: { subjectType, subjectId },
+      where: { subjectType, subjectId, validUntil: null },
       include: { evidence: { include: { evidence: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /** Every generation, current and superseded — the historical record. */
+  async function allGenerationsFor(subjectType: string, subjectId: string) {
+    return db.claim.findMany({
+      where: { subjectType, subjectId },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -238,10 +247,20 @@ describe('claim dual-write (#1293)', () => {
       await recordClaims(db, input('Second generation'));
 
       const claims = await claimsFor('minutes', 'min-3');
-      // Leaving both would put two versions of the same claim side by side,
-      // indistinguishable and both apparently current.
+      // Exactly one CURRENT claim. Leaving both current would put two
+      // versions of the same claim side by side, indistinguishable and both
+      // apparently true.
       expect(claims).toHaveLength(1);
       expect(claims[0].text).toBe('Second generation');
+
+      // The superseded one is RETAINED rather than deleted (#1295) — that is
+      // what makes run N comparable with run N-1, and what keeps "what did we
+      // assert about this last month" answerable.
+      const all = await allGenerationsFor('minutes', 'min-3');
+      expect(all).toHaveLength(2);
+      const retired = all.find((c) => c.text === 'First generation');
+      expect(retired?.validUntil).toBeInstanceOf(Date);
+      expect(claims[0].validUntil).toBeNull();
 
       // The superseded evidence goes with it — `evidence` has no foreign key
       // back to a claim, so cascading the claim delete alone would strand it.
@@ -320,8 +339,9 @@ describe('claim dual-write (#1293)', () => {
     ]);
 
     const claims = await claimsFor('minutes', 'min-race');
+    // Exactly one CURRENT generation, whichever committed second. Without the
+    // lock both writers' claims land current side by side.
     expect(claims).toHaveLength(1);
-    // Whichever committed second is the survivor; which one is not the point.
     expect(['Writer A', 'Writer B']).toContain(claims[0].text);
 
     const orphans = await db.evidence.count({

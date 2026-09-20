@@ -36,6 +36,7 @@ describe('claim evidence metrics (#1296)', () => {
   let db: DbService;
   let total: { set: jest.Mock };
   let unevidenced: { set: jest.Mock };
+  let superseded: { set: jest.Mock };
   let byState: { set: jest.Mock };
   let freshness: { set: jest.Mock };
   let service: ClaimEvidenceMetricsService;
@@ -58,12 +59,14 @@ describe('claim evidence metrics (#1296)', () => {
     await cleanDatabase();
     total = { set: jest.fn() };
     unevidenced = { set: jest.fn() };
+    superseded = { set: jest.fn() };
     byState = { set: jest.fn() };
     freshness = { set: jest.fn() };
     service = new ClaimEvidenceMetricsService(
       db,
       total as never,
       unevidenced as never,
+      superseded as never,
       byState as never,
       freshness as never,
     );
@@ -231,6 +234,7 @@ describe('claim evidence metrics (#1296)', () => {
       } as never,
       total as never,
       unevidenced as never,
+      superseded as never,
       byState as never,
       freshness as never,
     );
@@ -243,6 +247,7 @@ describe('claim evidence metrics (#1296)', () => {
     // lets the freshness gauge go stale, which is the actual signal.
     expect(total.set).not.toHaveBeenCalled();
     expect(unevidenced.set).not.toHaveBeenCalled();
+    expect(superseded.set).not.toHaveBeenCalled();
     expect(byState.set).not.toHaveBeenCalled();
     expect(freshness.set).not.toHaveBeenCalled();
   });

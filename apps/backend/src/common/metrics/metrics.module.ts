@@ -164,6 +164,17 @@ export class MetricsModule {
         help: 'Claims with no verified evidence, by subject family',
         labelNames: ['subject_type'],
       }),
+      /**
+       * Superseded generations retained by #1295. Published so history growth
+       * across repeated model refreshes is WATCHED rather than discovered —
+       * the same argument that put a freshness gauge next to the source store
+       * after backups died unnoticed for 49 days (#1217).
+       */
+      makeGaugeProvider({
+        name: 'claims_superseded',
+        help: 'Claims retained as superseded generations, by subject family',
+        labelNames: ['subject_type'],
+      }),
       makeGaugeProvider({
         name: 'claim_evidence_state',
         help:
