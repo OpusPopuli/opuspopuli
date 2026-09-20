@@ -34,24 +34,44 @@
 -- column-to-column comparison and doing it in memory meant fetching every
 -- candidate's full_text to apply a cap.
 --
--- ── Why sha256(full_text::bytea) and not convert_to ──────────────────────
+-- ── Why an IMMUTABLE wrapper and not a ::bytea cast (#1301) ──────────────
 --
--- Verified on PostgreSQL 17.6 before writing this migration:
---   convert_to(...)  provolatile = 's' (STABLE)  -> Postgres REJECTS the
---                    generated column: "generation expression is not immutable"
---   sha256(...)      provolatile = 'i' (IMMUTABLE)
---   full_text::bytea immutable, and produces the correct digest
+-- This migration first shipped using `full_text::bytea`, and that was wrong in
+-- two ways. `text::bytea` does not re-encode text into bytes — it PARSES the
+-- text as a bytea input literal, interpreting backslash escapes. For
+-- backslash-free ASCII/UTF-8 it coincidentally yields the right bytes, which
+-- is why it passed review and passed CI: CI and `postgres_test` create the
+-- table EMPTY, so the generation expression is never evaluated against a row.
 --
--- The cast reinterprets the text in the SERVER ENCODING, so the digest is
--- encoding-dependent: restoring into a non-UTF8 database would change every
--- hash and mark every analysis stale. The database is UTF8; this is recorded
--- rather than guarded.
+-- Against real data it fails outright — 15 of 69 propositions contain a
+-- backslash, in dev and production alike:
+--     ERROR: invalid input syntax for type bytea   (SQLSTATE 22P02)
+--
+-- And where the backslash does form a valid escape it does not fail; it
+-- silently digests different bytes than the text:
+--     'a\101c'::bytea            -> aAc      (the escape was interpreted)
+--     convert_to('a\101c','UTF8') -> a\101c   (the actual characters)
+--
+-- `convert_to` is the correct encoding, but is catalogued STABLE — Postgres
+-- rejects it in a generation expression, which is what the cast was reached
+-- for. The answer is to pin the encoding in an IMMUTABLE wrapper. It is
+-- genuinely immutable for a given input because the destination encoding is a
+-- literal rather than inherited from the server setting.
 --
 -- Verified byte-identical against Node's
 -- createHash('sha256').update(text,'utf8') across ASCII, smart quotes and
--- em-dashes, Spanish accents, and the empty string. That equivalence is
--- load-bearing: if the application and the database disagreed, every row would
--- look stale forever and regenerate on every run.
+-- em-dashes, Spanish accents, the empty string, a literal backslash, AND a
+-- valid escape sequence — then across all 54 propositions carrying full_text
+-- in the dev corpus, 15 of which contain a backslash: 54 of 54 identical.
+-- That equivalence is load-bearing: if the application and the database
+-- disagreed, every row would look stale forever and regenerate on every run.
+-- The first round of verification was real but never tried a backslash.
+--
+-- Amended in place rather than corrected by a follow-up migration because
+-- this one runs first — a later migration is never reached. Defensible only
+-- because it had never been applied to a durable database: production had not
+-- run it (verified: neither column existed), dev failed and rolled back, and
+-- only ephemeral CI and `postgres_test` had it, where the table is empty.
 --
 -- Additive only, per #1168 and the M1 acceptance criteria: no drops, no
 -- renames. NULL on existing rows means "unknown", which the service treats as
@@ -60,6 +80,13 @@
 ALTER TABLE "propositions"
   ADD COLUMN IF NOT EXISTS "analysis_source_text_hash" VARCHAR(64);
 
+-- The generated column binds to this function by OID, so dropping or
+-- redefining it with a different result would silently change every stored
+-- hash. Replace it only alongside a rebuild of the column.
+CREATE OR REPLACE FUNCTION op_sha256_utf8_hex(text) RETURNS text
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS
+$$ SELECT encode(sha256(convert_to($1, 'UTF8')), 'hex') $$;
+
 ALTER TABLE "propositions"
   ADD COLUMN IF NOT EXISTS "full_text_hash" TEXT
-  GENERATED ALWAYS AS (encode(sha256("full_text"::bytea), 'hex')) STORED;
+  GENERATED ALWAYS AS (op_sha256_utf8_hex("full_text")) STORED;
