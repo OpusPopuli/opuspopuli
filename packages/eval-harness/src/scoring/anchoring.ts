@@ -26,7 +26,17 @@
  * parameter so the same fixtures produce a before/after number instead of
  * being re-instrumented after the fact.
  */
-import { locateQuote } from "@opuspopuli/common";
+import { locateQuote, supportRatio, MIN_SUPPORT } from "@opuspopuli/common";
+
+/**
+ * Re-exported, not re-implemented (#1292).
+ *
+ * The gate in the region service acts on these same functions via
+ * `@opuspopuli/common`, so what the harness measures and what production
+ * enforces cannot drift apart. Consumers that imported them from here keep
+ * working.
+ */
+export { supportRatio, MIN_SUPPORT };
 
 export type AnchorContract = "offsets" | "quote-then-locate";
 
@@ -108,72 +118,6 @@ export interface AnchoringScore {
    */
   looksUnmapped: boolean;
 }
-
-const STOPWORDS = new Set([
-  "the",
-  "a",
-  "an",
-  "and",
-  "or",
-  "of",
-  "to",
-  "in",
-  "for",
-  "on",
-  "by",
-  "with",
-  "that",
-  "this",
-  "it",
-  "is",
-  "are",
-  "be",
-  "as",
-  "at",
-  "from",
-  "would",
-  "will",
-  "shall",
-  "may",
-  "not",
-  "which",
-  "any",
-  "all",
-  "such",
-]);
-
-function contentWords(text: string): string[] {
-  return (
-    text
-      .toLowerCase()
-      // `ñ` (U+00F1) already falls inside á-ú; `ü` (U+00FC) does not.
-      .split(/[^a-z0-9á-úü]+/i)
-      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
-  );
-}
-
-/**
- * How much of the claim is actually present in the span it cites?
- *
- * A real citation shares vocabulary with the claim drawn from it. This is a
- * weak signal on its own — which is why it is reported as a number rather than
- * used as the pass/fail gate — but it separates "cited the right paragraph"
- * from "cited 1,500 characters that happen to be in range".
- */
-export function supportRatio(claim: string, span: string): number {
-  const words = contentWords(claim);
-  if (words.length === 0) return 0;
-  const spanWords = new Set(contentWords(span));
-  return words.filter((w) => spanWords.has(w)).length / words.length;
-}
-
-/**
- * A span must share at least this much vocabulary with its claim to count as
- * anchored. Set from the failure it must catch: granite's clamped half-measure
- * spans score low here precisely because they cite everything and support
- * nothing in particular.
- */
-export const MIN_SUPPORT = 0.3;
 
 /**
  * Sequential partitioning detector.
