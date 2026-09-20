@@ -182,7 +182,10 @@ export class MinutesSummaryService extends LlmGeneratorBase {
             ? createHash('sha256').update(rawText, 'utf8').digest('hex')
             : null,
         },
-        (message) => this.logger.warn(message),
+        // `error`, not `warn`: the claims were not written. A systematic
+        // failure here is otherwise invisible until something reads the
+        // tables, which nothing does yet (#1296).
+        (message) => this.logger.error(message),
       );
 
       return true;

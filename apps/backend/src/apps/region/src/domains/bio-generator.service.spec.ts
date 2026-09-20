@@ -611,9 +611,37 @@ describe('BioGeneratorService', () => {
       expect(recalled.citation.citationHint).toBeNull();
     });
 
+    it('mirrors an empty claim list so superseded claims are cleared', async () => {
+      llm.generate.mockResolvedValue({
+        text: JSON.stringify({ bio: 'A short bio.', claims: [] }),
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+
+      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+
+      // The blob writes `bioClaims: []`, so the mirror must too — otherwise
+      // the relational model keeps asserting claims the blob no longer has.
+      // Guarding on `?.length` skipped this case.
+      expect(recordClaimsMock).toHaveBeenCalledTimes(1);
+      expect(recordClaimsMock.mock.calls[0][1].claims).toEqual([]);
+    });
+
+    it('leaves claims alone when parsing salvaged only the bio text', async () => {
+      // Tier-2 salvage: no `claims` key at all. The blob KEEPS its previous
+      // claims here, so the mirror must leave the rows alone rather than
+      // clearing them — the opposite of the empty-array case above.
+      llm.generate.mockResolvedValue({
+        text: JSON.stringify({ bio: 'Salvaged bio only.' }),
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+
+      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+
+      expect(recordClaimsMock).not.toHaveBeenCalled();
+    });
+
     it('keeps the bio when the dual-write fails', async () => {
       recordClaimsMock.mockRejectedValue(new Error('evidence table is gone'));
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
 
       const [rep] = await service.enrichBios(
         [baseRep({ externalId: 'sen-5' })],
@@ -631,15 +659,22 @@ describe('BioGeneratorService', () => {
       // logs a bio that in fact succeeded as having failed and counts it as
       // one. A misleading log about AI output is exactly the thing this
       // milestone is trying to stop producing.
-      const messages = warn.mock.calls.map(String);
-      expect(messages.some((m) => m.includes('Claim dual-write failed'))).toBe(
-        true,
-      );
-      expect(messages.some((m) => m.includes('Bio generation failed'))).toBe(
-        false,
-      );
+      // The mirror failure is reported at `error` — the claims were not
+      // written, and a systematic failure is otherwise invisible until
+      // something reads the tables, which nothing does yet (#1296).
+      expect(
+        error.mock.calls
+          .map(String)
+          .some((m) => m.includes('Claim dual-write failed')),
+      ).toBe(true);
+      expect(
+        warn.mock.calls
+          .map(String)
+          .some((m) => m.includes('Bio generation failed')),
+      ).toBe(false);
 
       warn.mockRestore();
+      error.mockRestore();
     });
   });
 });

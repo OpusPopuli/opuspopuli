@@ -1,0 +1,12 @@
+-- Widen `claims.confidence` so an unexpected value cannot lose the claim.
+--
+-- The column was sized at VARCHAR(10) for the three words the generators
+-- actually report. A longer value raises P2000, and the dual-write swallows
+-- its errors by design (#1293) — so a single odd confidence string would
+-- silently discard the whole claim, over a field whose own comment says it is
+-- recorded and never used as a substitute for verification.
+--
+-- Widening is half the fix; `claim-normalisers.ts` drops a value that still
+-- would not fit rather than truncating it, so the claim survives and the
+-- confidence is simply absent.
+ALTER TABLE "claims" ALTER COLUMN "confidence" TYPE VARCHAR(32);

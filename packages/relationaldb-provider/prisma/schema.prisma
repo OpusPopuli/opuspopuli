@@ -2485,7 +2485,7 @@ model Claim {
   /// three generators report a word, and mapping those onto 0.9/0.6/0.3 would
   /// invent precision no model expressed (#1293). Recorded, never used as a
   /// substitute for verification.
-  confidence String? @db.VarChar(10)
+  confidence String? @db.VarChar(32)
 
   /// The run that produced this claim (#1280), so a bad generation can be
   /// scoped rather than guessed at.

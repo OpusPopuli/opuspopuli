@@ -1,4 +1,5 @@
-import type { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import { randomUUID } from 'node:crypto';
+import { Prisma, type DbService } from '@opuspopuli/relationaldb-provider';
 import type { ClaimRecordInput, ClaimRecordOutcome } from './claim-normalisers';
 import { type VerifiedState, verifyEvidence } from './evidence-verifier';
 
@@ -50,6 +51,19 @@ export async function recordClaims(
   // TypeScript then cannot write into declaration output (TS2742/TS4053) —
   // surfacing as errors in unrelated files that merely share the program.
   await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Serialise regenerations of ONE subject against each other. Without this,
+    // two writers under READ COMMITTED both read the same stale id set, one
+    // delete wins, and both inserts land — leaving the subject with two
+    // complete sets of claims, indistinguishable and both apparently current.
+    //
+    // The realistic collision is #1294's backfill sweeping a family while a
+    // generator regenerates a row inside it. A transaction-scoped advisory
+    // lock releases on commit or rollback, needs no schema, and does not block
+    // writers working on any other subject.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`${subjectType}:${subjectId}`}, 0))
+    `;
+
     const existing = await tx.claim.findMany({
       where: { subjectType, subjectId },
       select: { id: true },
@@ -77,42 +91,53 @@ export async function recordClaims(
       }
     }
 
-    for (const { claim, outcome } of verdicts) {
-      const created = await tx.claim.create({
-        data: {
-          subjectType,
-          subjectId,
-          subjectField: claim.subjectField,
-          text: claim.text,
-          confidence: claim.confidence,
-          pipelineExecutionId: input.pipelineExecutionId ?? null,
-        },
-        select: { id: true },
-      });
-
-      const evidence = await tx.evidence.create({
-        data: {
-          // The text version this verdict was reached against, so a later
-          // rewrite of the source is detectable rather than silent (#1279).
-          sourceTextHash: citedHash,
-          // A located quote carries the offsets it was actually found at —
-          // derived under #1212's contract when none were stored, corrected
-          // when the stored ones pointed elsewhere. The state says which.
-          spanStart: outcome.correctedSpan?.start ?? claim.citation.spanStart,
-          spanEnd: outcome.correctedSpan?.end ?? claim.citation.spanEnd,
-          quotedText: claim.citation.quotedText,
-          citationHint: claim.citation.citationHint,
-          state: outcome.state,
-        },
-        select: { id: true },
-      });
-
-      await tx.claimEvidence.create({
-        data: { claimId: created.id, evidenceId: evidence.id },
-      });
-
+    // Three statements regardless of claim count, rather than three per
+    // claim. Ids are minted here rather than read back so the join never has
+    // to assume `createMany` returned rows in the order they were given.
+    const rows = verdicts.map(({ claim, outcome }) => {
       byState[outcome.state] = (byState[outcome.state] ?? 0) + 1;
-    }
+      return {
+        claimId: randomUUID(),
+        evidenceId: randomUUID(),
+        claim,
+        outcome,
+      };
+    });
+
+    if (rows.length === 0) return;
+
+    await tx.claim.createMany({
+      data: rows.map(({ claimId, claim }) => ({
+        id: claimId,
+        subjectType,
+        subjectId,
+        subjectField: claim.subjectField,
+        text: claim.text,
+        confidence: claim.confidence,
+        pipelineExecutionId: input.pipelineExecutionId ?? null,
+      })),
+    });
+
+    await tx.evidence.createMany({
+      data: rows.map(({ evidenceId, claim, outcome }) => ({
+        id: evidenceId,
+        // The text version this verdict was reached against, so a later
+        // rewrite of the source is detectable rather than silent (#1279).
+        sourceTextHash: citedHash,
+        // A located quote carries the offsets it was actually found at —
+        // derived under #1212's contract when none were stored, corrected
+        // when the stored ones pointed elsewhere. The state says which.
+        spanStart: outcome.correctedSpan?.start ?? claim.citation.spanStart,
+        spanEnd: outcome.correctedSpan?.end ?? claim.citation.spanEnd,
+        quotedText: claim.citation.quotedText,
+        citationHint: claim.citation.citationHint,
+        state: outcome.state,
+      })),
+    });
+
+    await tx.claimEvidence.createMany({
+      data: rows.map(({ claimId, evidenceId }) => ({ claimId, evidenceId })),
+    });
   });
 
   return { written: verdicts.length, byState };
