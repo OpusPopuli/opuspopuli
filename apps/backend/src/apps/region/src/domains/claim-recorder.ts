@@ -121,9 +121,14 @@ export async function recordClaims(
     await tx.evidence.createMany({
       data: rows.map(({ evidenceId, claim, outcome }) => ({
         id: evidenceId,
-        // The text version this verdict was reached against, so a later
-        // rewrite of the source is detectable rather than silent (#1279).
-        sourceTextHash: citedHash,
+        // The hash of the text `spanStart`/`spanEnd` index into — which is
+        // the CURRENT text, since that is what the span was resolved against.
+        // Not `citedHash`: a backfilled claim often has no recorded cited
+        // version (#1279's column post-dates it), and storing NULL there would
+        // leave offsets with nothing to say which text they address — losing
+        // the very binding this column exists for, and making a later rewrite
+        // undetectable all over again.
+        sourceTextHash: input.sourceTextHash,
         // A located quote carries the offsets it was actually found at —
         // derived under #1212's contract when none were stored, corrected
         // when the stored ones pointed elsewhere. The state says which.

@@ -59,6 +59,7 @@ import {
 import { PropositionFundingModel } from './models/proposition-funding.model';
 import { RepresentativeFundingModel } from './models/representative-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
+import { ClaimBackfillResultModel } from './models/claim-backfill.model';
 import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import {
   BioClaimModel,
@@ -341,6 +342,43 @@ export class RegionResolver {
    * genuine Attorney General title-and-summary is never overwritten and a
    * second run finds nothing to do.
    */
+  /**
+   * Backfill the three legacy claim blobs into the evidence graph (#1294).
+   *
+   * Every citation passes through the verify-or-snap gate — the only way
+   * `evidence.state` is ever set — so this cannot launder unchecked claims
+   * into a table called `evidence`.
+   *
+   * **Expect a large `unverified` population.** 528 of the 1,497 stored claims
+   * are proposition offsets and not one carries a quote, so roughly 2%
+   * anchoring is the honest outcome on the contract #1212 measured. Minutes is
+   * the family that can genuinely verify: all 218 of its claims quote their
+   * source verbatim. A uniformly high number here would mean the gate was
+   * skipped.
+   *
+   * Safe to re-run: `recordClaims` replaces a subject's claims rather than
+   * appending, so a second run converges on the same rows.
+   *
+   * `limit` caps rows **per family**, not in total, so `limit: 10` reads up to
+   * ten propositions, ten minutes and ten representatives. It exists to
+   * rehearse a run and to bound one: the whole current corpus takes about a
+   * second, but this is a synchronous mutation, so a corpus two orders of
+   * magnitude larger would want chunking rather than a single call.
+   *
+   * `failed` in the result is the number of rows that threw and were skipped.
+   * Check it: the distribution is a query over what was stored, so it looks
+   * exactly as complete after a partial run as after a whole one.
+   */
+  @Mutation(() => ClaimBackfillResultModel)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 100 })
+  async backfillClaims(
+    @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
+  ): Promise<ClaimBackfillResultModel> {
+    return this.regionService.backfillClaims(limit);
+  }
+
   @Mutation(() => Int)
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
