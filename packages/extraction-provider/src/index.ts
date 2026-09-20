@@ -34,3 +34,9 @@ export * from "./extraction.service.js";
 
 // NestJS Module
 export * from "./extraction.module.js";
+
+// Content-byte helpers. Exported because a consumer that re-derives text from
+// archived bytes must decode them EXACTLY as the fetch path did before hashing
+// (#1276) — a second implementation would drift, and the hash check that makes
+// re-derivation trustworthy would start failing for no visible reason.
+export { decodeUtf8, hashContentBytes } from "./utils/content-bytes.js";
