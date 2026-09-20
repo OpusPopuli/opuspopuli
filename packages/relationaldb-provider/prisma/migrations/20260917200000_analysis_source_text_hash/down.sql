@@ -7,3 +7,7 @@
 
 ALTER TABLE "propositions" DROP COLUMN IF EXISTS "full_text_hash";
 ALTER TABLE "propositions" DROP COLUMN IF EXISTS "analysis_source_text_hash";
+
+-- Dropped after the column, never before: the generated column binds to this
+-- function by OID and Postgres refuses to drop it while a dependency stands.
+DROP FUNCTION IF EXISTS op_sha256_utf8_hex(text);
