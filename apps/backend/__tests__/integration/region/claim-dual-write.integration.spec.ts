@@ -171,9 +171,19 @@ describe('claim dual-write (#1293)', () => {
       // Nothing can be verified against text the claim never saw, however
       // well the offsets happen to line up (#1279).
       expect(claim.evidence[0].evidence.state).toBe('unverified');
-      // The evidence records the version it cited, not the version now — that
-      // binding is what makes the staleness detectable in the first place.
-      expect(claim.evidence[0].evidence.sourceTextHash).toBe(PROP_HASH);
+
+      // The stored hash is the text the SPAN was resolved against — the
+      // schema's own definition, "SHA-256 of the derived text spanStart/
+      // spanEnd index into". The staleness is carried by the state, not by
+      // this column. For any row where the span means anything the two are
+      // the same value, because a cited-version mismatch is exactly what
+      // stops a row reaching `verified`; they differ only on rows whose span
+      // has already been disclaimed.
+      expect(claim.evidence[0].evidence.sourceTextHash).toBe(
+        createHash('sha256')
+          .update(PROP_TEXT.replace('five million', 'three million'), 'utf8')
+          .digest('hex'),
+      );
     });
   });
 

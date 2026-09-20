@@ -51,6 +51,10 @@ import type {
   LegislativeCommitteeDetail,
   PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
 } from './legislative-committee.service';
+import {
+  type ClaimBackfillReport,
+  ClaimBackfillService,
+} from './claim-backfill.service';
 import { RegionSyncService } from './region-sync.service';
 import {
   type LegislativeActionFeedPage,
@@ -264,6 +268,7 @@ export class RegionDomainService {
   constructor(
     private readonly syncService: RegionSyncService,
     private readonly queryService: RegionQueryService,
+    private readonly claimBackfill: ClaimBackfillService,
   ) {}
 
   // ─── Lifecycle (delegated) ────────────────────────────────────────────────
@@ -314,6 +319,16 @@ export class RegionDomainService {
   /** Backfill proposition summaries from the stored digest text (#1261). */
   backfillPropositionSummaries(limit?: number): Promise<number> {
     return this.syncService.backfillPropositionSummaries(limit);
+  }
+
+  /**
+   * Backfill the legacy claim blobs into the evidence graph (#1294).
+   *
+   * Idempotent — `recordClaims` replaces a subject's claims rather than
+   * appending — so a re-run converges rather than duplicating.
+   */
+  backfillClaims(limit?: number): Promise<ClaimBackfillReport> {
+    return this.claimBackfill.backfillAll(limit);
   }
 
   regeneratePropositionAnalysis(id: string): Promise<boolean> {
