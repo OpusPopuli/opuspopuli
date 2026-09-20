@@ -16,6 +16,15 @@ export type UnresolvedReason =
 export interface ResolvedClaimSource {
   resolved: true;
   claimText: string;
+  /**
+   * True when this claim has been superseded by a later generation (#1295).
+   *
+   * Superseded claims still resolve, deliberately — tracing what was asserted
+   * about a measure last month is the reason supersession exists rather than
+   * deletion. Flagged so a caller cannot present a retired assertion as
+   * current.
+   */
+  superseded: boolean;
   /** The passage, re-derived from the archived bytes at read time. */
   passage: string;
   sourceUrl: string;
@@ -135,6 +144,7 @@ export class ClaimSourceResolverService {
     return {
       resolved: true,
       claimText: claim.text,
+      superseded: claim.validUntil !== null,
       passage: span.text,
       sourceUrl: version.sourceUrl,
       fetchedAt: version.fetchedAt,

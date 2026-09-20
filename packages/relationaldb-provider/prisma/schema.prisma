@@ -2491,6 +2491,17 @@ model Claim {
   /// scoped rather than guessed at.
   pipelineExecutionId String? @map("pipeline_execution_id")
 
+  /// When this claim became the current assertion about its subject (#1295).
+  validFrom  DateTime  @default(now()) @map("valid_from") @db.Timestamptz
+  /// When it stopped being current — NULL means it still is.
+  ///
+  /// Regeneration supersedes rather than deletes: a model refresh that
+  /// overwrote the previous claims would make run N impossible to compare
+  /// against run N-1, which is the whole point of iterating on a model. It
+  /// also means a superseded assertion stays answerable — "what did we say
+  /// about this measure on 2026-10-01" — rather than being silently replaced.
+  validUntil DateTime? @map("valid_until") @db.Timestamptz
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -2501,6 +2512,13 @@ model Claim {
 
   @@index([subjectType, subjectId])
   @@index([pipelineExecutionId])
+  /// Current claims for a subject — the predicate almost every read uses.
+  @@index([subjectType, subjectId, validUntil])
+  /// The gauge's predicate: all current claims grouped by family, with no
+  /// subject to anchor on. Declared here so `prisma migrate diff` stays quiet;
+  /// the migration creates it as a PARTIAL index (`WHERE valid_until IS NULL`),
+  /// which Prisma's schema language cannot express.
+  @@index([subjectType], map: "claims_current_by_subject_type_idx")
   @@map("claims")
 }
 

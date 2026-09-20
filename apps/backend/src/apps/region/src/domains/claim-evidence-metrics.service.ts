@@ -65,6 +65,8 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
     private readonly total: Gauge<string>,
     @InjectMetric('claims_unevidenced')
     private readonly unevidenced: Gauge<string>,
+    @InjectMetric('claims_superseded')
+    private readonly superseded: Gauge<string>,
     @InjectMetric('claim_evidence_state')
     private readonly byState: Gauge<string>,
     @InjectMetric('claims_last_measured_timestamp_seconds')
@@ -80,9 +82,10 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
   @Cron('*/5 * * * *')
   async measure(): Promise<void> {
     try {
-      const [totals, unevidenced, states] = await Promise.all([
+      const [totals, unevidenced, superseded, states] = await Promise.all([
         this.countByFamily(),
         this.countUnevidencedByFamily(),
+        this.countSupersededByFamily(),
         this.countEvidenceByState(),
       ]);
 
@@ -95,6 +98,7 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
         ...FAMILIES,
         ...totals.keys(),
         ...unevidenced.keys(),
+        ...superseded.keys(),
       ]);
 
       for (const family of observed) {
@@ -102,6 +106,10 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
         this.unevidenced.set(
           { subject_type: family },
           unevidenced.get(family) ?? 0,
+        );
+        this.superseded.set(
+          { subject_type: family },
+          superseded.get(family) ?? 0,
         );
         for (const state of STATES) {
           this.byState.set(
@@ -128,6 +136,10 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
   private async countByFamily(): Promise<Map<string, number>> {
     const rows = await this.db.claim.groupBy({
       by: ['subjectType'],
+      // Current generation only (#1295). Counting superseded claims would
+      // make the corpus appear to grow with every regeneration, and
+      // `claims_unevidenced` would climb precisely as the corpus improved.
+      where: { validUntil: null },
       _count: { _all: true },
     });
     return new Map(rows.map((r) => [r.subjectType, r._count._all]));
@@ -142,7 +154,26 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
   private async countUnevidencedByFamily(): Promise<Map<string, number>> {
     const rows = await this.db.claim.groupBy({
       by: ['subjectType'],
-      where: { evidence: { none: { evidence: { state: 'verified' } } } },
+      where: {
+        validUntil: null,
+        evidence: { none: { evidence: { state: 'verified' } } },
+      },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((r) => [r.subjectType, r._count._all]));
+  }
+
+  /**
+   * Retained superseded generations, per family (#1295).
+   *
+   * Only genuine changes create one — an identical regeneration is a no-op —
+   * so this is a direct measure of how much the corpus has actually moved
+   * across refreshes, and of what retention is costing.
+   */
+  private async countSupersededByFamily(): Promise<Map<string, number>> {
+    const rows = await this.db.claim.groupBy({
+      by: ['subjectType'],
+      where: { validUntil: { not: null } },
       _count: { _all: true },
     });
     return new Map(rows.map((r) => [r.subjectType, r._count._all]));
@@ -161,6 +192,7 @@ export class ClaimEvidenceMetricsService implements OnModuleInit {
         FROM claims c
         JOIN claim_evidence ce ON ce.claim_id = c.id
         JOIN evidence e ON e.id = ce.evidence_id
+       WHERE c.valid_until IS NULL
        GROUP BY c.subject_type, e.state
     `;
     return new Map(

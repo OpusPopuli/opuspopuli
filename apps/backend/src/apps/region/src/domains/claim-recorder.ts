@@ -3,6 +3,80 @@ import { Prisma, type DbService } from '@opuspopuli/relationaldb-provider';
 import type { ClaimRecordInput, ClaimRecordOutcome } from './claim-normalisers';
 import { type VerifiedState, verifyEvidence } from './evidence-verifier';
 
+/** One claim reduced to what decides whether it is the same assertion. */
+type ClaimSignature = readonly [
+  text: string,
+  subjectField: string | null,
+  confidence: string | null,
+  state: string,
+  spanStart: number | null,
+  spanEnd: number | null,
+  quotedText: string | null,
+  citationHint: string | null,
+];
+
+/**
+ * A stable signature for a whole generation's claims.
+ *
+ * Sorted, because claim order is the model's and carries no meaning — a
+ * reordered but otherwise identical generation is not a new assertion about
+ * anything, and treating it as one would supersede the corpus on every run.
+ *
+ * The verdict `state` is part of the signature on purpose: the same claim text
+ * checked against rewritten source text is a genuinely different assertion
+ * about the evidence, and must be retained as one.
+ */
+function signature(claims: readonly ClaimSignature[]): string {
+  // Each tuple stringified ONCE, then the strings sorted. Sorting the tuples
+  // with a JSON-stringifying comparator re-serialised every element on every
+  // comparison, and its comparator never returned 0 for equals — harmless
+  // here because equal elements are interchangeable, but not worth keeping.
+  return JSON.stringify(claims.map((c) => JSON.stringify(c)).sort());
+}
+
+/** Signature of what is currently stored for a subject. */
+function signatureOf(
+  current: readonly {
+    text: string;
+    subjectField: string | null;
+    confidence: string | null;
+    evidence: readonly {
+      evidence: {
+        state: string;
+        spanStart: number | null;
+        spanEnd: number | null;
+        quotedText: string | null;
+        citationHint: string | null;
+      };
+    }[];
+  }[],
+): string {
+  // EVERY evidence row, not just the first. `claim_evidence` is many-to-many
+  // and a claim may come to carry several citations; reading only `[0]` would
+  // make a change to any of the others invisible, so a genuine regeneration
+  // would be mistaken for a no-op and that generation lost.
+  return signature(
+    current.flatMap((c) =>
+      (c.evidence.length > 0
+        ? c.evidence.map((link) => link.evidence)
+        : [null]
+      ).map(
+        (e) =>
+          [
+            c.text,
+            c.subjectField,
+            c.confidence,
+            e?.state ?? '',
+            e?.spanStart ?? null,
+            e?.spanEnd ?? null,
+            e?.quotedText ?? null,
+            e?.citationHint ?? null,
+          ] as ClaimSignature,
+      ),
+    ),
+  );
+}
+
 /**
  * Mirror a generator's claims into the relational evidence model (#1293).
  *
@@ -46,6 +120,19 @@ export async function recordClaims(
     ),
   }));
 
+  const incomingSignature = signature(
+    verdicts.map(({ claim, outcome }) => [
+      claim.text,
+      claim.subjectField,
+      claim.confidence,
+      outcome.state,
+      outcome.correctedSpan?.start ?? claim.citation.spanStart,
+      outcome.correctedSpan?.end ?? claim.citation.spanEnd,
+      claim.citation.quotedText,
+      claim.citation.citationHint,
+    ]),
+  );
+
   // Annotated rather than inferred: the inferred transaction-client type
   // names Prisma's runtime library through a nested `node_modules` path, which
   // TypeScript then cannot write into declaration output (TS2742/TS4053) —
@@ -64,31 +151,48 @@ export async function recordClaims(
       SELECT pg_advisory_xact_lock(hashtextextended(${`${subjectType}:${subjectId}`}, 0))
     `;
 
-    const existing = await tx.claim.findMany({
-      where: { subjectType, subjectId },
-      select: { id: true },
+    // What is current for this subject, with enough of each citation to tell
+    // whether the incoming generation actually says anything different.
+    const current = await tx.claim.findMany({
+      where: { subjectType, subjectId, validUntil: null },
+      select: {
+        id: true,
+        text: true,
+        subjectField: true,
+        confidence: true,
+        evidence: {
+          select: {
+            evidence: {
+              select: {
+                state: true,
+                spanStart: true,
+                spanEnd: true,
+                quotedText: true,
+                citationHint: true,
+              },
+            },
+          },
+        },
+      },
     });
-    const staleIds = existing.map((c) => c.id);
 
-    if (staleIds.length > 0) {
-      // Evidence is joined through `claim_evidence` and has no foreign key
-      // back to a claim, so cascading the claim delete clears the join rows
-      // and strands the evidence. Collect the ids before the join goes away.
-      const links = await tx.claimEvidence.findMany({
-        where: { claimId: { in: staleIds } },
-        select: { evidenceId: true },
+    // A regeneration that produced the same claims is not a new generation.
+    // Superseding on every call would pile up a dead generation each time the
+    // backfill is re-run and break its idempotency, while comparing content
+    // keeps the property that matters — a genuine change is retained, a
+    // no-change run costs nothing.
+    if (signatureOf(current) === incomingSignature) return;
+
+    if (current.length > 0) {
+      // Superseded, not deleted. Deleting would make run N impossible to
+      // compare with run N-1, which is the entire point of iterating on a
+      // model — and would erase what we asserted about a measure last month.
+      // Their evidence is retained with them: it is the record of what that
+      // generation actually cited.
+      await tx.claim.updateMany({
+        where: { id: { in: current.map((c) => c.id) } },
+        data: { validUntil: new Date() },
       });
-      await tx.claim.deleteMany({ where: { id: { in: staleIds } } });
-      const evidenceIds = links.map((l) => l.evidenceId);
-      if (evidenceIds.length > 0) {
-        // Only what nothing else still cites. `claim_evidence` is many-to-many,
-        // so an unconditional delete here would take evidence out from under
-        // another subject's claim the moment anything starts sharing rows —
-        // which dedup across claims (#1294 onward) is likely to do.
-        await tx.evidence.deleteMany({
-          where: { id: { in: evidenceIds }, claims: { none: {} } },
-        });
-      }
     }
 
     // Three statements regardless of claim count, rather than three per
