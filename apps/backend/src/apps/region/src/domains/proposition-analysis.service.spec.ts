@@ -8,7 +8,16 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
+import { recordClaims } from './claim-recorder';
 import { PropositionAnalysisService } from './proposition-analysis.service';
+
+jest.mock('./claim-recorder', () => ({
+  recordClaims: jest.fn().mockResolvedValue({ written: 0, byState: {} }),
+}));
+
+const recordClaimsMock = recordClaims as jest.MockedFunction<
+  typeof recordClaims
+>;
 
 /**
  * The full text used as the source for analysis in tests. Crafted so the
@@ -965,6 +974,58 @@ describe('PropositionAnalysisService', () => {
       expect(summary).toContain('0/2');
       expect(summary).toContain('25-0036A1 (no_json)');
       expect(summary).toContain('26-0003 (no_json)');
+    });
+  });
+
+  describe('PropositionAnalysisService — claim dual-write (#1293)', () => {
+    beforeEach(() => {
+      recordClaimsMock.mockClear();
+      recordClaimsMock.mockResolvedValue({ written: 0, byState: {} });
+    });
+
+    /** Reuses the suite's harness by name so the fixtures stay in one place. */
+    async function generate(): Promise<{
+      db: { proposition: { update: jest.Mock } };
+    }> {
+      const built = await buildService();
+      await built.service.generate('prop-1');
+      return built;
+    }
+
+    it('mirrors the surviving claims into the evidence graph', async () => {
+      await generate();
+
+      // The call itself, not just its availability — dual-writes that
+      // typechecked and wrote nothing shipped three times in this milestone.
+      expect(recordClaimsMock).toHaveBeenCalledTimes(1);
+      const input = recordClaimsMock.mock.calls[0][1];
+      expect(input.subjectType).toBe('proposition');
+      expect(input.subjectId).toBe('prop-1');
+      expect(input.claims.map((c) => c.text)).toContain('X applies');
+      // The inverted-offset claim the normalizer dropped must not reappear here.
+      expect(input.claims.map((c) => c.text)).not.toContain(
+        'should be dropped',
+      );
+    });
+
+    it('verifies against the same text version the row records (#1279)', async () => {
+      await generate();
+
+      const input = recordClaimsMock.mock.calls[0][1];
+      expect(input.sourceText).toBe(FULL_TEXT);
+      expect(input.sourceTextHash).toBe(FULL_TEXT_HASH);
+    });
+
+    it('keeps the analysis when the dual-write fails', async () => {
+      recordClaimsMock.mockRejectedValue(new Error('evidence table is gone'));
+      const built = await generate();
+
+      // The analysis is what citizens read. Losing it to a failure of a mirror
+      // nothing reads yet would be the wrong trade — #1294 backfills instead.
+      expect(built.db.proposition.update).toHaveBeenCalledTimes(1);
+      const data = built.db.proposition.update.mock.calls[0][0].data;
+      expect(data.analysisSummary).toBeDefined();
+      expect(data.analysisFailureReason).toBeNull();
     });
   });
 });

@@ -6,6 +6,7 @@ import {
   type Representative,
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
+import { normaliseBioClaims } from './claim-normalisers';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
@@ -179,7 +180,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
       );
       return;
     }
-    await this.db.representative.update({
+    const updated = await this.db.representative.update({
       where: { externalId: rep.externalId },
       data: {
         bio: rep.bio,
@@ -192,7 +193,30 @@ export class BioGeneratorService extends LlmGeneratorBase {
         bioLlmModel: provenance.llmModel,
         bioLlmDigest: provenance.llmModelDigest,
       },
+      select: { id: true },
     });
+
+    // Dual-write into the evidence graph (#1293), after the authoritative
+    // blob. No source text is passed because there is none: bio claims cite
+    // structured source *fields* (`committees[0].name`), not offsets into a
+    // document, so nothing here is locatable and nothing here will verify.
+    //
+    // That is the point rather than a shortfall — `origin: 'training'` lands
+    // `unsourced` and `origin: 'source'` lands `unverified`, which is exactly
+    // the distinction #1208 requires to survive: a model's recollection must
+    // never read as a citation that merely failed a check.
+    if (rep.bioClaims?.length) {
+      await this.mirrorClaims(
+        {
+          subjectType: 'representative',
+          subjectId: updated.id,
+          claims: normaliseBioClaims(rep.bioClaims),
+          sourceText: null,
+          sourceTextHash: null,
+        },
+        (message) => this.logger.warn(message),
+      );
+    }
   }
 
   /**

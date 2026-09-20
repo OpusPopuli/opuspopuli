@@ -6,7 +6,10 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import {
+  DbService,
+  type StructuralManifest,
+} from '@opuspopuli/relationaldb-provider';
 
 @Injectable()
 export class PrismaManifestRepository {
@@ -15,7 +18,7 @@ export class PrismaManifestRepository {
   async findFirst(args: {
     where: Record<string, unknown>;
     orderBy?: Record<string, string>;
-  }) {
+  }): Promise<StructuralManifest | null> {
     return this.db.structuralManifest.findFirst({
       where: args.where,
       orderBy: args.orderBy as never,
@@ -26,7 +29,7 @@ export class PrismaManifestRepository {
     where: Record<string, unknown>;
     orderBy?: Record<string, string> | Record<string, string>[];
     take?: number;
-  }) {
+  }): Promise<StructuralManifest[]> {
     return this.db.structuralManifest.findMany({
       where: args.where,
       orderBy: args.orderBy as never,
@@ -34,13 +37,18 @@ export class PrismaManifestRepository {
     });
   }
 
-  async create(args: { data: Record<string, unknown> }) {
+  async create(args: {
+    data: Record<string, unknown>;
+  }): Promise<StructuralManifest> {
     return this.db.structuralManifest.create({
       data: args.data as never,
     });
   }
 
-  async update(args: { where: { id: string }; data: Record<string, unknown> }) {
+  async update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+  }): Promise<StructuralManifest> {
     return this.db.structuralManifest.update({
       where: args.where,
       data: args.data as never,

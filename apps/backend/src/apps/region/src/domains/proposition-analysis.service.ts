@@ -10,6 +10,7 @@ import {
   findContactDetails,
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
+import { normaliseAnalysisClaims } from './claim-normalisers';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import {
   LlmGeneratorBase,
@@ -406,6 +407,26 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
           analysisFailedAt: null,
         },
       });
+
+      // Dual-write into the evidence graph (#1293), after the authoritative
+      // blob and outside its transaction — the analysis a citizen reads must
+      // not be lost because its mirror failed.
+      //
+      // Verified against the same hash the row just recorded, so a verdict is
+      // bound to the exact text version it checked (#1279).
+      await this.mirrorClaims(
+        {
+          subjectType: 'proposition',
+          subjectId: prop.id,
+          claims: normaliseAnalysisClaims(outcome.payload.analysisClaims),
+          sourceText: prop.fullText ?? null,
+          sourceTextHash: PropositionAnalysisService.sourceTextHash(
+            prop.fullText,
+          ),
+        },
+        (message) => this.logger.warn(message),
+      );
+
       return { ok: true };
     } catch (error) {
       return this.reportFailure(prop, {
