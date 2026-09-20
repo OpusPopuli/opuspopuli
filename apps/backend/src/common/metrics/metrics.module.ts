@@ -144,6 +144,43 @@ export class MetricsModule {
         help: 'Unix time of the last successful source-store measurement',
         labelNames: ['tier'],
       }),
+      /**
+       * The epic's target property as a number (#1296, #1208): how many
+       * published assertions lack primary evidence.
+       *
+       * Labelled by family and NOT aggregated, deliberately. Representative
+       * bio claims cite structured fields rather than text, so that family is
+       * 100% unevidenced by construction — an aggregate would let 751
+       * structurally-unverifiable claims swamp the 469 that genuinely failed a
+       * check, and the number would stop meaning anything.
+       */
+      makeGaugeProvider({
+        name: 'claims_total',
+        help: 'Claims recorded in the evidence graph, by subject family',
+        labelNames: ['subject_type'],
+      }),
+      makeGaugeProvider({
+        name: 'claims_unevidenced',
+        help: 'Claims with no verified evidence, by subject family',
+        labelNames: ['subject_type'],
+      }),
+      makeGaugeProvider({
+        name: 'claim_evidence_state',
+        help:
+          'Evidence rows by verdict, by subject family and state. Counts ' +
+          'EVIDENCE, not claims — it will not sum to claims_total, because a ' +
+          'claim can carry several citations or none',
+        labelNames: ['subject_type', 'state'],
+      }),
+      /**
+       * Freshness of the measurement itself. A gauge that silently stops
+       * updating reports its last value forever — the #1217 failure mode, and
+       * the reason the failure path below never writes a zero.
+       */
+      makeGaugeProvider({
+        name: 'claims_last_measured_timestamp_seconds',
+        help: 'Unix time of the last successful claim-evidence measurement',
+      }),
       makeGaugeProvider({
         name: 'circuit_breaker_state',
         help: 'Circuit breaker state (0=closed, 0.5=half-open, 1=open)',

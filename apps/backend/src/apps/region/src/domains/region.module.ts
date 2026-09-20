@@ -42,6 +42,8 @@ import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { RegionPluginService } from './region-plugin.service';
 import { HttpFetcherService } from './http-fetcher.service';
 import { ClaimBackfillService } from './claim-backfill.service';
+import { ClaimEvidenceMetricsService } from './claim-evidence-metrics.service';
+import { ClaimSourceResolverService } from './claim-source-resolver.service';
 import { RegionQueryService } from './region-query.service';
 import { RegionSearchService } from './region-search.service';
 import { RegionResolver } from './region.resolver';
@@ -253,6 +255,8 @@ const promptClientAsyncConfig = {
     CountyThresholdQueryService,
     RegionQueryService,
     ClaimBackfillService,
+    ClaimEvidenceMetricsService,
+    ClaimSourceResolverService,
     RegionSearchService,
     RegionDomainService,
     RegionResolver,
@@ -316,6 +320,8 @@ const promptClientAsyncConfig = {
     RegionSyncService,
     RegionQueryService,
     ClaimBackfillService,
+    ClaimEvidenceMetricsService,
+    ClaimSourceResolverService,
     PipelineJobService,
     StructuralAnalysisJobService,
     MinutesSummaryService,

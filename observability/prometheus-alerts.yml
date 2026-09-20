@@ -229,6 +229,39 @@ groups:
       # And the absent-series case, for the same reason BackupMissing exists:
       # a service that never started reports nothing at all, which no
       # threshold on the value itself can catch.
+      # The evidence gauge carries the epic's target property (#1296, #1208):
+      # how many published assertions lack primary evidence. It uses the same
+      # discipline as the source-store gauges above — a failed measurement
+      # leaves every value untouched rather than publishing a zero, because a
+      # zero here would read as "everything is evidenced", which is the most
+      # flattering possible lie. That discipline only works if someone is
+      # alerted when the measurement stops, which is what these two do.
+      - alert: ClaimEvidenceMetricsStale
+        expr: time() - claims_last_measured_timestamp_seconds > 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Claim-evidence metrics have stopped updating"
+          description: >-
+            No successful measurement in over an hour, against a 5-minute
+            collection interval. claims_unevidenced is now stale and must not
+            be read as the current state of the corpus — by design it holds
+            its last good value rather than dropping to zero.
+
+      - alert: ClaimEvidenceMetricsMissing
+        expr: absent(claims_last_measured_timestamp_seconds)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Claim-evidence metrics absent — nothing is measuring evidence coverage"
+          description: >-
+            No claims_last_measured_timestamp_seconds series is being scraped.
+            Either region-service is down or its metrics endpoint is not
+            reachable from Prometheus. No threshold on claims_unevidenced can
+            catch this, because an absent series has no value to threshold.
+
       - alert: SourceStoreMetricsMissing
         expr: absent(source_store_last_measured_timestamp_seconds)
         for: 30m
