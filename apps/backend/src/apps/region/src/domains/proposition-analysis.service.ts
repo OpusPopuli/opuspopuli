@@ -40,6 +40,8 @@ interface PropForAnalysis {
   title: string;
   fullText: string | null;
   analysisPromptHash: string | null;
+  /** The archived page `fullText` was extracted from (#1306). */
+  sourceVersionId: string | null;
   analysisSourceTextHash: string | null;
   fullTextHash: string | null;
   analysisGeneratedAt: Date | null;
@@ -160,6 +162,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         title: true,
         fullText: true,
         analysisPromptHash: true,
+        sourceVersionId: true,
         analysisSourceTextHash: true,
         fullTextHash: true,
         analysisGeneratedAt: true,
@@ -259,6 +262,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         title: true,
         fullText: true,
         analysisPromptHash: true,
+        sourceVersionId: true,
         analysisSourceTextHash: true,
         fullTextHash: true,
         analysisGeneratedAt: true,
@@ -423,6 +427,10 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
           sourceTextHash: PropositionAnalysisService.sourceTextHash(
             prop.fullText,
           ),
+          // The archived page `fullText` was extracted from (#1306), so each
+          // citation can be traced to stored bytes rather than to a column
+          // the next sync overwrites in place.
+          sourceVersionId: prop.sourceVersionId,
         },
         // `error`, not `warn`: the claims were not written. A systematic
         // failure here is otherwise invisible until something reads the

@@ -10,6 +10,7 @@ import {
   extractLegislativeDigest,
 } from '@opuspopuli/scraping-pipeline';
 import { rowProvenance } from './row-provenance';
+import { SourceVersionService } from './source-version.service';
 
 /**
  * Compiled lifecycle-stage matcher. Each entry maps a region-defined stage
@@ -84,6 +85,8 @@ export class PropositionsSyncService {
     private readonly cacheService?: RegionCacheService,
     @Optional()
     private readonly propositionEmbedding?: PropositionEmbeddingService,
+    @Optional()
+    private readonly sourceVersions?: SourceVersionService,
   ) {}
 
   /**
@@ -259,6 +262,21 @@ export class PropositionsSyncService {
           `write was rolled back — look for a PrismaClientValidationError ` +
           `above; one invalid record aborts the whole transaction.`,
       );
+    }
+
+    // Record what each archived page was extracted TO, now that the rows are
+    // written (#1306). Runs after the upsert, not before, because this must
+    // store the string that actually landed in `full_text` — a value captured
+    // at the fetch would be a different string the moment anything between
+    // the two transforms it, and the mismatch would surface much later as a
+    // citation reporting its source as changed.
+    //
+    // Skipped entirely when the batch rolled back. These upserts share one
+    // transaction, so `0 created, 0 updated` means NOTHING was written, and
+    // the derivation is write-once — recording it here would let a rolled-back
+    // run's extraction win over the one that eventually succeeds.
+    if (result.created + result.updated > 0) {
+      await this.recordDerivations(propositions);
     }
 
     if (stagePatterns.length > 0) {
@@ -459,6 +477,44 @@ export class PropositionsSyncService {
    * (#1164, closing the #731 caveat) — a county sync's stage patterns
    * must not rewrite statewide rows and vice versa.
    */
+  /**
+   * Store each proposition's `fullText` against the archived page it came
+   * from, so a claim citing it can be resolved from the bytes (#1306).
+   *
+   * Best-effort by design, exactly as archiving is: a sync must not fail
+   * because the derivation could not be recorded. The cost of losing one is
+   * that its claims report `no-derived-text`, which is honest.
+   */
+  private async recordDerivations(
+    propositions: readonly Proposition[],
+  ): Promise<void> {
+    if (!this.sourceVersions) return;
+
+    let recorded = 0;
+    for (const prop of propositions) {
+      if (!prop.sourceVersionId || !prop.fullText) continue;
+      try {
+        if (
+          await this.sourceVersions.attachDerivedText(
+            prop.sourceVersionId,
+            prop.fullText,
+          )
+        ) {
+          recorded += 1;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not record the derivation for ${prop.externalId}: ` +
+            `${(error as Error).message}`,
+        );
+      }
+    }
+
+    if (recorded > 0) {
+      this.logger.log(`Recorded ${recorded} source derivation(s)`);
+    }
+  }
+
   private async backfillStageIds(
     stagePatterns: StagePattern[],
     pluginName: string,

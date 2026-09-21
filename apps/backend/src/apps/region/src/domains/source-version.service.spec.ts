@@ -12,6 +12,7 @@ describe('SourceVersionService', () => {
     sourceVersion: {
       findUnique: jest.Mock;
       create: jest.Mock;
+      updateMany: jest.Mock;
     };
   };
 
@@ -29,7 +30,10 @@ describe('SourceVersionService', () => {
     db = {
       sourceVersion: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({}),
+        // Returns an id because callers need something to point a row at
+        // (#1306) — `record` selects it back out of the insert.
+        create: jest.fn().mockResolvedValue({ id: 'sv-new' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -44,7 +48,11 @@ describe('SourceVersionService', () => {
     it('stores an artifact that has not been seen before', async () => {
       const result = await service.record(input());
 
-      expect(result).toEqual({ contentHash: 'a'.repeat(64), stored: true });
+      expect(result).toEqual({
+        contentHash: 'a'.repeat(64),
+        stored: true,
+        sourceVersionId: 'sv-new',
+      });
       expect(db.sourceVersion.create).toHaveBeenCalledTimes(1);
     });
 
@@ -62,6 +70,7 @@ describe('SourceVersionService', () => {
       );
 
       expect(db.sourceVersion.create).toHaveBeenCalledWith({
+        select: { id: true },
         data: expect.objectContaining({
           contentHash: 'a'.repeat(64),
           byteSize: 22,
@@ -85,7 +94,14 @@ describe('SourceVersionService', () => {
 
       // The dedup that makes the store cost track change rather than
       // fetch frequency — an unchanged re-fetch must not write.
-      expect(result).toEqual({ contentHash: 'a'.repeat(64), stored: false });
+      // Carries the existing row's id even though it wrote nothing: "already
+      // archived" is the common case, not a reason to withhold the reference
+      // the caller needs (#1306).
+      expect(result).toEqual({
+        contentHash: 'a'.repeat(64),
+        stored: false,
+        sourceVersionId: 'existing',
+      });
       expect(db.sourceVersion.create).not.toHaveBeenCalled();
     });
 
@@ -156,6 +172,55 @@ describe('SourceVersionService', () => {
       const [[args]] = db.sourceVersion.findUnique.mock.calls;
       expect(args.select).toBeDefined();
       expect(args.select.content).toBeUndefined();
+    });
+  });
+
+  describe('attachDerivedText (#1306)', () => {
+    it('stores the extraction and its hash against the archived bytes', async () => {
+      await expect(
+        service.attachDerivedText('sv-1', 'Measure A text'),
+      ).resolves.toBe(true);
+
+      expect(db.sourceVersion.updateMany).toHaveBeenCalledWith({
+        // Conditional on the column still being null, so two concurrent syncs
+        // cannot both believe they won. A read-then-write would let the later
+        // one silently overwrite what existing evidence was checked against.
+        where: { id: 'sv-1', derivedText: null },
+        data: {
+          derivedText: 'Measure A text',
+          derivedTextHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        },
+      });
+    });
+
+    it('refuses a derivation larger than the archive cap', async () => {
+      // Measured in BYTES, not characters: the cap bounds what the table
+      // stores, and a multi-byte document is larger than its length.
+      const oversized = 'é'.repeat(MAX_ARCHIVED_BYTES / 2 + 1);
+
+      await expect(service.attachDerivedText('sv-1', oversized)).resolves.toBe(
+        false,
+      );
+      expect(db.sourceVersion.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('records nothing for an empty extraction', async () => {
+      await expect(service.attachDerivedText('sv-1', '')).resolves.toBe(false);
+      expect(db.sourceVersion.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps the stored derivation when a later one disagrees', async () => {
+      db.sourceVersion.updateMany.mockResolvedValue({ count: 0 });
+      db.sourceVersion.findUnique.mockResolvedValue({
+        derivedTextHash: 'b'.repeat(64),
+      });
+
+      // The first extraction is what existing evidence was measured against,
+      // and the archive cannot arbitrate between two claims about one set of
+      // bytes. It keeps the first and says so.
+      await expect(
+        service.attachDerivedText('sv-1', 'A different extraction'),
+      ).resolves.toBe(false);
     });
   });
 });

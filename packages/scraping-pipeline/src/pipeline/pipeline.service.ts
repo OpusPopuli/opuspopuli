@@ -928,7 +928,7 @@ export class ScrapingPipelineService {
       source,
       regionId,
       this.llm,
-      (url: string) => this.extraction.fetchPdfText(url),
+      async (url: string) => (await this.extraction.fetchPdfText(url)).text,
     );
   }
 }

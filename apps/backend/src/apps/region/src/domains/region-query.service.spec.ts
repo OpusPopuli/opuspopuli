@@ -105,6 +105,7 @@ describe('RegionQueryService — caching', () => {
         pipelineExecutionId: null,
         manifestId: null,
         manifestVersion: null,
+        sourceVersionId: null,
         deletedAt: null,
         createdAt: new Date('2024-01-01'),
         updatedAt: new Date('2024-01-01'),

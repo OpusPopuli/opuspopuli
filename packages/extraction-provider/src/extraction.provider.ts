@@ -42,6 +42,9 @@ import {
   RetryOptions,
   CachedFetchResult,
   FetchProvenance,
+  FetchedArtifact,
+  BytesFetchResult,
+  PdfFetchResult,
   ISourceArchive,
   SOURCE_ARCHIVE,
   ArchiveContext,
@@ -206,19 +209,21 @@ export class ExtractionProvider {
     contentType: string,
     provenance: FetchProvenance,
     context: ArchiveContext,
-  ): Promise<void> {
-    if (!this.sourceArchive) return;
+  ): Promise<string | undefined> {
+    if (!this.sourceArchive) return undefined;
 
     try {
-      await this.sourceArchive.archive({
+      const outcome = await this.sourceArchive.archive({
         ...provenance,
         ...context,
         content: bytes,
         sourceUrl: url,
         contentType,
       });
+      return outcome.sourceVersionId;
     } catch (error) {
       this.logger.warn(`Failed to archive ${url}: ${(error as Error).message}`);
+      return undefined;
     }
   }
 
@@ -310,15 +315,7 @@ export class ExtractionProvider {
   async fetchBytes(
     url: string,
     options: FetchOptions = {},
-  ): Promise<
-    {
-      content: Buffer;
-      statusCode: number;
-      contentType: string;
-      finalUrl?: string;
-      redirectedFrom?: string;
-    } & FetchProvenance
-  > {
+  ): Promise<BytesFetchResult> {
     url = normalizeUrl(url);
     await this.rateLimiter.acquire();
     this.logger.debug(`Fetching bytes from ${url}`);
@@ -334,15 +331,7 @@ export class ExtractionProvider {
   async fetchBytesWithRetry(
     url: string,
     options: RetryOptions = {},
-  ): Promise<
-    {
-      content: Buffer;
-      statusCode: number;
-      contentType: string;
-      finalUrl?: string;
-      redirectedFrom?: string;
-    } & FetchProvenance
-  > {
+  ): Promise<BytesFetchResult> {
     return this.retryStandard(url, options, () =>
       this.fetchBytes(url, options),
     );
@@ -356,9 +345,18 @@ export class ExtractionProvider {
    * essentially every real PDF — because fetchWithRetry's
    * `response.text()` UTF-8-decodes the body and cannot be reversed.
    */
-  async fetchPdfText(url: string, options: RetryOptions = {}): Promise<string> {
+  async fetchPdfText(
+    url: string,
+    options: RetryOptions = {},
+  ): Promise<PdfFetchResult> {
     const result = await this.fetchBytesWithRetry(url, options);
-    return this.extractPdfText(result.content);
+    const text = await this.extractPdfText(result.content);
+    return {
+      text,
+      ...(result.sourceVersionId && {
+        sourceVersionId: result.sourceVersionId,
+      }),
+    };
   }
 
   /**
@@ -440,15 +438,7 @@ export class ExtractionProvider {
     url: string,
     options: FetchOptions,
     decodeBody: (bytes: Buffer) => T,
-  ): Promise<
-    {
-      content: T;
-      statusCode: number;
-      contentType: string;
-      finalUrl?: string;
-      redirectedFrom?: string;
-    } & FetchProvenance
-  > {
+  ): Promise<FetchedArtifact<T>> {
     const fetched = await this.circuitBreaker.execute(async () => {
       const timeout = options.timeout ?? this.config.defaultTimeout;
       const response = await this.fetchFn(url, {
@@ -509,21 +499,21 @@ export class ExtractionProvider {
     // hammering a failing remote host; archiving talks to our own database,
     // and letting its latency or an outage count as the host failing would
     // trip the breaker and halt fetching altogether (#1276).
-    if (options.archive) {
-      await this.archiveFetch(
-        fetched.bytes,
-        url,
-        fetched.contentType,
-        fetched,
-        options.archive,
-      );
-    }
+    const sourceVersionId = options.archive
+      ? await this.archiveFetch(
+          fetched.bytes,
+          url,
+          fetched.contentType,
+          fetched,
+          options.archive,
+        )
+      : undefined;
 
     // `bytes` never leaves this method. Callers want decoded content, and the
     // raw buffer would otherwise ride along into the cache — JSON-serialised
     // into Redis on every fetch, for a value nothing downstream reads.
     const { bytes: _rawBytes, ...result } = fetched;
-    return result;
+    return { ...result, ...(sourceVersionId && { sourceVersionId }) };
   }
 
   /** Standard retry wrapper used by fetchWithRetry and fetchBytesWithRetry. */

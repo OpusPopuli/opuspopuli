@@ -95,7 +95,10 @@ describe('PrismaSourceArchive', () => {
         skippedReason: 'too-large',
       });
 
-      await expect(archive.archive(input)).resolves.toBeUndefined();
+      // Resolves, and carries NO id: the bytes were refused, so there is
+      // nothing for a row to point at. Returning the content hash here would
+      // hand the caller an identity for something nobody kept (#1306).
+      await expect(archive.archive(input)).resolves.toEqual({});
     });
   });
 });

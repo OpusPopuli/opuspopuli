@@ -271,6 +271,16 @@ const promptClientAsyncConfig = {
     PropositionAnalysisService,
     PropositionEmbeddingService,
     SnapshotRetentionService,
+    // Also declared inside ExtractionModule's scope above, where the archive
+    // port resolves it. Both are needed: providers in that inner scope are
+    // invisible out here, and the sync services fill each archived artifact's
+    // derived text at the upsert (#1306).
+    //
+    // Two instances, deliberately. The service holds no state, and
+    // `RelationalDbModule` is `@Global()`, so both resolve the SAME DbService
+    // and therefore the same Prisma connection pool — the cost is one object,
+    // not a second client.
+    SourceVersionService,
     SourceStoreMetricsService,
     MinutesSummaryService,
     PropositionFinanceLinkerService,

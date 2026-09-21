@@ -2,13 +2,24 @@ import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { resolveEvidenceSpan } from './evidence-span';
-import { decodeUtf8, hashContentBytes } from '@opuspopuli/extraction-provider';
+import { hashContentBytes } from '@opuspopuli/extraction-provider';
 
 /** Why a claim could not be traced back to stored bytes. */
 export type UnresolvedReason =
   | 'claim-not-found'
   | 'no-evidence'
   | 'no-archived-source'
+  /**
+   * The bytes are archived, but what was extracted from them was never
+   * recorded (#1306).
+   *
+   * Distinct from `source-changed` on purpose. The extraction is not
+   * reproducible at read time — HTML runs through an LLM-derived CSS plan,
+   * PDFs through pdf-parse — so a missing derivation means the passage cannot
+   * be re-derived, NOT that the source moved. Collapsing the two would
+   * accuse the source of changing whenever our own record was incomplete.
+   */
+  | 'no-derived-text'
   | 'source-changed'
   | 'span-unusable';
 
@@ -48,19 +59,24 @@ export type ClaimSourceResult = ResolvedClaimSource | UnresolvedClaimSource;
  * make it a second source of truth that could drift from the bytes; deriving
  * it means the archive is the only thing that has to be trusted.
  *
- * ## This is inert on real data today, and that is not hidden
+ * ## What the span indexes into is NOT the archived bytes
  *
- * `Evidence.sourceVersionId` is never populated. Measured 2026-09-20:
- * `source_versions` holds **0 rows** and `propositions.pipeline_execution_id`
- * is NULL on every row — #1276 built the store and #1280 built row provenance,
- * but no sync has run since either landed.
+ * `SourceVersion.content` holds the artifact as fetched — a PDF, or a page of
+ * HTML. `Evidence.spanStart`/`spanEnd` index into the text *extracted* from
+ * it, which for minutes is pdf-parse output truncated at 256 kB and for
+ * propositions is a selector extraction under an LLM-derived plan. Decoding
+ * the bytes and slicing them would therefore quote a different document.
  *
- * Carrying the id from the archive write through the pipeline onto the subject
- * row is a chain across four packages and is filed separately;
- * `ISourceArchive.archive()` returns `void` today, so the id is not even
- * available to propagate. **This is the consuming half**, built first so the
- * producer has a defined thing to satisfy. Until then every call returns
- * `no-archived-source`, which is the truth rather than an error.
+ * So the passage comes from `SourceVersion.derivedText` — the string recorded
+ * at the upsert that wrote the same characters to the subject row (#1306) —
+ * while `content` remains what proves the archive is the artifact it claims
+ * to be. Both are checked: the bytes against their content address, and the
+ * derivation against the hash the citation was measured with.
+ *
+ * Until a sync has run under #1306 there is nothing to resolve, and every
+ * call returns `no-archived-source`. That is the truth rather than an error,
+ * and there is a test asserting it so a green suite cannot imply a working
+ * chain.
  */
 @Injectable()
 export class ClaimSourceResolverService {
@@ -96,19 +112,14 @@ export class ClaimSourceResolverService {
     });
     if (!version) return { resolved: false, reason: 'no-archived-source' };
 
-    // Decoded with the same function the fetch path used before hashing
-    // (#1276). A second decoder would drift, and the check below would start
-    // failing for no visible reason.
+    // The archive is content-addressed; verify it is the artefact it claims to
+    // be before trusting anything that came out of it.
     // Prisma hands back a Buffer for a BYTEA column; `Buffer.from` on one
     // copies it, which is a wasted duplicate of an archived page that can run
     // to hundreds of kilobytes.
     const bytes = Buffer.isBuffer(version.content)
       ? version.content
       : Buffer.from(version.content);
-    const derived = decodeUtf8(bytes);
-
-    // The archive is content-addressed; verify it is the artefact it claims to
-    // be before trusting anything sliced out of it.
     if (hashContentBytes(bytes) !== version.contentHash) {
       this.logger.error(
         `SourceVersion ${version.id} does not match its own content hash`,
@@ -116,14 +127,36 @@ export class ClaimSourceResolverService {
       return { resolved: false, reason: 'source-changed' };
     }
 
-    // Hash what the bytes ACTUALLY decoded to, and compare that against what
-    // the citation was checked against. Passing the stored hash as both sides
-    // would make the two always agree and the staleness check inert — the
-    // exact mistake #1293 made in the dual-write path, caught there by a test
-    // and here by another.
+    // The extracted text, not the decoded bytes. Slicing `decodeUtf8(bytes)`
+    // would index a PDF's binary or a page's markup with offsets measured
+    // against the text pulled out of it — and the hash comparison below would
+    // then fail on every claim, reporting a source change that never happened.
+    if (version.derivedText === null) {
+      return { resolved: false, reason: 'no-derived-text' };
+    }
+    const derived = version.derivedText;
+
+    // Hash the stored derivation and compare that against what the citation
+    // was checked against. Passing the stored hash as both sides would make
+    // the two always agree and the staleness check inert — the exact mistake
+    // #1293 made in the dual-write path, caught there by a test and here by
+    // another.
     const derivedHash = createHash('sha256')
       .update(derived, 'utf8')
       .digest('hex');
+
+    if (
+      version.derivedTextHash !== null &&
+      version.derivedTextHash !== derivedHash
+    ) {
+      // The column and its own hash disagree, which means the row was altered
+      // outside the write-once path. Trusting either half would be a guess.
+      this.logger.error(
+        `SourceVersion ${version.id} derived text does not match its ` +
+          `recorded hash`,
+      );
+      return { resolved: false, reason: 'source-changed' };
+    }
 
     const span = resolveEvidenceSpan(derived, derivedHash, {
       sourceTextHash: evidence.sourceTextHash,

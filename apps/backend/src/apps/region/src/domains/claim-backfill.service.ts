@@ -170,6 +170,7 @@ export class ClaimBackfillService {
             fullTextHash: true,
             analysisClaims: true,
             analysisSourceTextHash: true,
+            sourceVersionId: true,
           },
           orderBy: { id: 'asc' },
           take,
@@ -183,6 +184,10 @@ export class ClaimBackfillService {
         sourceText: row.fullText,
         sourceTextHash: row.fullTextHash,
         claimSourceTextHash: row.analysisSourceTextHash,
+        // Links claims written before #1306 to the archived page, where the
+        // row has since been re-synced from one. Null stays null — nothing
+        // here reconstructs which bytes an older analysis actually read.
+        sourceVersionId: row.sourceVersionId,
       }),
     );
   }
@@ -204,7 +209,12 @@ export class ClaimBackfillService {
             summaryClaims: { not: Prisma.DbNull },
             ...(afterId ? { id: { gt: afterId } } : {}),
           },
-          select: { id: true, rawText: true, summaryClaims: true },
+          select: {
+            id: true,
+            rawText: true,
+            summaryClaims: true,
+            sourceVersionId: true,
+          },
           orderBy: { id: 'asc' },
           take,
         }),
@@ -216,6 +226,7 @@ export class ClaimBackfillService {
         ),
         sourceText: row.rawText,
         sourceTextHash: row.rawText ? sha256(row.rawText) : null,
+        sourceVersionId: row.sourceVersionId,
       }),
     );
   }

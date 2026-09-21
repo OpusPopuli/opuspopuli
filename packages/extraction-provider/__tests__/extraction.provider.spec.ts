@@ -604,7 +604,9 @@ describe("ExtractionProvider", () => {
         }),
       );
 
-      const text = await provider.fetchPdfText("https://example.com/test.pdf");
+      const { text } = await provider.fetchPdfText(
+        "https://example.com/test.pdf",
+      );
 
       expect(text).toBe("ok");
       expect(bufferGivenToParser).toBeInstanceOf(Buffer);

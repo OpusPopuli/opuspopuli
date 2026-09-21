@@ -85,6 +85,12 @@ export class SourceStoreMetricsService implements OnModuleInit {
    * compression was dropped from this issue's scope rather than added.
    */
   private async measureCited(): Promise<void> {
+    // Counts `derived_text` alongside `content` (#1306). The store holds two
+    // representations of every cited artifact now — the bytes as fetched and
+    // the text extracted from them — and a size metric that measured only the
+    // first would understate what this table actually costs, which is the one
+    // thing it exists to report.
+
     try {
       const [row] = await this.db.$queryRaw<
         Array<{
@@ -93,9 +99,13 @@ export class SourceStoreMetricsService implements OnModuleInit {
           objects: bigint;
         }>
       >`
-        SELECT COALESCE(SUM(octet_length(content)), 0)::bigint   AS logical_bytes,
-               COALESCE(SUM(pg_column_size(content)), 0)::bigint AS stored_bytes,
-               COUNT(*)::bigint                                  AS objects
+        SELECT COALESCE(SUM(
+                 octet_length(content) + COALESCE(octet_length(derived_text), 0)
+               ), 0)::bigint AS logical_bytes,
+               COALESCE(SUM(
+                 pg_column_size(content) + COALESCE(pg_column_size(derived_text), 0)
+               ), 0)::bigint AS stored_bytes,
+               COUNT(*)::bigint AS objects
         FROM source_versions
       `;
 

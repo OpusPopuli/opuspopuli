@@ -7,11 +7,13 @@ describe('rowProvenance', () => {
         pipelineExecutionId: 'exec-1',
         manifestId: 'manifest-1',
         manifestVersion: 11,
+        sourceVersionId: 'sv-1',
       }),
     ).toEqual({
       pipelineExecutionId: 'exec-1',
       manifestId: 'manifest-1',
       manifestVersion: 11,
+      sourceVersionId: 'sv-1',
     });
   });
 
@@ -26,11 +28,13 @@ describe('rowProvenance', () => {
       pipelineExecutionId: null,
       manifestId: null,
       manifestVersion: null,
+      sourceVersionId: null,
     });
     expect(Object.keys(columns).sort()).toEqual([
       'manifestId',
       'manifestVersion',
       'pipelineExecutionId',
+      'sourceVersionId',
     ]);
   });
 
@@ -39,6 +43,7 @@ describe('rowProvenance', () => {
       pipelineExecutionId: 'exec-1',
       manifestId: null,
       manifestVersion: null,
+      sourceVersionId: null,
     });
   });
 
