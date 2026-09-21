@@ -82,7 +82,7 @@ export class AnalysisService {
 
   constructor(
     private readonly db: DbService,
-    @Inject('LLM_PROVIDER') private readonly llm: ILLMProvider,
+    @Inject('LLM_ANALYSIS_PROVIDER') private readonly llm: ILLMProvider,
     private readonly promptClient: PromptClientService,
     private readonly metricsService: MetricsService,
     private readonly linkingService: LinkingService,

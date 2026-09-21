@@ -59,10 +59,16 @@ export class CivicsSyncService extends LlmGeneratorBase {
     db: DbService,
     @Optional() promptClient?: PromptClientService,
     // ILLMProvider is an interface (erased at runtime), so there is no
-    // implicit injection token — NestJS resolves it by the explicit
-    // 'LLM_PROVIDER' token that LLMModule provides. Without @Inject here,
-    // @Optional() silently yields `undefined` and civics sync no-ops. See #869.
-    @Optional() @Inject('LLM_PROVIDER') llm?: ILLMProvider,
+    // implicit injection token — NestJS resolves it by the explicit token
+    // LLMModule provides. Without @Inject here, @Optional() silently yields
+    // `undefined` and civics sync no-ops. See #869.
+    //
+    // The INGESTION lane (roadmap §6.4), unlike every other generator on this
+    // base: civics extraction pulls structured facts out of scraped pages —
+    // chambers, measure types, lifecycle, glossary — which is an extraction
+    // job rather than a synthesis one. It is the other half of the workload
+    // measured as job-1, alongside structural analysis.
+    @Optional() @Inject('LLM_INGESTION_PROVIDER') llm?: ILLMProvider,
   ) {
     // This class used to only *mirror* LlmGeneratorBase's constructor. It now
     // inherits it (#1281), so civics extraction goes through the same

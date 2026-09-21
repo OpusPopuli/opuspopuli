@@ -125,7 +125,7 @@ async function makeService(deps: ReturnType<typeof makeMocks>) {
       { provide: PromptClientService, useValue: deps.promptClient },
       { provide: ExplanationValidatorService, useValue: deps.validator },
       { provide: CostBudgetService, useValue: deps.budget },
-      { provide: 'LLM_PROVIDER', useValue: deps.llm },
+      { provide: 'LLM_ANALYSIS_PROVIDER', useValue: deps.llm },
     ],
   }).compile();
   return module.get(LlmRerankService);

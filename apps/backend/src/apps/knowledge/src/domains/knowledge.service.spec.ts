@@ -50,7 +50,7 @@ describe('KnowledgeService', () => {
           useValue: mockVectorDB,
         },
         {
-          provide: 'LLM_PROVIDER',
+          provide: 'LLM_ANALYSIS_PROVIDER',
           useValue: mockLLM,
         },
         {
@@ -69,7 +69,7 @@ describe('KnowledgeService', () => {
     knowledgeService = module.get<KnowledgeService>(KnowledgeService);
     embeddingsService = module.get<EmbeddingsService>(EmbeddingsService);
     vectorDB = module.get<IVectorDBProvider>('VECTOR_DB_PROVIDER');
-    llm = module.get<ILLMProvider>('LLM_PROVIDER');
+    llm = module.get<ILLMProvider>('LLM_ANALYSIS_PROVIDER');
 
     // The vector store records the model that produced each vector and ranks
     // only within its space (#1289), so every path through this service now

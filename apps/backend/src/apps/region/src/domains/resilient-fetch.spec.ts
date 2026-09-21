@@ -48,7 +48,13 @@ describe('HostThrottle', () => {
     await t.acquire('https://fast.example/b');
     const elapsed = Date.now() - start;
     expect(elapsed).toBeGreaterThanOrEqual(90);
-    expect(elapsed).toBeLessThan(200);
+    // Upper bound is only here to distinguish the configured 100ms gap from
+    // the 1000ms default — i.e. that setRequestsPerSecond took effect. It was
+    // 200ms, which also asserted the machine was not busy, and that is not a
+    // property of the throttle: a 100ms timer overshoots easily on a host
+    // running Docker with a model resident. Widened to keep the
+    // discrimination (100 vs 1000) without testing the scheduler.
+    expect(elapsed).toBeLessThan(500);
   });
 
   it('silently no-ops on malformed URLs (does not throw)', async () => {

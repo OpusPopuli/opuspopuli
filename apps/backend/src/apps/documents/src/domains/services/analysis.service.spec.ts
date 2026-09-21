@@ -69,7 +69,7 @@ describe('AnalysisService', () => {
       providers: [
         AnalysisService,
         { provide: DbService, useValue: db },
-        { provide: 'LLM_PROVIDER', useValue: llm },
+        { provide: 'LLM_ANALYSIS_PROVIDER', useValue: llm },
         { provide: PromptClientService, useValue: promptClient },
         { provide: MetricsService, useValue: metricsService },
         { provide: LinkingService, useValue: linkingService },

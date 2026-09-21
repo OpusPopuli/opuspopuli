@@ -58,7 +58,7 @@ describe('CommitteeSummaryGeneratorService', () => {
       providers.push(
         { provide: ConfigService, useValue: mockConfig },
         { provide: PromptClientService, useValue: mockPromptClient },
-        { provide: 'LLM_PROVIDER', useValue: mockLlm },
+        { provide: 'LLM_ANALYSIS_PROVIDER', useValue: mockLlm },
       );
     }
     if (withDb) {

@@ -407,7 +407,7 @@ export class RegionSyncService implements OnModuleDestroy {
     private readonly legislativeActionLinker?: LegislativeActionLinkerService,
     @Optional() private readonly promptClient?: PromptClientService,
     @Optional()
-    @Inject('LLM_PROVIDER')
+    @Inject('LLM_ANALYSIS_PROVIDER')
     private readonly llm?: ILLMProvider,
     // Bounded-context services (#828). Optional so existing test modules
     // that build `RegionSyncService` standalone don't have to register
