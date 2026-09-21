@@ -2,6 +2,7 @@ import { Inject, Injectable, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import type { ILLMProvider } from '@opuspopuli/common';
+import { getGlobalHttpDispatcher } from '@opuspopuli/common';
 import { llmConfig } from '@opuspopuli/config-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
 
@@ -242,5 +243,47 @@ describe('llmConfig URL resolution', () => {
 
     expect(cfg.ollama.url).toBe('http://studio:11434');
     expect(cfg.ingestion.url).toBe('http://mini:11434');
+  });
+});
+
+/**
+ * The transport timeout that #1273 was about.
+ *
+ * `OllamaLLMProvider.generate()` posts with `stream: false`, so Ollama sends
+ * no headers until the generation finishes. undici's default 300s
+ * `headersTimeout` is governed by neither `requestTimeoutMs` nor an
+ * `AbortSignal`, so anything slower dies as `UND_ERR_HEADERS_TIMEOUT` —
+ * naming neither the timeout nor the model, which reads as "Ollama is down".
+ *
+ * Three services set it in their own `main.ts` and three did not. Asserting
+ * it here, where the provider is BUILT, is what makes it true for all of them
+ * and for the next service nobody has written yet.
+ */
+describe('LLM transport timeout (#1273)', () => {
+  it('raises undici headersTimeout when an LLM provider is constructed', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({ load: [llmConfig], ignoreEnvFile: true }),
+        ConsumerModule,
+      ],
+    }).compile();
+    moduleRef.get(LaneConsumer);
+
+    // Read off the dispatcher rather than trusting the call: the shared pool
+    // is memoised, so a call that LOOKS right can be discarded entirely.
+    const dispatcher = getGlobalHttpDispatcher() as unknown as {
+      [k: symbol]: unknown;
+    };
+    const options = Object.getOwnPropertySymbols(dispatcher)
+      .map((sym) => dispatcher[sym])
+      .find(
+        (v): v is { headersTimeout?: number } =>
+          typeof v === 'object' && v !== null && 'headersTimeout' in v,
+      );
+
+    expect(options?.headersTimeout).toBeGreaterThanOrEqual(1_350_000);
+    // The value that matters: comfortably past undici's 300s default, which
+    // is what killed generations at exactly 302s.
+    expect(options?.headersTimeout).toBeGreaterThan(300_000);
   });
 });
