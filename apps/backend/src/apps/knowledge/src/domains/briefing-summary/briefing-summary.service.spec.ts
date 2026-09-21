@@ -59,7 +59,7 @@ describe('BriefingSummaryService', () => {
         { provide: DbService, useValue: db },
         { provide: PromptClientService, useValue: promptClient },
         { provide: BriefingSummaryValidatorService, useValue: validator },
-        { provide: 'LLM_PROVIDER', useValue: llm },
+        { provide: 'LLM_ANALYSIS_PROVIDER', useValue: llm },
       ],
     }).compile();
 

@@ -51,7 +51,7 @@ export class KnowledgeService implements OnModuleInit {
   constructor(
     @Inject() private embeddingsService: EmbeddingsService,
     @Inject('VECTOR_DB_PROVIDER') private vectorDB: IVectorDBProvider,
-    @Inject('LLM_PROVIDER') private llm: ILLMProvider,
+    @Inject('LLM_ANALYSIS_PROVIDER') private llm: ILLMProvider,
     private readonly promptClient: PromptClientService,
   ) {
     this.logger.log(

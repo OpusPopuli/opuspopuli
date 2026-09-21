@@ -83,7 +83,7 @@ export abstract class LlmGeneratorBase {
     @Optional() protected readonly config?: ConfigService,
     @Optional() protected readonly promptClient?: PromptClientService,
     @Optional()
-    @Inject('LLM_PROVIDER')
+    @Inject('LLM_ANALYSIS_PROVIDER')
     protected readonly llm?: ILLMProvider,
     @Optional() protected readonly db?: DbService,
   ) {}

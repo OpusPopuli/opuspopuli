@@ -47,7 +47,7 @@ async function build(llm?: ILLMProvider): Promise<ProbeGenerator> {
   const mod = await Test.createTestingModule({
     providers: [
       ProbeGenerator,
-      ...(llm ? [{ provide: 'LLM_PROVIDER', useValue: llm }] : []),
+      ...(llm ? [{ provide: 'LLM_ANALYSIS_PROVIDER', useValue: llm }] : []),
     ],
   }).compile();
   return mod.get(ProbeGenerator);

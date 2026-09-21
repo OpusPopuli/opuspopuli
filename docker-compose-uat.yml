@@ -272,6 +272,11 @@ services:
       # LLM for RAG queries during manual testing
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
+      # runs on LLM_MODEL, exactly as before. Set to split the lanes without
+      # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
+      LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       # AI Prompt Service for proprietary prompt templates
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -315,6 +320,11 @@ services:
       # LLM for AI-powered structural analysis during data scraping
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
+      # runs on LLM_MODEL, exactly as before. Set to split the lanes without
+      # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
+      LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       # Bump default Ollama request timeout (60s) — proposition-analysis,
       # bio, and structural-analysis prompts are 7-18KB and routinely
       # take 60-150s on qwen3.5:9b on a Mac, especially after a sleep
@@ -391,6 +401,11 @@ services:
       REGION_WORKER_PORT: 8080
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
+      # runs on LLM_MODEL, exactly as before. Set to split the lanes without
+      # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
+      LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -447,6 +462,11 @@ services:
       BULLMQ_QUEUE_PIPELINE_STRUCTURAL_ANALYSIS_LOCK_DURATION_MS: "600000"
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
+      # runs on LLM_MODEL, exactly as before. Set to split the lanes without
+      # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
+      LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -490,6 +510,11 @@ services:
       LLM_RERANK_WORKER_PORT: 8080
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
+      # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
+      # runs on LLM_MODEL, exactly as before. Set to split the lanes without
+      # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
+      LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1

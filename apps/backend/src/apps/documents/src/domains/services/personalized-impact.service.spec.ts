@@ -77,7 +77,7 @@ describe('PersonalizedImpactService', () => {
       providers: [
         PersonalizedImpactService,
         { provide: DbService, useValue: db },
-        { provide: 'LLM_PROVIDER', useValue: llm },
+        { provide: 'LLM_ANALYSIS_PROVIDER', useValue: llm },
         { provide: PromptClientService, useValue: promptClient },
         { provide: MetricsService, useValue: metrics },
       ],

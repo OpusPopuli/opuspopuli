@@ -72,7 +72,10 @@ export class ScrapingPipelineService {
   private readonly logger = new Logger(ScrapingPipelineService.name);
 
   constructor(
-    @Inject("LLM_PROVIDER") private readonly llm: ILLMProvider,
+    // Ingestion lane (roadmap §6.4). Passed on to detail crawling and PDF
+    // extraction, both of which are throughput-bound extraction rather than
+    // synthesis.
+    @Inject("LLM_INGESTION_PROVIDER") private readonly llm: ILLMProvider,
     private readonly extraction: ExtractionProvider,
     private readonly analyzer: StructuralAnalyzerService,
     private readonly manifestStore: ManifestStoreService,

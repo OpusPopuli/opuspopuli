@@ -38,7 +38,10 @@ export class StructuralAnalyzerService {
   private readonly logger = new Logger(StructuralAnalyzerService.name);
 
   constructor(
-    @Inject("LLM_PROVIDER") private readonly llm: ILLMProvider,
+    // Ingestion lane (roadmap §6.4): deriving extraction rules from HTML is
+    // a structured-JSON job, not a verbatim-fidelity one, and it runs over far
+    // more documents than analysis does.
+    @Inject("LLM_INGESTION_PROVIDER") private readonly llm: ILLMProvider,
     private readonly promptClient: PromptClientService,
   ) {}
 
