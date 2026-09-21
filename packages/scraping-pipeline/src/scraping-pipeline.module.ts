@@ -2,7 +2,7 @@
  * Scraping Pipeline Module
  *
  * NestJS module that provides the AI-powered scraping pipeline.
- * Depends on LLM_PROVIDER, ExtractionProvider, and a ManifestRepository.
+ * Depends on LLM_ANALYSIS_PROVIDER, ExtractionProvider, and a ManifestRepository.
  */
 
 import { Module, type DynamicModule } from "@nestjs/common";
@@ -50,7 +50,7 @@ export interface ManifestMissingArgs {
 export const MANIFEST_MISSING_CALLBACK = "MANIFEST_MISSING_CALLBACK";
 
 export interface ScrapingPipelineModuleOptions {
-  /** Modules that provide required tokens (LLM_PROVIDER, ExtractionProvider, etc.) */
+  /** Modules that provide required tokens (LLM_ANALYSIS_PROVIDER, ExtractionProvider, etc.) */
   imports?: any[];
   /**
    * Additional providers. To enable async manifest analysis, include a
@@ -67,7 +67,7 @@ export class ScrapingPipelineModule {
    * Register the scraping pipeline module.
    *
    * Required dependencies (pass via options.imports / options.providers):
-   * - LLM_PROVIDER: ILLMProvider implementation (from LLMModule)
+   * - LLM_ANALYSIS_PROVIDER: ILLMProvider implementation (from LLMModule)
    * - ExtractionProvider: for fetching HTML (from ExtractionModule)
    * - MANIFEST_REPOSITORY: ManifestRepository implementation (Prisma adapter)
    *

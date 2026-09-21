@@ -145,7 +145,7 @@ export class LlmRerankService {
     private readonly promptClient: PromptClientService,
     private readonly validator: ExplanationValidatorService,
     private readonly budget: CostBudgetService,
-    @Inject('LLM_PROVIDER') private readonly llm: ILLMProvider,
+    @Inject('LLM_ANALYSIS_PROVIDER') private readonly llm: ILLMProvider,
   ) {}
 
   /**

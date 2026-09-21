@@ -86,7 +86,7 @@ export class BriefingSummaryService {
     private readonly db: DbService,
     private readonly promptClient: PromptClientService,
     private readonly validator: BriefingSummaryValidatorService,
-    @Inject('LLM_PROVIDER') private readonly llm: ILLMProvider,
+    @Inject('LLM_ANALYSIS_PROVIDER') private readonly llm: ILLMProvider,
   ) {}
 
   /**
