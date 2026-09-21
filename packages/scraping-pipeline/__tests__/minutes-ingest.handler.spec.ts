@@ -33,13 +33,21 @@ class FakeExtraction {
     };
   }
 
-  async fetchPdfText(url: string): Promise<string> {
+  async fetchPdfText(
+    url: string,
+  ): Promise<{ text: string; sourceVersionId?: string }> {
     this.fetchPdfCalls.push(url);
     const content = this.pdfTextByUrl.get(url);
     if (content === undefined) {
       throw new Error(`Unexpected fetchPdfText for ${url}`);
     }
-    return content;
+    // The archived artifact rides back with the text (#1306) — the handler
+    // puts it on the Minutes so the truncated `rawText` still points at a
+    // complete copy.
+    return {
+      text: content,
+      sourceVersionId: `sv-${this.fetchPdfCalls.length}`,
+    };
   }
 }
 

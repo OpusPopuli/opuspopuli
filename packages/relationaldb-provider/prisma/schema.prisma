@@ -1285,9 +1285,15 @@ model Proposition {
   /// The manifest version used. Region config is baked into the image, so
   /// this points at a deployed artifact rather than a mutable local value.
   manifestVersion     Int?    @map("manifest_version")
+  /// The archived fetch this row's source text came from (#1306). Claims
+  /// generated from that text carry the same reference on their evidence, so
+  /// a citation can be traced to the bytes rather than to whatever the
+  /// mutable column holds now.
+  sourceVersionId     String? @map("source_version_id")
 
   pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
   producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  sourceVersion     SourceVersion?      @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
 
   @@unique([regionPluginName, externalId])
   @@index([status])
@@ -1295,6 +1301,7 @@ model Proposition {
   @@index([lifecycleStageId])
   @@index([regionPluginName])
   @@index([pipelineExecutionId])
+  @@index([sourceVersionId])
   @@map("propositions")
 }
 
@@ -1380,9 +1387,15 @@ model Minutes {
   /// The manifest version used. Region config is baked into the image, so
   /// this points at a deployed artifact rather than a mutable local value.
   manifestVersion     Int?    @map("manifest_version")
+  /// The archived fetch this row's source text came from (#1306). Claims
+  /// generated from that text carry the same reference on their evidence, so
+  /// a citation can be traced to the bytes rather than to whatever the
+  /// mutable column holds now.
+  sourceVersionId     String? @map("source_version_id")
 
   pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
   producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  sourceVersion     SourceVersion?      @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
 
   @@index([date(sort: Desc)])
   @@index([body, date(sort: Desc)])
@@ -1390,6 +1403,7 @@ model Minutes {
   @@index([meetingId])
   @@index([isActive])
   @@index([pipelineExecutionId])
+  @@index([sourceVersionId])
   @@map("minutes")
 }
 
@@ -2367,10 +2381,31 @@ model SourceVersion {
   manifestId   String?  @map("manifest_id")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  execution PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
-  manifest  StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
-  evidence  Evidence[]
+  /// The text extracted from `content`, exactly as it was written to the
+  /// subject row's `full_text` / `raw_text` (#1306).
+  ///
+  /// Stored rather than re-derived because the derivation is not reproducible:
+  /// HTML detail pages are extracted under an LLM-derived CSS plan, and PDFs
+  /// through pdf-parse with an OCR fallback. `Evidence.spanStart`/`spanEnd`
+  /// index into THIS string, not into `content` — decoding the raw bytes gives
+  /// the PDF or the page markup, whose hash can never equal the citation's
+  /// `sourceTextHash`.
+  ///
+  /// Filled once, at the upsert that writes the same string to the subject
+  /// row. Null on rows archived before #1306, and on any fetch whose text was
+  /// never persisted anywhere.
+  derivedText     String? @map("derived_text") @db.Text
+  /// SHA-256 of `derivedText`, hex. What `Evidence.sourceTextHash` is
+  /// compared against.
+  derivedTextHash String? @map("derived_text_hash") @db.VarChar(64)
 
+  execution    PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  manifest     StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  evidence     Evidence[]
+  propositions Proposition[]
+  minutes      Minutes[]
+
+  @@index([derivedTextHash])
   @@index([sourceUrl, fetchedAt])
   @@index([executionId])
   @@index([manifestId])

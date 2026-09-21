@@ -187,6 +187,14 @@ export interface RowProvenance {
   manifestId?: string;
   /** The manifest version used. */
   manifestVersion?: number;
+  /**
+   * The archived fetch this row's source text was extracted from (#1306).
+   *
+   * Unlike the fields above this is stamped **per item**, at the detail fetch
+   * that produced the text — a run-level value would point most rows at some
+   * other page's bytes.
+   */
+  sourceVersionId?: string;
 }
 
 export interface Proposition extends RowProvenance {

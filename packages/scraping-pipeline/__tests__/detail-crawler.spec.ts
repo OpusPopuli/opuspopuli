@@ -280,9 +280,9 @@ describe("DetailCrawlerService", () => {
       // `fetchWithRetry → Buffer.from(content, "binary")` path
       // silently mangled real PDFs (UTF-8 decode is irreversible
       // for non-ASCII bytes). See ExtractionProvider.fetchPdfText.
-      (mockExtraction as any).fetchPdfText = jest
-        .fn()
-        .mockResolvedValue("Full text of the water policy reform bill.");
+      (mockExtraction as any).fetchPdfText = jest.fn().mockResolvedValue({
+        text: "Full text of the water policy reform bill.",
+      });
 
       const rawResult = createRawResult([
         {
@@ -320,7 +320,7 @@ describe("DetailCrawlerService", () => {
       } as any);
       (mockExtraction as any).fetchPdfText = jest
         .fn()
-        .mockResolvedValue("Extracted PDF text content.");
+        .mockResolvedValue({ text: "Extracted PDF text content." });
 
       const rawResult = createRawResult([
         {
@@ -595,7 +595,7 @@ describe("DetailCrawlerService", () => {
     it("asks for a detail PDF to be archived", async () => {
       (mockExtraction as any).fetchPdfText = jest
         .fn()
-        .mockResolvedValue("Extracted PDF text.");
+        .mockResolvedValue({ text: "Extracted PDF text." });
       const rawResult = createRawResult([
         { externalId: "prop-1", detailUrl: "https://example.com/prop/1.pdf" },
       ]);

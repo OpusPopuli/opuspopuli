@@ -3,6 +3,7 @@ import { DbService } from '@opuspopuli/relationaldb-provider';
 import type {
   ArchiveIngestOptions,
   Meeting,
+  Minutes,
   MinutesWithActions,
 } from '@opuspopuli/common';
 import {
@@ -14,6 +15,7 @@ import { LegislativeActionLinkerService } from './legislative-action-linker.serv
 import { meetingSyncTracker, minutesSyncTracker } from './sync-phase-logger';
 import type { UpsertByExternalId } from './propositions-sync.service';
 import { rowProvenance } from './row-provenance';
+import { SourceVersionService } from './source-version.service';
 
 /**
  * Minimal contract for the provider this service pulls meetings + minutes
@@ -53,6 +55,8 @@ export class MeetingsSyncService {
     private readonly legislativeActionLinker?: LegislativeActionLinkerService,
     @Optional()
     private readonly queueService?: QueueService,
+    @Optional()
+    private readonly sourceVersions?: SourceVersionService,
   ) {}
 
   async sync(
@@ -236,7 +240,15 @@ export class MeetingsSyncService {
     for (const bundle of bundles) {
       // Provenance rides on the bundle, not the inner minutes: items are
       // stamped uniformly at the top level as they leave the pipeline (#1280).
+      //
+      // `sourceVersionId` is the exception and rides on the minutes, because
+      // it identifies the individual PDF this document was parsed from rather
+      // than the run that fetched them all (#1306).
       const { minutes } = bundle;
+      const provenance = rowProvenance({
+        ...bundle,
+        sourceVersionId: minutes.sourceVersionId,
+      });
       const wasExisting = existingExternalIds.has(minutes.externalId);
       const row = await this.db.minutes.upsert({
         where: { externalId: minutes.externalId },
@@ -249,7 +261,7 @@ export class MeetingsSyncService {
           sourceUrl: minutes.sourceUrl,
           rawText: minutes.rawText,
           parsedAt: minutes.parsedAt ?? new Date(),
-          ...rowProvenance(bundle),
+          ...provenance,
         },
         create: {
           externalId: minutes.externalId,
@@ -261,11 +273,16 @@ export class MeetingsSyncService {
           sourceUrl: minutes.sourceUrl,
           rawText: minutes.rawText,
           parsedAt: minutes.parsedAt ?? new Date(),
-          ...rowProvenance(bundle),
+          ...provenance,
         },
         select: { id: true },
       });
       upsertedIds.push(row.id);
+      // The TRUNCATED text, which is what `raw_text` holds and therefore what
+      // `Evidence.spanStart`/`spanEnd` index into (#1306). Recording the full
+      // pdf-parse output instead would give every citation past the 256 kB
+      // cut offsets into a string the database never had.
+      await this.recordDerivation(minutes);
       ingestTracker.item({
         name: `${minutes.body} ${minutes.date.toISOString().slice(0, 10)}`,
         externalId: minutes.externalId,
@@ -348,6 +365,31 @@ export class MeetingsSyncService {
    * number enqueued; a no-op returning 0 when no QueueService is wired (e.g.
    * unit tests / a region service without the worker stack).
    */
+  /**
+   * Store a minutes document's `rawText` against the archived PDF it was
+   * parsed from (#1306).
+   *
+   * Best-effort, like archiving itself: a failure here costs the claims on
+   * one document their traceability, where a throw would cost the sync every
+   * document after it.
+   */
+  private async recordDerivation(minutes: Minutes): Promise<void> {
+    if (!this.sourceVersions || !minutes.sourceVersionId || !minutes.rawText) {
+      return;
+    }
+    try {
+      await this.sourceVersions.attachDerivedText(
+        minutes.sourceVersionId,
+        minutes.rawText,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not record the derivation for ${minutes.externalId}: ` +
+          `${(error as Error).message}`,
+      );
+    }
+  }
+
   private async enqueueSummaries(
     minutesIds: string[],
     force = false,

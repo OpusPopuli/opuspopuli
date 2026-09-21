@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ISourceArchive } from '@opuspopuli/extraction-provider';
+import type {
+  ArchiveOutcome,
+  ISourceArchive,
+} from '@opuspopuli/extraction-provider';
 import { SourceVersionService } from '../domains/source-version.service';
 
 /**
@@ -23,7 +26,7 @@ export class PrismaSourceArchive implements ISourceArchive {
 
   async archive(
     input: Parameters<ISourceArchive['archive']>[0],
-  ): Promise<void> {
+  ): Promise<ArchiveOutcome> {
     const result = await this.sourceVersions.record({
       content: input.content,
       contentHash: input.contentHash,
@@ -43,5 +46,13 @@ export class PrismaSourceArchive implements ISourceArchive {
         `Not archived (${result.skippedReason}): ${input.sourceUrl}`,
       );
     }
+
+    // Undefined when the store rejected the body. Returning the content hash
+    // instead would hand the caller an identity for bytes nobody kept (#1306).
+    return {
+      ...(result.sourceVersionId && {
+        sourceVersionId: result.sourceVersionId,
+      }),
+    };
   }
 }

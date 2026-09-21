@@ -201,7 +201,63 @@ export interface ISourceArchive {
         /** Response Content-Type, if any */
         contentType?: string;
       },
-  ): Promise<void>;
+  ): Promise<ArchiveOutcome>;
+}
+
+/**
+ * What an archive attempt yielded (#1306).
+ *
+ * `sourceVersionId` is **optional on purpose**: the store rejects empty and
+ * oversized bodies, and an implementation may be unavailable entirely. Absent
+ * means "these bytes are not durably stored", and a caller must record no
+ * reference rather than a reference to nothing — the same reason #1280 writes
+ * an explicit null instead of leaving a stale pointer in place.
+ */
+export interface ArchiveOutcome {
+  /** Row id of the archived artifact, when it was in fact archived. */
+  sourceVersionId?: string;
+}
+
+/**
+ * One fetched artifact, before any caching concern.
+ *
+ * Generic over the decoded body so the text and binary paths share a single
+ * shape — they already share `fetchAndDecode`, and three hand-copied inline
+ * return types is how `sourceVersionId` would come to exist on two of them.
+ */
+export interface FetchedArtifact<T> extends FetchProvenance {
+  /** The decoded body */
+  content: T;
+  /** HTTP status code */
+  statusCode: number;
+  /** Content-Type header value */
+  contentType: string;
+  /** The final URL after any redirects (differs from original on redirect) */
+  finalUrl?: string;
+  /** If the URL was permanently redirected, the original requested URL */
+  redirectedFrom?: string;
+  /**
+   * The archived artifact these bytes were stored as, when `options.archive`
+   * asked for one and the store accepted it (#1306).
+   */
+  sourceVersionId?: string;
+}
+
+/** A binary-safe fetch — PDFs, images, archives. */
+export type BytesFetchResult = FetchedArtifact<Buffer>;
+
+/**
+ * A PDF fetched and turned into text in one call.
+ *
+ * Carries the archived id alongside the text because the two are separated
+ * immediately afterwards: the text becomes `Minutes.rawText` (truncated), and
+ * only the archive still holds the whole document (#1276, #1306).
+ */
+export interface PdfFetchResult {
+  /** Extracted text, NUL bytes stripped */
+  text: string;
+  /** The archived artifact, when the fetch asked for one and it was stored */
+  sourceVersionId?: string;
 }
 
 /**
@@ -220,6 +276,17 @@ export interface CachedFetchResult extends FetchProvenance {
   redirectedFrom?: string;
   /** The final URL after any redirects (differs from original on redirect) */
   finalUrl?: string;
+  /**
+   * The archived artifact these bytes were stored as, when `options.archive`
+   * asked for one and the store accepted it (#1306).
+   *
+   * Survives the result cache deliberately. The cache is keyed on URL and
+   * headers, so a later unarchived fetch of the same URL can serve a hit
+   * carrying this id — and that is correct, because the id addresses the same
+   * bytes and `source_versions` is append-only, so it cannot come to point at
+   * something else.
+   */
+  sourceVersionId?: string;
 }
 
 /**

@@ -60,7 +60,12 @@ describe('source version store (#1276)', () => {
       dataType: 'propositions',
     });
 
-    expect(result).toEqual({ contentHash: HASH, stored: true });
+    expect(result).toEqual({
+      contentHash: HASH,
+      stored: true,
+      // The id a subject row points at (#1306).
+      sourceVersionId: expect.any(String),
+    });
 
     const stored = await service.getByHash(HASH);
 
@@ -94,7 +99,14 @@ describe('source version store (#1276)', () => {
       sourceUrl: URL,
     });
 
-    expect(second).toEqual({ contentHash: HASH, stored: false });
+    // Wrote nothing, and still hands back the existing row's id: an
+    // unchanged re-fetch must leave the row's link intact rather than null it
+    // (#1306).
+    expect(second).toEqual({
+      contentHash: HASH,
+      stored: false,
+      sourceVersionId: expect.any(String),
+    });
 
     const rows = await db.sourceVersion.findMany({
       where: { contentHash: HASH },

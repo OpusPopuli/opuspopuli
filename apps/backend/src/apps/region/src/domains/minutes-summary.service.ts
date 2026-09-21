@@ -27,6 +27,8 @@ interface MinutesForSummary {
   body: string;
   date: Date;
   rawText: string | null;
+  /** The archived PDF `rawText` was parsed from (#1306). */
+  sourceVersionId: string | null;
   summary: string | null;
 }
 
@@ -81,6 +83,7 @@ export class MinutesSummaryService extends LlmGeneratorBase {
         body: true,
         date: true,
         rawText: true,
+        sourceVersionId: true,
         summary: true,
       },
     });
@@ -117,6 +120,7 @@ export class MinutesSummaryService extends LlmGeneratorBase {
         body: true,
         date: true,
         rawText: true,
+        sourceVersionId: true,
         summary: true,
       },
       orderBy: { date: 'desc' },
@@ -181,6 +185,10 @@ export class MinutesSummaryService extends LlmGeneratorBase {
           sourceTextHash: rawText
             ? createHash('sha256').update(rawText, 'utf8').digest('hex')
             : null,
+          // The archived PDF `rawText` was parsed from (#1306). Matters most
+          // here: `rawText` is truncated at 256 kB, so for a long document the
+          // archive holds the only complete copy of what was cited.
+          sourceVersionId: row.sourceVersionId,
         },
         // `error`, not `warn`: the claims were not written. A systematic
         // failure here is otherwise invisible until something reads the

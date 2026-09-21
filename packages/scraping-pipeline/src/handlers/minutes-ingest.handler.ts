@@ -366,13 +366,14 @@ export class MinutesIngestHandler {
     // Minutes PDFs are cited sources: a meeting summary's claims point back
     // at this document, and `rawText` below is truncated at 256 kB, so the
     // archived bytes are the only complete copy (#1276).
-    const rawText = await this.extraction.fetchPdfText(candidate.url, {
-      archive: {
-        regionId,
-        dataType: source.dataType,
-        ...(executionId && { executionId }),
-      },
-    });
+    const { text: rawText, sourceVersionId } =
+      await this.extraction.fetchPdfText(candidate.url, {
+        archive: {
+          regionId,
+          dataType: source.dataType,
+          ...(executionId && { executionId }),
+        },
+      });
     const truncated =
       rawText.length > MAX_RAW_TEXT_CHARS
         ? rawText.slice(0, MAX_RAW_TEXT_CHARS)
@@ -390,6 +391,11 @@ export class MinutesIngestHandler {
       sourceUrl: candidate.url,
       rawText: truncated,
       parsedAt: new Date(),
+      // The archived PDF this text came out of (#1306). Load-bearing here
+      // above all: `rawText` is truncated at 256 kB, so for a long document
+      // the archive holds the only complete copy, and a claim citing a
+      // passage past the cut has nothing else to resolve against.
+      ...(sourceVersionId && { sourceVersionId }),
     };
   }
 

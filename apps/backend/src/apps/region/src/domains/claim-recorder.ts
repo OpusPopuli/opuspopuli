@@ -13,6 +13,7 @@ type ClaimSignature = readonly [
   spanEnd: number | null,
   quotedText: string | null,
   citationHint: string | null,
+  sourceVersionId: string | null,
 ];
 
 /**
@@ -25,6 +26,12 @@ type ClaimSignature = readonly [
  * The verdict `state` is part of the signature on purpose: the same claim text
  * checked against rewritten source text is a genuinely different assertion
  * about the evidence, and must be retained as one.
+ *
+ * So is `sourceVersionId` (#1306). Which archived bytes a citation rests on is
+ * part of what the citation claims, and leaving it out would have a subtler
+ * cost: the run that first links a corpus to its sources produces claims
+ * identical in every other respect, would compare equal, and would be skipped
+ * as a no-op — leaving every existing claim permanently unlinked.
  */
 function signature(claims: readonly ClaimSignature[]): string {
   // Each tuple stringified ONCE, then the strings sorted. Sorting the tuples
@@ -47,6 +54,7 @@ function signatureOf(
         spanEnd: number | null;
         quotedText: string | null;
         citationHint: string | null;
+        sourceVersionId: string | null;
       };
     }[];
   }[],
@@ -71,6 +79,7 @@ function signatureOf(
             e?.spanEnd ?? null,
             e?.quotedText ?? null,
             e?.citationHint ?? null,
+            e?.sourceVersionId ?? null,
           ] as ClaimSignature,
       ),
     ),
@@ -130,6 +139,7 @@ export async function recordClaims(
       outcome.correctedSpan?.end ?? claim.citation.spanEnd,
       claim.citation.quotedText,
       claim.citation.citationHint,
+      input.sourceVersionId ?? null,
     ]),
   );
 
@@ -169,6 +179,7 @@ export async function recordClaims(
                 spanEnd: true,
                 quotedText: true,
                 citationHint: true,
+                sourceVersionId: true,
               },
             },
           },
@@ -241,6 +252,10 @@ export async function recordClaims(
         quotedText: claim.citation.quotedText,
         citationHint: claim.citation.citationHint,
         state: outcome.state,
+        // The archived bytes this citation rests on (#1306). Null where the
+        // subject's source was never archived — the resolver then says
+        // `no-archived-source`, rather than pointing at bytes nobody kept.
+        sourceVersionId: input.sourceVersionId ?? null,
       })),
     });
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { FetchProvenance } from '@opuspopuli/extraction-provider';
@@ -44,6 +45,16 @@ export interface RecordSourceResult {
   contentHash: string;
   /** False when an identical artifact was already stored */
   stored: boolean;
+  /**
+   * Row id of the archived artifact, absent when it was skipped (#1306).
+   *
+   * Present on a duplicate as well as a fresh write — the caller needs
+   * something to point a row at, and "already archived" is the common case,
+   * not a reason to withhold the reference. Absent means the bytes are not
+   * stored, and a caller must then record no reference rather than one to
+   * nothing.
+   */
+  sourceVersionId?: string;
   /** Set when the artifact was rejected rather than stored */
   skippedReason?: 'too-large' | 'empty';
 }
@@ -104,11 +115,12 @@ export class SourceVersionService {
     });
 
     if (existing) {
-      return { contentHash, stored: false };
+      return { contentHash, stored: false, sourceVersionId: existing.id };
     }
 
     try {
-      await this.db.sourceVersion.create({
+      const created = await this.db.sourceVersion.create({
+        select: { id: true },
         data: {
           contentHash,
           content,
@@ -125,16 +137,90 @@ export class SourceVersionService {
         },
       });
 
-      return { contentHash, stored: true };
+      return { contentHash, stored: true, sourceVersionId: created.id };
     } catch (error) {
       // A concurrent writer won the race between the probe above and this
       // insert. The row exists and holds identical bytes by definition — the
       // hash is the key — so this is a successful no-op, not a failure.
       if (isUniqueViolation(error)) {
-        return { contentHash, stored: false };
+        const winner = await this.db.sourceVersion.findUnique({
+          where: { contentHash },
+          select: { id: true },
+        });
+        return {
+          contentHash,
+          stored: false,
+          ...(winner && { sourceVersionId: winner.id }),
+        };
       }
       throw error;
     }
+  }
+
+  /**
+   * Record the text that was extracted from an archived artifact (#1306).
+   *
+   * Called at the upsert that writes the same string to the subject row, with
+   * the value actually being stored — not with whatever the fetch returned.
+   * The two differ: minutes truncate at 256 kB, and `Evidence.spanStart` /
+   * `spanEnd` index into the stored string, so anything else here would make
+   * every citation resolve against text it was never measured against.
+   *
+   * **Write-once.** `source_versions` is append-only; a differing value
+   * already present means two rows claim to derive from one set of bytes, and
+   * the archive cannot arbitrate between them. It is logged and the stored
+   * value is kept, because the earlier one is what existing evidence was
+   * checked against.
+   *
+   * @param sourceVersionId - The archived artifact the text came from
+   * @param derivedText - The text as written to the subject row
+   * @returns Whether this call filled the derivation
+   */
+  async attachDerivedText(
+    sourceVersionId: string,
+    derivedText: string,
+  ): Promise<boolean> {
+    if (derivedText.length === 0) return false;
+
+    // Byte length, not character count: the cap exists to bound what the
+    // table stores, and a multi-byte document is larger than its length.
+    const byteLength = Buffer.byteLength(derivedText, 'utf8');
+    if (byteLength > MAX_ARCHIVED_BYTES) {
+      this.logger.warn(
+        `Not storing derived text for ${sourceVersionId}: ${byteLength} bytes ` +
+          `exceeds the ${MAX_ARCHIVED_BYTES}-byte cap`,
+      );
+      return false;
+    }
+
+    const derivedTextHash = createHash('sha256')
+      .update(derivedText, 'utf8')
+      .digest('hex');
+
+    // Conditional update rather than read-then-write: two syncs of the same
+    // document race here, and `updateMany` with the null predicate lets the
+    // database decide the winner in one statement.
+    const filled = await this.db.sourceVersion.updateMany({
+      where: { id: sourceVersionId, derivedText: null },
+      data: { derivedText, derivedTextHash },
+    });
+
+    if (filled.count > 0) return true;
+
+    const current = await this.db.sourceVersion.findUnique({
+      where: { id: sourceVersionId },
+      select: { derivedTextHash: true },
+    });
+
+    if (current && current.derivedTextHash !== derivedTextHash) {
+      this.logger.warn(
+        `Derived text for ${sourceVersionId} differs from the stored ` +
+          `derivation (stored ${current.derivedTextHash}, extracted ` +
+          `${derivedTextHash}); keeping the stored one — existing evidence ` +
+          `was checked against it`,
+      );
+    }
+    return false;
   }
 
   /**

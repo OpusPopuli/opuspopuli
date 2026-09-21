@@ -227,6 +227,16 @@ export interface ClaimRecordInput {
   claimSourceTextHash?: string | null;
   /** Run that produced these claims (#1280), so a bad batch can be scoped. */
   pipelineExecutionId?: string | null;
+  /**
+   * The archived fetch whose derived text these claims were generated from
+   * (#1306) — normally the subject row's own `sourceVersionId`.
+   *
+   * Written onto every `Evidence` row, which is what lets a citation be
+   * traced to stored bytes rather than to the mutable column. Null where the
+   * subject's source was never archived; the resolver then reports
+   * `no-archived-source`, which is true.
+   */
+  sourceVersionId?: string | null;
 }
 
 export interface ClaimRecordOutcome {

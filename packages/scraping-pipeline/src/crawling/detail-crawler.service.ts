@@ -36,6 +36,19 @@ const MAX_DETAIL_PAGES = 500;
 /** Delay between detail page fetches in milliseconds */
 const DETAIL_FETCH_DELAY_MS = 500;
 
+/**
+ * A detail page's text and the archived fetch it came from (#1306).
+ *
+ * Returned together because they are separated immediately afterwards — the
+ * text is merged into the item's fields, and only this id still says which
+ * bytes it was extracted from.
+ */
+interface DetailContent {
+  content: string;
+  /** Absent when archiving was not requested, or the store declined the body */
+  sourceVersionId?: string;
+}
+
 @Injectable()
 export class DetailCrawlerService {
   private readonly logger = new Logger(DetailCrawlerService.name);
@@ -86,8 +99,12 @@ export class DetailCrawlerService {
         source.url,
       );
       try {
+        // Deliberately drops the archived id: this is the AG title-and-summary
+        // PDF, which feeds `summary`, where the detail page feeds `fullText`
+        // (#1219). Claims index into `fullText`, so stamping the row with this
+        // fetch would point every citation at the wrong document.
         const { text, reason } = extractAgSummary(
-          await this.fetchDetailContent(url, archive),
+          (await this.fetchDetailContent(url, archive)).content,
         );
         if (text) {
           item.summary = text;
@@ -189,7 +206,13 @@ export class DetailCrawlerService {
     const detailUrl = DetailCrawlerService.resolveUrl(rawUrl, source.url);
 
     try {
-      const pageContent = await this.fetchDetailContent(detailUrl, archive);
+      const { content: pageContent, sourceVersionId } =
+        await this.fetchDetailContent(detailUrl, archive);
+      // Stamped per item, not per run. `stampProvenance` gives every item in
+      // a result the same execution id, which is right for a run — but each
+      // item's text came from ITS OWN detail fetch, and a shared reference
+      // here would point most rows at some other page's bytes (#1306).
+      if (sourceVersionId) item.sourceVersionId = sourceVersionId;
       const isHtml = pageContent.trimStart().startsWith("<");
 
       extractionPlan ??= await this.resolveExtractionPlan(
@@ -356,18 +379,18 @@ export class DetailCrawlerService {
   private async fetchDetailContent(
     detailUrl: string,
     archive?: ArchiveContext,
-  ): Promise<string> {
+  ): Promise<DetailContent> {
     // Detail pages and their PDFs are the artifacts claims actually cite —
     // `fullText` comes from here — so these are the fetches worth archiving
     // (#1276). List and discovery pages deliberately are not.
     const options = archive ? { archive } : {};
 
     if (detailUrl.toLowerCase().endsWith(".pdf")) {
-      const text = await this.extraction.fetchPdfText(detailUrl, options);
+      const pdf = await this.extraction.fetchPdfText(detailUrl, options);
       this.logger.debug(
-        `Extracted ${text.length} chars from PDF: ${detailUrl}`,
+        `Extracted ${pdf.text.length} chars from PDF: ${detailUrl}`,
       );
-      return text;
+      return { content: pdf.text, sourceVersionId: pdf.sourceVersionId };
     }
 
     const fetchResult = await this.extraction.fetchWithRetry(
@@ -378,14 +401,19 @@ export class DetailCrawlerService {
       // URL didn't advertise .pdf but the response body is one — refetch
       // as bytes. The text-mode body is already corrupted; we can't
       // recover it via Buffer.from(content, "binary").
-      const text = await this.extraction.fetchPdfText(detailUrl, options);
+      const pdf = await this.extraction.fetchPdfText(detailUrl, options);
       this.logger.debug(
-        `Extracted ${text.length} chars from PDF: ${detailUrl} (content-sniffed)`,
+        `Extracted ${pdf.text.length} chars from PDF: ${detailUrl} (content-sniffed)`,
       );
-      return text;
+      // The archived artifact is the one from the REFETCH, not the mangled
+      // first read — that is the byte sequence this text was extracted from.
+      return { content: pdf.text, sourceVersionId: pdf.sourceVersionId };
     }
 
-    return fetchResult.content;
+    return {
+      content: fetchResult.content,
+      sourceVersionId: fetchResult.sourceVersionId,
+    };
   }
 
   /**

@@ -5,6 +5,7 @@ export interface RowProvenanceColumns {
   pipelineExecutionId: string | null;
   manifestId: string | null;
   manifestVersion: number | null;
+  sourceVersionId: string | null;
 }
 
 /**
@@ -25,5 +26,9 @@ export function rowProvenance(item: RowProvenance): RowProvenanceColumns {
     pipelineExecutionId: item.pipelineExecutionId ?? null,
     manifestId: item.manifestId ?? null,
     manifestVersion: item.manifestVersion ?? null,
+    // Stamped per item at the detail fetch rather than per run (#1306), but
+    // written under the same explicit-null rule: a row rewritten from an
+    // unarchived fetch must stop pointing at the bytes of an earlier one.
+    sourceVersionId: item.sourceVersionId ?? null,
   };
 }
