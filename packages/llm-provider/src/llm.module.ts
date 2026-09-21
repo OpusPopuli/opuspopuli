@@ -1,6 +1,6 @@
 import { Logger, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { ILLMProvider } from "@opuspopuli/common";
+import { ILLMProvider, setGlobalHttpPool } from "@opuspopuli/common";
 import { llmConfig } from "@opuspopuli/config-provider";
 import {
   OllamaLLMProvider,
@@ -26,6 +26,48 @@ import {
  * 3. Start server: ollama serve
  */
 const logger = new Logger("LLMModule");
+
+/**
+ * Floor for undici's `headersTimeout` in any service that talks to an LLM.
+ *
+ * `OllamaLLMProvider.generate()` posts with `stream: false`, so Ollama sends
+ * NO response headers until the whole generation has finished. undici's
+ * default `headersTimeout` is 300s and is governed by neither the provider's
+ * `requestTimeoutMs` nor an `AbortSignal` — so any generation over five
+ * minutes dies as `UND_ERR_HEADERS_TIMEOUT`, naming neither the timeout nor
+ * the model, which reads as "Ollama is down" rather than "this was slow".
+ *
+ * Measured (#1142 eval sweep, 2026-09-16): `qwen3.5:9b --think` died at
+ * exactly 302s three times out of three. It is not only a reasoning-model
+ * problem — two NON-think measures in the same sweep took 1086s and 1150s
+ * under memory pressure and would have failed identically. The 32B at
+ * ~550s/measure sits well past the default.
+ */
+const LLM_HEADERS_TIMEOUT_FLOOR_MS = 1_350_000;
+
+/**
+ * Raise the transport timeout wherever an LLM provider is built.
+ *
+ * Three services set this in their own `main.ts` and three did not (#1273) —
+ * `knowledge`, `documents` and `structural-analysis-worker`, which are the
+ * ones running citizen-facing analysis. Copying the line a fourth, fifth and
+ * sixth time fixes today and leaves the same trap for service number seven,
+ * so it goes where every LLM consumer passes instead.
+ *
+ * Safe to call here: nothing else creates the shared pool, so in a service
+ * without a `main.ts` call this is the first and wins, and in one with it the
+ * entrypoint already ran with the same value.
+ */
+function ensureLlmTransportTimeout(requestTimeoutMs: number): void {
+  // Never below the floor: `requestTimeoutMs` defaults to 60s, and deriving
+  // the headers timeout from it alone would cut the transport to BELOW
+  // undici's own 300s default and make this worse than doing nothing.
+  const headersTimeoutMs = Math.max(
+    requestTimeoutMs,
+    LLM_HEADERS_TIMEOUT_FLOOR_MS,
+  );
+  setGlobalHttpPool({ headersTimeoutMs });
+}
 
 /** Which inference lane a provider serves (roadmap §6.4). */
 type Lane = "analysis" | "ingestion";
@@ -76,6 +118,17 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
       ? { chunkTimeoutMs }
       : {}),
   };
+
+  // Headers timeout before any generation fires. Derived from the configured
+  // request timeout so a deployment that raises one raises the other — the
+  // per-call override in ollama.provider.ts notes civics-glossary "needs 20+
+  // min where bio gen needs 2", and above five minutes that override is inert
+  // without this.
+  ensureLlmTransportTimeout(
+    Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0
+      ? requestTimeoutMs
+      : 0,
+  );
 
   // Said out loud at boot. Which model each lane resolved to is the first
   // thing anyone asks when output looks wrong, and inferring it from four

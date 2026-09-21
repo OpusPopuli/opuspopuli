@@ -151,6 +151,8 @@ export class HttpPoolManager implements IHttpPoolManager {
 
 // Singleton instance for shared pool
 let sharedPool: HttpPoolManager | null = null;
+/** Configuration the shared pool was actually created with, for the warning below. */
+let sharedConfig: HttpPoolConfig | undefined;
 
 /**
  * Get or create a shared HTTP pool manager
@@ -159,8 +161,37 @@ let sharedPool: HttpPoolManager | null = null;
 export function getSharedHttpPool(config?: HttpPoolConfig): HttpPoolManager {
   if (!sharedPool) {
     sharedPool = new HttpPoolManager(config);
+    sharedConfig = config;
+    return sharedPool;
+  }
+
+  // The pool is memoised, so the FIRST caller's configuration wins and every
+  // later one is discarded. That is fine when nobody disagrees and invisible
+  // when somebody does: #1273 was three services running a 300s undici
+  // headersTimeout while believing they had raised it, and a silently ignored
+  // second call is the same failure wearing a different hat. Say so.
+  if (config && sharedConfig && !sameConfig(config, sharedConfig)) {
+    console.warn(
+      "[http-pool] Ignoring a differing HTTP pool configuration: the shared " +
+        "pool was already created by an earlier caller. Configure it once, " +
+        "before any fetch fires. " +
+        `wanted=${JSON.stringify(config)} active=${JSON.stringify(sharedConfig)}`,
+    );
   }
   return sharedPool;
+}
+
+/** Shallow equality over the pool's own options — they are all scalars. */
+function sameConfig(a: HttpPoolConfig, b: HttpPoolConfig): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (
+      (a as Record<string, unknown>)[k] !== (b as Record<string, unknown>)[k]
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

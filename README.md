@@ -1,6 +1,11 @@
 # OPUSPOPULI
 
-A full-stack platform with 100% open-source AI/ML capabilities for semantic search and RAG (Retrieval-Augmented Generation).
+A civic platform that reads primary sources — ballot measures, meeting minutes,
+representative records, campaign finance — and explains them in plain language,
+**with every assertion traceable to the passage it came from.**
+
+The AI is entirely open-source and self-hosted. So is the accountability: what
+the platform cannot show evidence for, it says so about.
 
 ## 🚀 Quick Start
 
@@ -21,6 +26,62 @@ pnpm dev
 ```
 
 **See [Getting Started Guide](docs/guides/getting-started.md) for detailed setup instructions.**
+
+## Evidence, and what we can currently show
+
+Every AI-generated claim is a row, joined to the citation it rests on, and
+every citation has been **checked** — the verdict is the only way a piece of
+evidence acquires a state, so an unchecked assertion cannot be laundered into
+a table called `evidence`.
+
+That makes one question answerable that used to be impossible: *show every
+published assertion that lacks primary evidence*. It is a query, and a watched
+metric (`claims_unevidenced`), not a claim in a README.
+
+**Measured against the current corpus — 1,497 claims:**
+
+| Family | verified | lacking verified evidence | |
+|---|---|---|---|
+| Ballot measures | 59 | **469** of 528 | 88.8% |
+| Meeting minutes | 105 | **113** of 218 | 51.8% |
+| Representative bios | 0 | **751** of 751 | 100% |
+
+**89% of what the platform asserts cannot currently be traced to a supporting
+passage.** That number is published here for the same reason it is on a
+dashboard: a platform that measures its own evidence and then omits the result
+is choosing which of the two to believe.
+
+Two things it does *not* mean. Representative bios are 100% by construction,
+not by failure — they cite structured fields rather than text spans, so
+nothing in that family can reach `verified` against a passage, and the
+distinction between *"no citation was offered"* and *"a citation failed a
+check"* is kept rather than collapsed. And the ballot-measure figure is the
+honest result of a contract being replaced: citations used to be character
+offsets the model asserted, which measured 2–11% accurate because counting
+characters is arithmetic and no model tested does it. They are now **verbatim
+quotes the model supplies and code locates** — exact, and failing closed when a
+quote cannot be found.
+
+### How a claim is accountable
+
+- **Which prompt produced it** — every output carries the prompt's content hash
+  and version, and the prompt text itself is published, so a reader can go read
+  the instruction that produced what they are looking at.
+- **Which model produced it** — name plus weight digest, not just a tag.
+- **Which text version it cites** — a claim is bound by hash to the source text
+  it was generated against, so an analysis cannot outlive the text under it
+  without that being detectable.
+- **What was asserted when** — regenerating supersedes rather than overwrites,
+  so *"what did this platform say about this measure last month"* has an answer.
+
+### Models
+
+Inference is self-hosted on [Ollama](https://ollama.com) and splits by job:
+`olmo-3.1:32b-instruct` for analysis and synthesis, where the task is copying a
+passage exactly and declining when the source does not support a claim, and
+`olmo-3:7b-instruct` for ingestion, where it is structured extraction across far
+more documents. Both are open-weight, and OLMo publishes its training data as
+well as its weights.
 
 ## 📚 Documentation
 
@@ -45,13 +106,17 @@ All documentation is located in the [`docs/`](docs/) directory:
 
 ## Core Principles
 
-1. **100% Open Source** - All components use OSS licenses (Apache 2.0, MIT, etc.)
-2. **Self-Hosted First** - Complete control over data and infrastructure
-3. **Pluggable Architecture** - Swap implementations without code changes
+1. **Evidence or Silence** - An assertion the platform cannot trace to a source
+   passage is marked as such rather than presented as equivalent to one it can
+2. **Above Reproach, Outcome-Indifferent** - The test of a design is whether it
+   would survive being read by someone who dislikes its conclusion
+3. **100% Open Source** - All components use OSS licenses (Apache 2.0, MIT, etc.)
+4. **Self-Hosted First** - Complete control over data and infrastructure
+5. **Pluggable Architecture** - Swap implementations without code changes
 
 ## Prerequisites
 
-- **Node.js** 20+ and pnpm
+- **Node.js** 24+ and pnpm
 - **Docker** and Docker Compose
 - **Git**
 - **Cloudflare Account** (for production deployment)
@@ -208,6 +273,10 @@ docker-compose logs -f   # View logs
 - ✅ **Civic Data Integration** - Declarative region plugins for propositions, meetings, and representatives
 - ✅ **AI-Powered Scraping** - Schema-on-read pipeline with structural manifests and self-healing
 - ✅ **Petition Scanning** - Mobile-friendly petition capture with OCR, geolocation, and real-time activity feed
+- ✅ **Evidence Graph** - Claims and their citations as queryable rows; every citation verified, and "assertions lacking primary evidence" is a metric
+- ✅ **Cited Analysis** - Claims quote their source verbatim; code locates the quote and derives the offsets, so a citation that cannot be found is dropped rather than guessed
+- ✅ **Output Provenance** - Prompt hash and version, model name and weight digest, and the source-text version, recorded on every AI output
+- ✅ **Temporal Validity** - Regeneration supersedes rather than overwrites, so past assertions stay answerable
 - ✅ **Transparency Pages** - AI system card, commitments, and prompt charter
 - ✅ **Campaign Finance** - Committees, contributions, expenditures, and independent expenditures
 - ✅ **Accessibility** - WCAG 2.2 Level AA compliant
