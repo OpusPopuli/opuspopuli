@@ -49,3 +49,9 @@ tmp/
 # Local scratch — planning notes, ad-hoc test plans, design sketches.
 # Anything in here is intentionally out of git history.
 .scratch/
+
+# Content-transfer bundles (#1305). Exported artifacts, not source: each is
+# megabytes of civic content including verbatim quoted passages, and a bundle
+# belongs in the hands of the person applying it rather than in git history.
+*.bundle.json
+bundle.json
