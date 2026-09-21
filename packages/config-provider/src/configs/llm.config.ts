@@ -42,25 +42,46 @@ import { registerAs } from "@nestjs/config";
 export const llmConfig = registerAs("llm", () => ({
   url: process.env.LLM_URL || "http://localhost:11434",
   model: process.env.LLM_MODEL || "mistral",
+  /**
+   * The ANALYSIS lane.
+   *
+   * Named for its job, like every other model setting here —
+   * `OCR_VISION_MODEL`, `EMBEDDINGS_OLLAMA_MODEL`, `LLM_INGESTION_MODEL`.
+   * `LLM_MODEL` was the odd one out: it reads as "the LLM model", which was
+   * unambiguous while there was one and became misleading the moment there
+   * were two.
+   *
+   * `LLM_MODEL` is still honoured, last in the chain, so every existing
+   * deployment keeps working untouched. It is the legacy general setting
+   * rather than a second name for this lane — which is why new configuration
+   * should set `LLM_ANALYSIS_MODEL` and why create-op-node writes that.
+   */
   ollama: {
     url:
+      process.env.LLM_ANALYSIS_URL ||
       process.env.LLM_OLLAMA_URL ||
       process.env.LLM_URL ||
       "http://localhost:11434",
-    model: process.env.LLM_OLLAMA_MODEL || process.env.LLM_MODEL || "mistral",
+    model:
+      process.env.LLM_ANALYSIS_MODEL ||
+      process.env.LLM_OLLAMA_MODEL ||
+      process.env.LLM_MODEL ||
+      "mistral",
   },
   /**
-   * The ingestion lane. Falls back to the analysis values at every level, so
-   * an unset deployment behaves exactly as it did before the split.
+   * The INGESTION lane. Falls back through the analysis chain at every level,
+   * so an unset deployment behaves exactly as it did before the split.
    */
   ingestion: {
     url:
       process.env.LLM_INGESTION_URL ||
+      process.env.LLM_ANALYSIS_URL ||
       process.env.LLM_OLLAMA_URL ||
       process.env.LLM_URL ||
       "http://localhost:11434",
     model:
       process.env.LLM_INGESTION_MODEL ||
+      process.env.LLM_ANALYSIS_MODEL ||
       process.env.LLM_OLLAMA_MODEL ||
       process.env.LLM_MODEL ||
       "mistral",

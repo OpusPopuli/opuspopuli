@@ -275,6 +275,10 @@ services:
       # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
       # runs on LLM_MODEL, exactly as before. Set to split the lanes without
       # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      # Lane-named, like every other model setting. LLM_MODEL above is still
+      # honoured last in the chain for existing deployments.
+      LLM_ANALYSIS_MODEL: ${LLM_ANALYSIS_MODEL:-}
+      LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       # AI Prompt Service for proprietary prompt templates
@@ -323,6 +327,10 @@ services:
       # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
       # runs on LLM_MODEL, exactly as before. Set to split the lanes without
       # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      # Lane-named, like every other model setting. LLM_MODEL above is still
+      # honoured last in the chain for existing deployments.
+      LLM_ANALYSIS_MODEL: ${LLM_ANALYSIS_MODEL:-}
+      LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       # Bump default Ollama request timeout (60s) — proposition-analysis,
@@ -404,6 +412,10 @@ services:
       # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
       # runs on LLM_MODEL, exactly as before. Set to split the lanes without
       # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      # Lane-named, like every other model setting. LLM_MODEL above is still
+      # honoured last in the chain for existing deployments.
+      LLM_ANALYSIS_MODEL: ${LLM_ANALYSIS_MODEL:-}
+      LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
@@ -465,6 +477,10 @@ services:
       # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
       # runs on LLM_MODEL, exactly as before. Set to split the lanes without
       # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      # Lane-named, like every other model setting. LLM_MODEL above is still
+      # honoured last in the chain for existing deployments.
+      LLM_ANALYSIS_MODEL: ${LLM_ANALYSIS_MODEL:-}
+      LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
@@ -513,6 +529,10 @@ services:
       # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
       # runs on LLM_MODEL, exactly as before. Set to split the lanes without
       # editing this file: LLM_INGESTION_MODEL=olmo-3:7b-instruct docker compose up -d
+      # Lane-named, like every other model setting. LLM_MODEL above is still
+      # honoured last in the chain for existing deployments.
+      LLM_ANALYSIS_MODEL: ${LLM_ANALYSIS_MODEL:-}
+      LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"

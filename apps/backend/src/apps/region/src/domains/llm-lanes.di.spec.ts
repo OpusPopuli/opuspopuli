@@ -50,6 +50,8 @@ describe('LLM inference lanes (roadmap §6.4)', () => {
     for (const key of [
       'LLM_MODEL',
       'LLM_URL',
+      'LLM_ANALYSIS_MODEL',
+      'LLM_ANALYSIS_URL',
       'LLM_OLLAMA_MODEL',
       'LLM_OLLAMA_URL',
       'LLM_INGESTION_MODEL',
@@ -95,6 +97,32 @@ describe('LLM inference lanes (roadmap §6.4)', () => {
     // had before, so carrying it costs nothing and rolling it out is safe.
     expect(analysis.getModelName()).toBe('olmo-3.1:32b-instruct');
     expect(ingestion.getModelName()).toBe('olmo-3.1:32b-instruct');
+  });
+
+  it('prefers LLM_ANALYSIS_MODEL, the lane-named variable', async () => {
+    process.env.LLM_MODEL = 'legacy-model';
+    process.env.LLM_ANALYSIS_MODEL = 'olmo-3.1:32b-instruct';
+
+    const { analysis, ingestion } = await lanes();
+
+    // Every other model setting names its job — OCR_VISION_MODEL,
+    // EMBEDDINGS_OLLAMA_MODEL, LLM_INGESTION_MODEL. LLM_MODEL was the odd one
+    // out, unambiguous while there was one model and misleading once there
+    // were two.
+    expect(analysis.getModelName()).toBe('olmo-3.1:32b-instruct');
+    // Ingestion still falls through the analysis chain when it names nothing.
+    expect(ingestion.getModelName()).toBe('olmo-3.1:32b-instruct');
+  });
+
+  it('still honours LLM_MODEL so existing deployments keep working', async () => {
+    process.env.LLM_MODEL = 'qwen3.5:9b';
+
+    const { analysis, ingestion } = await lanes();
+
+    // Last in the chain, not a second name for the lane: a node that has
+    // never heard of LLM_ANALYSIS_MODEL must not suddenly resolve "mistral".
+    expect(analysis.getModelName()).toBe('qwen3.5:9b');
+    expect(ingestion.getModelName()).toBe('qwen3.5:9b');
   });
 
   it('puts the lanes on different models when configured', async () => {
@@ -171,9 +199,11 @@ describe('llmConfig URL resolution', () => {
     process.env = { ...ENV };
     for (const key of [
       'LLM_URL',
+      'LLM_ANALYSIS_URL',
       'LLM_OLLAMA_URL',
       'LLM_INGESTION_URL',
       'LLM_MODEL',
+      'LLM_ANALYSIS_MODEL',
       'LLM_INGESTION_MODEL',
     ]) {
       delete process.env[key];
@@ -190,6 +220,16 @@ describe('llmConfig URL resolution', () => {
     const cfg = llmConfig();
 
     // Both models on one host is where this starts.
+    expect(cfg.ollama.url).toBe('http://studio:11434');
+    expect(cfg.ingestion.url).toBe('http://studio:11434');
+  });
+
+  it('prefers LLM_ANALYSIS_URL over the legacy LLM_URL', () => {
+    process.env.LLM_URL = 'http://legacy:11434';
+    process.env.LLM_ANALYSIS_URL = 'http://studio:11434';
+
+    const cfg = llmConfig();
+
     expect(cfg.ollama.url).toBe('http://studio:11434');
     expect(cfg.ingestion.url).toBe('http://studio:11434');
   });
