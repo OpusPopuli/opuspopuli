@@ -135,8 +135,21 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Runs even for documentation-only changes, unlike the steps above.
+      #
+      # `Trivy` is a REQUIRED status check, and it is not a job — it is the
+      # check run created when the SARIF below uploads to code scanning. Skip
+      # the scan and no check is ever reported, and a required check that
+      # never reports blocks the pull request forever rather than failing it.
+      # #1310 was the first genuinely docs-only PR after the skip landed
+      # (aa3cf398) and could not be merged at all.
+      #
+      # The scan is also the wrong thing to skip: it reads the whole
+      # repository including the lockfile, so it is exactly as meaningful on a
+      # docs change, and it takes about two seconds. The skip exists for the
+      # heavy jobs — installing dependencies, building, E2E — which is why the
+      # setup steps above keep their guard and this does not.
       - name: Trivy filesystem scan
-        if: needs.changes.outputs.docs_only != 'true'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: 'fs'
@@ -152,11 +165,13 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security
         uses: github/codeql-action/upload-sarif@dd677812177e0c29f9c970a6c58d8607ae1bfefd # v4
-        # `always()` so a failing scan still uploads its findings, AND the
-        # docs-only guard — the SARIF cannot exist when the scan did not run.
+        # `always()` so a failing scan still uploads its findings. The
+        # docs-only guard is gone with the scan's: the upload is what creates
+        # the required `Trivy` check, so skipping it is what blocked #1310.
+        # The hashFiles guard stays — it is the real precondition, since there
+        # is nothing to upload if the scan genuinely did not produce a file.
         if: >-
           always()
-          && needs.changes.outputs.docs_only != 'true'
           && hashFiles('trivy-fs-results.sarif') != ''
         with:
           sarif_file: 'trivy-fs-results.sarif'
