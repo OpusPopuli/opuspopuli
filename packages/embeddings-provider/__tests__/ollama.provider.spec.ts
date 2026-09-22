@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { OllamaEmbeddingProvider } from "../src/providers/ollama.provider";
 import { EmbeddingError } from "@opuspopuli/common";
+import { Logger } from "@nestjs/common";
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -34,6 +35,57 @@ describe("OllamaEmbeddingProvider", () => {
       "http://localhost:11434",
       "nomic-embed-text-v2-moe:latest",
     );
+  });
+
+  /**
+   * Beyond ~2000 characters this model ignores the tail of its input entirely
+   * (measured: cosine 1.000000 against an appended sentence at 2500 chars).
+   * The vector is still returned, stored and searched as though it
+   * represented the whole text. The vector is not the problem; the silence
+   * is.
+   */
+  describe("oversized input (#1319)", () => {
+    const warnOf = (p: OllamaEmbeddingProvider) => {
+      void p;
+      const results = (Logger as unknown as jest.Mock).mock.results;
+      return results[results.length - 1].value.warn as jest.Mock;
+    };
+
+    it("warns when an input will be silently truncated", async () => {
+      const p = new OllamaEmbeddingProvider("http://localhost:11434");
+      const warn = warnOf(p);
+      mockFetch.mockResolvedValueOnce(embedResponse([[0.1, 0.2]]));
+
+      await p.embedDocuments(["x".repeat(2500)]);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const msg = warn.mock.calls[0][0] as string;
+      expect(msg).toContain("1 of 1");
+      expect(msg).toContain("2500");
+    });
+
+    it("stays quiet for inputs within the measured limit", async () => {
+      const p = new OllamaEmbeddingProvider("http://localhost:11434");
+      const warn = warnOf(p);
+      mockFetch.mockResolvedValueOnce(embedResponse([[0.1, 0.2]]));
+
+      // 1841 chars is the longest real proposition source today — it must not
+      // produce noise, or the warning stops being read.
+      await p.embedDocuments(["y".repeat(1841)]);
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("still returns the embedding rather than failing the batch", async () => {
+      const p = new OllamaEmbeddingProvider("http://localhost:11434");
+      mockFetch.mockResolvedValueOnce(embedResponse([[0.1, 0.2]]));
+
+      // A degraded vector beats no vector: refusing here would fail a whole
+      // sync over one long row.
+      await expect(
+        p.embedDocuments(["z".repeat(9000)]),
+      ).resolves.toHaveLength(1);
+    });
   });
 
   describe("constructor", () => {
