@@ -185,6 +185,70 @@ describe("Shared Pool Functions", () => {
       // Both should be the same pool (config2 is ignored)
       expect(pool1).toBe(pool2);
     });
+
+    /**
+     * The memoised pool discards every configuration after the first. #1273
+     * was three services believing they had raised a timeout they had not, so
+     * a discarded configuration must be audible — and, just as importantly,
+     * a HONOURED one must be silent.
+     */
+    describe("reporting a discarded configuration (#1273)", () => {
+      let warn: jest.SpyInstance;
+
+      beforeEach(() => {
+        warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      });
+
+      afterEach(() => warn.mockRestore());
+
+      it("warns, naming the setting it could not apply", () => {
+        getSharedHttpPool({ headersTimeoutMs: 1_350_000 });
+        getSharedHttpPool({ headersTimeoutMs: 300_000 });
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const message = warn.mock.calls[0][0] as string;
+        // The conflicting setting and both values, not a dump of two objects —
+        // the reader needs to know which knob did not take.
+        expect(message).toContain("headersTimeoutMs=300000");
+        expect(message).toContain("active 1350000");
+      });
+
+      it("stays silent when the caller asks for a subset that already holds", () => {
+        // Exactly the region service's boot sequence: main.ts configures both
+        // timeouts, then buildLane asks for the headers timeout alone.
+        getSharedHttpPool({
+          headersTimeoutMs: 1_350_000,
+          bodyTimeoutMs: 1_350_000,
+        });
+        getSharedHttpPool({ headersTimeoutMs: 1_350_000 });
+
+        // An absent key is "no opinion", not "set it to undefined". Treating
+        // the two alike made this fire on every region boot, twice — and a
+        // warning that cries wolf is how the original silence gets recreated.
+        expect(warn).not.toHaveBeenCalled();
+      });
+
+      it("warns when the pool was created with no configuration at all", () => {
+        // The most dangerous ordering, and the one a truthy-check on the
+        // stored config made the quietest: the pool exists on undici's
+        // defaults (300s headersTimeout), and the caller that would have
+        // raised it is discarded. Silence here IS #1273.
+        getSharedHttpPool();
+        getSharedHttpPool({ headersTimeoutMs: 1_350_000 });
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0] as string).toContain(
+          "headersTimeoutMs=1350000",
+        );
+      });
+
+      it("stays silent when a later caller asks for nothing at all", () => {
+        getSharedHttpPool({ headersTimeoutMs: 1_350_000 });
+        getSharedHttpPool();
+
+        expect(warn).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("closeSharedHttpPool", () => {
