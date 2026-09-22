@@ -5,7 +5,7 @@ import { LoggingModule } from '@opuspopuli/logging-provider';
 import { SecretsModule } from '@opuspopuli/secrets-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
-import { QueueModule } from '@opuspopuli/queue-provider';
+import { QueueModule, resolveQueuePrefix} from '@opuspopuli/queue-provider';
 
 import { DbModule } from 'src/db/db.module';
 import { HealthModule } from 'src/common/health';
@@ -76,7 +76,7 @@ import { RerankCandidatesService } from './rerank-candidates.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         url: config.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
-        prefix: config.get<string>('BULLMQ_PREFIX') ?? 'bullmq',
+        prefix: resolveQueuePrefix(config.get<string>('BULLMQ_PREFIX')),
       }),
     }),
     MetricsModule.forRoot({ serviceName: 'llm-rerank-worker' }),
