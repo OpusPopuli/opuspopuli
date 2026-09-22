@@ -194,6 +194,57 @@ export class CivicsSyncService extends LlmGeneratorBase {
   }
 
   /**
+   * Write the exact prompt and response of a failed extraction to disk, so the
+   * failure can be reproduced offline instead of guessed at.
+   *
+   * **Opt-in, via `CIVICS_CAPTURE_DIR`.** Off by default and deliberately not
+   * a log line: the prompt embeds scraped civic text, which under #1263 can
+   * carry proponent contact details. Logs are shipped, indexed and retained;
+   * a file written only when an operator asks for it is not. The `warn` above
+   * carries sizes, hashes and `finishReason` — enough to triage — and none of
+   * the text.
+   *
+   * Never throws. A diagnostic that can fail a sync is worse than no
+   * diagnostic, and this runs on the path that is already failing.
+   */
+  private async captureFailedExtraction(
+    sourceUrl: string,
+    promptText: string,
+    responseText: string,
+  ): Promise<void> {
+    const dir = process.env.CIVICS_CAPTURE_DIR;
+    if (!dir) return;
+
+    try {
+      const { mkdir, writeFile } = await import('node:fs/promises');
+      const { createHash } = await import('node:crypto');
+      const stamp = createHash('sha256')
+        .update(sourceUrl)
+        .digest('hex')
+        .slice(0, 12);
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        `${dir}/civics-${stamp}.prompt.txt`,
+        `# ${sourceUrl}\n# promptChars=${promptText.length}\n\n${promptText}`,
+        'utf8',
+      );
+      await writeFile(
+        `${dir}/civics-${stamp}.response.txt`,
+        responseText,
+        'utf8',
+      );
+      this.logger.warn(
+        `Captured the failing civics prompt and response to ${dir}/civics-${stamp}.* ` +
+          `— contains scraped civic text; delete it when the investigation is done`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not capture the failing civics extraction: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
    * Fetch a civics page, send it through the civics-extraction prompt,
    * upsert the resulting `CivicsBlock` and glossary entries.
    */
@@ -217,17 +268,38 @@ export class CivicsSyncService extends LlmGeneratorBase {
           html: content,
         });
 
+      const maxTokens = ds.llmMaxTokens ?? 32000;
       const result = await this.llm.generate(promptText, {
-        maxTokens: ds.llmMaxTokens ?? 32000,
+        maxTokens,
         temperature: 0.1,
         requestTimeoutMs: ds.llmRequestTimeoutMs,
       });
 
       const candidate = extractJsonObjectSlice(result.text);
       if (!candidate) {
+        // The old line said only "no JSON object" and a character count, which
+        // is why this cost a day: it cannot distinguish "the model wrote prose
+        // instead of JSON" from "the model was still writing valid JSON when
+        // it hit the token ceiling". `finishReason` answers that outright and
+        // was already on the result, discarded.
         this.logger.warn(
-          `Civics extraction: no JSON object for ${sourceUrl} (${result.text.length} chars)`,
+          {
+            sourceUrl,
+            finishReason: result.finishReason,
+            tokensIn: result.tokensIn,
+            tokensOut: result.tokensOut,
+            maxTokens,
+            hitTokenCeiling: result.finishReason === 'length',
+            promptChars: promptText.length,
+            contentChars: content.length,
+            promptVersion,
+            promptHash,
+            responseChars: result.text.length,
+            responseHead: result.text.slice(0, 160),
+          },
+          `Civics extraction: no JSON object for ${sourceUrl}`,
         );
+        await this.captureFailedExtraction(sourceUrl, promptText, result.text);
         return 'failed';
       }
 
