@@ -22,6 +22,38 @@ export interface CreatePipelineJobInput {
   resetWatermark?: boolean;
 }
 
+/**
+ * Map a stored string onto a GraphQL enum, failing loudly if it does not fit.
+ *
+ * The previous `row.status.toUpperCase() as SyncJobStatus` typechecked for ANY
+ * string, so adding a new status to the database without adding it here was
+ * invisible until read time — and then failed GraphQL serialization on a
+ * non-nullable field, taking the whole query with it.
+ *
+ * That is exactly what happened with `cancelled`: the write path gained a
+ * status the read model did not know, which would have broken the
+ * `regionSyncJob` query an operator uses to confirm a cancel took effect.
+ * Caught by the pre-push review gate rather than by the type system, because
+ * the cast silenced the type system.
+ *
+ * Throws rather than defaulting: a job whose status we cannot name is not a
+ * job we should describe with a plausible-looking guess.
+ */
+function toEnum<T extends Record<string, string>>(
+  value: string,
+  members: T,
+  name: string,
+): T[keyof T] {
+  const upper = value.toUpperCase();
+  if (!Object.values(members).includes(upper)) {
+    throw new Error(
+      `${name} has no member for the stored value "${value}". A status was ` +
+        `added to the database without adding it to the GraphQL enum.`,
+    );
+  }
+  return upper as T[keyof T];
+}
+
 @Injectable()
 export class PipelineJobService {
   constructor(private readonly prisma: DbService) {}
@@ -183,8 +215,12 @@ export class PipelineJobService {
   }): RegionSyncJobModel {
     const model = new RegionSyncJobModel();
     model.jobId = row.id;
-    model.status = row.status.toUpperCase() as SyncJobStatus;
-    model.triggerSource = row.triggerSource.toUpperCase() as SyncTriggerSource;
+    model.status = toEnum(row.status, SyncJobStatus, 'SyncJobStatus');
+    model.triggerSource = toEnum(
+      row.triggerSource,
+      SyncTriggerSource,
+      'SyncTriggerSource',
+    );
     model.regionId = row.regionId ?? undefined;
     model.dataTypes = row.dataTypes;
     model.enqueuedAt = row.enqueuedAt;
