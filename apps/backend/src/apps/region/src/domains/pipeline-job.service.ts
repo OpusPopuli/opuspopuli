@@ -54,7 +54,7 @@ function toEnum<T extends Record<string, string>>(
   return upper as T[keyof T];
 }
 
-@Injectable()@Injectable()
+@Injectable()
 export class PipelineJobService {
   constructor(private readonly prisma: DbService) {}
 
