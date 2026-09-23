@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 import { Worker, Job, WorkerOptions } from "bullmq";
 import IORedis from "ioredis";
+import { resolveQueuePrefix } from "./queue.constants";
 
 export interface WorkerMetrics {
   incrementJobAttempts(
@@ -50,7 +51,7 @@ export function createWorker<T>(
 
   const workerOpts: WorkerOptions = {
     connection,
-    prefix: opts.prefix ?? "bullmq",
+    prefix: resolveQueuePrefix(opts.prefix),
     concurrency,
     autorun: enabled,
     lockDuration: lockDurationMs,

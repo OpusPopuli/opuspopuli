@@ -22,6 +22,38 @@ export interface CreatePipelineJobInput {
   resetWatermark?: boolean;
 }
 
+/**
+ * Map a stored string onto a GraphQL enum, failing loudly if it does not fit.
+ *
+ * The previous `row.status.toUpperCase() as SyncJobStatus` typechecked for ANY
+ * string, so adding a new status to the database without adding it here was
+ * invisible until read time — and then failed GraphQL serialization on a
+ * non-nullable field, taking the whole query with it.
+ *
+ * That is exactly what happened with `cancelled`: the write path gained a
+ * status the read model did not know, which would have broken the
+ * `regionSyncJob` query an operator uses to confirm a cancel took effect.
+ * Caught by the pre-push review gate rather than by the type system, because
+ * the cast silenced the type system.
+ *
+ * Throws rather than defaulting: a job whose status we cannot name is not a
+ * job we should describe with a plausible-looking guess.
+ */
+function toEnum<T extends Record<string, string>>(
+  value: string,
+  members: T,
+  name: string,
+): T[keyof T] {
+  const upper = value.toUpperCase();
+  if (!Object.values(members).includes(upper)) {
+    throw new Error(
+      `${name} has no member for the stored value "${value}". A status was ` +
+        `added to the database without adding it to the GraphQL enum.`,
+    );
+  }
+  return upper as T[keyof T];
+}
+
 @Injectable()
 export class PipelineJobService {
   constructor(private readonly prisma: DbService) {}
@@ -109,6 +141,53 @@ export class PipelineJobService {
     return result.count;
   }
 
+  /**
+   * Mark a job cancelled so it stops — and, crucially, stays stopped.
+   *
+   * Only `queued` or `running` rows can be cancelled; anything finished is
+   * left alone, so a late click cannot rewrite history.
+   *
+   * `cancelled` is a new status string rather than an enum value: `status` is
+   * a plain String column, so this needs no migration and no coordinated
+   * deploy. `sweepStaleRunning` only touches `running`, so a cancelled row is
+   * never resurrected by the startup sweeper either.
+   *
+   * @param id - The pipeline_jobs row
+   * @param reason - Recorded on the row, so the stop is explained rather than
+   *   merely recorded
+   * @returns Whether this call was the one that cancelled it
+   */
+  async cancel(id: string, reason: string): Promise<boolean> {
+    const result = await this.prisma.pipelineJob.updateMany({
+      where: {
+        id,
+        status: { in: [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING] },
+      },
+      data: {
+        status: JOB_STATUS.CANCELLED,
+        finishedAt: new Date(),
+        errorMessage: `Cancelled: ${reason}`,
+      },
+    });
+    return result.count > 0;
+  }
+
+  /**
+   * Has this job been cancelled?
+   *
+   * Read at the job boundary by the processor. BullMQ re-delivers a stalled
+   * job when a worker restarts, so without this a cancelled job begins again
+   * from item 1 every time the worker comes up — which on 2026-09-22 left
+   * hand-editing Redis as the only way out.
+   */
+  async isCancelled(id: string): Promise<boolean> {
+    const row = await this.prisma.pipelineJob.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    return row?.status === JOB_STATUS.CANCELLED;
+  }
+
   async findById(id: string): Promise<RegionSyncJobModel | null> {
     const row = await this.prisma.pipelineJob.findUnique({ where: { id } });
     return row ? this.toModel(row) : null;
@@ -136,8 +215,12 @@ export class PipelineJobService {
   }): RegionSyncJobModel {
     const model = new RegionSyncJobModel();
     model.jobId = row.id;
-    model.status = row.status.toUpperCase() as SyncJobStatus;
-    model.triggerSource = row.triggerSource.toUpperCase() as SyncTriggerSource;
+    model.status = toEnum(row.status, SyncJobStatus, 'SyncJobStatus');
+    model.triggerSource = toEnum(
+      row.triggerSource,
+      SyncTriggerSource,
+      'SyncTriggerSource',
+    );
     model.regionId = row.regionId ?? undefined;
     model.dataTypes = row.dataTypes;
     model.enqueuedAt = row.enqueuedAt;

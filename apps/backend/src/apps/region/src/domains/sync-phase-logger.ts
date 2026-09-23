@@ -87,6 +87,52 @@ export type CampaignFinanceSyncPhase =
 // ─── Tracker ───────────────────────────────────────────────────────
 
 /**
+ * How many items may fail back-to-back before the phase gives up.
+ *
+ * CONSECUTIVE, not cumulative, and a single success resets it. A long sync
+ * legitimately hits scattered failures — a dead URL, one malformed record —
+ * and aborting on a cumulative count would stop healthy runs. Five in a row is
+ * a different claim: the run itself is broken, not an item.
+ */
+const DEFAULT_CONSECUTIVE_FAILURE_LIMIT = 5;
+
+function consecutiveFailureLimit(): number {
+  const raw = process.env.SYNC_CONSECUTIVE_FAILURE_LIMIT;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_CONSECUTIVE_FAILURE_LIMIT;
+}
+
+/**
+ * Thrown when a phase abandons a run that is failing every item.
+ *
+ * Thrown rather than returned on purpose: the phase runs inside the
+ * processor's try/catch, which marks the `pipeline_jobs` row failed with this
+ * message. Returning instead would let the run end as "completed with 24
+ * errors", which reads like success in every summary that counts it.
+ *
+ * On 2026-09-22 a civics sync failed item 1 of 24 after 24.5 minutes and kept
+ * going — about ten hours to produce nothing, with nothing noticing that the
+ * failure rate was 100%.
+ */
+export class SyncAbortedError extends Error {
+  constructor(
+    readonly tag: string,
+    readonly consecutiveFailures: number,
+    readonly itemsAttempted: number,
+    readonly lastFailure: string,
+  ) {
+    super(
+      `[${tag}] Aborted after ${consecutiveFailures} consecutive failures ` +
+        `(${itemsAttempted} item(s) attempted). This run is not producing ` +
+        `results; the last failure was: ${lastFailure}`,
+    );
+    this.name = "SyncAbortedError";
+  }
+}
+
+/**
  * Encapsulated counters for one phase of one data type sync.
  *
  * Aggregating counts in the tracker instead of at each call site means
@@ -103,6 +149,10 @@ export class SyncPhaseTracker<Phase extends string> {
   private updated = 0;
   private skipped = 0;
   private errors = 0;
+  /** Reset by any created/updated item; see {@link SyncAbortedError}. */
+  private consecutiveFailures = 0;
+  private lastFailure = '(none)';
+  private readonly failureLimit = consecutiveFailureLimit();
   private readonly extras = new Map<string, number>();
   private readonly startedAtMs: number;
   private readonly phaseIdx: number;
@@ -162,6 +212,34 @@ export class SyncPhaseTracker<Phase extends string> {
     for (const extra of args.extraCounters ?? []) {
       this.extras.set(extra, (this.extras.get(extra) ?? 0) + 1);
     }
+
+    if (args.outcome === 'error') {
+      this.recordFailure(args.outcomeLabel);
+    } else {
+      // ANY non-error outcome clears the counter, `skipped` included. A skip
+      // means the item was handled and needed no work — the pipeline
+      // functioning, not failing. Treating it as neutral instead let errors
+      // separated by hundreds of skips accumulate into an abort, which on the
+      // bills sync (5,019 rows, most of them unchanged and therefore skipped)
+      // would stop a perfectly healthy run.
+      this.consecutiveFailures = 0;
+    }
+  }
+
+  /**
+   * Count a failure and abandon the phase if they are running back-to-back.
+   */
+  private recordFailure(label: string): void {
+    this.consecutiveFailures++;
+    this.lastFailure = label;
+    if (this.consecutiveFailures >= this.failureLimit) {
+      throw new SyncAbortedError(
+        this.tag,
+        this.consecutiveFailures,
+        this.current,
+        this.lastFailure,
+      );
+    }
   }
 
   /**
@@ -176,6 +254,9 @@ export class SyncPhaseTracker<Phase extends string> {
       `[${this.tag}] Phase ${this.phaseIdx}/${this.phaseTotal} [${this.current}/${this.total}] ${idSlot}: skipped: ${reason}`,
     );
     this.skipped++;
+    // Same reasoning as a `skipped` item above: this is a handled item, so it
+    // clears the consecutive-failure counter rather than sitting neutral.
+    this.consecutiveFailures = 0;
   }
 
   /**
