@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { PipelineJobService } from './pipeline-job.service';
+import { SyncJobStatus } from './models/pipeline-job.model';
 
 /**
  * Cancelling has to survive a worker restart.
@@ -68,5 +69,58 @@ describe('PipelineJobService — cancellation', () => {
     // A job with no row is a cron/manifest job the processor creates itself;
     // refusing to run it would break that path entirely.
     await expect(service.isCancelled('nope')).resolves.toBe(false);
+  });
+
+  /**
+   * The write path gained `cancelled` before the read model knew about it.
+   * `toModel` cast with `as SyncJobStatus`, so that typechecked and then
+   * failed GraphQL serialization on a NON-NULLABLE field at read time —
+   * breaking the very query an operator uses to confirm a cancel took effect.
+   *
+   * Caught by the pre-push AI review gate, not by the type system, because the
+   * cast silenced the type system.
+   */
+  describe('cancelled is readable, not just writable (#1319)', () => {
+    it('exposes CANCELLED on the GraphQL enum', () => {
+      expect(Object.values(SyncJobStatus)).toContain('CANCELLED');
+    });
+
+    it('maps a cancelled row onto the model without throwing', async () => {
+      prisma.pipelineJob.findUnique.mockResolvedValue({
+        id: 'job-1',
+        status: 'cancelled',
+        triggerSource: 'manual',
+        regionId: 'california',
+        dataTypes: ['civics'],
+        enqueuedAt: new Date(),
+        startedAt: new Date(),
+        finishedAt: new Date(),
+        errorMessage: 'Cancelled: failing every item',
+        result: null,
+      });
+
+      const model = await service.findById('job-1');
+
+      expect(model?.status).toBe(SyncJobStatus.CANCELLED);
+    });
+
+    it('refuses a status the enum cannot name, rather than guessing', async () => {
+      prisma.pipelineJob.findUnique.mockResolvedValue({
+        id: 'job-1',
+        status: 'paused',
+        triggerSource: 'manual',
+        regionId: null,
+        dataTypes: [],
+        enqueuedAt: new Date(),
+        startedAt: null,
+        finishedAt: null,
+        errorMessage: null,
+        result: null,
+      });
+
+      // A job whose status we cannot name is not one to describe with a
+      // plausible-looking guess.
+      await expect(service.findById('job-1')).rejects.toThrow(/SyncJobStatus/);
+    });
   });
 });
