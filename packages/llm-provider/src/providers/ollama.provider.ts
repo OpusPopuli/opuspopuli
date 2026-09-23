@@ -111,6 +111,30 @@ export interface OllamaConfig {
    * If not provided, uses native fetch (which respects global dispatcher)
    */
   fetchFn?: FetchFunction;
+  /**
+   * Context window to request, in tokens (`num_ctx`).
+   *
+   * Left unset, Ollama applies the build's own default — and that default
+   * differs between builds of the SAME model. Measured 2026-09-23 on a 451 KB
+   * bill (~112,878 estimated tokens):
+   *
+   *     lightning MLX,  unset            107,298 tokens read  (95%)
+   *     lightning GGUF, unset             16,386 tokens read  (15%)
+   *     lightning GGUF, num_ctx 32768     16,386 tokens read  (15%)
+   *     lightning GGUF, num_ctx 131072   107,298 tokens read  (95%)
+   *
+   * Note the third row: a plausible value is not a safe one, and being wrong
+   * is SILENT — the model returns well-formed output describing the fragment
+   * it read. `promptTruncated` on the result detects the condition; this is
+   * how a deployment avoids it.
+   *
+   * An earlier revision of this provider sized the window per call. That was
+   * reverted: at the 6.6K-token civics prompts it was tested on, `num_ctx`
+   * measurably changed nothing (three seeds, both arms identical), and the
+   * inference did not survive repetition. It matters at 112K, not at 6.6K, so
+   * this is an explicit deployment setting rather than a computed one.
+   */
+  contextTokens?: number;
 }
 
 /**
@@ -152,11 +176,13 @@ export class OllamaLLMProvider implements ILLMProvider {
   private readonly logger = new Logger(OllamaLLMProvider.name);
   private readonly circuitBreaker: CircuitBreakerManager;
   private readonly requestTimeoutMs: number;
+  private readonly contextTokens?: number;
   private readonly chunkTimeoutMs: number;
   private readonly fetchFn: FetchFunction;
 
   constructor(private readonly config: OllamaConfig) {
     // Initialize timeout values from config or defaults
+    this.contextTokens = config.contextTokens;
     this.requestTimeoutMs =
       config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.chunkTimeoutMs = config.chunkTimeoutMs ?? DEFAULT_CHUNK_TIMEOUT_MS;
@@ -313,13 +339,7 @@ export class OllamaLLMProvider implements ILLMProvider {
               prompt,
               stream: false,
               think: options?.think ?? false,
-              options: {
-                num_predict: options?.maxTokens || 512,
-                temperature: options?.temperature || 0.7,
-                top_p: options?.topP || 0.95,
-                top_k: options?.topK || 40,
-                stop: options?.stopSequences || [],
-              },
+              options: this.samplingOptions(options),
             }),
           },
           effectiveTimeoutMs,
@@ -385,13 +405,7 @@ export class OllamaLLMProvider implements ILLMProvider {
           prompt,
           stream: true,
           think: options?.think ?? false,
-          options: {
-            num_predict: options?.maxTokens || 512,
-            temperature: options?.temperature || 0.7,
-            top_p: options?.topP || 0.95,
-            top_k: options?.topK || 40,
-            stop: options?.stopSequences || [],
-          },
+          options: this.samplingOptions(options),
         }),
       });
 
@@ -486,6 +500,30 @@ export class OllamaLLMProvider implements ILLMProvider {
   }
 
   /**
+   * The `options` every request carries.
+   *
+   * One builder rather than three copies — this block was duplicated across
+   * the streaming, non-streaming and chat paths, which is how `num_ctx` could
+   * have been added to one and missed in the others.
+   *
+   * `num_ctx` is included only when a deployment sets it. Omitted, Ollama
+   * applies the build's own default, which differs between builds of the same
+   * model and silently truncates long prompts — see {@link OllamaConfig.contextTokens}.
+   */
+  private samplingOptions(
+    options?: GenerateOptions,
+  ): Record<string, unknown> {
+    return {
+      num_predict: options?.maxTokens || 512,
+      temperature: options?.temperature ?? 0.7,
+      top_p: options?.topP ?? 0.95,
+      top_k: options?.topK ?? 40,
+      stop: options?.stopSequences || [],
+      ...(this.contextTokens ? { num_ctx: this.contextTokens } : {}),
+    };
+  }
+
+  /**
    * Handle streaming errors with appropriate error messages
    */
   private handleStreamError(error: unknown): never {
@@ -527,12 +565,7 @@ export class OllamaLLMProvider implements ILLMProvider {
               })),
               stream: false,
               think: options?.think ?? false,
-              options: {
-                num_predict: options?.maxTokens || 512,
-                temperature: options?.temperature || 0.7,
-                top_p: options?.topP || 0.95,
-                top_k: options?.topK || 40,
-              },
+              options: this.samplingOptions(options),
             }),
           },
           this.requestTimeoutMs,

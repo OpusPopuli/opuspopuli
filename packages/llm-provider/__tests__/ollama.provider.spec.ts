@@ -123,6 +123,39 @@ describe("OllamaLLMProvider", () => {
     });
   });
 
+  /**
+   * The SAME model in two builds reads a 451 KB bill completely or reads 15%
+   * of it, depending on `num_ctx`. And 32768 reads exactly as little as no
+   * setting at all, so a plausible value is not a safe one — which is why
+   * this is an explicit deployment setting rather than a computed guess.
+   */
+  describe("context window (#1319)", () => {
+    const optionsOf = () => JSON.parse(mockFetch.mock.calls[0][1].body).options;
+    const ok = () => ({
+      ok: true,
+      json: () => Promise.resolve({ response: "{}", done: true }),
+    });
+
+    it("omits num_ctx entirely when unconfigured", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short");
+
+      // Absent means "use the build's default" — a real choice, and the one
+      // the MLX build gets right without help.
+      expect(optionsOf().num_ctx).toBeUndefined();
+    });
+
+    it("sends the configured window on every request", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await sized.generate("short");
+
+      expect(optionsOf().num_ctx).toBe(131072);
+    });
+  });
+
   describe("generate", () => {
     it("reports input and output tokens separately", async () => {
       // Ollama has always returned prompt_eval_count; it went unread, so

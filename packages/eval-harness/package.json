@@ -2,7 +2,7 @@
   "name": "@opuspopuli/eval-harness",
   "version": "0.1.0",
   "private": true,
-  "description": "Retrieval and generation evaluation harness — the measurement instrument for AI-architecture changes (M4).",
+  "description": "Retrieval and generation evaluation harness \u2014 the measurement instrument for AI-architecture changes (M4).",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -19,7 +19,8 @@
     "eval:throughput": "tsx src/throughput-eval.ts",
     "eval:adversarial": "tsx src/adversarial-eval.ts",
     "eval:omission": "tsx src/omission-eval.ts",
-    "eval:divergence": "tsx src/divergence-eval.ts"
+    "eval:divergence": "tsx src/divergence-eval.ts",
+    "eval:context": "tsx src/context-capacity-eval.ts"
   },
   "dependencies": {
     "@opuspopuli/common": "workspace:*",

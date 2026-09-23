@@ -94,6 +94,23 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
     10,
   );
 
+  // Context window (#1319). Lane-scoped, falling back to a shared value.
+  //
+  // Unset, Ollama applies the build's own default — which DIFFERS between
+  // builds of the same model and silently truncates: the GGUF lightning build
+  // reads 15% of a 451 KB bill and returns confident JSON about the fragment,
+  // where the MLX build reads 95%. `num_ctx: 32768` reads exactly as little as
+  // no setting at all, so a plausible value is not a safe one.
+  const contextTokens = Number.parseInt(
+    (lane === "ingestion"
+      ? process.env.LLM_INGESTION_CONTEXT_TOKENS
+      : process.env.LLM_ANALYSIS_CONTEXT_TOKENS) ??
+      process.env.LLM_CONTEXT_TOKENS ??
+      "",
+    10,
+  );
+
+
   // The ingestion lane falls back to the analysis values at every level, so
   // an unconfigured deployment gets the provider it had before the split.
   const prefix = lane === "ingestion" ? "llm.ingestion" : "llm.ollama";
@@ -116,6 +133,10 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
       : {}),
     ...(Number.isFinite(chunkTimeoutMs) && chunkTimeoutMs > 0
       ? { chunkTimeoutMs }
+      : {}),
+    // Per lane, because the two can run different models on different hosts.
+    ...(Number.isFinite(contextTokens) && contextTokens > 0
+      ? { contextTokens }
       : {}),
   };
 
