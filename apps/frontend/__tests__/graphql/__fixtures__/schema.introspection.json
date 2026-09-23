@@ -21822,6 +21822,11 @@
           {
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "CANCELLED"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "FAILED"
           },
           {
