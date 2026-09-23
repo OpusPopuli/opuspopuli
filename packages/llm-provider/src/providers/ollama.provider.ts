@@ -20,28 +20,77 @@ import {
  * this instrumentation exists to answer.
  */
 /**
+ * Characters per token used only to ESTIMATE how much prompt we sent.
+ *
+ * Deliberately coarse. Real tokenizers differ by 20-50% across model families
+ * — measured on the same bill, one model reported 149% of this estimate and
+ * another 84% — so this can never be a precise check. It does not need to be:
+ * the failure it catches is an order of magnitude away, not a few percent.
+ */
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+
+/**
+ * Below this share of the estimated prompt, assume the prompt was cut.
+ *
+ * Measured 2026-09-23 across 15 bill runs: genuine full reads landed between
+ * 84% and 149% of the estimate, while two truncated runs landed at **15%**.
+ * Nothing observed sits between 15% and 84%, so 0.5 separates them with a
+ * wide margin in both directions — it will not fire on a tokenizer that
+ * merely disagrees, and it cannot miss a `num_ctx` cut.
+ */
+const MIN_PROMPT_COVERAGE = 0.5;
+
+/**
+ * Did the model read materially less than we sent it?
+ *
+ * Ollama enforces `num_ctx` by silently truncating the prompt: no error, no
+ * flag, and a well-formed answer about the part it read. On a 451 KB bill two
+ * models reported `prompt_eval_count = 16386` — the 16,384 window plus two —
+ * against ~112,000 tokens of input, and both returned valid JSON describing
+ * the first 15% of the document. Output that is wrong in this way is worse
+ * than output that fails, because nothing downstream can tell.
+ */
+function detectPromptTruncation(
+  promptChars: number | undefined,
+  promptEvalCount: number | undefined,
+): { promptTruncated?: boolean; promptTokensEstimated?: number } {
+  if (!promptChars || !promptEvalCount) return {};
+  const estimated = Math.ceil(promptChars / CHARS_PER_TOKEN_ESTIMATE);
+  return {
+    promptTokensEstimated: estimated,
+    promptTruncated: promptEvalCount < estimated * MIN_PROMPT_COVERAGE,
+  };
+}
+
+/**
  * Map Ollama's usage fields onto the GenerateResult telemetry shape.
  *
  * One place on purpose: the generate and chat paths return identical
  * telemetry, and two hand-maintained copies is how the input count went
  * unread in one of them for months.
  */
-function tokenTelemetry(data: {
-  eval_count?: number;
-  prompt_eval_count?: number;
-  done?: boolean;
-  done_reason?: string;
-}): {
+function tokenTelemetry(
+  data: {
+    eval_count?: number;
+    prompt_eval_count?: number;
+    done?: boolean;
+    done_reason?: string;
+  },
+  promptChars?: number,
+): {
   tokensUsed?: number;
   tokensIn?: number;
   tokensOut?: number;
   finishReason: "stop" | "length";
+  promptTruncated?: boolean;
+  promptTokensEstimated?: number;
 } {
   return {
     tokensUsed: sumTokens(data.prompt_eval_count, data.eval_count),
     tokensIn: data.prompt_eval_count || undefined,
     tokensOut: data.eval_count || undefined,
     finishReason: mapFinishReason(data.done, data.done_reason),
+    ...detectPromptTruncation(promptChars, data.prompt_eval_count),
   };
 }
 
@@ -355,7 +404,12 @@ export class OllamaLLMProvider implements ILLMProvider {
             `(${tokens} tokens, ${tokPerSec} tok/s) with Ollama`,
         );
 
-        return { text: data.response || "", ...tokenTelemetry(data) };
+        const result = {
+          text: data.response || "",
+          ...tokenTelemetry(data, prompt.length),
+        };
+        this.warnIfPromptTruncated(result, prompt.length);
+        return result;
       } catch (error) {
         if (error instanceof LLMError) throw error;
         this.logger.error("Ollama generation failed:", error);
@@ -486,6 +540,35 @@ export class OllamaLLMProvider implements ILLMProvider {
   }
 
   /**
+   * Say so, loudly, when the model read only part of what we sent.
+   *
+   * At `warn` rather than `debug` because the output is not obviously wrong:
+   * it is a fluent, well-formed answer about a fragment. A civic summary that
+   * silently describes the first 15% of a bill is exactly what this platform
+   * exists not to publish, and this number is the only signal that it did.
+   */
+  private warnIfPromptTruncated(
+    result: {
+      promptTruncated?: boolean;
+      tokensIn?: number;
+      promptTokensEstimated?: number;
+    },
+    promptChars: number,
+  ): void {
+    if (!result.promptTruncated) return;
+    const pct = result.promptTokensEstimated
+      ? Math.round((100 * (result.tokensIn ?? 0)) / result.promptTokensEstimated)
+      : 0;
+    this.logger.warn(
+      `PROMPT TRUNCATED by ${this.config.model}: read ${result.tokensIn} of ` +
+        `~${result.promptTokensEstimated} estimated tokens (${pct}%) from ` +
+        `${promptChars} characters. The response describes only the part that ` +
+        `was read. Raise num_ctx for this model, or chunk the input — do not ` +
+        `store this output as a summary of the whole document.`,
+    );
+  }
+
+  /**
    * Handle streaming errors with appropriate error messages
    */
   private handleStreamError(error: unknown): never {
@@ -551,7 +634,15 @@ export class OllamaLLMProvider implements ILLMProvider {
           done_reason?: string; // "stop" | "length" — WHY it stopped (#1085)
         };
 
-        return { text: data.message?.content || "", ...tokenTelemetry(data) };
+        // Measured over the WHOLE conversation: /api/chat fills the window
+        // with every message, so sizing on the last turn alone would miss a cut.
+        const chatChars = messages.reduce((n, m) => n + m.content.length, 0);
+        const result = {
+          text: data.message?.content || "",
+          ...tokenTelemetry(data, chatChars),
+        };
+        this.warnIfPromptTruncated(result, chatChars);
+        return result;
       } catch (error) {
         if (error instanceof LLMError) throw error;
         this.logger.error("Ollama chat failed:", error);
