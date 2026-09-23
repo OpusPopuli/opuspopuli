@@ -225,3 +225,21 @@ describe('CivicsSyncService', () => {
     expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
   });
 });
+
+/**
+ * The failure that cost a day said only "no JSON object" and a character
+ * count. That cannot distinguish the two possibilities — the model wrote
+ * prose instead of JSON, or it was still writing valid JSON when it hit the
+ * token ceiling — and they have opposite fixes.
+ *
+ * `finishReason` answers it outright, and was already on the result and
+ * discarded.
+ */
+describe('CivicsSyncService — failure diagnostics (#1319)', () => {
+  it('captures nothing to disk unless an operator opts in', () => {
+    // The prompt embeds scraped civic text, which under #1263 can carry
+    // proponent contact details. Logs are shipped, indexed and retained; a
+    // file written only on request is not. Default must be off.
+    expect(process.env.CIVICS_CAPTURE_DIR).toBeUndefined();
+  });
+});
