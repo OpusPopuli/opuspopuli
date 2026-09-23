@@ -90,6 +90,9 @@ describe('RegionSyncProcessor', () => {
     pipelineJobService.markSucceeded.mockResolvedValue(undefined);
     pipelineJobService.markFailed.mockResolvedValue(undefined);
     pipelineJobService.sweepStaleRunning.mockResolvedValue(0);
+    // #1319: read before any work, so a cancelled job cannot be restarted
+    // forever by BullMQ's stalled-job re-delivery.
+    pipelineJobService.isCancelled.mockResolvedValue(false);
 
     const configMock = module.get<jest.Mocked<ConfigService>>(ConfigService);
     configMock.get.mockReturnValue('600000');
@@ -197,6 +200,41 @@ describe('RegionSyncProcessor', () => {
       expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(30000);
     });
   });
+  describe('cancellation (#1319)', () => {
+    /**
+     * BullMQ re-delivers a stalled job when a worker restarts. Without a
+     * durable marker read BEFORE any work, a cancelled job begins again from
+     * item 1 on every boot — which is what left hand-edited Redis as the only
+     * way to stop a run that was failing every item for ten hours.
+     */
+    it('does no work when the job row says cancelled', async () => {
+      pipelineJobService.isCancelled.mockResolvedValue(true);
+
+      await processor.onApplicationBootstrap();
+      const handler = (createWorker as jest.Mock).mock.calls.at(-1)[2];
+
+      const result = await handler(buildJob());
+
+      expect(result).toEqual([]);
+      expect(regionService.syncAll).not.toHaveBeenCalled();
+      // Must not flip the row back to running, or the next restart undoes it.
+      expect(pipelineJobService.markRunning).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when the cancellation check itself fails', async () => {
+      // Fail OPEN: a check that takes down the queue when the database
+      // hiccups is worse than the thing it guards against.
+      pipelineJobService.isCancelled.mockRejectedValue(new Error('db down'));
+
+      await processor.onApplicationBootstrap();
+      const handler = (createWorker as jest.Mock).mock.calls.at(-1)[2];
+
+      await handler(buildJob());
+
+      expect(regionService.syncAll).toHaveBeenCalled();
+    });
+  });
+
   describe('boundary refresh dispatch (#1122)', () => {
     function getHandler() {
       return (createWorker as jest.Mock).mock.calls.at(-1)[2];

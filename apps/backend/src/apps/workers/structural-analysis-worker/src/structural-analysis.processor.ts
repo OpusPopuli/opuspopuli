@@ -15,6 +15,7 @@ import {
   TRIGGER_SOURCE,
   QueueService,
   createWorker,
+  resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import type {
   RegionSyncJobData,
@@ -43,7 +44,7 @@ export class StructuralAnalysisProcessor
   ) {}
 
   onApplicationBootstrap() {
-    const prefix = this.config.get<string>('BULLMQ_PREFIX') ?? 'bullmq';
+    const prefix = resolveQueuePrefix(this.config.get<string>('BULLMQ_PREFIX'));
 
     this.worker = createWorker<StructuralAnalysisJobData>(
       STRUCTURAL_ANALYSIS_QUEUE,

@@ -5,6 +5,7 @@ import {
   QueueModule,
   QueueService,
   STRUCTURAL_ANALYSIS_QUEUE,
+  resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import type {
   StructuralAnalysisJobData,
@@ -95,7 +96,7 @@ const queueModuleAsyncConfig = {
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
     url: config.get('REDIS_URL') || 'redis://localhost:6379',
-    prefix: config.get('BULLMQ_PREFIX') || 'bullmq',
+    prefix: resolveQueuePrefix(config.get('BULLMQ_PREFIX')),
   }),
 };
 

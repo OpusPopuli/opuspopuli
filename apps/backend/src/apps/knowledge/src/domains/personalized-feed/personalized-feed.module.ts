@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
-import { QueueModule } from '@opuspopuli/queue-provider';
+import { QueueModule, resolveQueuePrefix} from '@opuspopuli/queue-provider';
 
 import { ScoringService } from './scoring.service';
 import { PersonalizedFeedService } from './personalized-feed.service';
@@ -50,7 +50,7 @@ import { requirePromptServiceUrl } from 'src/common/config/shared-app.config';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         url: config.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
-        prefix: config.get<string>('BULLMQ_PREFIX') ?? 'bullmq',
+        prefix: resolveQueuePrefix(config.get<string>('BULLMQ_PREFIX')),
       }),
     }),
   ],

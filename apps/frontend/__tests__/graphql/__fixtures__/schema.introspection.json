@@ -9201,6 +9201,44 @@
             "args": [
               {
                 "defaultValue": null,
+                "name": "jobId",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "SCALAR",
+                    "name": "ID",
+                    "ofType": null
+                  }
+                }
+              },
+              {
+                "defaultValue": null,
+                "name": "reason",
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "cancelRegionSync",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
                 "name": "changePasswordDto",
                 "type": {
                   "kind": "NON_NULL",
@@ -21781,6 +21819,11 @@
       },
       {
         "enumValues": [
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "CANCELLED"
+          },
           {
             "deprecationReason": null,
             "isDeprecated": false,
