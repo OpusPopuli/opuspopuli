@@ -12,6 +12,18 @@ export enum SyncJobStatus {
   RUNNING = 'RUNNING',
   SUCCEEDED = 'SUCCEEDED',
   FAILED = 'FAILED',
+  /**
+   * Stopped on purpose by an operator, distinct from FAILED — which means the
+   * run tried and could not. A dashboard that conflates the two cannot tell
+   * "we stopped this" from "this broke".
+   *
+   * Must exist here, not only in `JOB_STATUS`: `toModel` casts the row's
+   * status with `as SyncJobStatus`, so a value missing from this enum
+   * typechecks fine and then fails GraphQL serialization at read time — on a
+   * non-nullable field, which fails the whole query. That would break exactly
+   * the `regionSyncJob` read an operator uses to confirm a cancel took effect.
+   */
+  CANCELLED = 'CANCELLED',
 }
 
 export enum SyncTriggerSource {

@@ -1211,6 +1211,51 @@ export class RegionResolver {
     );
   }
 
+  /**
+   * Stop a region sync (admin only).
+   *
+   * Two mechanisms, because a job can be in two very different states:
+   *
+   * - **Still waiting** — removed from the queue outright, so it never starts.
+   * - **Already running** — the row is marked `cancelled` and the worker stops
+   *   at its next job boundary. The in-flight LLM call is NOT interrupted;
+   *   killing that needs cooperative cancellation threaded through every sync
+   *   service, which is filed separately.
+   *
+   * The row flag is the load-bearing half. BullMQ re-delivers a stalled job
+   * when a worker restarts, so without a durable "do not run this" marker a
+   * bad job begins again from item 1 on every boot — on 2026-09-22 that left
+   * hand-edited Redis as the only way to stop a run that was failing every
+   * item for ten hours.
+   *
+   * Returns true when this call cancelled the job — NOT that work has already
+   * stopped. A running job keeps going until its current item finishes, which
+   * for an LLM-backed sync can be minutes. The `regionSyncJob` query is how an
+   * operator confirms it actually stopped; this only confirms it was asked to.
+   *
+   * @returns True if this call cancelled it; false if it had already finished
+   */
+  @Mutation(() => Boolean)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 10 })
+  async cancelRegionSync(
+    @Args('jobId', { type: () => ID }) jobId: string,
+    @Args('reason', { nullable: true }) reason?: string,
+  ): Promise<boolean> {
+    const cancelled = await this.pipelineJobService.cancel(
+      jobId,
+      reason?.trim() || 'cancelled by an administrator',
+    );
+    if (!cancelled) return false;
+
+    // Best-effort: drops it if it has not started. A running job is left to
+    // the boundary check — see removeJobIfPending, which deliberately refuses
+    // to remove an ACTIVE job rather than orphan a worker holding its lock.
+    await this.queueService.removeJobIfPending(REGION_SYNC_QUEUE, jobId);
+    return true;
+  }
+
   @Query(() => RegionSyncJobModel, { nullable: true })
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)

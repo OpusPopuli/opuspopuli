@@ -1,7 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { Queue, JobsOptions } from "bullmq";
 import IORedis from "ioredis";
-import { QUEUE_CONNECTION, QUEUE_MODULE_OPTIONS } from "./queue.constants";
+import {
+  QUEUE_CONNECTION,
+  QUEUE_MODULE_OPTIONS,
+  resolveQueuePrefix,
+} from "./queue.constants";
 import {
   EnqueueOptions,
   QueueJobInfo,
@@ -19,7 +23,7 @@ export class QueueService implements OnModuleDestroy {
     @Inject(QUEUE_CONNECTION) private readonly connection: IORedis,
     @Inject(QUEUE_MODULE_OPTIONS) private readonly options: QueueModuleOptions,
   ) {
-    this.prefix = options.prefix ?? "bullmq";
+    this.prefix = resolveQueuePrefix(options.prefix);
   }
 
   async enqueue<T>(
@@ -93,6 +97,43 @@ export class QueueService implements OnModuleDestroy {
       progress: typeof job.progress === "number" ? job.progress : 0,
       failedReason: job.failedReason ?? undefined,
     };
+  }
+
+  /**
+   * Drop a job that has not started yet.
+   *
+   * Deliberately refuses to touch an ACTIVE job. BullMQ's `remove()` on an
+   * active job leaves the worker running with its lock held — the row
+   * disappears while the work carries on, which is worse than not cancelling
+   * at all because the operator is told it stopped.
+   *
+   * Stopping work already in flight is the DB-flag path instead: the row is
+   * marked cancelled, the worker reads that at its next job boundary and
+   * exits. This method exists so a job still sitting in `wait` never starts.
+   *
+   * @returns Whether a waiting job was removed
+   */
+  async removeJobIfPending(
+    queueName: string,
+    jobId: string,
+  ): Promise<boolean> {
+    const queue = this.getQueue(queueName);
+    const job = await queue.getJob(jobId);
+    if (!job) return false;
+
+    const state = await job.getState();
+    if (state === "active") {
+      this.logger.warn(
+        `Not removing ${jobId} from ${queueName}: it is already active. ` +
+          `Cancellation is recorded on the job row; the worker stops at its ` +
+          `next boundary.`,
+      );
+      return false;
+    }
+
+    await job.remove();
+    this.logger.log(`Removed pending job ${jobId} from ${queueName}`);
+    return true;
   }
 
   async upsertScheduler(

@@ -16,6 +16,7 @@ import {
   type LlmRerankJobData,
   type LlmRerankJobResult,
   type LlmRerankEntityType,
+  resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import {
   LlmRerankService,
@@ -58,7 +59,7 @@ export class LlmRerankProcessor
   ) {}
 
   async onApplicationBootstrap() {
-    const prefix = this.config.get<string>('BULLMQ_PREFIX') ?? 'bullmq';
+    const prefix = resolveQueuePrefix(this.config.get<string>('BULLMQ_PREFIX'));
 
     const DEFAULT_STALE_AGE_MS = 600_000;
     const rawStaleAge = this.config.get<string>('LLM_RERANK_JOB_STALE_AGE_MS');

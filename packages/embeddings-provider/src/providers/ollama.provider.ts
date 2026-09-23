@@ -104,7 +104,40 @@ export interface OllamaEmbeddingOptions {
   taskPrefixes?: boolean;
   /** Texts per `/api/embed` call. Defaults to 64. */
   batchSize?: number;
+  /**
+   * Longest input, in characters, this model embeds without silently
+   * truncating. Defaults to {@link DEFAULT_MAX_INPUT_CHARS}.
+   */
+  maxInputChars?: number;
 }
+
+/**
+ * A conservative character proxy for this model's real limit, which is in
+ * TOKENS (#1319).
+ *
+ * `nomic-embed-text-v2-moe` embeds at most 512 tokens. Beyond that the tail of
+ * the input contributes nothing, and nothing says so: the vector is returned,
+ * stored, indexed and searched as though it represented the whole text.
+ *
+ * Confirmed against the real model on 2026-09-22 by embedding a text, then
+ * embedding it with a distinctive sentence appended, and comparing. A cosine
+ * of exactly 1.000000 means the suffix was not seen at all:
+ *
+ *   real proposition text, 1841 chars   0.940537   sees the suffix
+ *   real proposition text, 2500 chars   1.000000   TRUNCATED
+ *   one sentence repeated, 2600 chars   0.927657   sees the suffix
+ *
+ * Note the third row: the boundary moves with how densely the text tokenizes,
+ * so there is no single honest character number. Dense legal prose crosses 512
+ * tokens sooner than repetitive text does. 2000 is therefore a deliberately
+ * early warning line rather than a measured cliff — it should fire slightly
+ * before real truncation, not after it.
+ *
+ * Today the longest proposition embedding source is 1841 characters and is
+ * verified NOT truncated. The longest bill source is 4289 characters, which is
+ * past the limit at any plausible density.
+ */
+const DEFAULT_MAX_INPUT_CHARS = 2000;
 
 /**
  * Ollama Embedding Provider (OSS)
@@ -124,6 +157,7 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   private readonly fetchFn: FetchFunction;
   private readonly taskPrefixes: boolean;
   private readonly batchSize: number;
+  private readonly maxInputChars: number;
   private baseUrl: string;
   private model: string;
   private dimensions: number;
@@ -141,6 +175,7 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
     this.dimensions = dimensionsForModel(this.model);
     this.taskPrefixes = options.taskPrefixes ?? false;
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+    this.maxInputChars = options.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
 
     // `Number.isInteger` first, and not just `< 1`: a NaN batchSize (an
     // unparseable EMBEDDINGS_OLLAMA_BATCH_SIZE reaching a direct constructor
@@ -237,6 +272,32 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   }
 
   /**
+   * Say so when an input is long enough to be silently truncated (#1319).
+   *
+   * Does NOT truncate or reject: the embedding of a long text's prefix is
+   * still usable, and failing a sync over it would trade a degraded vector for
+   * no vector at all. What is not acceptable is that it happens invisibly — a
+   * truncated input produces a vector that is stored, indexed and searched as
+   * though it represented the whole text, and nothing downstream can tell.
+   *
+   * Logged once per batch with a count rather than per text, so a backfill of
+   * thousands of rows does not bury the signal it is trying to raise.
+   */
+  private warnOnOversizedInput(input: string[]): void {
+    const oversized = input.filter((t) => t.length > this.maxInputChars);
+    if (oversized.length === 0) return;
+
+    const longest = Math.max(...oversized.map((t) => t.length));
+    this.logger.warn(
+      `${oversized.length} of ${input.length} input(s) exceed ` +
+        `${this.maxInputChars} characters (longest ${longest}) and will be ` +
+        `truncated by ${this.model} — the vector will represent only the ` +
+        `beginning of the text. Chunk before embedding, or raise ` +
+        `maxInputChars if this model's limit has been re-measured.`,
+    );
+  }
+
+  /**
    * One `/api/embed` call for the whole batch.
    *
    * This replaces a loop over the legacy `/api/embeddings` endpoint, which
@@ -261,6 +322,7 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
     prefix: string,
   ): Promise<number[][]> {
     const input = this.taskPrefixes ? texts.map((t) => prefix + t) : texts;
+    this.warnOnOversizedInput(input);
 
     // Wrap the call with circuit breaker protection
     return this.circuitBreaker.execute(async () => {
