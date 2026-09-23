@@ -12,6 +12,7 @@ import {
   REGION_SYNC_QUEUE,
   TRIGGER_SOURCE,
   createWorker,
+  resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import type {
   RegionSyncJobData,
@@ -42,7 +43,7 @@ export class RegionSyncProcessor
   ) {}
 
   async onApplicationBootstrap() {
-    const prefix = this.config.get<string>('BULLMQ_PREFIX') ?? 'bullmq';
+    const prefix = resolveQueuePrefix(this.config.get<string>('BULLMQ_PREFIX'));
 
     // Recover rows that were RUNNING when the previous worker died/crashed
     // (BullMQ stall + worker death leaves them stuck). Threshold is the
@@ -92,6 +93,26 @@ export class RegionSyncProcessor
     }
   }
 
+  /**
+   * Has this job been cancelled since it was enqueued?
+   *
+   * Fails OPEN. This check is a safety feature, and a safety feature that
+   * takes down the queue when the database hiccups is a worse outcome than
+   * the one it guards against: running a cancelled job costs one wasted run,
+   * while refusing to process anything costs every run.
+   */
+  private async wasCancelled(pipelineJobId: string): Promise<boolean> {
+    try {
+      return await this.pipelineJobService.isCancelled(pipelineJobId);
+    } catch (error) {
+      this.logger.warn(
+        { pipelineJobId, err: (error as Error).message },
+        'Could not read job cancellation state; proceeding',
+      );
+      return false;
+    }
+  }
+
   private async process(
     job: Job<RegionSyncJobData>,
   ): Promise<RegionSyncJobResult[]> {
@@ -134,6 +155,19 @@ export class RegionSyncProcessor
           dataTypes,
         })
       ).id;
+
+    // Checked BEFORE any work, and before markRunning would flip the row back
+    // to `running`. BullMQ re-delivers a stalled job whenever a worker
+    // restarts, so a cancelled job would otherwise begin again from item 1 on
+    // every boot — which is what left hand-editing Redis as the only way to
+    // stop a bad run on 2026-09-22.
+    if (await this.wasCancelled(effectiveJobId)) {
+      this.logger.warn(
+        { queue: REGION_SYNC_QUEUE, jobId: job.id, pipelineJobId: effectiveJobId },
+        'Skipping cancelled region-sync job',
+      );
+      return [];
+    }
 
     await this.pipelineJobService.markRunning(effectiveJobId, job.id as string);
 

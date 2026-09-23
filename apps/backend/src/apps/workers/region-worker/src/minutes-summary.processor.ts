@@ -12,6 +12,7 @@ import {
   MINUTES_SUMMARY_QUEUE,
   QUEUE_CONNECTION,
   createWorker,
+  resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import type { MinutesSummaryJobData } from '@opuspopuli/queue-provider';
 import { MinutesSummaryService } from 'src/apps/region/src/domains/minutes-summary.service';
@@ -38,7 +39,7 @@ export class MinutesSummaryProcessor
   ) {}
 
   onApplicationBootstrap() {
-    const prefix = this.config.get<string>('BULLMQ_PREFIX') ?? 'bullmq';
+    const prefix = resolveQueuePrefix(this.config.get<string>('BULLMQ_PREFIX'));
     this.worker = createWorker<MinutesSummaryJobData>(
       MINUTES_SUMMARY_QUEUE,
       this.connection,

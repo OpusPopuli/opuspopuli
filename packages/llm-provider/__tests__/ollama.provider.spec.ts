@@ -156,6 +156,70 @@ describe("OllamaLLMProvider", () => {
     });
   });
 
+  /**
+   * Ollama enforces `num_ctx` by silently cutting the prompt: no error, no
+   * flag, and a fluent answer about the fragment it read.
+   *
+   * Measured 2026-09-23 on a 451 KB bill — two different models reported
+   * `prompt_eval_count = 16386` against ~112,000 tokens of input (the 16,384
+   * window plus two) and both returned VALID JSON summarising the first 15%
+   * of the document. Valid output describing the wrong thing is worse than a
+   * failure, because nothing downstream can tell.
+   */
+  describe("prompt truncation (#1319)", () => {
+    const reply = (promptEval: number) => ({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          response: '{"ok":true}',
+          prompt_eval_count: promptEval,
+          eval_count: 40,
+          done: true,
+          done_reason: "stop",
+        }),
+    });
+
+    it("flags the real 451 KB bill signature", async () => {
+      mockFetch.mockResolvedValueOnce(reply(16386));
+
+      // ~112k estimated tokens; the model reports having read 16,386.
+      const result = await provider.generate("x".repeat(451512));
+
+      expect(result.promptTruncated).toBe(true);
+      expect(result.tokensIn).toBe(16386);
+    });
+
+    it("does not flag a tokenizer that merely disagrees with the estimate", async () => {
+      // Observed range on genuine full reads was 84%-149% of the estimate;
+      // firing there would make the warning noise and get it ignored.
+      mockFetch.mockResolvedValueOnce(reply(2400));
+
+      const result = await provider.generate("y".repeat(11633));
+
+      expect(result.promptTruncated).toBe(false);
+    });
+
+    it("does not flag a model that reads MORE tokens than estimated", async () => {
+      mockFetch.mockResolvedValueOnce(reply(4320));
+
+      const result = await provider.generate("z".repeat(11633));
+
+      expect(result.promptTruncated).toBe(false);
+    });
+
+    it("stays silent when Ollama reports no input count", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ response: "hi", done: true }),
+      });
+
+      // "No telemetry" must not masquerade as "truncated".
+      const result = await provider.generate("a".repeat(400000));
+
+      expect(result.promptTruncated).toBeUndefined();
+    });
+  });
+
   describe("generate", () => {
     it("reports input and output tokens separately", async () => {
       // Ollama has always returned prompt_eval_count; it went unread, so

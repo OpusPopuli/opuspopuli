@@ -62,6 +62,27 @@ export interface GenerateResult {
   /** Completion (output) tokens. */
   tokensOut?: number;
   finishReason?: "stop" | "length" | "error";
+  /**
+   * True when the model appears to have read only part of the prompt (#1319).
+   *
+   * Ollama applies `num_ctx` by silently cutting the prompt — no error, no
+   * warning, and a perfectly well-formed answer about the fragment it did
+   * read. Measured 2026-09-23 on a 451 KB bill: two models reported
+   * `prompt_eval_count` of **16,386** against ~112,000 tokens of input — the
+   * 16,384 window plus two — and both returned valid JSON summarising the
+   * first 15% of the document as though it were the whole thing.
+   *
+   * That is the most dangerous failure shape this platform has: not an error,
+   * not empty output, but a confident summary of a fragment that nothing
+   * downstream can distinguish from a complete one.
+   */
+  promptTruncated?: boolean;
+  /**
+   * Prompt tokens the caller expected, against which {@link tokensIn} was
+   * compared. Rough — tokenizers differ by 20-50% between model families —
+   * which is why the detection threshold is deliberately loose.
+   */
+  promptTokensEstimated?: number;
 }
 
 /**
