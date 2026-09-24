@@ -12,8 +12,22 @@ than quietly replaced.
 
 GGUF rather than the MLX build because quality measured equivalent and the
 operational properties are better — portable beyond Apple Silicon, and 8x
-faster to load. The MLX build remains a valid local choice; see
-"MLX vs GGUF" below for what separates them.
+faster to load. See "MLX vs GGUF" below for what separates them.
+
+The MLX build is **no longer configured as a lane model**. MLX stays in this
+document as the measurement it was, and as the reference point that shows what
+an unset window costs — not as a deployable option. (Unrelated to the olmOCR
+MLX sidecar in the OCR eval, which remains the only working route for that
+model; see `packages/eval-harness/src/ocr-eval.ts`.)
+
+**What is and is not committed.** `LLM_ANALYSIS_CONTEXT_TOKENS` /
+`LLM_INGESTION_CONTEXT_TOKENS` are declared in `apps/backend/.env.example` and
+plumbed through every LLM-consuming service in `docker-compose-uat.yml`, both
+defaulting to empty — so this decision is reviewable in the repo, but **no
+tracked file selects the model or the window**. Both are set per deployment:
+on the author's workstation by a local overlay that is deliberately never
+committed. Read every claim here as measured-on-one-48GB-MacBook until a node
+records its own.
 
 ## The finding that decided it
 
@@ -157,6 +171,24 @@ acceptable in a deployment that switched models per request.
 
 ```bash
 pnpm --filter @opuspopuli/eval-harness eval:context -- \
-  --models nemotron-3.5-lightning:30b-a3b-mlx,nemotron-3.5-lightning:30b-a3b \
+  --models nemotron-3.5-lightning:30b-a3b \
   --num-ctx 131072
 ```
+
+**What that command does and does not reproduce.** It sends proposition full
+text, largest first, and reports coverage per run — so it reproduces the
+*method* and the truncation signal. It does **not** reproduce the AB 1830 rows
+in the table above: `Bill` holds only a `full_text_url`, not the text, so bill
+bodies are not in the database for the harness to read. Those figures were
+measured by hand before the harness existed, and are recorded here as the
+finding rather than as the tool's output. Reaching them from the harness means
+resolving `full_text_url` first, which is filed separately.
+
+For the same reason there is no "valid JSON" column in the harness output. The
+prompt it sends is the document alone — prompt text lives in `prompt-service`
+and is never inlined in this repo — so nothing asks the model for JSON. The
+"valid JSON" observations in the tables above come from the runs that used the
+real service prompts.
+
+Two lanes, one variable: `LLM_ANALYSIS_CONTEXT_TOKENS=131072` arms both, since
+ingestion falls back through the analysis value.
