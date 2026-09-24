@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 import { PromptClientService } from '@opuspopuli/prompt-client';
@@ -5,6 +6,7 @@ import type { ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import {
+  CIVICS_MAX_OUTPUT_TOKENS,
   CivicsSyncService,
   type CivicsCrawlHelpers,
   type CivicsProvider,
@@ -74,14 +76,20 @@ describe('CivicsSyncService', () => {
    * returning `extractedJson`. Returns the sync result plus the db mock so a
    * test can assert whether the block was persisted.
    */
-  const drivePage = async (extractedJson: string) => {
+  const drivePage = async (
+    extractedJson: string,
+    generateExtras: Record<string, unknown> = {},
+  ) => {
     const { service, mockLlm, mockDb, mockPromptClient } = await buildService();
     mockPromptClient.getCivicsExtractionPrompt.mockResolvedValue({
       promptText: 'prompt',
       promptHash: 'hash',
       promptVersion: '1.0.0',
     } as never);
-    mockLlm.generate.mockResolvedValue({ text: extractedJson } as never);
+    mockLlm.generate.mockResolvedValue({
+      text: extractedJson,
+      ...generateExtras,
+    } as never);
     (mockDb.civicsBlock.findUnique as jest.Mock).mockResolvedValue(null);
 
     const sourceUrl = 'https://www.assembly.ca.gov/resources/x';
@@ -102,7 +110,7 @@ describe('CivicsSyncService', () => {
     };
 
     const result = await service.sync(plugin, helpers);
-    return { result, mockDb };
+    return { result, mockDb, mockLlm };
   };
 
   // ── #874: don't persist empty CivicsBlocks ────────────────────────────
@@ -223,6 +231,107 @@ describe('CivicsSyncService', () => {
 
     expect(getDataSources).not.toHaveBeenCalled();
     expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+  });
+
+  describe('CivicsSyncService — output budget and determinism', () => {
+    /**
+     * Verified by reintroducing the bug: restore the old inline 32000 and this
+     * fails. That value is what cut off a complete 211-term glossary extraction
+     * mid-string on 2026-09-24.
+     */
+    const ANY_CONTENT = JSON.stringify({
+      chambers: [{ name: 'Assembly' }],
+      measureTypes: [],
+      lifecycleStages: [],
+      glossary: [],
+      sessionScheme: null,
+    });
+
+    it('sends a budget big enough for a glossary page, and no seed by default', async () => {
+      const { mockLlm } = await drivePage(ANY_CONTENT);
+
+      expect(mockLlm.generate).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ maxTokens: CIVICS_MAX_OUTPUT_TOKENS }),
+      );
+      // Unseeded on purpose. A fixed seed would make a page that extracts on
+      // roughly half its attempts fail on all three BullMQ attempts, and on
+      // every cron run after that — the same roll, forever.
+      expect(
+        (mockLlm.generate as jest.Mock).mock.calls[0][1],
+      ).not.toHaveProperty('seed');
+    });
+
+    it('pins the seed only when an operator asks for a reproducible run', async () => {
+      process.env.CIVICS_EXTRACTION_SEED = '7';
+      try {
+        const { mockLlm } = await drivePage(ANY_CONTENT);
+
+        expect(mockLlm.generate).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ seed: 7 }),
+        );
+      } finally {
+        delete process.env.CIVICS_EXTRACTION_SEED;
+      }
+    });
+
+    it('ignores a seed that is not a plain number', async () => {
+      process.env.CIVICS_EXTRACTION_SEED = 'random';
+      try {
+        const { mockLlm } = await drivePage(ANY_CONTENT);
+
+        expect(
+          (mockLlm.generate as jest.Mock).mock.calls[0][1],
+        ).not.toHaveProperty('seed');
+      } finally {
+        delete process.env.CIVICS_EXTRACTION_SEED;
+      }
+    });
+
+    /**
+     * The two ways `extractJsonObjectSlice` returns nothing are opposite
+     * problems, and telling them apart is the whole point: one is a budget to
+     * raise, the other is a prompt or model to fix. Reporting both as "no JSON
+     * object" is what turned the ceiling into a two-day mystery written up as a
+     * "32,000-token runaway".
+     */
+    describe('distinguishes a cut-off extraction from a bad one', () => {
+      const TRUNCATED =
+        '{"chambers": [], "glossary": [{"term": "Across the Desk"';
+
+      it('names the ceiling, the size and the fix when it was cut off', async () => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        try {
+          await drivePage(TRUNCATED, { finishReason: 'length' });
+          const messages = warn.mock.calls.map((c) => String(c[1] ?? c[0]));
+          const hit = messages.find((m) => m.includes('TRUNCATED'));
+          expect(hit).toBeDefined();
+          expect(hit).toContain(String(CIVICS_MAX_OUTPUT_TOKENS));
+          expect(hit).toContain('llmMaxTokens');
+          // Must NOT read as malformed output — that is the misdiagnosis.
+          expect(hit).not.toContain('no JSON object');
+        } finally {
+          warn.mockRestore();
+        }
+      });
+
+      it('says it is a model or prompt problem when the model simply stopped', async () => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        try {
+          await drivePage('I could not find any civic information.', {
+            finishReason: 'stop',
+          });
+          const messages = warn.mock.calls.map((c) => String(c[1] ?? c[0]));
+          const hit = messages.find((m) => m.includes('no JSON object'));
+          expect(hit).toBeDefined();
+          expect(hit).toContain('Not a budget problem');
+          expect(hit).not.toContain('TRUNCATED');
+        } finally {
+          warn.mockRestore();
+        }
+      });
+    });
   });
 });
 

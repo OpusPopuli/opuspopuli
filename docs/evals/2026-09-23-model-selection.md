@@ -163,9 +163,36 @@ acceptable in a deployment that switched models per request.
   tokens; whether the shorter output is as complete was not scored.
 - **Either build on anything but Apple Silicon.** GGUF is portable in
   principle; no non-Mac run was made.
-- **The civics production failure** — a 32,000-token runaway producing 155 KB
+- ~~**The civics production failure** — a 32,000-token runaway producing 155 KB
   with no JSON, twice, which a hand-rebuilt prompt does not reproduce. Still
-  unexplained; diagnostics shipped in #1321 to capture the real prompt.
+  unexplained.~~ **EXPLAINED 2026-09-24, and it was not a runaway.** Captured in
+  full by arming #1321's `CIVICS_CAPTURE_DIR` — which no deployment set, which
+  is why it had never fired. On `assembly.ca.gov/resources/glossary` the model
+  returned 141,786 chars of **well-formed JSON containing 211 complete glossary
+  terms**, then stopped mid-string with `finishReason: 'length'`. Every element
+  of the original description was the output ceiling doing its job: "32,000
+  tokens" *was* `maxTokens`, and "no JSON" meant the JSON had no closing brace
+  so the extractor's slice found none. The cause is nemotron extracting the
+  glossary ~7× more completely than qwen (211+ terms against 30), which
+  overflows a budget 30 terms never approached. Fixed by raising the budget and
+  by making the log name the ceiling instead of reporting malformed output.
+
+  Two lessons worth more than the fix. The structured field `hitTokenCeiling`
+  was already being logged beside that warning — the *message* is what a human
+  reads, and it said the wrong thing for two days. And a diagnostic that is
+  off by default is not a diagnostic.
+
+- **Civics extraction was non-deterministic.** Two identical syncs on
+  2026-09-24 disagreed about 2 of 24 pages — `how-qualify-initiative` returned
+  nothing on one run and 10,871 bytes on the next, and
+  `information-help-you-follow-process` did the reverse. `temperature: 0.1`
+  with no seed. Any per-page comparison made before 2026-09-24 measured this
+  variance along with whatever it meant to measure. Now seeded.
+
+- **Three pages fail reliably** and are the real targets for prompt work:
+  `teachers-and-students` (17 KB in the qwen baseline), `attorney-general-information`
+  (13 KB) and `qualified-ballot-measures` (12 KB) all extract to nothing. Not
+  measured here: whether that is the prompt, the model, or the HTML-to-text step.
 
 ## Reproducing
 

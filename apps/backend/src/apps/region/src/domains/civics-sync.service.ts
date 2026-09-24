@@ -12,6 +12,72 @@ import { LlmGeneratorBase } from './llm-generator.base';
 import { civicsSyncTracker } from './sync-phase-logger';
 
 /**
+ * Output token budget for one civics extraction.
+ *
+ * Raised from 32,000 after it silently cut off a good extraction. Measured
+ * 2026-09-24 on `assembly.ca.gov/resources/glossary`, captured in full:
+ *
+ *   prompt          71,750 chars (~18K tokens)
+ *   response       141,786 chars of well-formed JSON, 211 complete glossary
+ *                  terms, then cut mid-string inside term 211
+ *   finishReason   'length'  (i.e. the ceiling, not the model stopping)
+ *
+ * At ~4.4 chars/token that response was already at the 32,000 ceiling with the
+ * page unfinished, so the budget has to roughly double to hold it: 64,000
+ * tokens is ~280,000 chars, comfortably past the ~250 terms that page carries.
+ *
+ * REQUIRES a context window that can hold prompt + output. 18K in plus 64K out
+ * is 82K, which fits the 131,072 a deployment should set via
+ * LLM_INGESTION_CONTEXT_TOKENS — but NOTHING TRACKED SETS IT (see
+ * .env.example, where it is commented out). With the window unset the deployed
+ * GGUF build defaults to ~16K, the prompt alone already exceeds it, and a
+ * bigger output budget just buys more degraded generation. Set the window and
+ * this budget together; neither is much use alone.
+ *
+ * Per-source `llmMaxTokens` OVERRIDES this, and every California civics source
+ * currently pins 32,000 — so raising the default here does not by itself fix
+ * the page that prompted it. That needs a change in `opuspopuli-regions`.
+ *
+ * The cost is only paid when the model actually generates that much; a small
+ * page stops on its own long before the ceiling. But a full 64,000-token run is
+ * ~13-17 min at measured civics throughput, against the 20 min
+ * `llmRequestTimeoutMs` those same sources set — so the timeout wants raising
+ * in the same breath, or a big page trades a truncation for a timeout, which
+ * captures nothing.
+ */
+export const CIVICS_MAX_OUTPUT_TOKENS = 64000;
+
+/**
+ * Optional sampling seed — OFF by default, and deliberately so.
+ *
+ * Civics extraction is non-deterministic: two identical syncs on 2026-09-24
+ * disagreed about two of 24 pages. `how-qualify-initiative` returned nothing on
+ * the first run and 10,871 bytes on the second; `information-help-you-follow-process`
+ * did the reverse. Same model, same prompt, same content, `temperature: 0.1`,
+ * no seed.
+ *
+ * The obvious response is to pin a seed. That would be wrong here, and the
+ * review of this change caught it: `QueueService` gives every job 3 attempts
+ * with backoff, and the civics cron runs weekly. A page that currently
+ * extracts on roughly half its attempts would, with a fixed seed, fail on all
+ * three attempts and on every run thereafter — the same roll, forever. Pinning
+ * would trade flakiness for permanent, silent coverage loss.
+ *
+ * So variance stays in production, where a retry is a second chance, and
+ * determinism is opt-in for the place that actually needs it: measuring whether
+ * a prompt change helped. Set CIVICS_EXTRACTION_SEED to pin a run.
+ *
+ * Attestation does not need this either — the output row already carries
+ * `promptHash`, `promptVersion`, `llmModel` and `llmDigest`.
+ */
+function civicsSeed(): number | undefined {
+  const raw = process.env.CIVICS_EXTRACTION_SEED?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+/**
  * Minimal provider contract for civics ingestion. Civics consumes
  * declarative `dataSources` registered by the region plugin — the
  * orchestrator owns the plugin lookup, civics consumes the resulting
@@ -268,10 +334,11 @@ export class CivicsSyncService extends LlmGeneratorBase {
           html: content,
         });
 
-      const maxTokens = ds.llmMaxTokens ?? 32000;
+      const maxTokens = ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS;
       const result = await this.llm.generate(promptText, {
         maxTokens,
         temperature: 0.1,
+        ...(civicsSeed() !== undefined ? { seed: civicsSeed() } : {}),
         requestTimeoutMs: ds.llmRequestTimeoutMs,
       });
 
@@ -282,6 +349,14 @@ export class CivicsSyncService extends LlmGeneratorBase {
         // instead of JSON" from "the model was still writing valid JSON when
         // it hit the token ceiling". `finishReason` answers that outright and
         // was already on the result, discarded.
+        //
+        // Adding `hitTokenCeiling` to the structured fields was not enough:
+        // the MESSAGE still said "no JSON object", and that is the part a human
+        // reads. It was written up as a "32,000-token runaway producing no
+        // JSON" — three descriptions of the ceiling doing its job — and stayed
+        // an open mystery for two days. So the message itself now names the
+        // cause and the fix.
+        const ceilingHit = result.finishReason === 'length';
         this.logger.warn(
           {
             sourceUrl,
@@ -289,7 +364,12 @@ export class CivicsSyncService extends LlmGeneratorBase {
             tokensIn: result.tokensIn,
             tokensOut: result.tokensOut,
             maxTokens,
-            hitTokenCeiling: result.finishReason === 'length',
+            hitTokenCeiling: ceilingHit,
+            // The INPUT side of the same question. Both were already on the
+            // result and neither was logged, which is how "the prompt was
+            // silently truncated" stays invisible at this exact moment.
+            promptTruncated: result.promptTruncated,
+            promptTokensEstimated: result.promptTokensEstimated,
             promptChars: promptText.length,
             contentChars: content.length,
             promptVersion,
@@ -297,7 +377,24 @@ export class CivicsSyncService extends LlmGeneratorBase {
             responseChars: result.text.length,
             responseHead: result.text.slice(0, 160),
           },
-          `Civics extraction: no JSON object for ${sourceUrl}`,
+          ceilingHit
+            ? `Civics extraction: output TRUNCATED at the ${maxTokens}-token ` +
+                `ceiling for ${sourceUrl} — the model was still writing valid ` +
+                `JSON (${result.text.length} chars) when it was cut off. This is ` +
+                `a budget problem, not a model or prompt problem: raise ` +
+                `llmMaxTokens for this data source.`
+            : // NOT "so it must be the prompt". There is a third cause this
+              // cannot see from here: a prompt cut on the way IN. With num_ctx
+              // unset the model may never reach the JSON-format instructions at
+              // the tail of the prompt, answer in prose, and report 'stop' — and
+              // #1322's detector misses an overflow this mild, because 16,386
+              // tokens read of ~17,937 sent is 91% coverage, well above the 50%
+              // threshold. Naming the candidates beats asserting one of them.
+              `Civics extraction: no JSON object for ${sourceUrl} — the model ` +
+                `stopped on its own (${result.finishReason ?? 'reason unreported'}) ` +
+                `without producing one. Not a budget problem. Check, in order: ` +
+                `whether the prompt was cut on input (promptTruncated below, and ` +
+                `tokensIn vs promptTokensEstimated), then the prompt, then the model.`,
         );
         await this.captureFailedExtraction(sourceUrl, promptText, result.text);
         return 'failed';
