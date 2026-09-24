@@ -27,7 +27,7 @@ import {
  * another 84% — so this can never be a precise check. It does not need to be:
  * the failure it catches is an order of magnitude away, not a few percent.
  */
-const CHARS_PER_TOKEN_ESTIMATE = 4;
+export const CHARS_PER_TOKEN_ESTIMATE = 4;
 
 /**
  * Below this share of the estimated prompt, assume the prompt was cut.
@@ -38,7 +38,7 @@ const CHARS_PER_TOKEN_ESTIMATE = 4;
  * wide margin in both directions — it will not fire on a tokenizer that
  * merely disagrees, and it cannot miss a `num_ctx` cut.
  */
-const MIN_PROMPT_COVERAGE = 0.5;
+export const MIN_PROMPT_COVERAGE = 0.5;
 
 /**
  * Did the model read materially less than we sent it?
@@ -564,15 +564,29 @@ export class OllamaLLMProvider implements ILLMProvider {
    * applies the build's own default, which differs between builds of the same
    * model and silently truncates long prompts — see {@link OllamaConfig.contextTokens}.
    */
-  private samplingOptions(
-    options?: GenerateOptions,
-  ): Record<string, unknown> {
+  private samplingOptions(options?: GenerateOptions): Record<string, unknown> {
     return {
+      // `||` throughout, which is what all three copies used. `??` would be
+      // the better rule — it honours an explicit `temperature: 0` instead of
+      // turning determinism into 0.7 — but changing it here would make a
+      // de-duplication commit silently alter sampling on three paths at once.
+      // Behaviour-preserving now; worth fixing deliberately, on its own.
       num_predict: options?.maxTokens || 512,
-      temperature: options?.temperature ?? 0.7,
-      top_p: options?.topP ?? 0.95,
-      top_k: options?.topK ?? 40,
-      stop: options?.stopSequences || [],
+      temperature: options?.temperature || 0.7,
+      top_p: options?.topP || 0.95,
+      top_k: options?.topK || 40,
+      // Only when there is something to stop on.
+      //
+      // The three originals disagreed here, so there is no option that
+      // preserves all of them: chat omitted `stop`, generate and stream sent
+      // `stop: []`. Omitting is chat's behaviour and the safer one — Ollama
+      // merges request options over the model's own, so an explicit `[]`
+      // REPLACES a Modelfile's stop list and lets a model run past its
+      // end-of-turn inventing a reply. No caller in the repo sets
+      // `stopSequences` today, so nothing observable changes either way.
+      ...(options?.stopSequences?.length
+        ? { stop: options.stopSequences }
+        : {}),
       ...(this.contextTokens ? { num_ctx: this.contextTokens } : {}),
     };
   }
@@ -595,7 +609,9 @@ export class OllamaLLMProvider implements ILLMProvider {
   ): void {
     if (!result.promptTruncated) return;
     const pct = result.promptTokensEstimated
-      ? Math.round((100 * (result.tokensIn ?? 0)) / result.promptTokensEstimated)
+      ? Math.round(
+          (100 * (result.tokensIn ?? 0)) / result.promptTokensEstimated,
+        )
       : 0;
     this.logger.warn(
       `PROMPT TRUNCATED by ${this.config.model}: read ${result.tokensIn} of ` +

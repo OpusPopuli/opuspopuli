@@ -3,6 +3,10 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ILLMProvider, setGlobalHttpPool } from "@opuspopuli/common";
 import { llmConfig } from "@opuspopuli/config-provider";
 import {
+  resolveContextTokens,
+  contextTokensWarning,
+} from "./context-tokens.js";
+import {
   OllamaLLMProvider,
   OllamaConfig,
 } from "./providers/ollama.provider.js";
@@ -94,23 +98,6 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
     10,
   );
 
-  // Context window (#1319). Lane-scoped, falling back to a shared value.
-  //
-  // Unset, Ollama applies the build's own default — which DIFFERS between
-  // builds of the same model and silently truncates: the GGUF lightning build
-  // reads 15% of a 451 KB bill and returns confident JSON about the fragment,
-  // where the MLX build reads 95%. `num_ctx: 32768` reads exactly as little as
-  // no setting at all, so a plausible value is not a safe one.
-  const contextTokens = Number.parseInt(
-    (lane === "ingestion"
-      ? process.env.LLM_INGESTION_CONTEXT_TOKENS
-      : process.env.LLM_ANALYSIS_CONTEXT_TOKENS) ??
-      process.env.LLM_CONTEXT_TOKENS ??
-      "",
-    10,
-  );
-
-
   // The ingestion lane falls back to the analysis values at every level, so
   // an unconfigured deployment gets the provider it had before the split.
   const prefix = lane === "ingestion" ? "llm.ingestion" : "llm.ollama";
@@ -125,6 +112,14 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
     configService.get<string>("llm.model") ||
     "mistral";
 
+  // Context window (#1319). The chain lives in `llm.config.ts` beside url and
+  // model; the validation lives in `context-tokens.ts` where it can be tested.
+  const { contextTokens, warning } = resolveContextTokens(
+    configService.get<string>(`${prefix}.contextTokens`),
+  );
+  if (warning)
+    logger.warn(`LLM ${lane} lane: ${contextTokensWarning(warning)}`);
+
   const ollamaConfig: OllamaConfig = {
     url,
     model,
@@ -135,9 +130,7 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
       ? { chunkTimeoutMs }
       : {}),
     // Per lane, because the two can run different models on different hosts.
-    ...(Number.isFinite(contextTokens) && contextTokens > 0
-      ? { contextTokens }
-      : {}),
+    ...(contextTokens ? { contextTokens } : {}),
   };
 
   // Headers timeout before any generation fires. Derived from the configured
@@ -155,7 +148,13 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
   // thing anyone asks when output looks wrong, and inferring it from four
   // environment variables and a fallback chain is how a service ends up
   // running a model nobody chose.
-  logger.log(`LLM ${lane} lane: ${model} at ${url}`);
+  // The window is in this line for the same reason the model is: it decides
+  // how much of a document the answer was based on, and "unset" is a real and
+  // consequential state rather than a missing detail.
+  logger.log(
+    `LLM ${lane} lane: ${model} at ${url}, context window ` +
+      `${contextTokens ?? "unset (build default)"}`,
+  );
 
   if (lane === "ingestion") {
     const hasModel = Boolean(process.env.LLM_INGESTION_MODEL);
