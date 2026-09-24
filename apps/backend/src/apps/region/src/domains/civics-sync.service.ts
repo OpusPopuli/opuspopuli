@@ -34,16 +34,27 @@ import { civicsSyncTracker } from './sync-phase-logger';
  * bigger output budget just buys more degraded generation. Set the window and
  * this budget together; neither is much use alone.
  *
- * Per-source `llmMaxTokens` OVERRIDES this, and every California civics source
- * currently pins 32,000 — so raising the default here does not by itself fix
- * the page that prompted it. That needs a change in `opuspopuli-regions`.
+ * Per-source `llmMaxTokens` OVERRIDES this. California's three civics sources
+ * carry 64,000 as of @opuspopuli/regions 1.0.97 (opuspopuli-regions#87); note
+ * `packages/region-provider` pins that version SEPARATELY from
+ * `apps/backend`, and region-provider's is the one the service resolves
+ * from — see #1328.
  *
  * The cost is only paid when the model actually generates that much; a small
- * page stops on its own long before the ceiling. But a full 64,000-token run is
- * ~13-17 min at measured civics throughput, against the 20 min
- * `llmRequestTimeoutMs` those same sources set — so the timeout wants raising
- * in the same breath, or a big page trades a truncation for a timeout, which
- * captures nothing.
+ * page stops on its own long before the ceiling. What a full budget COSTS in
+ * time was measured wrong at first and is worth stating correctly:
+ *
+ *   short civics calls   ~63 tok/s   (38 tokens in 10s — the empty pages)
+ *   the 253-term glossary 22.5 tok/s  (36,972 tokens in 27m52s)
+ *
+ * Long generations run ~3x slower per token than short ones, so sizing a
+ * timeout from the short-call rate underestimates by that factor. A FULL
+ * 64,000-token run is therefore ~47 min, not the ~15 min first estimated.
+ *
+ * Which means no timeout currently in play bounds this budget: the sources set
+ * 22 min and `LLM_HEADERS_TIMEOUT_FLOOR_MS` is 22.5 min. The 27m52s run above
+ * completed anyway, past its own 22-minute deadline without aborting — see
+ * #1329, which is unresolved. Treat the bound as unenforced until it is.
  */
 export const CIVICS_MAX_OUTPUT_TOKENS = 64000;
 
