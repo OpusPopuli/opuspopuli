@@ -19,7 +19,8 @@
     "eval:throughput": "tsx src/throughput-eval.ts",
     "eval:adversarial": "tsx src/adversarial-eval.ts",
     "eval:omission": "tsx src/omission-eval.ts",
-    "eval:divergence": "tsx src/divergence-eval.ts"
+    "eval:divergence": "tsx src/divergence-eval.ts",
+    "eval:context": "tsx src/context-capacity-eval.ts"
   },
   "dependencies": {
     "@opuspopuli/common": "workspace:*",

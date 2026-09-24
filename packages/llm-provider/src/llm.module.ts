@@ -3,6 +3,10 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ILLMProvider, setGlobalHttpPool } from "@opuspopuli/common";
 import { llmConfig } from "@opuspopuli/config-provider";
 import {
+  resolveContextTokens,
+  contextTokensWarning,
+} from "./context-tokens.js";
+import {
   OllamaLLMProvider,
   OllamaConfig,
 } from "./providers/ollama.provider.js";
@@ -108,6 +112,14 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
     configService.get<string>("llm.model") ||
     "mistral";
 
+  // Context window (#1319). The chain lives in `llm.config.ts` beside url and
+  // model; the validation lives in `context-tokens.ts` where it can be tested.
+  const { contextTokens, warning } = resolveContextTokens(
+    configService.get<string>(`${prefix}.contextTokens`),
+  );
+  if (warning)
+    logger.warn(`LLM ${lane} lane: ${contextTokensWarning(warning)}`);
+
   const ollamaConfig: OllamaConfig = {
     url,
     model,
@@ -117,6 +129,8 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
     ...(Number.isFinite(chunkTimeoutMs) && chunkTimeoutMs > 0
       ? { chunkTimeoutMs }
       : {}),
+    // Per lane, because the two can run different models on different hosts.
+    ...(contextTokens ? { contextTokens } : {}),
   };
 
   // Headers timeout before any generation fires. Derived from the configured
@@ -134,7 +148,13 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
   // thing anyone asks when output looks wrong, and inferring it from four
   // environment variables and a fallback chain is how a service ends up
   // running a model nobody chose.
-  logger.log(`LLM ${lane} lane: ${model} at ${url}`);
+  // The window is in this line for the same reason the model is: it decides
+  // how much of a document the answer was based on, and "unset" is a real and
+  // consequential state rather than a missing detail.
+  logger.log(
+    `LLM ${lane} lane: ${model} at ${url}, context window ` +
+      `${contextTokens ?? "unset (build default)"}`,
+  );
 
   if (lane === "ingestion") {
     const hasModel = Boolean(process.env.LLM_INGESTION_MODEL);

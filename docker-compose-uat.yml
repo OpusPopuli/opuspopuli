@@ -281,6 +281,13 @@ services:
       LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
+      # Context window in tokens (#1319). Empty = send no num_ctx and let the
+      # build decide — which is SILENTLY WRONG on a GGUF build: it reads 16,386
+      # tokens of a 451 KB bill (15%) and returns confident JSON about the
+      # fragment. Set it to 131072 for the lightning builds. Ingestion falls
+      # back through the analysis value, so one variable arms both lanes.
+      LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
+      LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
       # AI Prompt Service for proprietary prompt templates
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -333,6 +340,13 @@ services:
       LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
+      # Context window in tokens (#1319). Empty = send no num_ctx and let the
+      # build decide — which is SILENTLY WRONG on a GGUF build: it reads 16,386
+      # tokens of a 451 KB bill (15%) and returns confident JSON about the
+      # fragment. Set it to 131072 for the lightning builds. Ingestion falls
+      # back through the analysis value, so one variable arms both lanes.
+      LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
+      LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
       # Bump default Ollama request timeout (60s) — proposition-analysis,
       # bio, and structural-analysis prompts are 7-18KB and routinely
       # take 60-150s on qwen3.5:9b on a Mac, especially after a sleep
@@ -418,6 +432,13 @@ services:
       LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
+      # Context window in tokens (#1319). Empty = send no num_ctx and let the
+      # build decide — which is SILENTLY WRONG on a GGUF build: it reads 16,386
+      # tokens of a 451 KB bill (15%) and returns confident JSON about the
+      # fragment. Set it to 131072 for the lightning builds. Ingestion falls
+      # back through the analysis value, so one variable arms both lanes.
+      LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
+      LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -483,6 +504,13 @@ services:
       LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
+      # Context window in tokens (#1319). Empty = send no num_ctx and let the
+      # build decide — which is SILENTLY WRONG on a GGUF build: it reads 16,386
+      # tokens of a 451 KB bill (15%) and returns confident JSON about the
+      # fragment. Set it to 131072 for the lightning builds. Ingestion falls
+      # back through the analysis value, so one variable arms both lanes.
+      LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
+      LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -535,6 +563,13 @@ services:
       LLM_ANALYSIS_URL: ${LLM_ANALYSIS_URL:-}
       LLM_INGESTION_MODEL: ${LLM_INGESTION_MODEL:-}
       LLM_INGESTION_URL: ${LLM_INGESTION_URL:-}
+      # Context window in tokens (#1319). Empty = send no num_ctx and let the
+      # build decide — which is SILENTLY WRONG on a GGUF build: it reads 16,386
+      # tokens of a 451 KB bill (15%) and returns confident JSON about the
+      # fragment. Set it to 131072 for the lightning builds. Ingestion falls
+      # back through the analysis value, so one variable arms both lanes.
+      LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
+      LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1

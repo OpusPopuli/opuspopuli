@@ -16,7 +16,11 @@
  * invalid results from configuration alone.
  */
 
-import { OllamaLLMProvider } from "@opuspopuli/llm-provider";
+import {
+  OllamaLLMProvider,
+  resolveContextTokens,
+  contextTokensWarning,
+} from "@opuspopuli/llm-provider";
 import { setGlobalHttpPool } from "@opuspopuli/common";
 
 /**
@@ -93,6 +97,12 @@ export interface LlmBackendOptions {
    * read as a model failure.
    */
   requestTimeoutMs?: number;
+  /**
+   * Context window in tokens, as a string so it is validated by the same rule
+   * as the deployment setting — `"128k"` is rejected, not parsed as 128.
+   * Defaults to LLM_ANALYSIS_CONTEXT_TOKENS / LLM_CONTEXT_TOKENS.
+   */
+  contextTokens?: string;
 }
 
 export function createLlmBackend(opts: LlmBackendOptions): LlmBackend {
@@ -103,10 +113,24 @@ export function createLlmBackend(opts: LlmBackendOptions): LlmBackend {
       ? ANALYSIS_MAX_TOKENS * THINKING_BUDGET_MULTIPLIER
       : ANALYSIS_MAX_TOKENS);
 
+  // Context window, from the same env vars and the same validator the services
+  // use. Without this passthrough every eval behind this seam — generation,
+  // throughput, symmetry, adversarial — would measure a model that may have
+  // read 15% of each document, while production read all of it. A harness that
+  // differs from production in the one dimension production just got a setting
+  // for is measuring the wrong thing.
+  const { contextTokens, warning } = resolveContextTokens(
+    opts.contextTokens ??
+      process.env.LLM_ANALYSIS_CONTEXT_TOKENS ??
+      process.env.LLM_CONTEXT_TOKENS,
+  );
+  if (warning) console.warn(contextTokensWarning(warning));
+
   const provider = new OllamaLLMProvider({
     url: opts.url ?? process.env.OLLAMA_URL ?? "http://localhost:11434",
     model: opts.model,
     requestTimeoutMs: opts.requestTimeoutMs ?? 30 * 60 * 1000,
+    ...(contextTokens ? { contextTokens } : {}),
   });
 
   return {

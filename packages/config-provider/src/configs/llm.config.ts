@@ -67,6 +67,20 @@ export const llmConfig = registerAs("llm", () => ({
       process.env.LLM_OLLAMA_MODEL ||
       process.env.LLM_MODEL ||
       "mistral",
+    /**
+     * Context window, as a raw string — `resolveContextTokens` in
+     * `@opuspopuli/llm-provider` validates it, because `parseInt("128k")` is
+     * `128` and a 128-token window is indistinguishable from a working one
+     * until you read the output.
+     *
+     * No default. Unset means "send no `num_ctx`", which is correct for a build
+     * that reads long prompts on its own; a wrong value here is worse than none,
+     * since `num_ctx: 32768` reads exactly as little as no setting at all.
+     */
+    contextTokens:
+      process.env.LLM_ANALYSIS_CONTEXT_TOKENS ||
+      process.env.LLM_CONTEXT_TOKENS ||
+      "",
   },
   /**
    * The INGESTION lane. Falls back through the analysis chain at every level,
@@ -85,5 +99,18 @@ export const llmConfig = registerAs("llm", () => ({
       process.env.LLM_OLLAMA_MODEL ||
       process.env.LLM_MODEL ||
       "mistral",
+    /**
+     * Through the analysis level too — "every level" has to mean every level.
+     *
+     * Omitting it was a real bug (#1323 review): a node that sets only
+     * `LLM_ANALYSIS_CONTEXT_TOKENS`, which is what `create-op-node` writes,
+     * armed the analysis lane and left ingestion — structural analysis, civics
+     * extraction, PDF extract — reading 15% of every long document.
+     */
+    contextTokens:
+      process.env.LLM_INGESTION_CONTEXT_TOKENS ||
+      process.env.LLM_ANALYSIS_CONTEXT_TOKENS ||
+      process.env.LLM_CONTEXT_TOKENS ||
+      "",
   },
 }));

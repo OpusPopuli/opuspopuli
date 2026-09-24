@@ -124,6 +124,142 @@ describe("OllamaLLMProvider", () => {
   });
 
   /**
+   * The SAME model in two builds reads a 451 KB bill completely or reads 15%
+   * of it, depending on `num_ctx`. And 32768 reads exactly as little as no
+   * setting at all, so a plausible value is not a safe one — which is why
+   * this is an explicit deployment setting rather than a computed guess.
+   */
+  describe("context window (#1319)", () => {
+    const optionsOf = () => JSON.parse(mockFetch.mock.calls[0][1].body).options;
+    const ok = () => ({
+      ok: true,
+      json: () => Promise.resolve({ response: "{}", done: true }),
+    });
+
+    it("omits num_ctx entirely when unconfigured", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short");
+
+      // Absent means "use the build's default" — a real choice, and the one
+      // the MLX build gets right without help.
+      expect(optionsOf().num_ctx).toBeUndefined();
+    });
+
+    it("sends the configured window on every request", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await sized.generate("short");
+
+      expect(optionsOf().num_ctx).toBe(131072);
+    });
+
+    /**
+     * All three paths, because the point of one shared `samplingOptions` is
+     * that a setting cannot reach one path and miss the others — and asserting
+     * only `generate()` is how that guarantee would rot unnoticed. `num_ctx`
+     * was absent from all three before #1319 for exactly this reason.
+     */
+    it("sends the window on the chat path", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: { content: "hi" },
+            done: true,
+            done_reason: "stop",
+          }),
+      });
+
+      await sized.chat([{ role: "user", content: "Hello" }]);
+
+      expect(optionsOf().num_ctx).toBe(131072);
+    });
+
+    it("sends the window on the streaming path", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      const mockReader = {
+        read: jest
+          .fn()
+          .mockResolvedValueOnce({
+            done: false,
+            value: new TextEncoder().encode('{"response":"Hello"}\n'),
+          })
+          .mockResolvedValueOnce({ done: true, value: undefined }),
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: { getReader: () => mockReader },
+      });
+
+      for await (const _token of sized.generateStream("short")) {
+        // Drained only so the request is actually issued.
+      }
+
+      expect(optionsOf().num_ctx).toBe(131072);
+    });
+
+    /**
+     * A window this small is a typo, not a choice — `parseInt("128k")` is 128.
+     * `resolveContextTokens` rejects it before construction (see
+     * context-tokens.spec.ts); the provider's own guard is truthiness, so 0 is
+     * treated as unset while a hand-constructed small value is forwarded. This
+     * pins that split so neither half is mistaken for the other's job.
+     */
+    it("treats a zero window as unset", async () => {
+      const zero = new OllamaLLMProvider({ ...config, contextTokens: 0 });
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await zero.generate("short");
+
+      expect(optionsOf().num_ctx).toBeUndefined();
+    });
+  });
+
+  describe("sampling options", () => {
+    const optionsOf = () => JSON.parse(mockFetch.mock.calls[0][1].body).options;
+    const ok = () => ({
+      ok: true,
+      json: () => Promise.resolve({ response: "{}", done: true }),
+    });
+
+    /**
+     * `stop` is omitted rather than sent empty. Ollama merges request options
+     * over the model's own, so `stop: []` REPLACES a Modelfile's stop list and
+     * a model can run past its end-of-turn inventing a reply.
+     */
+    it("omits stop when no sequences are given", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short");
+
+      expect(optionsOf()).not.toHaveProperty("stop");
+    });
+
+    it("sends stop when sequences are given", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short", { stopSequences: ["\n\n"] });
+
+      expect(optionsOf().stop).toEqual(["\n\n"]);
+    });
+
+    it("applies the documented sampling defaults", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short");
+
+      const options = optionsOf();
+      expect(options.num_predict).toBe(512);
+      expect(options.temperature).toBe(0.7);
+      expect(options.top_p).toBe(0.95);
+      expect(options.top_k).toBe(40);
+    });
+  });
+
+  /**
    * Ollama enforces `num_ctx` by silently cutting the prompt: no error, no
    * flag, and a fluent answer about the fragment it read.
    *
