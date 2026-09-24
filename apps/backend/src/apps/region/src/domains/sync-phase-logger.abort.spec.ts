@@ -1,8 +1,5 @@
 import { Logger } from '@nestjs/common';
-import {
-  SyncAbortedError,
-  propositionSyncTracker,
-} from './sync-phase-logger';
+import { SyncAbortedError, propositionSyncTracker } from './sync-phase-logger';
 
 /**
  * A run that is failing every item must stop.

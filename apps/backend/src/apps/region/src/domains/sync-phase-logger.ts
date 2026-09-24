@@ -128,7 +128,7 @@ export class SyncAbortedError extends Error {
         `(${itemsAttempted} item(s) attempted). This run is not producing ` +
         `results; the last failure was: ${lastFailure}`,
     );
-    this.name = "SyncAbortedError";
+    this.name = 'SyncAbortedError';
   }
 }
 
