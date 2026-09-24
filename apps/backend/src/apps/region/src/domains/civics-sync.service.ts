@@ -410,9 +410,42 @@ export class CivicsSyncService extends LlmGeneratorBase {
       try {
         block = JSON.parse(candidate) as typeof block;
       } catch (e) {
+        // The THIRD failure class, and until now the only one that captured
+        // nothing. A slice with balanced braces that still will not parse is
+        // almost always a bad escape inside a string — a raw control character,
+        // or a `\x`/`\'` the model invented — some thousands of characters into
+        // otherwise perfect output. The message alone cannot be acted on: the
+        // offending bytes are the whole question, and they are not in the log.
+        //
+        // Observed twice on 2026-09-24, on different pages each time, and not
+        // reproducible on a re-run because extraction is unseeded. A failure
+        // that moves between runs and leaves no artifact cannot be fixed, which
+        // is exactly the position the output-ceiling failure was in for two days.
+        const message = (e as Error).message;
+        const at = /position (\d+)/.exec(message)?.[1];
+        const around = at
+          ? candidate.slice(Math.max(0, Number(at) - 60), Number(at) + 60)
+          : undefined;
         this.logger.warn(
-          `Civics extraction: JSON.parse failed for ${sourceUrl}: ${(e as Error).message}`,
+          {
+            sourceUrl,
+            parseError: message,
+            // The bytes either side of the offending position, which is what a
+            // human actually needs. Scraped civic text, like the rest of the
+            // prompt — same disclosure as the capture below.
+            around,
+            candidateChars: candidate.length,
+            responseChars: result.text.length,
+            finishReason: result.finishReason,
+            promptVersion,
+            promptHash,
+          },
+          `Civics extraction: JSON.parse failed for ${sourceUrl} at ` +
+            `position ${at ?? 'unknown'} — the response had a complete JSON ` +
+            `object that is not valid JSON, usually a bad escape inside a ` +
+            `string. Not a budget problem and not a missing object.`,
         );
+        await this.captureFailedExtraction(sourceUrl, promptText, result.text);
         return 'failed';
       }
 

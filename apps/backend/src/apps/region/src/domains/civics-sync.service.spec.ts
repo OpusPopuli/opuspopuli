@@ -1,3 +1,7 @@
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
@@ -313,6 +317,51 @@ describe('CivicsSyncService', () => {
           expect(hit).not.toContain('no JSON object');
         } finally {
           warn.mockRestore();
+        }
+      });
+
+      /**
+       * A balanced-brace slice that still will not parse — a bad escape inside a
+       * string. Distinct from both the ceiling and the no-object case, and until
+       * 2026-09-24 the only branch that captured nothing, which is why the two
+       * occurrences that day could not be diagnosed.
+       */
+      it('captures the response when the JSON is complete but invalid', async () => {
+        // Asserted by the FILES, not by the log line. A first version of this
+        // test checked only the message and passed with the capture call deleted
+        // — which is the failure mode it exists to prevent.
+        const dir = mkdtempSync(join(tmpdir(), 'civics-capture-'));
+        process.env.CIVICS_CAPTURE_DIR = dir;
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        try {
+          // Balanced braces, invalid escape: extractJsonObjectSlice returns it,
+          // JSON.parse rejects it.
+          await drivePage('{"glossary": [{"term": "Bad \\x41 escape"}]}', {
+            finishReason: 'stop',
+          });
+          const messages = warn.mock.calls.map((c) => String(c[1] ?? c[0]));
+          const hit = messages.find((m) => m.includes('JSON.parse failed'));
+          expect(hit).toBeDefined();
+          expect(hit).toContain('bad escape');
+          expect(hit).toContain('Not a budget problem');
+          // The structured payload must carry the offending bytes, not just the
+          // error string — the bytes are the whole question.
+          const payload = warn.mock.calls.find((c) =>
+            String(c[1] ?? '').includes('JSON.parse failed'),
+          )?.[0] as Record<string, unknown> | undefined;
+          expect(payload).toMatchObject({ parseError: expect.any(String) });
+          expect(payload).toHaveProperty('around');
+
+          // The prompt and the raw response must be on disk, or the failure is
+          // undiagnosable after the fact — the whole point.
+          const written = readdirSync(dir).sort();
+          expect(written).toHaveLength(2);
+          expect(written.some((f) => f.endsWith('.prompt.txt'))).toBe(true);
+          expect(written.some((f) => f.endsWith('.response.txt'))).toBe(true);
+        } finally {
+          warn.mockRestore();
+          delete process.env.CIVICS_CAPTURE_DIR;
+          rmSync(dir, { recursive: true, force: true });
         }
       });
 
