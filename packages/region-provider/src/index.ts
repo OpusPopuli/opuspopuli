@@ -76,8 +76,20 @@ import { existsSync } from "node:fs";
 
 /**
  * Returns the absolute path to the regions/ directory from @opuspopuli/regions.
- * Walks up from this file to find node_modules/@opuspopuli/regions/regions/.
- * Falls back to the in-tree regions/ directory if the package is not installed.
+ *
+ * Walks up from this file to find `node_modules/@opuspopuli/regions/regions/`,
+ * which means it resolves whichever copy is NEAREST — and under pnpm's isolated
+ * layout that is the one THIS package declares, not the one any consumer
+ * declares. That is not a detail: on 2026-09-24 `apps/backend` was bumped to
+ * regions 1.0.97 while this package still pinned 1.0.96, the image carried both,
+ * and the walk below silently served the older config. Every other signal
+ * reported success (#1328). `apps/backend` no longer declares regions at all;
+ * this package owns the single pin, so the walk has one answer.
+ *
+ * Throws rather than returning a path that does not exist. The previous version
+ * fell back to an in-tree `../regions` that IS NOT PRESENT in this package, so a
+ * missing install produced a bogus absolute path, and the caller discovered zero
+ * configs and reported no error — a region service running with no regions.
  */
 export function getRegionsDir(): string {
   // Walk up the directory tree looking for the installed package
@@ -97,6 +109,17 @@ export function getRegionsDir(): string {
     if (parent === dir) break;
     dir = parent;
   }
-  // Fallback for test environments
-  return join(__dirname, "..", "regions");
+
+  // Kept for test environments that vendor configs beside the package, but
+  // only when it is really there.
+  const inTree = join(__dirname, "..", "regions");
+  if (existsSync(inTree)) return inTree;
+
+  throw new Error(
+    "@opuspopuli/regions is not installed: no " +
+      "node_modules/@opuspopuli/regions/regions found walking up from " +
+      `${__dirname}, and no in-tree fallback at ${inTree}. ` +
+      "Region config cannot load. Run an install, and check that " +
+      "packages/region-provider declares @opuspopuli/regions (see #1328).",
+  );
 }

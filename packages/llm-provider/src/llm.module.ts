@@ -46,8 +46,22 @@ const logger = new Logger("LLMModule");
  * problem — two NON-think measures in the same sweep took 1086s and 1150s
  * under memory pressure and would have failed identically. The 32B at
  * ~550s/measure sits well past the default.
+ *
+ * Raised 1_350_000 -> 3_700_000 on 2026-09-25 (#1329). This floor must exceed
+ * the longest per-call `requestTimeoutMs` any caller sets, or the transport cuts
+ * first and the caller's own timeout never gets to report. Civics extraction now
+ * permits 64,000 output tokens, and measured civics throughput on a LONG
+ * generation is 22.5 tok/s — not the ~63 tok/s short calls show — so a full
+ * budget is ~47 min. Its per-call timeout is 60 min, and this sits above that.
+ *
+ * The cost is deliberate and worth stating: a genuinely hung Ollama now takes
+ * ~62 min to surface instead of ~22, on every service, not just civics. That was
+ * accepted because the alternative is worse — a large civics page would abort at
+ * 22 min via a path that captures no diagnostic, which is strictly less
+ * debuggable than the truncation #1327 just removed. Chunking large pages is the
+ * durable fix and would let both numbers come back down.
  */
-const LLM_HEADERS_TIMEOUT_FLOOR_MS = 1_350_000;
+const LLM_HEADERS_TIMEOUT_FLOOR_MS = 3_700_000;
 
 /**
  * Raise the transport timeout wherever an LLM provider is built.

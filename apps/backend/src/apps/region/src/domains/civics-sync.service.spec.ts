@@ -83,6 +83,7 @@ describe('CivicsSyncService', () => {
   const drivePage = async (
     extractedJson: string,
     generateExtras: Record<string, unknown> = {},
+    sourceOverrides: Record<string, unknown> = {},
   ) => {
     const { service, mockLlm, mockDb, mockPromptClient } = await buildService();
     mockPromptClient.getCivicsExtractionPrompt.mockResolvedValue({
@@ -97,11 +98,14 @@ describe('CivicsSyncService', () => {
     (mockDb.civicsBlock.findUnique as jest.Mock).mockResolvedValue(null);
 
     const sourceUrl = 'https://www.assembly.ca.gov/resources/x';
-    const getDataSources = jest
-      .fn()
-      .mockReturnValue([
-        { url: sourceUrl, contentGoal: 'goal', category: 'Assembly' },
-      ]);
+    const getDataSources = jest.fn().mockReturnValue([
+      {
+        url: sourceUrl,
+        contentGoal: 'goal',
+        category: 'Assembly',
+        ...sourceOverrides,
+      },
+    ]);
     const plugin = {
       getName: () => 'california',
       getDataSources,
@@ -116,6 +120,12 @@ describe('CivicsSyncService', () => {
     const result = await service.sync(plugin, helpers);
     return { result, mockDb, mockLlm };
   };
+
+  /** drivePage with data-source fields set — for the config-contradiction checks. */
+  const drivePageWithSource = (
+    extractedJson: string,
+    sourceOverrides: Record<string, unknown>,
+  ) => drivePage(extractedJson, {}, sourceOverrides);
 
   // ── #874: don't persist empty CivicsBlocks ────────────────────────────
   const EMPTY_BLOCK = JSON.stringify({
@@ -264,6 +274,46 @@ describe('CivicsSyncService', () => {
       expect(
         (mockLlm.generate as jest.Mock).mock.calls[0][1],
       ).not.toHaveProperty('seed');
+    });
+
+    /**
+     * The contradiction that shipped on 2026-09-24: a budget needing ~47 min
+     * paired with a 22-minute timeout. A page using the full budget aborts
+     * rather than truncates, and the abort path captures nothing.
+     */
+    it('warns when a source budget cannot fit its own timeout', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      try {
+        // 64,000 tokens at 22.5 tok/s is ~47 min; this source allows 22.
+        await drivePageWithSource(ANY_CONTENT, {
+          llmMaxTokens: 64000,
+          llmRequestTimeoutMs: 1_320_000,
+        });
+        const messages = warn.mock.calls.map((c) => String(c[1] ?? c[0]));
+        const hit = messages.find((m) =>
+          m.includes('cannot satisfy both of its own limits'),
+        );
+        expect(hit).toBeDefined();
+        expect(hit).toContain('will ABORT rather than truncate');
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('stays quiet when the timeout can accommodate the budget', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      try {
+        await drivePageWithSource(ANY_CONTENT, {
+          llmMaxTokens: 64000,
+          llmRequestTimeoutMs: 3_600_000, // 60 min — the #1329 value
+        });
+        const messages = warn.mock.calls.map((c) => String(c[1] ?? c[0]));
+        expect(messages.some((m) => m.includes('cannot satisfy both'))).toBe(
+          false,
+        );
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('pins the seed only when an operator asks for a reproducible run', async () => {
