@@ -5,7 +5,7 @@ import { LoggingModule } from '@opuspopuli/logging-provider';
 import { SecretsModule } from '@opuspopuli/secrets-provider';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
-import { QueueModule, resolveQueuePrefix} from '@opuspopuli/queue-provider';
+import { QueueModule, resolveQueuePrefix } from '@opuspopuli/queue-provider';
 
 import { DbModule } from 'src/db/db.module';
 import { HealthModule } from 'src/common/health';

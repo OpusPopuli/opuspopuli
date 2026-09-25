@@ -288,6 +288,11 @@ services:
       # back through the analysis value, so one variable arms both lanes.
       LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
       LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
+      # Civics failure captures (#1321). Empty = off. Set to a writable path
+      # to have a civics extraction that yields no parseable JSON write its
+      # prompt and raw response there — the only way that failure is
+      # diagnosable after the fact. Contains scraped civic text.
+      CIVICS_CAPTURE_DIR: ${CIVICS_CAPTURE_DIR:-}
       # AI Prompt Service for proprietary prompt templates
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -347,6 +352,11 @@ services:
       # back through the analysis value, so one variable arms both lanes.
       LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
       LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
+      # Civics failure captures (#1321). Empty = off. Set to a writable path
+      # to have a civics extraction that yields no parseable JSON write its
+      # prompt and raw response there — the only way that failure is
+      # diagnosable after the fact. Contains scraped civic text.
+      CIVICS_CAPTURE_DIR: ${CIVICS_CAPTURE_DIR:-}
       # Bump default Ollama request timeout (60s) — proposition-analysis,
       # bio, and structural-analysis prompts are 7-18KB and routinely
       # take 60-150s on qwen3.5:9b on a Mac, especially after a sleep
@@ -439,6 +449,11 @@ services:
       # back through the analysis value, so one variable arms both lanes.
       LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
       LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
+      # Civics failure captures (#1321). Empty = off. Set to a writable path
+      # to have a civics extraction that yields no parseable JSON write its
+      # prompt and raw response there — the only way that failure is
+      # diagnosable after the fact. Contains scraped civic text.
+      CIVICS_CAPTURE_DIR: ${CIVICS_CAPTURE_DIR:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -511,6 +526,11 @@ services:
       # back through the analysis value, so one variable arms both lanes.
       LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
       LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
+      # Civics failure captures (#1321). Empty = off. Set to a writable path
+      # to have a civics extraction that yields no parseable JSON write its
+      # prompt and raw response there — the only way that failure is
+      # diagnosable after the fact. Contains scraped civic text.
+      CIVICS_CAPTURE_DIR: ${CIVICS_CAPTURE_DIR:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1
@@ -570,6 +590,11 @@ services:
       # back through the analysis value, so one variable arms both lanes.
       LLM_ANALYSIS_CONTEXT_TOKENS: ${LLM_ANALYSIS_CONTEXT_TOKENS:-}
       LLM_INGESTION_CONTEXT_TOKENS: ${LLM_INGESTION_CONTEXT_TOKENS:-}
+      # Civics failure captures (#1321). Empty = off. Set to a writable path
+      # to have a civics extraction that yields no parseable JSON write its
+      # prompt and raw response there — the only way that failure is
+      # diagnosable after the fact. Contains scraped civic text.
+      CIVICS_CAPTURE_DIR: ${CIVICS_CAPTURE_DIR:-}
       OLLAMA_REQUEST_TIMEOUT_MS: "600000"
       PROMPT_SERVICE_URL: http://opuspopuli-prompts:3210
       PROMPT_SERVICE_API_KEY: dev-key-1

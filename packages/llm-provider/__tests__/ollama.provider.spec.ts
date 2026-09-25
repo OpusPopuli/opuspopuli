@@ -246,6 +246,35 @@ describe("OllamaLLMProvider", () => {
       expect(optionsOf().stop).toEqual(["\n\n"]);
     });
 
+    /**
+     * Reproducibility runs through here. Civics extraction pins a seed because
+     * two identical syncs disagreed about two pages; if the provider drops it,
+     * that pin is silently undone and nothing fails.
+     */
+    it("forwards a pinned seed", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short", { seed: 7 });
+
+      expect(optionsOf().seed).toBe(7);
+    });
+
+    it("forwards seed 0, which truthiness would have dropped", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short", { seed: 0 });
+
+      expect(optionsOf().seed).toBe(0);
+    });
+
+    it("omits seed when the caller does not pin one", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await provider.generate("short");
+
+      expect(optionsOf()).not.toHaveProperty("seed");
+    });
+
     it("applies the documented sampling defaults", async () => {
       mockFetch.mockResolvedValueOnce(ok());
 

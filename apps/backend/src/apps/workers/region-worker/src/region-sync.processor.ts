@@ -163,7 +163,11 @@ export class RegionSyncProcessor
     // stop a bad run on 2026-09-22.
     if (await this.wasCancelled(effectiveJobId)) {
       this.logger.warn(
-        { queue: REGION_SYNC_QUEUE, jobId: job.id, pipelineJobId: effectiveJobId },
+        {
+          queue: REGION_SYNC_QUEUE,
+          jobId: job.id,
+          pipelineJobId: effectiveJobId,
+        },
         'Skipping cancelled region-sync job',
       );
       return [];

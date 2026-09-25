@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import { PromptClientModule } from '@opuspopuli/prompt-client';
-import { QueueModule, resolveQueuePrefix} from '@opuspopuli/queue-provider';
+import { QueueModule, resolveQueuePrefix } from '@opuspopuli/queue-provider';
 
 import { ScoringService } from './scoring.service';
 import { PersonalizedFeedService } from './personalized-feed.service';

@@ -587,6 +587,9 @@ export class OllamaLLMProvider implements ILLMProvider {
       ...(options?.stopSequences?.length
         ? { stop: options.stopSequences }
         : {}),
+      // `!== undefined`, not truthiness: seed 0 is a legitimate seed, and
+      // dropping it would silently unpin the one caller who asked for it.
+      ...(options?.seed !== undefined ? { seed: options.seed } : {}),
       ...(this.contextTokens ? { num_ctx: this.contextTokens } : {}),
     };
   }

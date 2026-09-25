@@ -34,6 +34,23 @@ export interface GenerateOptions {
    * a single global default doesn't fit both well).
    */
   requestTimeoutMs?: number;
+  /**
+   * Sampling seed. Same prompt + same model + same seed = same output.
+   *
+   * Unset, generation varies run to run even at `temperature: 0.1`, and that
+   * variance is not academic: two identical civics syncs on 2026-09-24
+   * disagreed about two pages — one extracted 10,871 bytes where the other
+   * returned nothing, and vice versa. An extraction pipeline whose output
+   * flips between runs cannot be regression-tested, and a prompt change
+   * measured against one run measures the noise as well as the change.
+   *
+   * The trade-off is real and worth stating: a pinned seed makes a failing
+   * page fail identically on retry, where variance gives it another chance.
+   * That is the right default here anyway — this platform persists
+   * `promptHash` and `promptVersion` so an output can be traced to what
+   * produced it, and a seed is the remaining variable in that chain.
+   */
+  seed?: number;
 }
 
 /**
