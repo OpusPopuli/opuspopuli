@@ -89,6 +89,50 @@ function civicsSeed(): number | undefined {
 }
 
 /**
+ * Measured output rate for a LONG civics generation, tokens per second.
+ *
+ * 22.5 tok/s — the 253-term glossary page, 36,972 tokens in 27m52s. Short calls
+ * measure ~63 tok/s (38 tokens in 10s), and sizing anything from that number
+ * underestimates by ~3x. That is exactly how a 22-minute timeout came to be
+ * paired with a budget needing ~47 (#1329).
+ */
+const CIVICS_LONG_GEN_TOKENS_PER_SEC = 22.5;
+
+/**
+ * Warn when a source's own two limits cannot both be satisfied.
+ *
+ * `llmMaxTokens` and `llmRequestTimeoutMs` are independent numbers in region
+ * config and nothing has ever related them. When the budget implies a longer
+ * generation than the timeout allows, a big page does not truncate — it ABORTS,
+ * on a path that captures neither prompt nor response, which is strictly harder
+ * to diagnose than the truncation it replaced. That pairing shipped on
+ * 2026-09-24 and went unnoticed only because a laptop suspended and stalled the
+ * timer that would have fired.
+ *
+ * Reported, not enforced: a deployment may know something this estimate does not
+ * — a faster host, or pages that never approach the budget. The point is that the
+ * contradiction can no longer be silent.
+ */
+function warnIfBudgetExceedsTimeout(
+  logger: Logger,
+  sourceUrl: string,
+  maxTokens: number,
+  requestTimeoutMs: number | undefined,
+): void {
+  if (!requestTimeoutMs) return;
+  const worstCaseMs = (maxTokens / CIVICS_LONG_GEN_TOKENS_PER_SEC) * 1000;
+  if (worstCaseMs <= requestTimeoutMs) return;
+  logger.warn(
+    `Civics config for ${sourceUrl} cannot satisfy both of its own limits: ` +
+      `llmMaxTokens ${maxTokens} is ~${Math.round(worstCaseMs / 60000)} min at ` +
+      `${CIVICS_LONG_GEN_TOKENS_PER_SEC} tok/s, but llmRequestTimeoutMs is ` +
+      `${Math.round(requestTimeoutMs / 60000)} min. A page using the full budget ` +
+      `will ABORT rather than truncate, and the abort path captures no prompt or ` +
+      `response. Raise the timeout, lower the budget, or chunk the page.`,
+  );
+}
+
+/**
  * Minimal provider contract for civics ingestion. Civics consumes
  * declarative `dataSources` registered by the region plugin — the
  * orchestrator owns the plugin lookup, civics consumes the resulting
@@ -206,6 +250,14 @@ export class CivicsSyncService extends LlmGeneratorBase {
     );
     const allUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
     for (const ds of dataSources) {
+      // Once per source, before any inference is spent: say so if this source's
+      // budget and timeout contradict each other (#1329).
+      warnIfBudgetExceedsTimeout(
+        this.logger,
+        ds.url,
+        ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS,
+        ds.llmRequestTimeoutMs,
+      );
       const urls = await helpers.crawlCivicsUrls(ds, registeredHosts);
       discoverTracker.item({
         name: ds.url,
