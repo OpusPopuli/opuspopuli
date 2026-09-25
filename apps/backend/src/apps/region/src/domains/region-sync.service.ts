@@ -52,6 +52,7 @@ import { LegislativeCommitteeLinkerService } from './legislative-committee-linke
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
+import { htmlToReadableText } from '@opuspopuli/common';
 import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
@@ -2905,28 +2906,13 @@ export class RegionSyncService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Delegates to @opuspopuli/common. This was a private copy, byte-identical to
+   * a second copy on the unused HttpFetcherService — two definitions of what the
+   * model sees. The eval harness needs this exact implementation too (#1324), so
+   * it now lives in one place that a package can import.
+   */
   private htmlToReadableText(html: string): string {
-    let s = html;
-    s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-    s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
-    s = s.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '');
-    s = s.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '');
-    s = s.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '');
-    s = s.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '');
-    s = s.replace(/<!--[\s\S]*?-->/g, '');
-    s = s.replace(/<[^>]+>/g, ' ');
-    s = s
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
-    s = s
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\s*\n\s*/g, '\n')
-      .trim();
-    return s;
+    return htmlToReadableText(html);
   }
 }
