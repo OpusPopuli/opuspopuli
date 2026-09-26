@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type DataSourceConfig } from '@opuspopuli/common';
+import { htmlToReadableText } from '@opuspopuli/common';
 import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
 
 /**
@@ -61,29 +62,9 @@ export class HttpFetcherService {
     });
   }
 
+  /** Delegates to @opuspopuli/common — see the note in region-sync (#1324). */
   htmlToReadableText(html: string): string {
-    let s = html;
-    s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-    s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
-    s = s.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, '');
-    s = s.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '');
-    s = s.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '');
-    s = s.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '');
-    s = s.replace(/<!--[\s\S]*?-->/g, '');
-    s = s.replace(/<[^>]+>/g, ' ');
-    s = s
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
-    s = s
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\s*\n\s*/g, '\n')
-      .trim();
-    return s;
+    return htmlToReadableText(html);
   }
 
   /**

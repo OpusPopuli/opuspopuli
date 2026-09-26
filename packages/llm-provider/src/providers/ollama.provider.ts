@@ -177,6 +177,36 @@ export interface OllamaConfig {
    * it read. `promptTruncated` on the result detects the condition; this is
    * how a deployment avoids it.
    *
+   * ## Overflow costs HALF the window, not the excess
+   *
+   * Measured 2026-09-25 on SB 105 (531,841 chars, 145,501 real tokens), same
+   * model, only `num_ctx` varied:
+   *
+   *     num_ctx 32,768    ->  16,386 read   (32,768 / 2 + 2)
+   *     num_ctx 131,072   ->  65,538 read   (131,072 / 2 + 2)
+   *     num_ctx 262,144   -> 145,501 read   (the whole document)
+   *
+   * When the prompt EXCEEDS the window, llama.cpp discards half the KV cache
+   * rather than reading as much as fits, so the effective capacity collapses to
+   * `num_ctx / 2`. Being 10% short does not cost 10% — it costs 55%.
+   *
+   * This retrofits every earlier measurement: AB 1830 needs 107,298 tokens,
+   * which FITS inside 131,072, so it read all of it; at 32,768 it overflowed and
+   * gave 16,386. Same rule throughout.
+   *
+   * Two consequences for setting this number:
+   *
+   *   - It must EXCEED the largest document, not approximate it. 131,072 is not
+   *     enough for the CA bill corpus: SB 105 alone needs 145,501.
+   *   - Do not size it from a chars/4 estimate. That estimate UNDERSHOT SB 105 by
+   *     9% (132,961 estimated vs 145,501 actual), i.e. in the direction that
+   *     causes this failure.
+   *
+   * And note `MIN_PROMPT_COVERAGE` is marginal against this mode: 65,538 of
+   * 132,961 estimated is 49%, tripping the 0.5 threshold by one point. A document
+   * overflowing a larger window lands ABOVE 50% and passes silently. The
+   * threshold was calibrated on 15% truncations, not on half-window overflow.
+   *
    * An earlier revision of this provider sized the window per call. That was
    * reverted: at the 6.6K-token civics prompts it was tested on, `num_ctx`
    * measurably changed nothing (three seeds, both arms identical), and the

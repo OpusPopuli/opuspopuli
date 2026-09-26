@@ -74,7 +74,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { setGlobalHttpPool } from "@opuspopuli/common";
+import { setGlobalHttpPool, htmlToReadableText } from "@opuspopuli/common";
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   MIN_PROMPT_COVERAGE,
@@ -210,6 +210,51 @@ async function loadDocuments(
 }
 
 /**
+ * Fetch documents by URL, the way production reaches a bill (#1324).
+ *
+ * Bills are the largest prompts the platform sends — AB 1830 is 451 KB — and
+ * they are NOT in the database: `Bill` holds only `full_text_url`, and
+ * `enrichBill` fetches the text at sync time. So the shape most at risk of
+ * silent truncation was the one shape this harness could not reach, which is why
+ * the figures in `docs/evals/2026-09-23-model-selection.md` had to be measured
+ * by hand.
+ *
+ * Uses the SAME `htmlToReadableText` production uses — now shared from
+ * @opuspopuli/common rather than duplicated as two private copies — because a
+ * harness that strips HTML its own way measures a prompt production never sends.
+ *
+ * What it does NOT share is `fetchTextWithRetry`'s retry and host throttling:
+ * those live in the region domain and govern reliability, not content. A one-shot
+ * eval fetch gets the same bytes. Stated rather than assumed, because the
+ * equivalence is the whole basis for trusting the measurement.
+ */
+async function loadDocumentsFromUrls(
+  urls: string[],
+): Promise<{ externalId: string; fullText: string }[]> {
+  const docs: { externalId: string; fullText: string }[] = [];
+  for (const url of urls) {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(60_000),
+      headers: { "user-agent": "opuspopuli-eval-harness" },
+    });
+    if (!response.ok) {
+      throw new Error(
+        `${url} returned ${response.status} ${response.statusText}`,
+      );
+    }
+    const text = htmlToReadableText(await response.text());
+    if (!text) throw new Error(`${url} extracted to nothing`);
+    // Named by its tail so a results file is readable; the full URL is in the
+    // invocation and in provenance.
+    docs.push({
+      externalId: url.split("/").filter(Boolean).pop() ?? url,
+      fullText: text,
+    });
+  }
+  return docs;
+}
+
+/**
  * `full_text` is sent unredacted, deliberately.
  *
  * It carries the proponent's transmittal letter and with it a named
@@ -287,6 +332,8 @@ interface Invocation {
   numCtx?: number;
   limit: number;
   out: string;
+  /** --from-url: fetch these instead of reading the database (#1324). */
+  fromUrls: string[];
 }
 
 /**
@@ -328,7 +375,19 @@ function parseInvocation(): Invocation {
     process.exit(2);
   }
 
+  const fromUrls = (arg("from-url") ?? "")
+    .split(",")
+    .map((u) => u.trim())
+    .filter(Boolean);
+  for (const u of fromUrls) {
+    if (!/^https?:\/\//.test(u)) {
+      console.error(`--from-url must be http(s), got "${u}"`);
+      process.exit(2);
+    }
+  }
+
   return {
+    fromUrls,
     // `OLLAMA_URL` is the harness convention (`provenance.ts`,
     // `backends/llm.ts`) and must be the same host the model is probed on, or
     // provenance would describe a different machine than the one measured.
@@ -348,16 +407,21 @@ async function main(): Promise<void> {
   // it first, for the same reason.
   assertFreshBuilds();
 
-  const { url, models, numCtx, limit, out } = parseInvocation();
+  const { url, models, numCtx, limit, out, fromUrls } = parseInvocation();
   const results: CaseResult[] = [];
   const provenance: Record<string, ModelProvenance> = {};
   const db = new DbService();
 
   try {
-    const documents = await loadDocuments(db, limit);
+    // --from-url reaches the bill-shaped prompts the database cannot supply.
+    const documents = fromUrls.length
+      ? await loadDocumentsFromUrls(fromUrls)
+      : await loadDocuments(db, limit);
     if (documents.length === 0) {
       throw new Error(
-        "No propositions with full_text in this database. Sync a region first.",
+        fromUrls.length
+          ? "No text extracted from the given --from-url values."
+          : "No propositions with full_text in this database. Sync a region first.",
       );
     }
     console.log(
