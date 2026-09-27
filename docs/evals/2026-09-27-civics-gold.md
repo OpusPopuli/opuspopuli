@@ -104,6 +104,55 @@ That is a `prompt-service` change — versioned and hashed, never inlined here �
 and this eval can score the variant against the same reference with the seed
 pinned. At 1m11s for three pages, the loop is cheap.
 
+## Prompt v2 — the routing fix, measured
+
+`civics-extraction` v2 (prompt-service `fix/civics-field-routing`, hash
+`b8c9cbaa792159e2`) adds the third page shape and explicit routing. Same model,
+same seed, same recorded text:
+
+| page | v1 | v2 |
+| --- | --- | --- |
+| `failed-qualify` | recall **0**, 2 fields emptied, 3 invented in `glossary` | **recall 0.50**, precision **1.00**, nothing emptied, nothing invented |
+| `qualified-ballot-measures` | recall 0, 2 fields emptied, 1 invented | recall 0, precision 0.75, nothing emptied, nothing invented |
+| `teachers-and-students` | 5 invented in `glossary` | **clean — emitted nothing** |
+
+Three things moved:
+
+1. **Routing works.** `failed-qualify` went from empty to 11 `measureTypes` and a
+   `lifecycleStage`, with precision still 1.00, and its output grew 1,734 ->
+   14,543 chars. It is extracting rather than abstaining.
+2. **`glossary` invention is gone on all three pages** — the "a term the page
+   merely USES is not a glossary entry" rule.
+3. **The precision trap passes for the first time.** `teachers-and-students`
+   returned a 110-char empty block. That page is also where nemotron was already
+   correct, so this is a non-regression as much as a fix.
+
+The risk in making a prompt more prescriptive — that it starts filling fields
+which should be empty — did not materialise. Invention went DOWN.
+
+### Still failing, and why
+
+`qualified-ballot-measures` remains recall 0, emitting 3 items for a page with 5
+gold measure types and 2 gold stages. Its propositions name their type INLINE at
+the end of a line ("Authorizes Bonds for Housing Affordability Programs.
+Legislative Statute."), and v2's rule speaks of a type "named in a heading or
+title". That is a v3 candidate, not a model limitation.
+
+### The instrument is now the larger error term
+
+Its one "ungrounded" item is `"Qualified for Ballot"` against a page that says
+`"qualified for the ballot"` — containment fails on the word *the*. That is the
+second paraphrase in two runs scored as a fabrication (the first is recorded as
+`scorerCaveat` on the same page).
+
+So the containment matcher, not the model, is the next thing to fix. Two of three
+apparent fabrications across both runs were paraphrases, which means precision is
+understated and recall may be too. `scoring/omission.ts` already calibrates a
+cosine threshold against an embeddings model; moving to it comes BEFORE further
+prompt iteration, so v3 is measured with an instrument that is not itself the
+biggest source of error. Tuning against a noisy scorer is how the hints mistake
+happened once already.
+
 ## Reproducing
 
 ```bash
