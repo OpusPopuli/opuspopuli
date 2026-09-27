@@ -122,6 +122,62 @@ export type Warrant = "page" | "hint" | null;
  * paraphrase counts for RECALL, never for warrant.
  */
 
+/**
+ * Function words that a model may add or drop without changing what it claimed.
+ *
+ * Kept deliberately tiny. This is not stemming or synonymy — it is the gap
+ * between "Qualified for Ballot" and the page's "qualified for the ballot",
+ * which strict substring matching scored as a FABRICATION. Two of the three
+ * apparent fabrications across the first two runs were this, so the instrument
+ * was the larger error term, not the model.
+ */
+const FUNCTION_WORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "of",
+  "for",
+  "to",
+  "in",
+  "on",
+  "at",
+  "by",
+  "and",
+  "or",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "that",
+  "this",
+  "with",
+  "from",
+]);
+
+const contentTokens = (s: string): string[] =>
+  norm(s)
+    .replace(/[^\p{L}\p{N}\s,%$.-]/gu, " ")
+    .split(/\s+/)
+    .filter((t) => t && !FUNCTION_WORDS.has(t));
+
+/**
+ * Warrant by CONTENT TOKENS, not by substring.
+ *
+ * A claim is warranted when every content-bearing token of it appears in the
+ * warrant text. That keeps the check lexical — it still asks "did the model copy
+ * something that is actually there", and "Recall" against a page that never says
+ * it still fails — while tolerating the function words a model adds or drops.
+ *
+ * Deliberately NOT embedding similarity. Recall is the measure where paraphrase
+ * should count; warrant is the measure that catches invention, and a semantic
+ * threshold there would let a plausible-sounding fabrication through, which is
+ * the one thing this eval exists to detect.
+ *
+ * Exact substring is still tried first, so a verbatim copy is recognised as such
+ * without tokenising.
+ */
 export function warrantFor(
   verbatim: string,
   sourceText: string,
@@ -129,9 +185,70 @@ export function warrantFor(
 ): Warrant {
   const v = norm(verbatim);
   if (v.length < 4) return null; // too short to be evidence of anything
-  if (norm(sourceText).includes(v)) return "page";
-  if (hintsText && norm(hintsText).includes(v)) return "hint";
+
+  const page = norm(sourceText);
+  const hints = norm(hintsText);
+  if (page.includes(v)) return "page";
+  if (hints && hints.includes(v)) return "hint";
+
+  const tokens = contentTokens(verbatim);
+  // A claim with no content tokens at all is function words only — not evidence.
+  if (tokens.length === 0) return null;
+  // PAGE gets the lenient in-order rule: the model read prose and may compress
+  // or rephrase it, so "Qualified for Ballot" should match "qualified for the
+  // ballot".
+  if (appearsTogether(tokens, sourceText)) return "page";
+
+  // HINTS get a STRICT rule — literal substring only, checked above. A hint is an
+  // instruction the model copies, not prose it paraphrases: when the config names
+  // a measure type it names it exactly ("Referendum, Recall"). Applying the
+  // lenient rule here warranted "Assembly Bill" off the Assembly source's
+  // sentence "...CA Assembly description of how a bill becomes law" — an
+  // accidental in-order pair in 6,000 characters of instructional prose, which
+  // excused an invented measure type on a page of links.
   return null;
+}
+
+/**
+ * Do the claim's content tokens appear IN ORDER and close together?
+ *
+ * Order is the discriminator, and it took two wrong rules to find that out:
+ *
+ *   substring only      rejected "Qualified for Ballot" against a page saying
+ *                       "qualified for the ballot" — a fabrication verdict on a
+ *                       dropped "the"
+ *   token set, windowed warranted "Assembly Bill" on a page of links, because it
+ *                       says "...becomes a bill..." and then "Contact Your
+ *                       Assembly Representative" six words later. Unrelated
+ *                       mentions, and the measure type was invented
+ *
+ * In-order matching separates them cleanly: the page has `bill` BEFORE
+ * `assembly`, so "Assembly Bill" is not a quote from it, while "eligible
+ * initiative measure signatures verified" does run in order through one sentence.
+ *
+ * Still lexical, deliberately. No stemming and no synonymy — "signature" does not
+ * match "signatures", which costs one false fabrication on the qwen baseline and
+ * is the documented price of a warrant check that a fabrication cannot talk its
+ * way past. Recall is the measure where meaning counts.
+ */
+function appearsTogether(tokens: string[], hay: string): boolean {
+  const stream = contentTokens(hay);
+  if (stream.length === 0 || tokens.length === 0) return false;
+
+  // Slack above the claim's own length: enough for the function words the
+  // tokeniser dropped and a little rewording, not enough to span a page.
+  const window = tokens.length * 2 + 4;
+
+  for (let start = 0; start < stream.length; start++) {
+    if (stream[start] !== tokens[0]) continue;
+    let ti = 1;
+    for (let i = start + 1; i < Math.min(start + window, stream.length); i++) {
+      if (stream[i] === tokens[ti]) ti++;
+      if (ti === tokens.length) return true;
+    }
+    if (tokens.length === 1) return true;
+  }
+  return false;
 }
 
 /** Retained for callers that have no hints to offer. */

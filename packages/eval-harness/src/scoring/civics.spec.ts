@@ -78,8 +78,71 @@ describe("warrantFor", () => {
     assert.equal(warrantFor("Initiative Statute", SOURCE, HINTS), "page");
   });
 
+  /**
+   * The false positives that made the instrument the larger error term. Both
+   * were scored as fabrications by strict substring matching; neither is one.
+   */
+  test("tolerates added or dropped function words", () => {
+    // Model said "Qualified for Ballot"; the page says "qualified for the ballot".
+    assert.equal(
+      warrantFor(
+        "Qualified for Ballot",
+        "measures will become qualified for the ballot on the 131st day",
+      ),
+      "page",
+    );
+  });
+
+  test("tolerates a reordered paraphrase only when every content word is present", () => {
+    const page =
+      "An eligible initiative measure is one in which the required number of " +
+      "signatures have been submitted to and verified by the county elections officials.";
+    assert.equal(
+      warrantFor("eligible initiative measure signatures verified", page),
+      "page",
+    );
+    // A content word the page never uses still fails — this is not synonymy.
+    assert.equal(
+      warrantFor("eligible initiative measure notarized", page),
+      null,
+    );
+  });
+
+  test("rejects tokens gathered from opposite ends of a page", () => {
+    // The real case: qwen emitted "Assembly Bill" as a measure type on a page of
+    // links. Both words appear — far apart, in unrelated sentences — and a
+    // set-membership check warranted it. Adjacency is what makes it a quote.
+    const page =
+      "California State Assembly This brief color pamphlet outlines the " +
+      "Assembly's organizational structure. Legislative Process How your idea " +
+      "becomes a bill and the law making process.";
+
+    assert.equal(warrantFor("Assembly Bill", page), null);
+    // The page has `bill` BEFORE `assembly`, which is what makes this not a
+    // quote from it. Order is the discriminator, not mere co-occurrence.
+    assert.equal(warrantFor("bill law making", page), "page");
+    // But the real phrase, present as a phrase, still warrants.
+    assert.equal(warrantFor("organizational structure", page), "page");
+  });
+
+  test("still rejects a fabrication that shares only function words", () => {
+    assert.equal(warrantFor("Recall of the Governor", SOURCE), null);
+  });
+
   test("neither is a fabrication", () => {
     assert.equal(warrantFor("Final Random Sample Count", SOURCE, HINTS), null);
+  });
+
+  test("hints warrant only a LITERAL match, not an in-order coincidence", () => {
+    // The Assembly source really contains this sentence, and a lenient rule read
+    // "Assembly ... bill" out of it to excuse an invented measure type.
+    const prose =
+      "Seed page is the canonical CA Assembly description of how a bill " +
+      "becomes law; sibling pages include the glossary";
+
+    assert.equal(warrantFor("Assembly Bill", "", prose), null);
+    // A type the config names outright still warrants.
+    assert.equal(warrantFor("glossary", "", prose), "hint");
   });
 
   test("without hints the old behaviour is unchanged", () => {

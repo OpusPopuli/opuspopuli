@@ -153,6 +153,59 @@ prompt iteration, so v3 is measured with an instrument that is not itself the
 biggest source of error. Tuning against a noisy scorer is how the hints mistake
 happened once already.
 
+## The matcher, fixed — and the numbers it changes
+
+Warrant was scored by strict substring, which called two paraphrases
+fabrications. Getting it right took three wrong rules, and each is worth keeping
+on the record because each failed in a different direction:
+
+1. **Substring only.** `"Qualified for Ballot"` was a fabrication because the page
+   says "qualified for **the** ballot" — a fabrication verdict on a dropped
+   article.
+2. **Token set within a window.** Swung too far: warranted `"Assembly Bill"` on a
+   page of links, because *bill* and *assembly* both appear — six words apart, in
+   unrelated sentences.
+3. **In-order within a window, applied to hints too.** Still warranted
+   `"Assembly Bill"`, now off the config's own prose: *"...CA **Assembly**
+   description of how a **bill** becomes law"*. An accidental in-order pair inside
+   6,000 characters of instructions.
+
+The rule that holds splits the two warrants by what the model is doing with each:
+
+| warrant | rule | why |
+| --- | --- | --- |
+| **page** | content tokens in order, within `2n+4` | the model paraphrases prose it read |
+| **hint** | literal substring | the model copies an instruction; when the config names a type it names it exactly |
+
+Both ends are pinned by tests, so neither drift returns silently.
+
+Embedding cosine was deliberately NOT used here. Warrant is the measure that
+catches invention, and a semantic threshold would let a plausible-sounding
+fabrication through — the one thing this eval exists to detect. Embeddings belong
+on RECALL, where paraphrase should count, and that remains the open upgrade.
+
+Known limitation, chosen rather than hidden: **no stemming**. `"signature"` does
+not match `"signatures"`, which costs exactly one false fabrication on the qwen
+baseline. That is the price of a warrant check a fabrication cannot talk its way
+past.
+
+### Corrected numbers
+
+| | qwen3.6:35b-a3b | nemotron + prompt v2 |
+| --- | --- | --- |
+| `failed-qualify` recall | 0.60 | **0.50** |
+| `qualified-ballot-measures` recall | 0.30 | 0 |
+| precision | 0.75 – 0.92 | **1.00 on every page** |
+| ungrounded claims | **7** | **0** |
+| fields emptied | 0 | 0 |
+| invention on empty-expected fields | all four fields on one page | **none** |
+
+The fix made the headline sharper rather than softer. nemotron's
+`qualified-ballot-measures` precision moved 0.75 -> 1.00 once its paraphrase
+stopped being scored as invention, so the corrected picture is: **perfect
+precision and zero invention across all three pages, against qwen's seven
+fabrications** — at the cost of lower recall on two pages and zero on one.
+
 ## Reproducing
 
 ```bash
