@@ -447,6 +447,109 @@ accurate for the source but too broad for each page (lifecycleStages).
 The fix is per-page hint scoping in the region schema — attaching an instruction to a URL
 pattern rather than to a seed — and it is filed rather than attempted here.
 
+## The held-out page, and what it says about prompt levers
+
+A fourth gold page was authored to break the circularity above: the **Senate Citizens'
+Guide legislative-process page**, from a different `dataSource` whose four hints were
+written months earlier, are untouched by anything measured here, and — the part that
+makes it a test — never enumerate lifecycle stage ids. 17 items, 31 quotes verified
+offline, a `sessionScheme` trap, and two `ownerReviewRequired` items.
+
+First measurement (prompt v3): **page recall 0.398, `lifecycleStages` recall 0.091** —
+against 0.70 and 1.00 on the three SoS pages. So the tuned-page recall *was*
+substantially inflated by authoring a hint with the gold set in view, exactly as the
+caveat predicted. The held-out number is the one to quote.
+
+### What it is actually doing is more useful than the number
+
+`lifecycleStages` precision is **1.00** with everything page-warranted. It is reading the
+page and routing it wrongly:
+
+| field | what it got |
+| --- | --- |
+| `lifecycleStages` | the page's **section headings** — "How Your Idea Becomes A Bill", "What To Do When Your Bill Goes To Policy Committee" |
+| `glossary` | the actual process vocabulary — Veto, Override, Chaptered, Conference Committee, Second House, Policy Committee, Third Reading (recall 1.00) |
+| `chambers` | `Senate` only, ignoring the 41/54 Assembly thresholds in the same sentence |
+
+The chambers miss is **hint-as-answer-set for a third time**, on a hint nobody touched
+here: the Senate source says "Emit a chambers[] entry for the Senate", and the model
+emitted exactly that and nothing else.
+
+### v5 targeted this and did not move it
+
+prompt-service `feat/civics-bill-process-routing` adds a whole page-shape block: a stage
+is named for the stage and not the heading, read stages out of the prose, emit both a
+stage and a glossary entry where the page does both, and emit every chamber whose facts
+the page states. Measured:
+
+| | v3 | v5 |
+| --- | --- | --- |
+| `lifecycleStages` emitted | the 7 section headings | **the same 7 section headings** |
+| `chambers` | Senate only | **Senate only** |
+| `glossary` size | 16 | 10 |
+| page precision | 0.828 | **0.933** |
+| inventions | 3 | **2** |
+| off-page | 1 | **0** |
+
+The recall move on that page (0.091 → 0.364) is the **matcher's** head-term credit, added
+in the same change, not the prompt's doing.
+
+Because two things changed at once, v3 was re-run on the same matcher to separate them.
+Matcher held constant on both sides:
+
+| | v3 | v5 |
+| --- | --- | --- |
+| `failed-qualify` recall | 0.70 | **0.90** |
+| `qualified-ballot-measures` precision | 0.75 (3 hint-warranted, 2 off-page) | **1.00 (0, 0)** |
+| held-out page **recall** | 0.466 | **0.466 — identical** |
+| held-out page precision | 0.828 | **0.933** |
+| held-out inventions | 3 | **2** |
+
+**v5 ships, and not for the reason it was written.** It lifts recall on one ballot-measure
+page and takes the other to perfect precision with no config-only claims at all, and it
+raises precision on the held-out page while dropping an invention. Its contribution to
+held-out RECALL is exactly zero, and the behaviour it was authored to change — stage names
+copied from section headings, one chamber where the page documents two — is
+byte-for-byte unchanged. A prompt revision that improves three things it was not aimed at
+and nothing it was aimed at is worth shipping and worth describing accurately.
+
+### The held-out page must stay un-tuned, which costs something real
+
+The `chambers` miss has an obvious fix in the same family as the two that worked: the
+Senate source's hint says "Emit a chambers[] entry for the Senate", and rewriting it to
+"emit an entry for every chamber whose facts the page states" would very likely take that
+field from 0.5 to 1.00.
+
+**Deliberately not done.** The moment that hint is edited, this page becomes a tuned page
+and the eval has no independent number left. There is exactly one page here whose config
+was written without reference to the gold set, and spending it to gain 0.5 on one field
+would be trading the only unbiased measurement for a better-looking one.
+
+The cost is that a known, cheap improvement sits unshipped. The way out is more held-out
+pages — each new one lets an older one graduate into the tuned set — not a decision to
+tune this one. Worth stating plainly because the pressure to fix it will recur every time
+this table is read.
+
+### Three levers, one hit: this looks like a model boundary, not a wording problem
+
+| lever | target | result |
+| --- | --- | --- |
+| v2 — field routing | ballot-measure pages | **large** (recall 0 → 0.50, invention removed) |
+| v4 — how to read hints | hint recitation | nothing |
+| v5 — bill-process routing | stage vs heading vs term | nothing on its target page |
+| **region config** (#89, #90) | the hint itself | **decisive both times** |
+
+The pattern across four measurements: this model follows a hint's **enumeration** far
+more strongly than the prompt's **instruction**, and when a page offers strong surface
+cues — numbered section headings — it takes those over a described abstraction. Both are
+capability boundaries, and neither is likely to yield to more prompt text.
+
+So the next lever for the bill-process shape should not be a sixth prompt revision. The
+options are a deterministic **normalisation step** — map a heading-shaped stage name onto
+a stage id in code, where it is testable and does not depend on a model obeying prose —
+or a different model for that page shape. The project's own standing principle
+(verification layer over model choice) points at the first.
+
 ## Reproducing
 
 ```bash

@@ -175,6 +175,21 @@ export function containmentSimilarity(
 ): Similarity {
   const g = goldTexts.map(contentTokens);
   const e = emittedTexts.map(contentTokens);
+  // Gold items are written "Name — what it is", so the NAME is what a model is
+  // expected to emit and the gloss is context for a human reader. Comparing whole
+  // strings made a correct answer score 0: gold "Policy committee — assigned by the
+  // Rules Committee, not heard until 30 days after introduction" against the page's
+  // own heading "What To Do When Your Bill Goes To Policy Committee" shares neither
+  // containment direction, though a reader would call that found.
+  //
+  // Only heads with TWO OR MORE content tokens are used. A one-word head would
+  // match anything containing that word — a bare "Governor" would be credited by
+  // "You Can Still Act After Your Bill Goes To The Governor", and by any other
+  // sentence mentioning the Governor at all.
+  const heads = goldTexts.map((t) => {
+    const head = contentTokens(t.split(/[—–]|\s-\s/)[0]);
+    return head.length >= 2 ? head : undefined;
+  });
   const subset = (a: string[], b: string[]) => {
     const bag = new Set(b);
     return a.length > 0 && a.every((t) => bag.has(t));
@@ -184,7 +199,11 @@ export function containmentSimilarity(
     const b = e[ei];
     if (!a?.length || !b?.length) return 0;
     if (a.length === b.length && subset(a, b) && subset(b, a)) return 1;
-    return subset(b, a) || subset(a, b) ? 0.8 : 0;
+    if (subset(b, a) || subset(a, b)) return 0.8;
+    // Fall back to the gold's name alone, scored lower: the model named the right
+    // thing without carrying the detail the gold records.
+    const head = heads[gi];
+    return head && subset(head, b) ? 0.7 : 0;
   };
 }
 

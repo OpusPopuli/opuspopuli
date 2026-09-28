@@ -218,6 +218,154 @@
       },
       "extractedTextForAudit": "Teachers and Students | California State Assembly Skip to main content Teachers and Students Children's Art at the Capitol The State Capitol has a designated area for unframed artwork from K-12 school groups. Various student groups have submitted work for view by the public. To request permission to display artwork from your K-12 school group, contact your legislative representative. Your representative will sponsor your request and be responsible for obtaining the necessary approval from the Joint Rules Committee. California State Assembly [pdf] This brief color pamphlet outlines the Assembly’s organizational structure. It includes a panoramic photo of the Assembly in session, listings of the house leadership and membership, and includes information on state emblems. Glossary and Legislative Terms Legislative terms for Committees and legislative actions. Visit the State Capitol Historical information on the State Capitol, visiting hours and and how to reserve a group tour. Legislative Process How your idea becomes a bill and the law making process. Contact Your Assembly Representative Find your Assembly representative to let them know your ideas or views about state legislation and to assist you in accessing state services. You may also ask your Assembly representative about special publications that are available to learn more about your state Assembly and the legislative process. Copyright © 2026 State of California Site Map Accessibility Terms & Privacy Register to Vote",
       "ownerJudgement": "The parent source (assembly.ca.gov/resources/legislative-process) instructs 'Capture all measure-type abbreviations (AB, SB, ACA, SCA, ...)'. That is a SOURCE-level instruction and this is one crawled sub-page with no measure types on it. This fixture holds that per-page emptiness is still correct — a CivicsBlock is keyed to one source_url, so content not on that page pollutes that row — but whether a source-level hint licenses emitting on every sub-page is a judgement for the owner, not an extraction fact."
+    },
+    {
+      "sourceUrl": "https://www.senate.ca.gov/citizens-guide/legislative-process",
+      "authoredFrom": "live fetch 2026-09-27, htmlToReadableText",
+      "heldOut": true,
+      "heldOutWhy": "Authored AFTER the SoS hints were rewritten, from a DIFFERENT dataSource (the Senate Citizens' Guide) whose four hints were written months earlier and are untouched by any change measured in this eval. Crucially those hints do NOT enumerate lifecycle stage ids, so recall on lifecycleStages here is independent of the hint authoring that makes recall on the three SoS pages non-independent.",
+      "extractedChars": 7567,
+      "extractedTextForAudit": "Legislative Process | California State Senate\nSkip to main content\nSearch\nLegislative Process\nHow your idea becomes a bill\nWhat to do when your bill goes to Policy Committee\nWhat if your bill goes to a Fiscal Committee?\nAfter your bill passes the House of Origin and goes to the Second House\nYou can still act after your bill goes to the Governor\nStep 1: How Your Idea Becomes A Bill\nAll legislation starts off as an idea. These ideas can come from anybody and the process begins when either an individual or group persuades a Member of the Legislature to author a bill. The Member then sends the idea and the language for the bill to the Legislative Counsel's Office, where it is drafted into the actual bill. The drafted bill is returned to the legislator for his or her review. Persons or groups that originated the idea for the bill may also review it to ensure that the provisions they desire are in the bill in the correct form. If the author is a Senator, the bill is introduced at the Senate Desk; if an Assemblymember, at the Assembly Desk, where it is assigned a number and read for the first time.\nStep 2: What To Do When Your Bill Goes To Policy Committee\nThe bill then goes to the Senate or Assembly Rules Committee, where it is assigned to a policy committee. You can find out where your bill is assigned by calling the author. Since bills are not heard in policy committee until 30 days after they have been introduced and printed, there is plenty of time to investigate a bill or contact your legislator to communicate your position on the bill.\nEach bill must appear in the Daily File for four days prior to being heard in a committee. The Daily File is the agenda of the day's business, together with public notice of bills set for committee hearings. By checking the File, you can keep track of bills that are being scheduled for committee. If you live out of town and plan to testify at the hearing, it is a good idea to call the author or your legislator to make sure that the bill is going to be heard on that date. Sometimes bills are taken off the agenda at the last moment.\nAt this point, the role of the District Office should be emphasized. District Office staff are there to serve the needs of constituents. They can be extremely helpful in making contacts and getting information from Sacramento.\nIt is a good idea to schedule a meeting with your legislator while he or she is in the district. Communicate your concerns regarding legislation. Indicate that you want to work with the Member's office on a particular issue.\nMost bills generate support and opposition from a variety of groups. Find out who these groups or individuals are by calling the author's office where lists of the letters and phone calls received on each bill are kept. A good strategy is to align yourself with the groups that hold your position and work together to talk to the members of the committee BEFORE the bill is heard. Keep your letters and discussions with the legislators short and to the point.\nWhen testifying before the committee, first state your name and the organization that you represent or indicate that you are a concerned citizen and state where you live. The Members of the committee will be interested to hear what you have to say and usually do not grill individual citizens who testify in the same way that they do lobbyists. Keep your testimony short and to the point.\nStep 3: What If Your Bill Goes To A Fiscal Committee?\nIf the bill has a fiscal impact or a state cost, it will be heard in either the Senate or Assembly Appropriations Committee. At this point, you should inform the Members of the committee why you support or oppose the bill based on a fiscal argument. The finance committees are concerned about fiscal impact and not policy considerations.\nTry to see the staff analysis that has been done on the bill by the policy committee, the Department of Finance, and/or the Legislative Analyst. Members of the fiscal committees read these analyses before they vote. These analyses are available on the Internet.\nIf you believe that the numbers or the fiscal impact of the bill are not correct as reported in these analyses, you should prepare your written comments before the committee meets. Your written material should be available to pass out to the committee Members at the hearing where you present your testimony.\nAfter the bill passes the fiscal committee, it is read for the second time on the Floor.\nStep 4: After Your Bill Passes The House Of Origin And Goes To The Second House\nThird Reading is the last stage that a bill goes through in the house of origin before it passes to the second house to go through the committee process all over again. On Third Reading, the author presents the bill for passage by the entire house. Most bills require a majority vote (it must pass by 21 votes in the Senate and 41 votes in the Assembly), while urgency measures and appropriation bills require a two-thirds vote (27 in the Senate, 54 in the Assembly).\nAt any time during the legislative process the bill may be amended, either in committee or on the Floor. After the amendments have been submitted to the author, the bill goes to another printing to reflect the changes that have been made. The Senate or Assembly History records the dates when a bill has been amended. Amendments can be substantial or technical and may affect your position on the bill.\nAmendments should be followed very carefully. Contact with the District Office can be helpful in keeping track of current versions of a bill. If you subscribe to the bill, these amendments will automatically be sent to you. If you change your position on a bill due to a favorable or unfavorable amendment, you should inform the author and your legislator.\nIf a Senate bill is amended by the Assembly, or vice versa, and the house of origin refuses to concur in those amendments, the bill will go to a conference committee. If the house of origin does concur, the bill goes to the Governor.\nMembers of the conference committee are appointed by the Rules Committees; three members from the Senate and three from the Assembly meet to negotiate out the differences. If they agree on a single version, it goes back to both Floors for approval.\nCommunicate to your legislator or the author which amendments you prefer and why. The conference committee meetings, particularly at the end of the two-year legislative session, are scheduled quickly and can be easily missed. You must stay in close contact with the author's staff to stay on top of fast-breaking developments. It is also important to know who will be serving on the conference committee so you can inform them of your position.\nStep 5: You Can Still Act After Your Bill Goes To The Governor\nThe Governor has 12 days to sign, approve without signing, or veto a bill. A letter or phone call to the Governor's Office is appropriate to state your position on the bill.\nIf the bill is signed or approved without a signature, it goes to the Secretary of State to be chaptered. If the Governor vetoes the bill, a two-thirds vote in each house is needed to override the veto. The Governor's Office releases veto messages which explain the veto; these messages are available from the Governor's Office and on the Internet.\nA wealth of legislative information is now available on the Internet. You can get bills, amendments, staff analyses, committee agendas, and other legislative information, plus a simple way to track legislation.\nRelated Links\nInformation to help follow the process\nGlossary of Legislative Terms",
+      "fields": {
+        "chambers": {
+          "expected": "non-empty",
+          "items": [
+            {
+              "id": "gold-sen-ch-1",
+              "essential": true,
+              "text": "Senate — majority 21 votes, two-thirds 27 votes",
+              "evidence": "it must pass by 21 votes in the Senate and 41 votes in the Assembly",
+              "supportingEvidence": "while urgency measures and appropriation bills require a two-thirds vote (27 in the Senate, 54 in the Assembly)"
+            },
+            {
+              "id": "gold-sen-ch-2",
+              "essential": true,
+              "text": "Assembly — majority 41 votes, two-thirds 54 votes",
+              "evidence": "41 votes in the Assembly"
+            }
+          ]
+        },
+        "lifecycleStages": {
+          "expected": "non-empty",
+          "pageOnly": true,
+          "pageOnlyWhy": "The stages must come from this page. The Senate source's hints describe the chamber and point at sibling pages; they do not enumerate a pipeline, which is what makes this page a held-out test of the lifecycleStages fix.",
+          "items": [
+            {
+              "id": "gold-sen-ls-1",
+              "essential": true,
+              "text": "Introduction and first reading — assigned a number and read for the first time at the Desk",
+              "evidence": "where it is assigned a number and read for the first time"
+            },
+            {
+              "id": "gold-sen-ls-2",
+              "essential": true,
+              "text": "Policy committee — assigned by the Rules Committee, not heard until 30 days after introduction",
+              "evidence": "the Senate or Assembly Rules Committee, where it is assigned to a policy committee",
+              "supportingEvidence": "bills are not heard in policy committee until 30 days after they have been introduced and printed"
+            },
+            {
+              "id": "gold-sen-ls-3",
+              "essential": true,
+              "text": "Fiscal committee — Senate or Assembly Appropriations, for a bill with a fiscal impact or state cost",
+              "evidence": "If the bill has a fiscal impact or a state cost, it will be heard in either the Senate or Assembly Appropriations Committee"
+            },
+            {
+              "id": "gold-sen-ls-4",
+              "essential": false,
+              "text": "Second reading on the Floor — after the fiscal committee",
+              "evidence": "After the bill passes the fiscal committee, it is read for the second time on the Floor"
+            },
+            {
+              "id": "gold-sen-ls-5",
+              "essential": true,
+              "text": "Third reading — the last stage in the house of origin, where the author presents the bill for passage",
+              "evidence": "Third Reading is the last stage that a bill goes through in the house of origin",
+              "supportingEvidence": "On Third Reading, the author presents the bill for passage by the entire house"
+            },
+            {
+              "id": "gold-sen-ls-6",
+              "essential": true,
+              "text": "Second house — the committee process over again",
+              "evidence": "it passes to the second house to go through the committee process all over again"
+            },
+            {
+              "id": "gold-sen-ls-7",
+              "essential": false,
+              "text": "Amendment — possible at any point, sending the bill to another printing",
+              "evidence": "At any time during the legislative process the bill may be amended, either in committee or on the Floor"
+            },
+            {
+              "id": "gold-sen-ls-8",
+              "essential": true,
+              "text": "Conference committee — three Senate and three Assembly members, when the house of origin refuses to concur",
+              "evidence": "the house of origin refuses to concur in those amendments, the bill will go to a conference committee",
+              "supportingEvidence": "three members from the Senate and three from the Assembly meet to negotiate out the differences"
+            },
+            {
+              "id": "gold-sen-ls-9",
+              "essential": true,
+              "text": "Governor — 12 days to sign, approve without signing, or veto",
+              "evidence": "The Governor has 12 days to sign, approve without signing, or veto a bill"
+            },
+            {
+              "id": "gold-sen-ls-10",
+              "essential": true,
+              "text": "Chaptered — by the Secretary of State once signed or approved without signature",
+              "evidence": "If the bill is signed or approved without a signature, it goes to the Secretary of State to be chaptered"
+            },
+            {
+              "id": "gold-sen-ls-11",
+              "essential": true,
+              "text": "Veto override — a two-thirds vote in each house",
+              "evidence": "If the Governor vetoes the bill, a two-thirds vote in each house is needed to override the veto"
+            }
+          ]
+        },
+        "glossary": {
+          "expected": "non-empty",
+          "pageOnly": true,
+          "pageOnlyWhy": "A glossary entry requires a definition ON THE PAGE — the prompt's own rule. This page defines two terms in passing while only LINKING to the Senate's actual glossary, so it tests the 'used vs defined' rule in the positive direction: two entries, not a page's worth.",
+          "items": [
+            {
+              "id": "gold-sen-gl-1",
+              "essential": true,
+              "text": "Daily File — the agenda of the day's business, with notice of bills set for committee hearings",
+              "evidence": "The Daily File is the agenda of the day's business, together with public notice of bills set for committee hearings"
+            },
+            {
+              "id": "gold-sen-gl-2",
+              "essential": true,
+              "text": "Third Reading — the last stage a bill goes through in the house of origin",
+              "evidence": "Third Reading is the last stage that a bill goes through in the house of origin before it passes to the second house"
+            }
+          ],
+          "why": "'Glossary of Legislative Terms' appears only as a Related Link. A link to a glossary is not a glossary — an extraction that emits the Senate's ~100 terms from this page is reading a sibling page, not this one."
+        },
+        "sessionScheme": {
+          "expected": "empty",
+          "trap": true,
+          "why": "The page never states the session structure — no two-year session dates, no house-of-origin deadline calendar. It mentions 'the end of the two-year legislative session' in passing, which names a session length without defining the scheme."
+        },
+        "measureTypes": {
+          "expected": "non-empty",
+          "pageOnly": true,
+          "items": [
+            {
+              "id": "gold-sen-mt-1",
+              "essential": false,
+              "text": "Urgency measure — requires a two-thirds vote",
+              "evidence": "urgency measures and appropriation bills require a two-thirds vote"
+            },
+            {
+              "id": "gold-sen-mt-2",
+              "essential": false,
+              "text": "Appropriation bill — requires a two-thirds vote",
+              "evidence": "urgency measures and appropriation bills require a two-thirds vote"
+            }
+          ],
+          "ownerReviewRequired": "Are 'urgency measure' and 'appropriation bill' measureTypes, or procedural categories of an ordinary bill? The page names both with their own vote threshold, which is why they are here, but neither is a distinct legal instrument the way 'Initiative Statute' is. Both are marked non-essential so this judgement cannot swing essentialRecall. This page names no AB/SB/ACA codes at all."
+        }
+      }
     }
   ],
   "notAuthoredYet": [
