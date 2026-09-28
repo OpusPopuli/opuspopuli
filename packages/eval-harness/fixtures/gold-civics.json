@@ -77,7 +77,9 @@
               "evidence": "have been withdrawn by proponents or have failed to gather the required number of signatures",
               "warrant": "page"
             }
-          ]
+          ],
+          "pageOnly": true,
+          "pageOnlyWhy": "The Secretary of State splits one process across pages — circulation and counting on the qualification pages, eligibility and the 131st day here, terminal outcomes on the failure pages. A stage taken from the hints' description of another page's segment is wrong for this page, so hints do not warrant a claim in this field."
         },
         "chambers": {
           "expected": "empty",
@@ -164,7 +166,9 @@
               "evidence": "Eligible initiative measures will become qualified for the ballot on the 131st day prior to the next Statewide General Election unless withdrawn by the proponents prior to its qualification by the Secretary of State.",
               "warrant": "page"
             }
-          ]
+          ],
+          "pageOnly": true,
+          "pageOnlyWhy": "The Secretary of State splits one process across pages — circulation and counting on the qualification pages, eligibility and the 131st day here, terminal outcomes on the failure pages. A stage taken from the hints' description of another page's segment is wrong for this page, so hints do not warrant a claim in this field."
         },
         "chambers": {
           "expected": "empty",

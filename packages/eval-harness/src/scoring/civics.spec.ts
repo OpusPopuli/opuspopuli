@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   isGrounded,
   warrantFor,
+  containmentSimilarity,
   scoreField,
   summarisePage,
   type EmittedItem,
@@ -150,6 +151,78 @@ describe("warrantFor", () => {
   });
 });
 
+/**
+ * The recall matcher's own regression. Prompt v4 looked like a 0.50 -> 0.75 gain on
+ * `qualified-ballot-measures`; it was one function word. v3 emitted "Qualified for
+ * Ballot" and v4 "Qualified for the Ballot", and a whitespace-only containment check
+ * scored those 0 and 0.8 — across the 0.6 threshold — while the model's stage list was
+ * byte-identical. Both directions are pinned so the article cannot matter again.
+ */
+describe("containmentSimilarity", () => {
+  const GOLD =
+    "Qualified for the ballot — becomes qualified on the 131st day before the general election";
+
+  test("an article does not decide whether a label matches", () => {
+    const withThe = containmentSimilarity([GOLD], ["Qualified for the Ballot"]);
+    const without = containmentSimilarity([GOLD], ["Qualified for Ballot"]);
+    assert.equal(withThe(0, 0), without(0, 0));
+    assert.ok(
+      without(0, 0) >= 0.8,
+      "a label contained in the gold description matches",
+    );
+  });
+
+  test("equal content tokens are an exact match despite case and function words", () => {
+    const sim = containmentSimilarity(
+      ["Circulation period"],
+      ["the circulation PERIOD"],
+    );
+    assert.equal(sim(0, 0), 1);
+  });
+
+  test("a label matches a gold description that punctuates right after it", () => {
+    // The false negative the content-token switch introduced: gold tokenised
+    // "statute," and the emitted label "statute", so recall on a field that was
+    // 1.00 silently became 0.
+    const sim = containmentSimilarity(
+      [
+        "Initiative Statute, requiring 546,651 signatures",
+        "Initiative Constitutional Amendment, requiring 874,641 signatures",
+      ],
+      ["Initiative Statute", "Initiative Constitutional Amendment"],
+    );
+    assert.ok(sim(0, 0) >= 0.8);
+    assert.ok(sim(1, 1) >= 0.8);
+    // And it does not blur the two types together.
+    assert.equal(sim(0, 1), 0);
+  });
+
+  test("punctuation inside a token is preserved, so figures stay distinct", () => {
+    const sim = containmentSimilarity(
+      ["Signatures Required: 546,651"],
+      ["Signatures Required: 874,641"],
+    );
+    assert.equal(sim(0, 0), 0);
+  });
+
+  test("a different stage name still does not match — no stemming, by choice", () => {
+    // "Signature Gathering" is the region hint's example id; the page says
+    // "circulation period ... proponents gather signatures". Crediting one for the
+    // other is exactly how a recitation of the config would pass as a reading.
+    const sim = containmentSimilarity(
+      ["Circulation period — proponents gather signatures"],
+      ["Signature Gathering"],
+    );
+    assert.equal(sim(0, 0), 0);
+  });
+
+  test("an unrelated emission scores 0, and an empty one cannot match", () => {
+    const sim = containmentSimilarity([GOLD], ["General Election Vote", ""]);
+    assert.equal(sim(0, 0), 0);
+    assert.equal(sim(0, 1), 0);
+  });
+});
+
 describe("scoreField", () => {
   const gold: GoldCivicsField = {
     expected: "non-empty",
@@ -249,6 +322,111 @@ describe("scoreField with hints", () => {
     assert.equal(s.precision, 1);
     assert.equal(s.warrantedByPage, 1);
     assert.equal(s.warrantedByHint, 1);
+  });
+});
+
+describe("the emitted-claim record", () => {
+  test("records every emitted claim with its warrant, not just the failures", () => {
+    // A recall-0 field with items emitted is ambiguous from the score alone. The
+    // warrant per claim is what separates "paraphrased the page" from "recited
+    // the config's example ids".
+    const gold: GoldCivicsField = {
+      expected: "non-empty",
+      items: [{ id: "a", text: "Initiative Statute", essential: true }],
+    };
+    const s = scoreField(
+      "measureTypes",
+      gold,
+      [
+        { verbatim: "INITIATIVE STATUTE" },
+        { verbatim: "Recall" },
+        { verbatim: "Zoning" },
+      ],
+      SOURCE,
+      () => 0,
+      0.6,
+      "direct-democracy measures: Initiative Statute, Referendum, Recall",
+    );
+
+    assert.deepEqual(s.emitted, [
+      { verbatim: "INITIATIVE STATUTE", warrant: "page" },
+      { verbatim: "Recall", warrant: "hint" },
+      { verbatim: "Zoning", warrant: null },
+    ]);
+    // And it stays consistent with the counts derived from it.
+    assert.equal(s.warrantedByPage, 1);
+    assert.equal(s.warrantedByHint, 1);
+    assert.deepEqual(s.ungrounded, ["Zoning"]);
+  });
+});
+
+describe("pageOnly fields", () => {
+  const HINTS =
+    "the status pages describe eligibility ('eligible', 'qualified for the ballot'); " +
+    "the failure pages describe terminal outcomes ('failed', 'withdrawn by proponents')";
+  const gold: GoldCivicsField = {
+    expected: "non-empty",
+    pageOnly: true,
+    items: [{ id: "a", text: "Circulation period", essential: true }],
+  };
+
+  test("a hint-only claim is an off-page error, not a pass", () => {
+    // The real case: with the rewritten SoS hint, failed-qualify emitted
+    // "eligible" and "qualified for the ballot" — stages that page never
+    // mentions, taken from the hint's description of a DIFFERENT page.
+    const s = scoreField(
+      "lifecycleStages",
+      gold,
+      [
+        { verbatim: "Circulation period" },
+        { verbatim: "qualified for the ballot" },
+      ],
+      "proponents gather signatures during the circulation period",
+      () => 0,
+      0.6,
+      HINTS,
+    );
+
+    assert.deepEqual(s.offPage, ["qualified for the ballot"]);
+    assert.equal(s.precision, 0.5, "the hint does not excuse it here");
+    assert.deepEqual(s.ungrounded, [], "it is not an invention either");
+    assert.equal(s.warrantedByHint, 1, "still reported as hint-warranted");
+  });
+
+  test("without pageOnly the same claim is config compliance", () => {
+    // measureTypes IS a region-level vocabulary: California instructs that
+    // `Recall` is one of its ballot-measure types, so emitting it is obedience.
+    const s = scoreField(
+      "lifecycleStages",
+      { ...gold, pageOnly: false },
+      [
+        { verbatim: "Circulation period" },
+        { verbatim: "qualified for the ballot" },
+      ],
+      "proponents gather signatures during the circulation period",
+      () => 0,
+      0.6,
+      HINTS,
+    );
+
+    assert.deepEqual(s.offPage, []);
+    assert.equal(s.precision, 1);
+  });
+
+  test("an invention is still an invention on a pageOnly field", () => {
+    const s = scoreField(
+      "lifecycleStages",
+      gold,
+      [{ verbatim: "Ratified by the Governor" }],
+      "proponents gather signatures during the circulation period",
+      () => 0,
+      0.6,
+      HINTS,
+    );
+
+    assert.deepEqual(s.ungrounded, ["Ratified by the Governor"]);
+    assert.deepEqual(s.offPage, []);
+    assert.equal(s.precision, 0);
   });
 });
 

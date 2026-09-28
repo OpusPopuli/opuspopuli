@@ -66,6 +66,24 @@ export interface GoldCivicsField {
   items?: GoldCivicsItem[];
   /** Marks a field whose correct answer is empty AND that a model tends to fill. */
   trap?: boolean;
+  /**
+   * This field's claims must come from THIS page — a hint naming them is not
+   * enough.
+   *
+   * Some fields are region-level vocabularies: California really does instruct
+   * that its ballot measures include `Recall`, so a `measureTypes` entry taken
+   * from the config is the extractor obeying its configuration. `lifecycleStages`
+   * on a direct-democracy page is not like that. The Secretary of State splits
+   * one process across several pages — circulation on one, eligibility on
+   * another, failure on a third — so a stage lifted from the hint's description
+   * of a DIFFERENT page's segment is wrong here, however real it is elsewhere.
+   *
+   * Without this distinction, enriching a hint raises precision mechanically:
+   * every claim it names becomes warranted. Measured — the rewritten SoS hint
+   * took `lifecycleStages` precision to 1.00 while 3 of 5 claims on
+   * `failed-qualify` were stages that page never mentions.
+   */
+  pageOnly?: boolean;
 }
 
 /** One thing a candidate emitted for a field, flattened for scoring. */
@@ -85,6 +103,15 @@ export interface ItemRecall {
   matchedTo?: string;
 }
 
+/** Where an emitted claim's support came from, or null if it had none. */
+export type Warrant = "page" | "hint" | null;
+
+/** An emitted claim and the warrant the scorer found for it. */
+export interface EmittedWarrant {
+  verbatim: string;
+  warrant: Warrant;
+}
+
 export interface FieldScore {
   field: string;
   expected: "empty" | "non-empty";
@@ -94,9 +121,24 @@ export interface FieldScore {
   items: ItemRecall[];
   /** Emitted items warranted by NEITHER the page nor the hints. */
   ungrounded: string[];
+  /**
+   * EVERY emitted claim with how it was warranted. Recorded because a recall-0
+   * field cannot be diagnosed from its score: `lifecycleStages` scoring 0 with
+   * four items emitted and precision 0.75 is a different bug depending on
+   * whether those four were paraphrases of the gold, stages from another page,
+   * or — as it turned out — the kebab-case example ids out of the region hints.
+   */
+  emitted: EmittedWarrant[];
   /** How the grounded ones were warranted — config-driven vs read off the page. */
   warrantedByPage: number;
   warrantedByHint: number;
+  /**
+   * Claims the hints warrant but the page does not, on a `pageOnly` field.
+   * Counted as precision errors there, and always reported separately: they are
+   * a different mistake from inventing something, and a different mistake from
+   * correctly following configuration.
+   */
+  offPage: string[];
   emittedCount: number;
   /** Share of emitted items supported by the source. Undefined if none emitted. */
   precision?: number;
@@ -108,10 +150,45 @@ export interface FieldScore {
 
 export type Similarity = (goldIndex: number, emittedIndex: number) => number;
 
-const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+/**
+ * Recall similarity: containment over CONTENT tokens.
+ *
+ * Gold items are phrased as descriptions ("Qualified for the ballot — becomes
+ * qualified on the 131st day before the general election") while a model emits a
+ * label ("Qualified for Ballot"), so containment either way is the right shape.
+ *
+ * It must ignore function words for the same reason `warrantFor` does, and the
+ * cost of not doing so was measured: prompt v3 emitted "Qualified for Ballot" and
+ * v4 emitted "Qualified for **the** Ballot", and a whitespace-only containment
+ * check scored those 0 and 0.8 — across the 0.6 threshold, so one dropped article
+ * moved a page's recall from 0.50 to 0.75 while the model's behaviour was
+ * IDENTICAL. A measure that swings on an article cannot be used to judge a prompt.
+ *
+ * Deliberately still not stemming: "signature gathering" does not match the
+ * page's "circulation period ... gather signatures". Those are different stage
+ * names, and crediting one for the other is how a recitation of the config's
+ * example ids would pass as a reading of the page.
+ */
+export function containmentSimilarity(
+  goldTexts: string[],
+  emittedTexts: string[],
+): Similarity {
+  const g = goldTexts.map(contentTokens);
+  const e = emittedTexts.map(contentTokens);
+  const subset = (a: string[], b: string[]) => {
+    const bag = new Set(b);
+    return a.length > 0 && a.every((t) => bag.has(t));
+  };
+  return (gi, ei) => {
+    const a = g[gi];
+    const b = e[ei];
+    if (!a?.length || !b?.length) return 0;
+    if (a.length === b.length && subset(a, b) && subset(b, a)) return 1;
+    return subset(b, a) || subset(a, b) ? 0.8 : 0;
+  };
+}
 
-/** Where an emitted claim's support came from, or null if it had none. */
-export type Warrant = "page" | "hint" | null;
+const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * What warrants an emitted claim?
@@ -160,6 +237,12 @@ const contentTokens = (s: string): string[] =>
   norm(s)
     .replace(/[^\p{L}\p{N}\s,%$.-]/gu, " ")
     .split(/\s+/)
+    // Punctuation is kept INSIDE a token ("546,651", "25%", "gut-and-amend") and
+    // stripped from its edges. Without the strip, a gold description's
+    // "Initiative Statute, requiring 546,651 signatures" tokenises "statute,"
+    // and an emitted "Initiative Statute" fails to match it — which silently
+    // took measureTypes recall on failed-qualify from 1.00 to 0.
+    .map((t) => t.replace(/^[.,-]+/, "").replace(/[.,-]+$/, ""))
     .filter((t) => t && !FUNCTION_WORDS.has(t));
 
 /**
@@ -301,6 +384,12 @@ export function scoreField(
   const ungrounded = warrants
     .filter((w) => w.warrant === null)
     .map((w) => w.verbatim.slice(0, 80));
+  const offPage = gold.pageOnly
+    ? warrants
+        .filter((w) => w.warrant === "hint")
+        .map((w) => w.verbatim.slice(0, 80))
+    : [];
+  const unsupported = ungrounded.length + offPage.length;
 
   const essential = items.filter((i) => i.essential);
   const recalledCount = items.filter((i) => i.recalled).length;
@@ -322,13 +411,18 @@ export function scoreField(
       : {}),
     items,
     ungrounded,
+    offPage,
+    emitted: warrants.map((w) => ({
+      verbatim: w.verbatim.slice(0, 80),
+      warrant: w.warrant,
+    })),
     warrantedByPage: warrants.filter((w) => w.warrant === "page").length,
     warrantedByHint: warrants.filter((w) => w.warrant === "hint").length,
     emittedCount: emitted.length,
     ...(emitted.length
       ? {
           precision: Number(
-            ((emitted.length - ungrounded.length) / emitted.length).toFixed(3),
+            ((emitted.length - unsupported) / emitted.length).toFixed(3),
           ),
         }
       : {}),
@@ -345,6 +439,8 @@ export interface PageVerdict {
   invented: string[];
   /** Emitted claims absent from the source, across all fields. */
   ungroundedCount: number;
+  /** Claims warranted only by hints on a field the gold marks `pageOnly`. */
+  offPageCount: number;
   meanRecall?: number;
   meanPrecision?: number;
 }
@@ -362,6 +458,7 @@ export function summarisePage(fields: FieldScore[]): PageVerdict {
     emptied: fields.filter((f) => f.wentEmpty).map((f) => f.field),
     invented: fields.filter((f) => f.invented > 0).map((f) => f.field),
     ungroundedCount: fields.reduce((n, f) => n + f.ungrounded.length, 0),
+    offPageCount: fields.reduce((n, f) => n + f.offPage.length, 0),
     meanRecall: mean(withRecall.map((f) => f.recall as number)),
     meanPrecision: mean(withPrecision.map((f) => f.precision as number)),
   };

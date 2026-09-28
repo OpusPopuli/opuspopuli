@@ -269,6 +269,184 @@ SoS hints enumerate the INITIATIVE path (`signature-gathering`,
 this page describes eligibility and qualification for measures already through
 that path. Not yet investigated.
 
+## Two instrument faults found while testing prompt v4
+
+Prompt v4 (prompt-service, `feat/civics-hints-are-not-answers`) targets the
+`lifecycleStages` recitation: it adds a HOW TO READ THOSE HINTS section saying an
+illustrative list is not the set to emit, a hint can never be the evidence, and two
+pages about one process describe different SEGMENTS of it. Measuring it surfaced two
+faults that had nothing to do with the prompt.
+
+### 1. The container served v1 text labelled v4 (prompt-service#118)
+
+The first v4 run recorded a large regression — both pages to recall 0, `glossary`
+invention back. It was not v4. Restarting the prompt-service container re-seeds it from
+the **baked** `dist/seed/seed.js`, which is several versions behind (`Seeded 30 prompt
+templates` where the tree has 32), and that older seeder overwrote
+`prompt_templates.template_text` with v1's 11,278 chars while leaving `version = 4`:
+
+| time (UTC) | event | active `template_text` |
+| --- | --- | --- |
+| 04:10:09 | `pnpm db:seed` — history row v4 written, 14,866 chars | 14,866 (v4) |
+| 04:10:23 | `docker restart opuspopuli-prompts` | — |
+| 04:10:24 | boot re-seed from the baked build | **11,278 (v1)** |
+
+The give-away was arithmetic: every prompt was exactly 2,089 chars shorter than in the
+previous run, and 13,367 − 11,278 = 2,089. Beyond the wasted run this is an
+**attestation** fault — `version` and `template_text` can disagree, so an output row
+persisting `promptVersion = 4` may have been produced by v1. Filed as
+prompt-service#118 with a fix proposal: refuse to seed *downward*, and assert
+`hash(template_text)` against the version-history row at boot.
+
+The earlier v2 and v3 measurements are unaffected — the container had been up for four
+days across both, so nothing re-seeded between writing those rows and reading them.
+
+### 2. The recall matcher swung on a single article
+
+Re-run properly, v4 looked like a real gain: `qualified-ballot-measures` recall
+0.50 → 0.75. It was one function word.
+
+| run | emitted | similarity vs gold "Qualified for the ballot — becomes qualified on the 131st day…" |
+| --- | --- | --- |
+| v3 | `Qualified for Ballot` | **0** |
+| v4 | `Qualified for **the** Ballot` | **0.80** |
+
+The 0.6 threshold sits between them, so a dropped article moved a page's recall by 0.25
+while the model's stage list was otherwise identical. `warrantFor` was given
+function-word tolerance when this same class of bug was found in *precision*;
+`containmentSimilarity` never was, and it was living in the driver where no test could
+see it. It now lives in `scoring/civics.ts`, compares content tokens, and is pinned in
+both directions — verified by reintroducing whole-string containment and watching the
+two new tests fail.
+
+Still not stemming: `Signature Gathering` does not match the page's *"circulation
+period … proponents gather signatures"*. Those are different stage names, and crediting
+one for the other is precisely how a recitation of the config's example ids would pass
+as a reading of the page.
+
+### The corrected numbers, and what they change
+
+Re-run on the corrected matcher with the published `@opuspopuli/regions` 1.0.99 and
+prompt v3 live:
+
+| page | recall (as reported earlier) | recall (corrected matcher) | precision | ungrounded |
+| --- | --- | --- | --- | --- |
+| `failed-qualify` | 0.50 | 0.50 | 0.75 | 2 |
+| `qualified-ballot-measures` | 0.50 | **0.75** | 0.875 | 1 |
+| `teachers-and-students` | correctly empty | correctly empty | n/a | 0 |
+
+So the 0.50 published earlier on `qualified-ballot-measures` was an **under-count** by
+one gold item: *"Qualified for the ballot — becomes qualified on the 131st day"* was
+recalled all along and scored 0 because the model wrote "Qualified for Ballot". Every
+number this eval has produced for that page has now been revised twice, in both
+directions, by the instrument rather than the model — which is the case for keeping the
+matcher under test and reporting the matcher alongside every result.
+
+### What v4 actually did
+
+Nothing measurable. On the corrected matcher the stage list is unchanged — the same four
+hint examples on both pages — and `failed-qualify` `lifecycleStages` is still recall 0
+with the same two ungrounded claims. A +1,499-char prompt with no measured effect does
+not ship on the strength of its reasoning, so v4 stays on a branch until either it earns
+a number or the config lever is tried. On the `measureTypes` evidence, the config is the
+likelier lever: the SoS hint enumerates four kebab-case ids, and the model treats an
+enumeration as the answer set no matter what the prompt says about it.
+
+## The config lever for lifecycleStages, and a caveat about measuring it
+
+With the prompt lever exhausted, the remaining hypothesis is the one the
+`measureTypes` fix already proved: the hint is the answer set. The SoS hint said
+
+> lifecycleStages describe the INITIATIVE path … use distinct kebab-case ids such as
+> 'signature-gathering', 'signature-verification', 'qualified-for-ballot',
+> 'general-election-vote'. Do not reuse the bill-process stage ids.
+
+Rewritten (opuspopuli-regions `fix/sos-lifecycle-stages-per-page`) to say which stages
+the SoS documents **on which kind of page** — circulation and counting on the
+qualification pages, eligibility and the 131st day on the status pages, terminal
+outcomes on the failure pages — and to state outright that the ids are a naming
+convention, not a pipeline to reproduce.
+
+### The caveat, stated before the number
+
+That hint was authored by the same model that authored the gold set, with the gold set
+in view. **Recall on these three pages is therefore no longer an independent measure of
+this change** — it is partly a measure of me writing down the answer. Two things keep it
+from being circular:
+
+- **Precision and warrant are independent.** They ask whether a claim is on the page,
+  which the hint cannot fake: a hint-warranted claim is reported separately
+  (`warrantedByHint`) precisely so config-driven output stays visible as such.
+- **The `--no-hints` arm** still measures what the page alone supports.
+
+The honest fix is a **held-out page** — a fourth gold page authored from a source whose
+hints were written without it — and that is the next piece of work on this eval rather
+than an optional extra. Until it exists, treat a recall gain on `lifecycleStages` as
+evidence the mechanism was identified, not as a quality number.
+
+### `--region-config`, so this is measurable at all
+
+The harness now reads the region config from the installed `@opuspopuli/regions` by
+default and from a checkout when given `--region-config <path>`. The first hint
+experiment was run by copying a checkout over the installed package, which then had to
+be repeated against the published artifact before it could be reported; this replaces
+that with a flag whose use is printed in the banner and recorded in every result file
+(`regionConfig`, `regionConfigIsOverride`). A number measured against an unpublished
+config is a hypothesis, and the result file now says so on its own.
+
+## The result, all on one matcher and one rule
+
+Every number below uses the content-token matcher and the `pageOnly` rule, so the three
+columns are comparable for the first time. nemotron runs the real prompt through
+prompt-service; qwen is the captured fixture from before the switch, produced under the
+v1 prompt and the v1 config, which is why it is a lineage comparison and not a
+model-versus-model one.
+
+| | qwen3.6:35b-a3b (fixture) | nemotron + v3 + published hints | nemotron + v3 + **new hint** |
+| --- | --- | --- | --- |
+| `failed-qualify` recall | 0.60 | 0.50 | **0.70** |
+| `failed-qualify` precision | 0.833 | 0.50 | 0.70 |
+| `qualified-ballot-measures` recall | 0.55 | 0.75 | **1.00** |
+| `qualified-ballot-measures` precision | 0.917 | 0.625 | 0.75 |
+| `teachers-and-students` (correct answer: nothing) | invention in **all four** fields, 4 ungrounded | clean | clean |
+| ungrounded claims (inventions) | **7** | 3 | **0** |
+| off-page claims | 0 | 4 | 5 |
+
+Read plainly:
+
+- The config fix beats the published config on **every** axis: higher recall on both
+  pages, higher precision on both, and invention eliminated.
+- Against the qwen lineage it trades precision for abstention. qwen scores better on
+  page-level precision (0.833 / 0.917) and pays with seven fabrications and a
+  link-directory page filled in all four fields. nemotron with the new hint invents
+  **nothing**, anywhere, and still abstains correctly on the trap page.
+- `lifecycleStages` on `qualified-ballot-measures` is recall **1.00**, from a field that
+  returned nothing five runs ago.
+
+Prompt v4 does not ship. It measured **identical** to v3 both before and after the config
+fix, so a +1,499-char prompt bought nothing; the branch stays unmerged
+(`prompt-service` `feat/civics-hints-are-not-answers`) as the record of a lever that was
+tried and did not move.
+
+### The residual defect is architectural, not a wording problem
+
+Off-page claims went **up**, 4 to 5. The model no longer recites the four bill-ish stage
+ids — those are gone, replaced by the page's own terms — but it now recites the *new*
+hint's vocabulary across pages: `failed-qualify` emitted `Random Sample Count`,
+`eligible` and `qualified for the ballot`, none of which are on it, and
+`qualified-ballot-measures` emitted `failed` and `withdrawn by proponents`, likewise.
+
+That is not a phrasing failure. **Hints are scoped to a SOURCE, and a source is a whole
+crawl** — one seed URL plus its siblings — while the pages inside it describe different
+segments of one process. So any page-specific instruction is delivered to every sibling
+page, and the more accurately a hint describes the source, the more off-page material it
+hands each individual page. Two attempts have now hit this from opposite directions: a
+hint too narrow for the source (measureTypes, excluded three of five types) and a hint
+accurate for the source but too broad for each page (lifecycleStages).
+
+The fix is per-page hint scoping in the region schema — attaching an instruction to a URL
+pattern rather than to a seed — and it is filed rather than attempted here.
+
 ## Reproducing
 
 ```bash

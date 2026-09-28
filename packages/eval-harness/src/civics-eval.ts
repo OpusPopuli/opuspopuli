@@ -39,10 +39,16 @@
  *   pnpm --filter @opuspopuli/eval-harness eval:civics                  # qwen baseline
  *   pnpm --filter @opuspopuli/eval-harness eval:civics -- \
  *     --candidate model --models nemotron-3.5-lightning:30b-a3b
+ *
+ *   --region-config <path>  read the region config from a checkout instead of the
+ *                           installed @opuspopuli/regions, to measure an unpublished
+ *                           hint change. Flagged in the banner and the result file —
+ *                           a number measured this way is a hypothesis until the
+ *                           package ships and it is repeated.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { extractJsonObjectSlice, htmlToReadableText } from "@opuspopuli/common";
@@ -55,6 +61,7 @@ import {
   type FieldScore,
   type GoldCivicsField,
   type Similarity,
+  containmentSimilarity,
 } from "./scoring/civics.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -130,37 +137,6 @@ export function flattenEmitted(value: unknown): EmittedItem[] {
     fromObject(value as Record<string, unknown>);
   }
   return items;
-}
-
-/**
- * Similarity without an embedder: normalised containment either way.
- *
- * Deliberately simple and stated as such. `scoring/omission.ts` calibrates a
- * cosine threshold against an embedding model, which is better for paraphrase and
- * is the upgrade path here — but it needs an embeddings provider running, and the
- * first question this eval has to answer is "did the model produce anything at
- * all for a field", where containment is sufficient and auditable.
- *
- * Reported in the output as the matcher used, so a number can never be read as
- * more precise than the method behind it.
- */
-export function containmentSimilarity(
-  goldTexts: string[],
-  emitted: EmittedItem[],
-): Similarity {
-  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-  const g = goldTexts.map(norm);
-  const e = emitted.map((x) => norm(x.verbatim));
-  return (gi, ei) => {
-    const a = g[gi];
-    const b = e[ei];
-    if (!a || !b) return 0;
-    if (a === b) return 1;
-    // A gold item is phrased as a description ("Initiative Statute, requiring
-    // 546,651 signatures"); an emitted label is usually the shorter of the two.
-    if (a.includes(b) || b.includes(a)) return 0.8;
-    return 0;
-  };
 }
 
 interface Candidate {
@@ -278,14 +254,37 @@ interface GoverningSource {
   hintsText: string;
 }
 
+/**
+ * Where the region config comes from.
+ *
+ * The INSTALLED `@opuspopuli/regions` by default, so a run measures what
+ * production would send. `--region-config <path>` points at a checkout instead,
+ * which is how an unpublished hint change gets measured — copying files into
+ * `node_modules` is not an option, and it was how the first hint experiment was
+ * run before it had to be repeated against the published package to count.
+ *
+ * The path used is printed in the banner and recorded in the result file, because
+ * a number measured against an unpublished config is a hypothesis, not a result.
+ */
+async function resolveRegionConfigPath(): Promise<string> {
+  const override = arg("region-config");
+  if (override) {
+    const resolved = resolve(override);
+    if (!existsSync(resolved)) {
+      throw new Error(`--region-config does not exist: ${resolved}`);
+    }
+    return resolved;
+  }
+  const { getRegionsDir } = await import("@opuspopuli/region-provider");
+  return join(getRegionsDir(), "california", "california.json");
+}
+
 async function loadSourcesByPage(
   pageUrls: string[],
+  configPath: string,
 ): Promise<Map<string, GoverningSource>> {
-  const { getRegionsDir } = await import("@opuspopuli/region-provider");
   const { readFileSync: read } = await import("node:fs");
-  const cfg = JSON.parse(
-    read(join(getRegionsDir(), "california", "california.json"), "utf8"),
-  ) as unknown;
+  const cfg = JSON.parse(read(configPath, "utf8")) as unknown;
 
   const sources: {
     url: string;
@@ -363,8 +362,10 @@ async function main(): Promise<void> {
     }
   }
 
+  const regionConfigPath = await resolveRegionConfigPath();
   const sourcesByPage = await loadSourcesByPage(
     gold.pages.map((p) => p.sourceUrl),
+    regionConfigPath,
   );
   const noHints = flag("no-hints");
 
@@ -382,9 +383,16 @@ async function main(): Promise<void> {
   console.log(
     `source text: ${live ? "LIVE fetch" : "gold extractedTextForAudit"}`,
   );
-  console.log(`matcher: normalised containment (see containmentSimilarity)`);
+  console.log(
+    `matcher: content-token containment (scoring/civics.ts containmentSimilarity)`,
+  );
   console.log(
     `hints in prompt: ${noHints ? "NO (--no-hints)" : "yes, from the region config"}`,
+  );
+  console.log(
+    `region config: ${regionConfigPath}${
+      arg("region-config") ? " (OVERRIDE — not the published package)" : ""
+    }`,
   );
   console.log(`warrant: page text OR the source's curated hints\n`);
 
@@ -403,7 +411,10 @@ async function main(): Promise<void> {
           goldField,
           emitted,
           sourceText,
-          containmentSimilarity(goldTexts, emitted),
+          containmentSimilarity(
+            goldTexts,
+            emitted.map((x) => x.verbatim),
+          ),
           0.6,
           sourcesByPage.get(page.sourceUrl)?.hintsText ?? "",
         );
@@ -417,7 +428,8 @@ async function main(): Promise<void> {
     const byHint = scores.reduce((n, f) => n + f.warrantedByHint, 0);
     console.log(
       `   recall ${verdict.meanRecall ?? "n/a"}  precision ${verdict.meanPrecision ?? "n/a"}` +
-        `  warranted: ${byPage} page / ${byHint} hint  ungrounded ${verdict.ungroundedCount}`,
+        `  warranted: ${byPage} page / ${byHint} hint  ungrounded ${verdict.ungroundedCount}` +
+        (verdict.offPageCount ? `  off-page ${verdict.offPageCount}` : ""),
     );
     if (verdict.emptied.length)
       console.log(
@@ -431,6 +443,13 @@ async function main(): Promise<void> {
       if (f.ungrounded.length) {
         console.log(`   ungrounded in ${f.field}:`);
         for (const u of f.ungrounded.slice(0, 4))
+          console.log(`      ${JSON.stringify(u)}`);
+      }
+      // Reported apart from invention: the hints really do name these, they just
+      // describe a different page of the same process.
+      if (f.offPage.length) {
+        console.log(`   off-page (hint-only) in ${f.field}:`);
+        for (const u of f.offPage.slice(0, 4))
           console.log(`      ${JSON.stringify(u)}`);
       }
     }
@@ -447,7 +466,12 @@ async function main(): Promise<void> {
         ranAt: new Date().toISOString(),
         candidate: candidate.name,
         sourceText: live ? "live" : "gold-recorded",
-        matcher: "normalised-containment",
+        matcher: "content-token-containment",
+        hintsInPrompt: !noHints,
+        // A result measured against an unpublished checkout is a hypothesis.
+        // Recorded so a reader never has to infer which it was.
+        regionConfig: regionConfigPath,
+        regionConfigIsOverride: Boolean(arg("region-config")),
         pages: report,
       },
       null,
