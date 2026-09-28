@@ -232,6 +232,23 @@ the Secretary of State assigns, and never a legal classification.
 Three prompt iterations were spent on something that was ~80% a config problem.
 The eval found it, but only after it was made to send what production sends.
 
+### Verified against the PUBLISHED package, not a local swap
+
+The hint experiment above was first run by copying a local checkout over the
+installed package. That is enough to test a hypothesis and not enough to claim a
+result, so it was repeated against `@opuspopuli/regions` **1.0.99** as published
+(opuspopuli-regions#89, merged), with prompt v3 live in prompt-service and the real
+hints in the prompt. Same numbers:
+
+| page | recall | precision | ungrounded |
+| --- | --- | --- | --- |
+| `failed-qualify` | 0.50 | 0.75 | 2 |
+| `qualified-ballot-measures` | **0.50** | 0.875 | 1 |
+| `teachers-and-students` | n/a (correctly empty) | n/a | 0 |
+
+`measureTypes` on `qualified-ballot-measures` is recall **1.00** — all five types,
+including the combined form — from a page that returned nothing four runs ago.
+
 ### Hints cost precision, which was invisible until they were passed
 
 | | hints absent | hints present (production) |
