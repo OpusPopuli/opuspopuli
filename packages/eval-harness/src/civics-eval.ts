@@ -192,7 +192,11 @@ function baselineCandidate(): Candidate {
  * PROMPT_SERVICE_URL unset the client resolves from the local database, which is
  * the normal way to run this harness.
  */
-async function modelCandidate(model: string): Promise<Candidate> {
+async function modelCandidate(
+  model: string,
+  sources: Map<string, GoverningSource>,
+  noHints: boolean,
+): Promise<Candidate> {
   const { PromptClientService } = await import("@opuspopuli/prompt-client");
   const { DbService } = await import("@opuspopuli/relationaldb-provider");
   const { OllamaLLMProvider } = await import("@opuspopuli/llm-provider");
@@ -217,12 +221,19 @@ async function modelCandidate(model: string): Promise<Candidate> {
   return {
     name: `${model}${seed === undefined ? " (unseeded)" : ` (seed ${seed})`}`,
     async blockFor(sourceUrl) {
+      // The REAL contentGoal/category/hints from the region config, because they
+      // are part of the prompt in production. A first version of this passed
+      // `hints: []`, which measured a prompt production never sends — and made a
+      // config-driven failure look like a model failure. `--no-hints` keeps that
+      // behaviour available deliberately, as the A/B arm for asking what the
+      // config itself contributes.
+      const src = sources.get(sourceUrl);
       const { promptText } = await client.getCivicsExtractionPrompt({
         regionId: "california",
         sourceUrl,
-        contentGoal: "civics structure",
-        category: "",
-        hints: [],
+        contentGoal: noHints ? "" : (src?.contentGoal ?? ""),
+        category: noHints ? "" : (src?.category ?? ""),
+        hints: noHints ? [] : (src?.hints ?? []),
         html: SOURCE_TEXT.get(sourceUrl) ?? "",
       } as never);
       const result = await provider.generate(promptText, {
@@ -258,16 +269,30 @@ async function modelCandidate(model: string): Promise<Candidate> {
  * Each gold page is a crawled sub-page, so its governing source is the configured
  * seed with the longest shared URL prefix.
  */
-async function loadHintsByPage(
+interface GoverningSource {
+  url: string;
+  contentGoal: string;
+  category: string;
+  hints: string[];
+  /** contentGoal + hints flattened, for the warrant check. */
+  hintsText: string;
+}
+
+async function loadSourcesByPage(
   pageUrls: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, GoverningSource>> {
   const { getRegionsDir } = await import("@opuspopuli/region-provider");
   const { readFileSync: read } = await import("node:fs");
   const cfg = JSON.parse(
     read(join(getRegionsDir(), "california", "california.json"), "utf8"),
   ) as unknown;
 
-  const sources: { url: string; contentGoal?: string; hints?: string[] }[] = [];
+  const sources: {
+    url: string;
+    contentGoal?: string;
+    category?: string;
+    hints?: string[];
+  }[] = [];
   const walk = (o: unknown): void => {
     if (Array.isArray(o)) return o.forEach(walk);
     if (!o || typeof o !== "object") return;
@@ -277,6 +302,7 @@ async function loadHintsByPage(
         url: r.url,
         contentGoal:
           typeof r.contentGoal === "string" ? r.contentGoal : undefined,
+        category: typeof r.category === "string" ? r.category : undefined,
         hints: Array.isArray(r.hints) ? (r.hints as string[]) : undefined,
       });
     }
@@ -290,7 +316,7 @@ async function loadHintsByPage(
     return i;
   };
 
-  const out = new Map<string, string>();
+  const out = new Map<string, GoverningSource>();
   for (const pageUrl of pageUrls) {
     let best: (typeof sources)[number] | undefined;
     let bestLen = 0;
@@ -301,10 +327,15 @@ async function loadHintsByPage(
         best = s;
       }
     }
-    out.set(
-      pageUrl,
-      best ? [best.contentGoal ?? "", ...(best.hints ?? [])].join("\n") : "",
-    );
+    const hints = best?.hints ?? [];
+    const contentGoal = best?.contentGoal ?? "";
+    out.set(pageUrl, {
+      url: best?.url ?? pageUrl,
+      contentGoal,
+      category: best?.category ?? "",
+      hints,
+      hintsText: [contentGoal, ...hints].join("\n"),
+    });
   }
   return out;
 }
@@ -332,12 +363,19 @@ async function main(): Promise<void> {
     }
   }
 
-  const hintsByPage = await loadHintsByPage(gold.pages.map((p) => p.sourceUrl));
+  const sourcesByPage = await loadSourcesByPage(
+    gold.pages.map((p) => p.sourceUrl),
+  );
+  const noHints = flag("no-hints");
 
   const which = arg("candidate") ?? "baseline";
   const candidate =
     which === "model"
-      ? await modelCandidate(arg("models") ?? "nemotron-3.5-lightning:30b-a3b")
+      ? await modelCandidate(
+          arg("models") ?? "nemotron-3.5-lightning:30b-a3b",
+          sourcesByPage,
+          noHints,
+        )
       : baselineCandidate();
 
   console.log(`candidate: ${candidate.name}`);
@@ -345,6 +383,9 @@ async function main(): Promise<void> {
     `source text: ${live ? "LIVE fetch" : "gold extractedTextForAudit"}`,
   );
   console.log(`matcher: normalised containment (see containmentSimilarity)`);
+  console.log(
+    `hints in prompt: ${noHints ? "NO (--no-hints)" : "yes, from the region config"}`,
+  );
   console.log(`warrant: page text OR the source's curated hints\n`);
 
   const report: unknown[] = [];
@@ -364,7 +405,7 @@ async function main(): Promise<void> {
           sourceText,
           containmentSimilarity(goldTexts, emitted),
           0.6,
-          hintsByPage.get(page.sourceUrl) ?? "",
+          sourcesByPage.get(page.sourceUrl)?.hintsText ?? "",
         );
       },
     );

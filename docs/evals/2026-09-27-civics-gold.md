@@ -206,6 +206,52 @@ stopped being scored as invention, so the corrected picture is: **perfect
 precision and zero invention across all three pages, against qwen's seven
 fabrications** — at the cost of lower recall on two pages and zero on one.
 
+## Three levers, and the one that mattered was not the prompt
+
+`qualified-ballot-measures` resisted two prompt revisions. The reason was a bug in
+the EVAL, not in either the prompt or the model: the driver passed `hints: []`, so
+every measurement to that point described a prompt production never issues. Hints
+and `contentGoal` from `@opuspopuli/regions` are part of the real prompt.
+
+Once the driver passed them, the cause was immediate. The Secretary of State hint
+said "measureTypes here are DIRECT-DEMOCRACY measures — Initiative Statute,
+Initiative Constitutional Amendment, Referendum, Recall", and the page carries five
+types of which THREE are excluded by that framing — `Legislative Statute`,
+`Legislative Constitutional Amendment`, and the combined
+`Initiative Constitutional Amendment and Statute`. Told only citizen-initiated
+types belonged, the model met a page of mostly legislature-referred measures and
+emitted a single catch-all: `"Proposition"` — which is the ballot LABEL, the number
+the Secretary of State assigns, and never a legal classification.
+
+| lever | effect |
+| --- | --- |
+| prompt v2 — field routing | fixed `failed-qualify` (recall 0 -> 0.50); removed `glossary` invention on all three pages; link-directory page clean |
+| prompt v3 — inline measure types | small gain only (`qualified-ballot-measures` 0 -> 0.25) |
+| **region hints** (opuspopuli-regions#89) | **`measureTypes` recall 0 -> 1.00** on the resistant page; page recall 0.30 -> 0.50 |
+
+Three prompt iterations were spent on something that was ~80% a config problem.
+The eval found it, but only after it was made to send what production sends.
+
+### Hints cost precision, which was invisible until they were passed
+
+| | hints absent | hints present (production) |
+| --- | --- | --- |
+| `failed-qualify` | recall 0.50, precision **1.00**, 0 ungrounded | recall 0.50, precision **0.75**, 2 ungrounded |
+| `qualified-ballot-measures` | recall 0.25, precision 1.00 | recall 0.30 -> **0.50** (with new hints), precision 0.875 |
+
+Hints raise recall and lower precision — a real trade, and one that cannot be seen
+at all while measuring a prompt without them. `--no-hints` is kept as the
+deliberate A/B arm for asking what the configuration itself contributes.
+
+### Still open on that page
+
+`lifecycleStages` remains recall 0: four stages emitted, none matching gold's
+*Eligible* or *Qualified for the ballot*. Likely the same shape of problem — the
+SoS hints enumerate the INITIATIVE path (`signature-gathering`,
+`signature-verification`, `qualified-for-ballot`, `general-election-vote`) while
+this page describes eligibility and qualification for measures already through
+that path. Not yet investigated.
+
 ## Reproducing
 
 ```bash
