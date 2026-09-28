@@ -20,7 +20,8 @@
     "eval:adversarial": "tsx src/adversarial-eval.ts",
     "eval:omission": "tsx src/omission-eval.ts",
     "eval:divergence": "tsx src/divergence-eval.ts",
-    "eval:context": "tsx src/context-capacity-eval.ts"
+    "eval:context": "tsx src/context-capacity-eval.ts",
+    "eval:civics": "tsx src/civics-eval.ts"
   },
   "dependencies": {
     "@opuspopuli/common": "workspace:*",
@@ -28,6 +29,7 @@
     "@opuspopuli/llm-provider": "workspace:*",
     "@opuspopuli/ocr-provider": "workspace:*",
     "@opuspopuli/prompt-client": "workspace:*",
+    "@opuspopuli/region-provider": "workspace:*",
     "@opuspopuli/relationaldb-provider": "workspace:*"
   },
   "devDependencies": {
