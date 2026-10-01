@@ -447,6 +447,109 @@ accurate for the source but too broad for each page (lifecycleStages).
 The fix is per-page hint scoping in the region schema — attaching an instruction to a URL
 pattern rather than to a seed — and it is filed rather than attempted here.
 
+## The held-out page, and what it says about prompt levers
+
+A fourth gold page was authored to break the circularity above: the **Senate Citizens'
+Guide legislative-process page**, from a different `dataSource` whose four hints were
+written months earlier, are untouched by anything measured here, and — the part that
+makes it a test — never enumerate lifecycle stage ids. 17 items, 31 quotes verified
+offline, a `sessionScheme` trap, and two `ownerReviewRequired` items.
+
+First measurement (prompt v3): **page recall 0.398, `lifecycleStages` recall 0.091** —
+against 0.70 and 1.00 on the three SoS pages. So the tuned-page recall *was*
+substantially inflated by authoring a hint with the gold set in view, exactly as the
+caveat predicted. The held-out number is the one to quote.
+
+### What it is actually doing is more useful than the number
+
+`lifecycleStages` precision is **1.00** with everything page-warranted. It is reading the
+page and routing it wrongly:
+
+| field | what it got |
+| --- | --- |
+| `lifecycleStages` | the page's **section headings** — "How Your Idea Becomes A Bill", "What To Do When Your Bill Goes To Policy Committee" |
+| `glossary` | the actual process vocabulary — Veto, Override, Chaptered, Conference Committee, Second House, Policy Committee, Third Reading (recall 1.00) |
+| `chambers` | `Senate` only, ignoring the 41/54 Assembly thresholds in the same sentence |
+
+The chambers miss is **hint-as-answer-set for a third time**, on a hint nobody touched
+here: the Senate source says "Emit a chambers[] entry for the Senate", and the model
+emitted exactly that and nothing else.
+
+### v5 targeted this and did not move it
+
+prompt-service `feat/civics-bill-process-routing` adds a whole page-shape block: a stage
+is named for the stage and not the heading, read stages out of the prose, emit both a
+stage and a glossary entry where the page does both, and emit every chamber whose facts
+the page states. Measured:
+
+| | v3 | v5 |
+| --- | --- | --- |
+| `lifecycleStages` emitted | the 7 section headings | **the same 7 section headings** |
+| `chambers` | Senate only | **Senate only** |
+| `glossary` size | 16 | 10 |
+| page precision | 0.828 | **0.933** |
+| inventions | 3 | **2** |
+| off-page | 1 | **0** |
+
+The recall move on that page (0.091 → 0.364) is the **matcher's** head-term credit, added
+in the same change, not the prompt's doing.
+
+Because two things changed at once, v3 was re-run on the same matcher to separate them.
+Matcher held constant on both sides:
+
+| | v3 | v5 |
+| --- | --- | --- |
+| `failed-qualify` recall | 0.70 | **0.90** |
+| `qualified-ballot-measures` precision | 0.75 (3 hint-warranted, 2 off-page) | **1.00 (0, 0)** |
+| held-out page **recall** | 0.466 | **0.466 — identical** |
+| held-out page precision | 0.828 | **0.933** |
+| held-out inventions | 3 | **2** |
+
+**v5 ships, and not for the reason it was written.** It lifts recall on one ballot-measure
+page and takes the other to perfect precision with no config-only claims at all, and it
+raises precision on the held-out page while dropping an invention. Its contribution to
+held-out RECALL is exactly zero, and the behaviour it was authored to change — stage names
+copied from section headings, one chamber where the page documents two — is
+byte-for-byte unchanged. A prompt revision that improves three things it was not aimed at
+and nothing it was aimed at is worth shipping and worth describing accurately.
+
+### The held-out page must stay un-tuned, which costs something real
+
+The `chambers` miss has an obvious fix in the same family as the two that worked: the
+Senate source's hint says "Emit a chambers[] entry for the Senate", and rewriting it to
+"emit an entry for every chamber whose facts the page states" would very likely take that
+field from 0.5 to 1.00.
+
+**Deliberately not done.** The moment that hint is edited, this page becomes a tuned page
+and the eval has no independent number left. There is exactly one page here whose config
+was written without reference to the gold set, and spending it to gain 0.5 on one field
+would be trading the only unbiased measurement for a better-looking one.
+
+The cost is that a known, cheap improvement sits unshipped. The way out is more held-out
+pages — each new one lets an older one graduate into the tuned set — not a decision to
+tune this one. Worth stating plainly because the pressure to fix it will recur every time
+this table is read.
+
+### Three levers, one hit: this looks like a model boundary, not a wording problem
+
+| lever | target | result |
+| --- | --- | --- |
+| v2 — field routing | ballot-measure pages | **large** (recall 0 → 0.50, invention removed) |
+| v4 — how to read hints | hint recitation | nothing |
+| v5 — bill-process routing | stage vs heading vs term | nothing on its target page |
+| **region config** (#89, #90) | the hint itself | **decisive both times** |
+
+The pattern across four measurements: this model follows a hint's **enumeration** far
+more strongly than the prompt's **instruction**, and when a page offers strong surface
+cues — numbered section headings — it takes those over a described abstraction. Both are
+capability boundaries, and neither is likely to yield to more prompt text.
+
+So the next lever for the bill-process shape should not be a sixth prompt revision. The
+options are a deterministic **normalisation step** — map a heading-shaped stage name onto
+a stage id in code, where it is testable and does not depend on a model obeying prose —
+or a different model for that page shape. The project's own standing principle
+(verification layer over model choice) points at the first.
+
 ## Reproducing
 
 ```bash
@@ -463,3 +566,97 @@ pnpm --filter @opuspopuli/eval-harness eval:civics -- \
 The template resolved as `civics-extraction` v1, hash `5c27303154854c01` — the
 same hash stored on the civics blocks production wrote, so this measures the
 prompt production used.
+
+---
+
+## 2026-10-01 — three seeds, and two of the numbers above do not survive
+
+Everything above is **one run at seed 7**, and most of it was measured through
+`--region-config` against a checkout. Both caveats are now closed: opuspopuli-regions#90
+and prompt-service#119 merged, `@opuspopuli/regions@1.0.100` published,
+`packages/region-provider` pinned to it, and the eval re-run at seeds 7, 8 and 9 with no
+override — `regionConfigIsOverride: false` for the first time.
+
+The published package is not a new variable. At seed 7 it reproduces the checkout run
+**identically** on all four pages (same recall, precision, off-page, ungrounded), and the
+installed `california.json` is semantically identical to regions `origin/main`. So every
+difference below is model variance.
+
+| page | seed 7 | seed 8 | seed 9 | |
+| --- | --- | --- | --- | --- |
+| `failed-qualify` | 0.900 / 0.785 | 0.700 / 0.700 | 0.700 / 0.700 | recall mean 0.767, **spread 0.200** |
+| `qualified-ballot-measures` | 1.000 / 1.000 | 1.000 / 0.750 | 1.000 / 0.750 | recall flat, precision unstable |
+| `teachers-and-students` | 0 emitted | 0 emitted | 0 emitted | negative control, passes 3/3 |
+| `legislative-process` (held out) | 0.466 / 0.933 | 0.511 / 0.929 | 0.466 / 0.875 | recall mean 0.481, spread 0.045 |
+
+Inventions: **0 on all three seeds.**
+
+### The two v5 claims, withdrawn
+
+The section "v5 targeted this and did not move it" above reports, matcher held constant,
+`failed-qualify` recall 0.70 → **0.90** and `qualified-ballot-measures` precision 0.75 →
+**1.00 (0 off-page)**. Neither reproduces:
+
+| claim | seed 7 | seed 8 | seed 9 |
+| --- | --- | --- | --- |
+| `failed-qualify` recall 0.90 | 0.90 | **0.70** | **0.70** |
+| `qualified` precision 1.00, 0 off-page | 1.00, 0 | **0.75, 2** | **0.75, 2** |
+
+Both were seed-7 artifacts. The honest numbers are 0.70 and 0.75/2 — which are v3's
+numbers. So the conclusion "v5 ships, and not for the reason it was written" should read:
+**v5 ships, and nothing it was measured to improve survives a seed change.** It was
+already established not to move the behaviour it was authored for; it now has no
+reproducible effect on anything else either. It is merged and harmless, and it is not
+evidence that prompt text moves this model.
+
+That makes the lever table starker, not softer. Three prompt revisions have produced no
+reproducible change in field routing; two region-config changes were decisive. The
+`measureTypes` fix from #89 is the one result that holds everywhere — recall and precision
+**1.00 on both SoS pages, 3/3 seeds**.
+
+### All of the instability is one field
+
+| | seed 7 | seed 8 | seed 9 |
+| --- | --- | --- | --- |
+| `failed-qualify` · `lifecycleStages` recall | 0.80 | 0.40 | 0.40 |
+| `qualified` · `lifecycleStages` precision | 1.00 | 0.50 | 0.50 |
+| both pages · `measureTypes` | 1.00 / 1.00 | 1.00 / 1.00 | 1.00 / 1.00 |
+
+Page-level swings are `lifecycleStages` alone. It never invents and its errors are
+precision-bounded, but it will not hold still across seeds — which is the strongest
+argument yet for the deterministic normalisation step over another prompt revision. A
+field that varies 0.40–0.80 on identical input is not going to be fixed by better prose.
+
+Held-out detail is stable where it matters: `chambers` 0.50 ×3, `glossary` recall 1.00 ×3,
+`measureTypes` **0.00 ×3** (never emitted). Its hint fix remains deliberately unapplied.
+
+### What this does to the resync decision
+
+It does not block it. The comparison was never perfect-vs-imperfect:
+
+| | stored (qwen) | nemotron on 1.0.100 |
+| --- | --- | --- |
+| inventions, 3 SoS pages | 7 | **0** (3/3 seeds) |
+| link-directory page | all 4 fields, 15,566 bytes | clean (3/3 seeds) |
+| `qualified-ballot-measures` recall | 0.55 | **1.00** (3/3 seeds) |
+| `failed-qualify` recall | 0.60 | 0.70 (not 0.90) |
+
+The gain is smaller than this document claimed yesterday and it is in the direction that
+matters most: zero fabrication, reproducibly.
+
+### Calibration for future runs
+
+A 0.05 move is noise. A 0.20 move is within what `lifecycleStages` does on its own at
+fixed input. Nothing measured on a single seed should be reported as an effect — the
+harness pins seed 7 by default for comparability, which makes it easy to mistake one
+sample for a result, as happened here. Three seeds cost 27 minutes.
+
+```bash
+for s in 7 8 9; do
+  PROMPT_SERVICE_URL=http://localhost:3210 PROMPT_SERVICE_API_KEY=dev-key-1 \
+  LLM_INGESTION_CONTEXT_TOKENS=131072 \
+  pnpm --filter @opuspopuli/eval-harness eval:civics -- \
+    --candidate model --models nemotron-3.5-lightning:30b-a3b \
+    --seed "$s" --out "results/pub100-seed$s.json"
+done
+```

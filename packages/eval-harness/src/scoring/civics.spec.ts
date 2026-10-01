@@ -216,6 +216,41 @@ describe("containmentSimilarity", () => {
     assert.equal(sim(0, 0), 0);
   });
 
+  test("the gold's NAME matching is enough, scored below a full match", () => {
+    // Real case from the held-out Senate page: the model emitted the page's own
+    // section heading, which names the stage and buries it in advice-shaped prose.
+    const sim = containmentSimilarity(
+      [
+        "Policy committee — assigned by the Rules Committee, not heard until 30 days after introduction",
+      ],
+      ["What To Do When Your Bill Goes To Policy Committee"],
+    );
+    assert.equal(sim(0, 0), 0.7);
+  });
+
+  test("a ONE-WORD gold name is never credited by a sentence mentioning it", () => {
+    // "Governor" would otherwise match every heading and sentence on the page that
+    // mentions the Governor at all, which is not evidence the stage was named.
+    const sim = containmentSimilarity(
+      ["Governor — 12 days to sign, approve without signing, or veto"],
+      [
+        "You Can Still Act After Your Bill Goes To The Governor",
+        "The Governor has 12 days to sign, approve without signing, or veto a bill",
+      ],
+    );
+    assert.equal(sim(0, 0), 0);
+    // The real sentence still matches, on its own content, not on the head rule.
+    assert.ok(sim(0, 1) >= 0.7);
+  });
+
+  test("the head rule does not credit a DIFFERENT stage with a shared word", () => {
+    const sim = containmentSimilarity(
+      ["Fiscal committee — heard in Senate or Assembly Appropriations"],
+      ["What To Do When Your Bill Goes To Policy Committee"],
+    );
+    assert.equal(sim(0, 0), 0);
+  });
+
   test("an unrelated emission scores 0, and an empty one cannot match", () => {
     const sim = containmentSimilarity([GOLD], ["General Election Vote", ""]);
     assert.equal(sim(0, 0), 0);
