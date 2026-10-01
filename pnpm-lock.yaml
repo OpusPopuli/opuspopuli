@@ -487,7 +487,7 @@ importers:
         version: 8.1.0(maplibre-gl@5.24.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       serwist:
         specifier: ^9.5.3
-        version: 9.5.7(browserslist@4.29.0)(typescript@5.9.3)
+        version: 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
       supercluster:
         specifier: ^8.0.1
         version: 8.0.1
@@ -515,7 +515,7 @@ importers:
         version: 1.58.2
       '@serwist/build':
         specifier: ^9.5.6
-        version: 9.5.7(browserslist@4.29.0)(typescript@5.9.3)
+        version: 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
       '@tailwindcss/postcss':
         specifier: ^4.1.18
         version: 4.2.2
@@ -1047,8 +1047,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: 1.0.99
-        version: 1.0.99
+        specifier: 1.0.100
+        version: 1.0.100
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -4503,8 +4503,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@opuspopuli/regions@1.0.99':
-    resolution: {integrity: sha512-SCdf1wA88906baFnscLMJL174ezsQv/heTvIWCQwiWvPkk/sjgjaYgA/535bPKsbFxIhovnA8WEUJbuoN+HLIg==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.99/50699c6a06bbb5570b4e7addde5028ba4b8c81f9}
+  '@opuspopuli/regions@1.0.100':
+    resolution: {integrity: sha512-4pugy2G7Ajd7+U4QRAhUWJZ0dh1JO2SPiOxnobBX4XXa7gNvkQSEIrAqfqw3HYCn6ySE0nHG3zE3TXcnLdOdqw==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.100/b7f7fa933ce7fd7e8a32682c60a4fb739e745720}
     hasBin: true
 
   '@paralleldrive/cuid2@2.3.1':
@@ -15328,7 +15328,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
 
-  '@opuspopuli/regions@1.0.99':
+  '@opuspopuli/regions@1.0.100':
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
@@ -15712,19 +15712,6 @@ snapshots:
     transitivePeerDependencies:
       - browserslist
 
-  '@serwist/build@9.5.7(browserslist@4.29.0)(typescript@5.9.3)':
-    dependencies:
-      '@serwist/utils': 9.5.7(browserslist@4.29.0)
-      common-tags: 1.8.2
-      glob: 10.5.0
-      pretty-bytes: 6.1.1
-      source-map: 0.8.0-beta.0
-      zod: 4.3.6
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - browserslist
-
   '@serwist/next@9.5.7(next@16.3.4(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(webpack@5.105.4(postcss@8.5.23))':
     dependencies:
       '@serwist/build': 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
@@ -15747,10 +15734,6 @@ snapshots:
   '@serwist/utils@9.5.7(browserslist@4.28.8)':
     optionalDependencies:
       browserslist: 4.28.8
-
-  '@serwist/utils@9.5.7(browserslist@4.29.0)':
-    optionalDependencies:
-      browserslist: 4.29.0
 
   '@serwist/webpack-plugin@9.5.7(browserslist@4.28.8)(typescript@5.9.3)(webpack@5.105.4(postcss@8.5.23))':
     dependencies:
@@ -21992,15 +21975,6 @@ snapshots:
   serwist@9.5.7(browserslist@4.28.8)(typescript@5.9.3):
     dependencies:
       '@serwist/utils': 9.5.7(browserslist@4.28.8)
-      idb: 8.0.3
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - browserslist
-
-  serwist@9.5.7(browserslist@4.29.0)(typescript@5.9.3):
-    dependencies:
-      '@serwist/utils': 9.5.7(browserslist@4.29.0)
       idb: 8.0.3
     optionalDependencies:
       typescript: 5.9.3

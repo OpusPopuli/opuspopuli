@@ -566,3 +566,97 @@ pnpm --filter @opuspopuli/eval-harness eval:civics -- \
 The template resolved as `civics-extraction` v1, hash `5c27303154854c01` — the
 same hash stored on the civics blocks production wrote, so this measures the
 prompt production used.
+
+---
+
+## 2026-10-01 — three seeds, and two of the numbers above do not survive
+
+Everything above is **one run at seed 7**, and most of it was measured through
+`--region-config` against a checkout. Both caveats are now closed: opuspopuli-regions#90
+and prompt-service#119 merged, `@opuspopuli/regions@1.0.100` published,
+`packages/region-provider` pinned to it, and the eval re-run at seeds 7, 8 and 9 with no
+override — `regionConfigIsOverride: false` for the first time.
+
+The published package is not a new variable. At seed 7 it reproduces the checkout run
+**identically** on all four pages (same recall, precision, off-page, ungrounded), and the
+installed `california.json` is semantically identical to regions `origin/main`. So every
+difference below is model variance.
+
+| page | seed 7 | seed 8 | seed 9 | |
+| --- | --- | --- | --- | --- |
+| `failed-qualify` | 0.900 / 0.785 | 0.700 / 0.700 | 0.700 / 0.700 | recall mean 0.767, **spread 0.200** |
+| `qualified-ballot-measures` | 1.000 / 1.000 | 1.000 / 0.750 | 1.000 / 0.750 | recall flat, precision unstable |
+| `teachers-and-students` | 0 emitted | 0 emitted | 0 emitted | negative control, passes 3/3 |
+| `legislative-process` (held out) | 0.466 / 0.933 | 0.511 / 0.929 | 0.466 / 0.875 | recall mean 0.481, spread 0.045 |
+
+Inventions: **0 on all three seeds.**
+
+### The two v5 claims, withdrawn
+
+The section "v5 targeted this and did not move it" above reports, matcher held constant,
+`failed-qualify` recall 0.70 → **0.90** and `qualified-ballot-measures` precision 0.75 →
+**1.00 (0 off-page)**. Neither reproduces:
+
+| claim | seed 7 | seed 8 | seed 9 |
+| --- | --- | --- | --- |
+| `failed-qualify` recall 0.90 | 0.90 | **0.70** | **0.70** |
+| `qualified` precision 1.00, 0 off-page | 1.00, 0 | **0.75, 2** | **0.75, 2** |
+
+Both were seed-7 artifacts. The honest numbers are 0.70 and 0.75/2 — which are v3's
+numbers. So the conclusion "v5 ships, and not for the reason it was written" should read:
+**v5 ships, and nothing it was measured to improve survives a seed change.** It was
+already established not to move the behaviour it was authored for; it now has no
+reproducible effect on anything else either. It is merged and harmless, and it is not
+evidence that prompt text moves this model.
+
+That makes the lever table starker, not softer. Three prompt revisions have produced no
+reproducible change in field routing; two region-config changes were decisive. The
+`measureTypes` fix from #89 is the one result that holds everywhere — recall and precision
+**1.00 on both SoS pages, 3/3 seeds**.
+
+### All of the instability is one field
+
+| | seed 7 | seed 8 | seed 9 |
+| --- | --- | --- | --- |
+| `failed-qualify` · `lifecycleStages` recall | 0.80 | 0.40 | 0.40 |
+| `qualified` · `lifecycleStages` precision | 1.00 | 0.50 | 0.50 |
+| both pages · `measureTypes` | 1.00 / 1.00 | 1.00 / 1.00 | 1.00 / 1.00 |
+
+Page-level swings are `lifecycleStages` alone. It never invents and its errors are
+precision-bounded, but it will not hold still across seeds — which is the strongest
+argument yet for the deterministic normalisation step over another prompt revision. A
+field that varies 0.40–0.80 on identical input is not going to be fixed by better prose.
+
+Held-out detail is stable where it matters: `chambers` 0.50 ×3, `glossary` recall 1.00 ×3,
+`measureTypes` **0.00 ×3** (never emitted). Its hint fix remains deliberately unapplied.
+
+### What this does to the resync decision
+
+It does not block it. The comparison was never perfect-vs-imperfect:
+
+| | stored (qwen) | nemotron on 1.0.100 |
+| --- | --- | --- |
+| inventions, 3 SoS pages | 7 | **0** (3/3 seeds) |
+| link-directory page | all 4 fields, 15,566 bytes | clean (3/3 seeds) |
+| `qualified-ballot-measures` recall | 0.55 | **1.00** (3/3 seeds) |
+| `failed-qualify` recall | 0.60 | 0.70 (not 0.90) |
+
+The gain is smaller than this document claimed yesterday and it is in the direction that
+matters most: zero fabrication, reproducibly.
+
+### Calibration for future runs
+
+A 0.05 move is noise. A 0.20 move is within what `lifecycleStages` does on its own at
+fixed input. Nothing measured on a single seed should be reported as an effect — the
+harness pins seed 7 by default for comparability, which makes it easy to mistake one
+sample for a result, as happened here. Three seeds cost 27 minutes.
+
+```bash
+for s in 7 8 9; do
+  PROMPT_SERVICE_URL=http://localhost:3210 PROMPT_SERVICE_API_KEY=dev-key-1 \
+  LLM_INGESTION_CONTEXT_TOKENS=131072 \
+  pnpm --filter @opuspopuli/eval-harness eval:civics -- \
+    --candidate model --models nemotron-3.5-lightning:30b-a3b \
+    --seed "$s" --out "results/pub100-seed$s.json"
+done
+```
