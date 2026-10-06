@@ -1618,6 +1618,11 @@ model CivicsBlock {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
+  /// Per-term provenance for the glossary terms this page defined. Cascades
+  /// on delete, which is what makes a block delete prune its contributions
+  /// without touching terms other pages still define.
+  glossarySources GlossaryEntrySource[]
+
   @@unique([regionId, sourceUrl])
   @@index([regionId])
   @@index([regionId, extractedAt])
@@ -1663,9 +1668,60 @@ model GlossaryEntry {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
+  /// Every page that defined this term. The canonical row above stays
+  /// last-write-wins for display; this is where "which pages say this"
+  /// lives, and it is what decides whether the term survives a block
+  /// delete (it survives while at least one source remains).
+  sources GlossaryEntrySource[]
+
   @@unique([regionId, slug])
   @@index([regionId, term])
   @@map("glossary_entries")
+}
+
+/// Which pages defined which glossary term — the provenance that
+/// `glossary_entries` cannot hold because it is keyed `(regionId, slug)`
+/// and its `sourceUrl` records only the most recent writer.
+///
+/// Why this table exists. 23 of 137 terms in the 2026-10-02 California
+/// corpus were defined on more than one page (`daily-file` on four,
+/// `engrossed` / `enrolled` / `chaptered` on three each). A cascading
+/// foreign key straight from `glossary_entries.sourceUrl` to
+/// `civics_blocks` would therefore delete terms that other, still-present
+/// pages define — integrity in name, silent data loss in practice. One row
+/// per (term, page) makes the real relationship explicit and lets the
+/// cascade be correct.
+///
+/// Deleting a block cascades its rows here. The canonical `GlossaryEntry`
+/// is then pruned by the sync only when its LAST source row is gone;
+/// that step is application-side on purpose, because "delete the parent
+/// when the final child goes" is not expressible as a constraint and a
+/// trigger would hide it.
+///
+/// No definition column: the per-page text already lives in
+/// `civics_blocks.glossary` and duplicating it here would create a second
+/// source of truth for the same bytes.
+model GlossaryEntrySource {
+  id        String @id @default(uuid())
+  /// Region plugin name (e.g. "california"). Matches `region_plugins.name`.
+  regionId  String @map("region_id")
+  /// The glossary term's URL-safe anchor; joins to `glossary_entries.slug`.
+  slug      String
+  /// The page whose extraction defined this term; joins to
+  /// `civics_blocks.source_url`.
+  sourceUrl String @map("source_url")
+
+  extractedAt DateTime @default(now()) @map("extracted_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  entry GlossaryEntry @relation(fields: [regionId, slug], references: [regionId, slug], onDelete: Cascade)
+  block CivicsBlock   @relation(fields: [regionId, sourceUrl], references: [regionId, sourceUrl], onDelete: Cascade)
+
+  @@unique([regionId, slug, sourceUrl])
+  @@index([regionId, slug])
+  @@index([regionId, sourceUrl])
+  @@map("glossary_entry_sources")
 }
 
 // ============================================
