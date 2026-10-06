@@ -84,6 +84,83 @@ function advanceJsonState(state: JsonScanState, ch: string): boolean {
 }
 
 /**
+ * Escape double quotes that appear INSIDE a JSON string value, which is the
+ * one malformation that discards an otherwise complete response.
+ *
+ * Measured on the 2026-10-06 civics sync: the SoS referendum page extracted
+ * 22,162 characters of correct content and was thrown away whole, because the
+ * page says `referred to as a "full check."` and the model reproduced those
+ * inner quotes verbatim and unescaped:
+ *
+ *     "verbatim": "… referred to as a "full check.""
+ *
+ * {@link extractJsonObjectSlice} tracks string state, so the stray quote flips
+ * `inString`, brace counting desynchronises, no balanced object is ever found,
+ * and the page fails. A `verbatim` field is the likeliest place for this to
+ * happen, because its whole job is to quote the page.
+ *
+ * The rule: a `"` inside a string closes it only when the next non-space
+ * character is a JSON delimiter (`,` `}` `]` `:`) or end of input. Any other
+ * `"` is content, and gets escaped. That is a heuristic, not a parser — it
+ * cannot rescue arbitrary malformation, and deliberately leaves truncation and
+ * rogue escapes to the tiers above. It is also idempotent on valid JSON, which
+ * is what makes it safe to try before giving up.
+ *
+ * Returns the repaired text, or the input unchanged when nothing needed fixing.
+ */
+export function repairUnescapedQuotes(text: string): string {
+  const out: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let repairs = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) {
+      out.push(ch);
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out.push(ch);
+      escaped = true;
+      continue;
+    }
+    if (ch !== '"') {
+      out.push(ch);
+      continue;
+    }
+
+    if (!inString) {
+      inString = true;
+      out.push(ch);
+      continue;
+    }
+
+    // Inside a string: does this quote actually close it?
+    let j = i + 1;
+    while (j < text.length && /\s/.test(text[j])) j++;
+    const next = j < text.length ? text[j] : undefined;
+    if (
+      next === undefined ||
+      next === "," ||
+      next === "}" ||
+      next === "]" ||
+      next === ":"
+    ) {
+      inString = false;
+      out.push(ch);
+    } else {
+      out.push('\\"');
+      repairs++;
+    }
+  }
+
+  return repairs === 0 ? text : out.join("");
+}
+
+/**
  * Extract the value of `"<fieldName>": "…"` from raw LLM text using a
  * char-by-char scan that handles JSON escape sequences. Used when the
  * surrounding JSON is malformed or truncated but the field's own
