@@ -5,14 +5,33 @@ import {
   extractJsonObjectSlice,
   type DataSourceConfig,
   type ILLMProvider,
-  repairTrailingCommas,
-  repairUnescapedQuotes,
+  type JsonRepairClass,
+  parseJsonWithRepair,
 } from '@opuspopuli/common';
 import { DataType } from '@opuspopuli/region-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { groundMeasureTypes } from './civics-grounding';
 import { LlmGeneratorBase } from './llm-generator.base';
 import { civicsSyncTracker } from './sync-phase-logger';
+
+/**
+ * The fields a civics extraction may carry. `unknown` because the model's
+ * output is validated downstream, not here — this exists so the parse helper
+ * and its caller agree on a name instead of repeating the shape twice.
+ */
+type CivicsBlockDraft = Partial<{
+  chambers: unknown;
+  measureTypes: unknown;
+  lifecycleStages: unknown;
+  sessionScheme: unknown;
+  glossary: unknown;
+}>;
+
+/** Log-facing names for the repair classes, kept out of the util. */
+const REPAIR_LABELS: Record<JsonRepairClass, string> = {
+  quotes: 'unescaped quote(s)',
+  commas: 'trailing comma(s)',
+};
 
 /**
  * Output token budget for one civics extraction.
@@ -331,6 +350,189 @@ export class CivicsSyncService extends LlmGeneratorBase {
   }
 
   /**
+   * Ground the emitted measure types against the page and the source's hints,
+   * reporting what changed.
+   *
+   * Extracted for the same reason as `parseBlockWithRepair`: the calling
+   * function carried four concerns and exceeded the complexity gate. This one
+   * is also the piece most likely to need changing again — grounding currently
+   * covers `measureTypes` only, and the held-out gold page still shows
+   * ungrounded items in `lifecycleStages` and `glossary`.
+   */
+  private groundTypes(
+    measureTypes: unknown,
+    content: string,
+    ds: DataSourceConfig,
+    sourceUrl: string,
+    promptVersion: string | undefined,
+    promptHash: string | undefined,
+  ): unknown {
+    // Both warrants: the page, AND the source's own contentGoal + hints —
+    // the same rule the eval harness prints on every run ("warrant: page
+    // text OR the source's curated hints"). Passing only the page is what
+    // deleted eleven hint-instructed measure types on 2026-10-06.
+    const grounded = groundMeasureTypes(
+      measureTypes as Parameters<typeof groundMeasureTypes>[0],
+      content,
+      [ds.contentGoal ?? '', ...(ds.hints ?? [])].join('\n'),
+    );
+    if (
+      grounded.canonicalised.length > 0 ||
+      grounded.dropped.length > 0 ||
+      grounded.duplicatesRemoved > 0
+    ) {
+      this.logger.warn(
+        {
+          sourceUrl,
+          canonicalised: grounded.canonicalised,
+          dropped: grounded.dropped,
+          duplicatesRemoved: grounded.duplicatesRemoved,
+          // Non-empty means the model emitted the same type twice with
+          // different content, and the first copy won. Worth seeing.
+          conflicting: grounded.conflicting,
+          kept: grounded.types.length,
+          promptVersion,
+          promptHash,
+        },
+        // "page or hints", not "page": the rule takes either warrant, and
+        // the earlier wording here described the page-only version that
+        // deleted eleven hint-instructed types.
+        `Civics grounding on ${sourceUrl}: ` +
+          `${grounded.canonicalised.length} code(s) replaced with the name ` +
+          `the source uses, ${grounded.duplicatesRemoved} duplicate(s) ` +
+          `collapsed, ${grounded.dropped.length} dropped as supported by ` +
+          `neither the page nor the source hints.`,
+      );
+    }
+    return grounded.types;
+  }
+
+  /**
+   * Parse the model's JSON, repairing the two malformations that are both
+   * common and recoverable before giving up.
+   *
+   * Carved out of `extractAndUpsertPage` because that function had grown to
+   * four concerns and tripped the cognitive-complexity gate at 31 against a
+   * limit of 15. The parse-and-repair decision is self-contained and reads
+   * better alone; the caller only needs "a block, or nothing".
+   *
+   * Returns `undefined` when the response cannot be salvaged, having already
+   * logged and captured — the caller turns that into a failed page.
+   */
+  private async parseBlockWithRepair(
+    candidate: string,
+    sourceUrl: string,
+    promptText: string,
+    result: { text: string; finishReason?: string },
+    promptVersion: string | undefined,
+    promptHash: string | undefined,
+  ): Promise<CivicsBlockDraft | undefined> {
+    let originalError: Error;
+    try {
+      return JSON.parse(candidate) as CivicsBlockDraft;
+    } catch (e) {
+      originalError = e as Error;
+    }
+
+    // The THIRD failure class, and until now the only one that captured
+    // nothing. A slice with balanced braces that still will not parse is
+    // almost always a bad escape inside a string — a raw control character,
+    // or a `\x`/`\'` the model invented — some thousands of characters into
+    // otherwise perfect output. The message alone cannot be acted on: the
+    // offending bytes are the whole question, and they are not in the log.
+    //
+    // Observed twice on 2026-09-24, on different pages each time, and not
+    // reproducible on a re-run because extraction is unseeded. A failure that
+    // moves between runs and leaves no artifact cannot be fixed, which is
+    // exactly the position the output-ceiling failure was in for two days.
+    //
+    // So before giving up: one repair pass for the malformations that are
+    // both common and recoverable. A `verbatim` field exists to quote the
+    // page, so a page that writes `referred to as a "full check."` produces
+    // exactly this, and 22,162 characters of correct extraction were
+    // discarded over it on 2026-10-06.
+    const repair = parseJsonWithRepair(candidate);
+    if (repair) {
+      // At `warn`, not silently: the model emitting invalid JSON is a defect
+      // worth seeing even when it is survivable, and a prompt fix for the
+      // same thing is in flight.
+      this.logger.warn(
+        {
+          sourceUrl,
+          parseError: originalError.message,
+          candidateChars: candidate.length,
+          repairedChars: repair.repairedChars,
+          // Which classes fired, so the log says what the model did wrong
+          // rather than only that something was fixed.
+          repaired: repair.applied,
+          promptVersion,
+          promptHash,
+        },
+        `Civics extraction: recovered ${sourceUrl} — the model's JSON was ` +
+          `invalid, the content was intact. Repaired: ` +
+          `${repair.applied.map((c) => REPAIR_LABELS[c]).join(' and ')}.`,
+      );
+      // The empty check, the upsert and the glossary write all apply
+      // unchanged downstream. Nothing there needs to know the JSON arrived
+      // bent.
+      return repair.value as CivicsBlockDraft;
+    }
+
+    await this.reportUnsalvageableJson(
+      candidate,
+      sourceUrl,
+      promptText,
+      result,
+      originalError,
+      promptVersion,
+      promptHash,
+    );
+    return undefined;
+  }
+
+  /**
+   * Log and capture a response whose JSON could not be salvaged.
+   *
+   * Separate from the decision above so that neither the repair path nor the
+   * complexity gate has to carry it: this is all reporting, and the thing it
+   * reports — the bytes either side of the offending position — is the only
+   * part a human can actually act on.
+   */
+  private async reportUnsalvageableJson(
+    candidate: string,
+    sourceUrl: string,
+    promptText: string,
+    result: { text: string; finishReason?: string },
+    error: Error,
+    promptVersion: string | undefined,
+    promptHash: string | undefined,
+  ): Promise<void> {
+    const at = /position (\d+)/.exec(error.message)?.[1];
+    const around = at
+      ? candidate.slice(Math.max(0, Number(at) - 60), Number(at) + 60)
+      : undefined;
+    this.logger.warn(
+      {
+        sourceUrl,
+        parseError: error.message,
+        // Scraped civic text, like the rest of the prompt — same disclosure
+        // as the capture below.
+        around,
+        candidateChars: candidate.length,
+        responseChars: result.text.length,
+        finishReason: result.finishReason,
+        promptVersion,
+        promptHash,
+      },
+      `Civics extraction: JSON.parse failed for ${sourceUrl} at position ` +
+        `${at ?? 'unknown'} — the response had a complete JSON object that ` +
+        `is not valid JSON, usually a bad escape inside a string. Not a ` +
+        `budget problem and not a missing object.`,
+    );
+    await this.captureFailedExtraction(sourceUrl, promptText, result.text);
+  }
+
+  /**
    * Write the exact prompt and response of a failed extraction to disk, so the
    * failure can be reproduced offline instead of guessed at.
    *
@@ -498,122 +700,14 @@ export class CivicsSyncService extends LlmGeneratorBase {
         return 'failed';
       }
 
-      let block:
-        | Partial<{
-            chambers: unknown;
-            measureTypes: unknown;
-            lifecycleStages: unknown;
-            sessionScheme: unknown;
-            glossary: unknown;
-          }>
-        | undefined;
-      try {
-        block = JSON.parse(candidate) as typeof block;
-      } catch (e) {
-        // The THIRD failure class, and until now the only one that captured
-        // nothing. A slice with balanced braces that still will not parse is
-        // almost always a bad escape inside a string — a raw control character,
-        // or a `\x`/`\'` the model invented — some thousands of characters into
-        // otherwise perfect output. The message alone cannot be acted on: the
-        // offending bytes are the whole question, and they are not in the log.
-        //
-        // Observed twice on 2026-09-24, on different pages each time, and not
-        // reproducible on a re-run because extraction is unseeded. A failure
-        // that moves between runs and leaves no artifact cannot be fixed, which
-        // is exactly the position the output-ceiling failure was in for two days.
-        // Before giving up: one repair attempt for the single malformation
-        // that is both common and recoverable — an unescaped double quote
-        // inside a string value. A `verbatim` field exists to quote the page,
-        // so a page that writes `referred to as a "full check."` produces
-        // exactly this, and 22,162 characters of correct extraction were
-        // discarded over it on 2026-10-06. Escaping the stray quote recovered
-        // the whole object.
-        //
-        // Logged at `warn` when it fires, not silently: the model emitting
-        // invalid JSON is a defect worth seeing even when it is survivable,
-        // and a prompt fix for the same thing is in flight. If the repair does
-        // not parse either, fall through to the capture below unchanged.
-        // Two repair classes, applied together because they are independent
-        // and a response can carry both. Measured on the same page in
-        // sequence: v5 failed on unescaped quotes at position 10116, and once
-        // prompt v6 fixed those the failure moved PAST it to 12898, an
-        // illegal trailing comma that had been hidden behind the first defect
-        // all along.
-        const quoted = repairUnescapedQuotes(candidate);
-        const repaired = repairTrailingCommas(quoted);
-        if (repaired !== candidate) {
-          try {
-            block = JSON.parse(repaired) as typeof block;
-            this.logger.warn(
-              {
-                sourceUrl,
-                parseError: (e as Error).message,
-                candidateChars: candidate.length,
-                repairedChars: repaired.length,
-                // Which class fired, so the log says what the model did
-                // wrong rather than only that something was fixed.
-                quotesEscaped: quoted !== candidate,
-                trailingCommasRemoved: repaired !== quoted,
-                promptVersion,
-                promptHash,
-              },
-              `Civics extraction: recovered ${sourceUrl} — the model's JSON ` +
-                `was invalid, the content was intact. Repaired: ` +
-                `${quoted !== candidate ? 'unescaped quote(s)' : ''}` +
-                `${quoted !== candidate && repaired !== quoted ? ' and ' : ''}` +
-                `${repaired !== quoted ? 'trailing comma(s)' : ''}.`,
-            );
-            // Fall through to the normal path below — the empty check, the
-            // upsert and the glossary write all apply unchanged. Nothing
-            // downstream needs to know the JSON arrived bent.
-          } catch {
-            // Repair did not help — report the ORIGINAL error below, since
-            // that is the one describing what the model actually produced.
-          }
-        }
-
-        // `block` is set only if the repair above parsed. Keying the failure
-        // path on that, rather than on a separate flag, is what lets the
-        // compiler see that every route out of here either assigns `block` or
-        // returns.
-        if (!block) {
-          const message = (e as Error).message;
-          const at = /position (\d+)/.exec(message)?.[1];
-          const around = at
-            ? candidate.slice(Math.max(0, Number(at) - 60), Number(at) + 60)
-            : undefined;
-          this.logger.warn(
-            {
-              sourceUrl,
-              parseError: message,
-              // The bytes either side of the offending position, which is what a
-              // human actually needs. Scraped civic text, like the rest of the
-              // prompt — same disclosure as the capture below.
-              around,
-              candidateChars: candidate.length,
-              responseChars: result.text.length,
-              finishReason: result.finishReason,
-              promptVersion,
-              promptHash,
-            },
-            `Civics extraction: JSON.parse failed for ${sourceUrl} at ` +
-              `position ${at ?? 'unknown'} — the response had a complete JSON ` +
-              `object that is not valid JSON, usually a bad escape inside a ` +
-              `string. Not a budget problem and not a missing object.`,
-          );
-          await this.captureFailedExtraction(
-            sourceUrl,
-            promptText,
-            result.text,
-          );
-          return 'failed';
-        }
-      }
-
-      // Unreachable: the try assigns `block`, and every path out of the catch
-      // either assigns it or returns. TypeScript's flow analysis does not
-      // carry an assignment made inside `try` past the `catch`, so this states
-      // the invariant rather than asserting it away with a non-null `!`.
+      const block = await this.parseBlockWithRepair(
+        candidate,
+        sourceUrl,
+        promptText,
+        result,
+        promptVersion,
+        promptHash,
+      );
       if (!block) return 'failed';
 
       // Ground the measure types against the page before anything persists.
@@ -622,44 +716,14 @@ export class CivicsSyncService extends LlmGeneratorBase {
       // not a row. See civics-grounding.ts for the measured case this exists
       // for — three real types filed under initialisms the page never uses,
       // plus two invented outright, on one page of one run.
-      // Both warrants: the page, AND the source's own contentGoal + hints —
-      // the same rule the eval harness prints on every run ("warrant: page
-      // text OR the source's curated hints"). Passing only the page is what
-      // deleted eleven hint-instructed measure types on 2026-10-06.
-      const grounded = groundMeasureTypes(
-        block.measureTypes as Parameters<typeof groundMeasureTypes>[0],
+      block.measureTypes = this.groundTypes(
+        block.measureTypes,
         content,
-        [ds.contentGoal ?? '', ...(ds.hints ?? [])].join('\n'),
+        ds,
+        sourceUrl,
+        promptVersion,
+        promptHash,
       );
-      if (
-        grounded.canonicalised.length > 0 ||
-        grounded.dropped.length > 0 ||
-        grounded.duplicatesRemoved > 0
-      ) {
-        this.logger.warn(
-          {
-            sourceUrl,
-            canonicalised: grounded.canonicalised,
-            dropped: grounded.dropped,
-            duplicatesRemoved: grounded.duplicatesRemoved,
-            // Non-empty means the model emitted the same type twice with
-            // different content, and the first copy won. Worth seeing.
-            conflicting: grounded.conflicting,
-            kept: grounded.types.length,
-            promptVersion,
-            promptHash,
-          },
-          // "page or hints", not "page": the rule takes either warrant, and
-          // the earlier wording here described the page-only version that
-          // deleted eleven hint-instructed types.
-          `Civics grounding on ${sourceUrl}: ` +
-            `${grounded.canonicalised.length} code(s) replaced with the name ` +
-            `the source uses, ${grounded.duplicatesRemoved} duplicate(s) ` +
-            `collapsed, ${grounded.dropped.length} dropped as supported by ` +
-            `neither the page nor the source hints.`,
-        );
-      }
-      block.measureTypes = grounded.types;
 
       // A page the crawler reached under the source's scope but that holds no
       // civic content (e.g. dining services, records-request) extracts to a

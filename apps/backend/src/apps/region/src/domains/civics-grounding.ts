@@ -121,6 +121,67 @@ function tokenOnPage(
   );
 }
 
+/**
+ * Which evidence, if any, supports this name — the page, the source's hints,
+ * or neither.
+ *
+ * Extracted because the inline version was a three-deep nested ternary that
+ * the lint gate rejected, and because naming the two warrants separately is
+ * the whole point of the rule: page-only checking deleted eleven real types.
+ * The page wins when both have it; it is the stronger evidence and the
+ * distinction is worth logging.
+ */
+function resolveNameWarrant(
+  name: string,
+  lowerPage: string,
+  lowerHints: string,
+): 'page' | 'hint' | undefined {
+  if (!name) return undefined;
+  if (phraseOnPage(lowerPage, name)) return 'page';
+  if (phraseOnPage(lowerHints, name)) return 'hint';
+  return undefined;
+}
+
+/**
+ * Collapse entries that share a final code, keeping the first.
+ *
+ * Only possible AFTER canonicalisation: `AJR` and `Assembly Joint Resolution`
+ * are the same type and do not look it until both carry the same code. Measured
+ * 2026-10-06, the Assembly glossary page emitted 13 byte-identical copies each
+ * of two types, which is what made one type appear to span 16 pages.
+ *
+ * Lossless when the copies agree, which is what was measured. When they do not,
+ * the first still wins but the code is reported — that is a judgement about
+ * which of two contradictory claims to keep, and it should not be silent.
+ */
+function collapseDuplicates<T extends GroundableType>(
+  types: readonly T[],
+): { types: T[]; duplicatesRemoved: number; conflicting: string[] } {
+  const seen = new Map<string, string>();
+  const kept: T[] = [];
+  const conflicting: string[] = [];
+  let duplicatesRemoved = 0;
+
+  for (const type of types) {
+    const key =
+      typeof type.code === 'string' ? type.code : JSON.stringify(type.code);
+    const serialised = JSON.stringify(type);
+    const previous = seen.get(key);
+
+    if (previous === undefined) {
+      seen.set(key, serialised);
+      kept.push(type);
+      continue;
+    }
+    duplicatesRemoved++;
+    if (previous !== serialised && !conflicting.includes(key)) {
+      conflicting.push(key);
+    }
+  }
+
+  return { types: kept, duplicatesRemoved, conflicting };
+}
+
 export function groundMeasureTypes<T extends GroundableType>(
   types: readonly T[] | undefined,
   pageText: string,
@@ -146,16 +207,7 @@ export function groundMeasureTypes<T extends GroundableType>(
   for (const type of types) {
     const code = typeof type.code === 'string' ? type.code.trim() : '';
     const name = typeof type.name === 'string' ? type.name.trim() : '';
-
-    // Prefer the page as the warrant when both have it — it is the stronger
-    // evidence, and the distinction is worth logging.
-    const nameWarrant = !name
-      ? undefined
-      : phraseOnPage(lowerPage, name)
-        ? ('page' as const)
-        : phraseOnPage(lowerHints, name)
-          ? ('hint' as const)
-          : undefined;
+    const nameWarrant = resolveNameWarrant(name, lowerPage, lowerHints);
 
     if (nameWarrant) {
       if (code !== name) {
@@ -169,11 +221,11 @@ export function groundMeasureTypes<T extends GroundableType>(
       continue;
     }
 
-    if (
-      code &&
+    const codeWarranted =
+      !!code &&
       (tokenOnPage(pageText, lowerPage, code) ||
-        tokenOnPage(hintsText, lowerHints, code))
-    ) {
+        tokenOnPage(hintsText, lowerHints, code));
+    if (codeWarranted) {
       result.types.push(type);
       continue;
     }
@@ -181,28 +233,10 @@ export function groundMeasureTypes<T extends GroundableType>(
     result.dropped.push(code || name || '<unnamed>');
   }
 
-  // Collapse duplicates by FINAL code — only possible after canonicalisation,
-  // since `AJR` and `Assembly Joint Resolution` are the same type and do not
-  // look it until both are canonical. First occurrence wins: lossless when the
-  // copies agree, which is what was measured, and flagged when they do not.
-  const seen = new Map<string, string>();
-  const deduped: T[] = [];
-  for (const type of result.types) {
-    const key =
-      typeof type.code === 'string' ? type.code : JSON.stringify(type.code);
-    const serialised = JSON.stringify(type);
-    const previous = seen.get(key);
-    if (previous === undefined) {
-      seen.set(key, serialised);
-      deduped.push(type);
-      continue;
-    }
-    result.duplicatesRemoved++;
-    if (previous !== serialised && !result.conflicting.includes(key)) {
-      result.conflicting.push(key);
-    }
-  }
-  result.types = deduped;
+  const collapsed = collapseDuplicates(result.types);
+  result.types = collapsed.types;
+  result.duplicatesRemoved = collapsed.duplicatesRemoved;
+  result.conflicting = collapsed.conflicting;
 
   return result;
 }
