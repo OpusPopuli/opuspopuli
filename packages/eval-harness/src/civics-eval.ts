@@ -215,6 +215,14 @@ async function modelCandidate(
       const result = await provider.generate(promptText, {
         maxTokens: 64000,
         temperature: 0.1,
+        // Production decodes GREEDILY, and an instrument that samples is
+        // measuring something production does not send — the same class of
+        // error as the `hints: []` version documented above. `temperature:
+        // 0.1` alone does not make this deterministic: temperature sharpens
+        // the DIFFERENCE between candidates and does nothing to a genuine
+        // tie, which is why four runs produced four different corpora before
+        // civics-sync pinned topK.
+        topK: 1,
         ...(seed === undefined ? {} : { seed }),
       });
       const slice = extractJsonObjectSlice(result.text);

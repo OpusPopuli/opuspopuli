@@ -22,6 +22,29 @@ secrets:
       - "apps/backend/docker/scripts/db-migrate.sh"
 
 vulnerabilities:
+  # braces stack-exhaustion DoS, GHSA-vfj7-8cjw-p6xm (HIGH). Suppressed on the
+  # pnpm side only (`auditConfig.ignoreGhsas`) — Trivy runs with
+  # --ignore-unfixed and so never raises it. Recorded here because this file is
+  # where this repo keeps its suppression justifications, and an entry in
+  # `ignoreGhsas` cannot carry one: JSON has no comments. That gap is already a
+  # recorded compliance exception (E-6 in
+  # docs/compliance/releases/v1.22.0-validation.md), and adding a third
+  # unexplained id would widen it.
+  #
+  # Unfixable: braces 3.0.3 is the latest published version and the advisory
+  # covers `<=3.0.3`. There is nothing to override to.
+  #
+  # Not reachable: the only --prod path is
+  # `@nestjs/graphql > fast-glob > micromatch > braces`, and @nestjs/graphql
+  # reaches fast-glob only through `typePaths`, the schema-first file-glob
+  # option. All four subgraphs are code-first (`autoSchemaFile`, see
+  # apps/backend/src/apps/*/src/app.module.ts) and none sets `typePaths`, so
+  # no glob pattern is ever handed to micromatch. The DoS needs an
+  # attacker-supplied deeply-nested brace pattern; there is no path by which a
+  # request reaches this library at all.
+  #
+  # Remove when braces publishes a patched release (track: #1336).
+  #
   # MapLibre GL JS XSS sanitizer bypass (CVSS 10). The same advisory pnpm
   # audit knows as GHSA-jrc7-96c5-q579, suppressed there in
   # pnpm-workspace-level `auditConfig.ignoreGhsas` — Trivy carries its own

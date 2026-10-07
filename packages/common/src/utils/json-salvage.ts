@@ -84,6 +84,155 @@ function advanceJsonState(state: JsonScanState, ch: string): boolean {
 }
 
 /**
+ * Escape double quotes that appear INSIDE a JSON string value, which is the
+ * one malformation that discards an otherwise complete response.
+ *
+ * Measured on the 2026-10-06 civics sync: the SoS referendum page extracted
+ * 22,162 characters of correct content and was thrown away whole, because the
+ * page says `referred to as a "full check."` and the model reproduced those
+ * inner quotes verbatim and unescaped:
+ *
+ *     "verbatim": "… referred to as a "full check.""
+ *
+ * {@link extractJsonObjectSlice} tracks string state, so the stray quote flips
+ * `inString`, brace counting desynchronises, no balanced object is ever found,
+ * and the page fails. A `verbatim` field is the likeliest place for this to
+ * happen, because its whole job is to quote the page.
+ *
+ * The rule: a `"` inside a string closes it only when the next non-space
+ * character is a JSON delimiter (`,` `}` `]` `:`) or end of input. Any other
+ * `"` is content, and gets escaped. That is a heuristic, not a parser — it
+ * cannot rescue arbitrary malformation, and deliberately leaves truncation and
+ * rogue escapes to the tiers above. It is also idempotent on valid JSON, which
+ * is what makes it safe to try before giving up.
+ *
+ * Returns the repaired text, or the input unchanged when nothing needed fixing.
+ */
+/**
+ * How far to the next character that is not whitespace — shared because both
+ * repairs decide by looking at what FOLLOWS a candidate character.
+ */
+function nextMeaningful(text: string, from: number): string | undefined {
+  let j = from;
+  while (j < text.length && /\s/.test(text[j])) j++;
+  return j < text.length ? text[j] : undefined;
+}
+
+/**
+ * One pass over JSON-ish text, tracking escape and in-string state, with the
+ * per-character decision selected by `mode`.
+ *
+ * The two repairs need byte-identical state tracking and differ only in what
+ * they do when they reach their candidate character. Writing that loop twice
+ * tripped the duplication gate on push — correctly, since the escape handling
+ * is exactly the part that must not drift between them.
+ */
+function rewriteJson(text: string, mode: "quotes" | "commas"): string {
+  const out: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let changes = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) {
+      out.push(ch);
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out.push(ch);
+      escaped = true;
+      continue;
+    }
+
+    if (mode === "quotes") {
+      if (ch !== '"') {
+        out.push(ch);
+        continue;
+      }
+      if (!inString) {
+        inString = true;
+        out.push(ch);
+        continue;
+      }
+      // Inside a string: this quote closes it only if a JSON delimiter
+      // follows. Anything else means it is content.
+      const next = nextMeaningful(text, i + 1);
+      if (
+        next === undefined ||
+        next === "," ||
+        next === "}" ||
+        next === "]" ||
+        next === ":"
+      ) {
+        inString = false;
+        out.push(ch);
+      } else {
+        out.push('\\"');
+        changes++;
+      }
+      continue;
+    }
+
+    // mode === "commas"
+    if (ch === '"') {
+      inString = !inString;
+      out.push(ch);
+      continue;
+    }
+    if (inString || ch !== ",") {
+      out.push(ch);
+      continue;
+    }
+    const next = nextMeaningful(text, i + 1);
+    if (next === "}" || next === "]") {
+      changes++; // drop it, keeping the whitespace that follows
+    } else {
+      out.push(ch);
+    }
+  }
+
+  return changes === 0 ? text : out.join("");
+}
+
+export function repairUnescapedQuotes(text: string): string {
+  return rewriteJson(text, "quotes");
+}
+
+/**
+ * Remove a comma that sits immediately before a closing brace or bracket.
+ *
+ * The second malformation class measured on the civics corpus, and a separate
+ * one from {@link repairUnescapedQuotes} — which is why it is a separate
+ * function rather than more behaviour hidden behind that name.
+ *
+ * Measured 2026-10-06 on the SoS referendum page under civics prompt v6:
+ *
+ *     "...qualifies for the following general election instead.",
+ *     },
+ *
+ * `Illegal trailing comma before end of object` at char 12890. Worth noting
+ * where it appeared: v5 failed on unescaped quotes at position 10116, and once
+ * v6 fixed those the failure moved PAST it to 12898. The defect was always
+ * there, hidden behind an earlier one.
+ *
+ * JSON forbids this; every mainstream language that borrows JSON's syntax
+ * allows it, so a model trained on code emits it. Dropping the comma changes
+ * no value and loses no content, which makes this the safest repair in the
+ * module — safer than the quote repair, which has to guess whether a quote
+ * terminates a string.
+ *
+ * String-aware: a comma inside a string value is content and stays. Returns
+ * the input unchanged when there is nothing to remove, so it is free to run
+ * speculatively and idempotent on valid JSON.
+ */
+export function repairTrailingCommas(text: string): string {
+  return rewriteJson(text, "commas");
+}
+
+/**
  * Extract the value of `"<fieldName>": "…"` from raw LLM text using a
  * char-by-char scan that handles JSON escape sequences. Used when the
  * surrounding JSON is malformed or truncated but the field's own
@@ -142,5 +291,61 @@ function decodeEscapedChar(ch: string): string {
       return "/";
     default:
       return ch;
+  }
+}
+
+/** Which repair classes a successful salvage had to apply, in order. */
+export type JsonRepairClass = "quotes" | "commas";
+
+export interface RepairedJson {
+  /** The parsed value. */
+  value: unknown;
+  /**
+   * Empty when the text parsed as-is. Non-empty names exactly what the
+   * producer got wrong, which is the part worth logging — the caller should
+   * not have to diff the strings itself to find out.
+   */
+  applied: JsonRepairClass[];
+  /** Character count after repair, for the caller's log line. */
+  repairedChars: number;
+}
+
+/**
+ * Parse JSON, repairing the two malformations that are both common in model
+ * output and fully recoverable, and reporting which ones fired.
+ *
+ * Both repairs are applied together because they are independent and one
+ * response can carry both. Measured on the same civics page in sequence:
+ * prompt v5 failed on unescaped quotes at position 10116, and once v6 fixed
+ * those the failure moved PAST it to 12898 — an illegal trailing comma that
+ * had been hidden behind the first defect all along. Attempting only one
+ * repair per call would have needed a second round trip to find that.
+ *
+ * Returns `undefined` when the text is not salvageable, leaving the caller to
+ * report the ORIGINAL parse error: that is the one describing what the
+ * producer actually emitted, and the post-repair error describes a string
+ * nothing ever sent.
+ */
+export function parseJsonWithRepair(text: string): RepairedJson | undefined {
+  try {
+    return { value: JSON.parse(text), applied: [], repairedChars: text.length };
+  } catch {
+    const quoted = repairUnescapedQuotes(text);
+    const repaired = repairTrailingCommas(quoted);
+    if (repaired === text) return undefined;
+
+    const applied: JsonRepairClass[] = [];
+    if (quoted !== text) applied.push("quotes");
+    if (repaired !== quoted) applied.push("commas");
+
+    try {
+      return {
+        value: JSON.parse(repaired),
+        applied,
+        repairedChars: repaired.length,
+      };
+    } catch {
+      return undefined;
+    }
   }
 }

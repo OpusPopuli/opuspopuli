@@ -5,11 +5,33 @@ import {
   extractJsonObjectSlice,
   type DataSourceConfig,
   type ILLMProvider,
+  type JsonRepairClass,
+  parseJsonWithRepair,
 } from '@opuspopuli/common';
 import { DataType } from '@opuspopuli/region-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
+import { groundMeasureTypes } from './civics-grounding';
 import { LlmGeneratorBase } from './llm-generator.base';
 import { civicsSyncTracker } from './sync-phase-logger';
+
+/**
+ * The fields a civics extraction may carry. `unknown` because the model's
+ * output is validated downstream, not here — this exists so the parse helper
+ * and its caller agree on a name instead of repeating the shape twice.
+ */
+type CivicsBlockDraft = Partial<{
+  chambers: unknown;
+  measureTypes: unknown;
+  lifecycleStages: unknown;
+  sessionScheme: unknown;
+  glossary: unknown;
+}>;
+
+/** Log-facing names for the repair classes, kept out of the util. */
+const REPAIR_LABELS: Record<JsonRepairClass, string> = {
+  quotes: 'unescaped quote(s)',
+  commas: 'trailing comma(s)',
+};
 
 /**
  * Output token budget for one civics extraction.
@@ -319,7 +341,195 @@ export class CivicsSyncService extends LlmGeneratorBase {
     }
     extractTracker.complete();
 
+    // Once per run, not per page: a term can lose a source on one page and
+    // gain one on the next, and pruning mid-run would churn rows that the
+    // same sync is about to re-source.
+    await this.pruneUnsourcedGlossaryEntries(regionId);
+
     return { processed, created, updated };
+  }
+
+  /**
+   * Ground the emitted measure types against the page and the source's hints,
+   * reporting what changed.
+   *
+   * Extracted for the same reason as `parseBlockWithRepair`: the calling
+   * function carried four concerns and exceeded the complexity gate. This one
+   * is also the piece most likely to need changing again — grounding currently
+   * covers `measureTypes` only, and the held-out gold page still shows
+   * ungrounded items in `lifecycleStages` and `glossary`.
+   */
+  private groundTypes(
+    measureTypes: unknown,
+    content: string,
+    ds: DataSourceConfig,
+    sourceUrl: string,
+    promptVersion: string | undefined,
+    promptHash: string | undefined,
+  ): unknown {
+    // Both warrants: the page, AND the source's own contentGoal + hints —
+    // the same rule the eval harness prints on every run ("warrant: page
+    // text OR the source's curated hints"). Passing only the page is what
+    // deleted eleven hint-instructed measure types on 2026-10-06.
+    const grounded = groundMeasureTypes(
+      measureTypes as Parameters<typeof groundMeasureTypes>[0],
+      content,
+      [ds.contentGoal ?? '', ...(ds.hints ?? [])].join('\n'),
+    );
+    if (
+      grounded.canonicalised.length > 0 ||
+      grounded.dropped.length > 0 ||
+      grounded.duplicatesRemoved > 0
+    ) {
+      this.logger.warn(
+        {
+          sourceUrl,
+          canonicalised: grounded.canonicalised,
+          dropped: grounded.dropped,
+          duplicatesRemoved: grounded.duplicatesRemoved,
+          // Non-empty means the model emitted the same type twice with
+          // different content, and the first copy won. Worth seeing.
+          conflicting: grounded.conflicting,
+          kept: grounded.types.length,
+          promptVersion,
+          promptHash,
+        },
+        // "page or hints", not "page": the rule takes either warrant, and
+        // the earlier wording here described the page-only version that
+        // deleted eleven hint-instructed types.
+        `Civics grounding on ${sourceUrl}: ` +
+          `${grounded.canonicalised.length} code(s) replaced with the name ` +
+          `the source uses, ${grounded.duplicatesRemoved} duplicate(s) ` +
+          `collapsed, ${grounded.dropped.length} dropped as supported by ` +
+          `neither the page nor the source hints.`,
+      );
+    }
+    return grounded.types;
+  }
+
+  /**
+   * Parse the model's JSON, repairing the two malformations that are both
+   * common and recoverable before giving up.
+   *
+   * Carved out of `extractAndUpsertPage` because that function had grown to
+   * four concerns and tripped the cognitive-complexity gate at 31 against a
+   * limit of 15. The parse-and-repair decision is self-contained and reads
+   * better alone; the caller only needs "a block, or nothing".
+   *
+   * Returns `undefined` when the response cannot be salvaged, having already
+   * logged and captured — the caller turns that into a failed page.
+   */
+  private async parseBlockWithRepair(
+    candidate: string,
+    sourceUrl: string,
+    promptText: string,
+    result: { text: string; finishReason?: string },
+    promptVersion: string | undefined,
+    promptHash: string | undefined,
+  ): Promise<CivicsBlockDraft | undefined> {
+    let originalError: Error;
+    try {
+      return JSON.parse(candidate) as CivicsBlockDraft;
+    } catch (e) {
+      originalError = e as Error;
+    }
+
+    // The THIRD failure class, and until now the only one that captured
+    // nothing. A slice with balanced braces that still will not parse is
+    // almost always a bad escape inside a string — a raw control character,
+    // or a `\x`/`\'` the model invented — some thousands of characters into
+    // otherwise perfect output. The message alone cannot be acted on: the
+    // offending bytes are the whole question, and they are not in the log.
+    //
+    // Observed twice on 2026-09-24, on different pages each time, and not
+    // reproducible on a re-run because extraction is unseeded. A failure that
+    // moves between runs and leaves no artifact cannot be fixed, which is
+    // exactly the position the output-ceiling failure was in for two days.
+    //
+    // So before giving up: one repair pass for the malformations that are
+    // both common and recoverable. A `verbatim` field exists to quote the
+    // page, so a page that writes `referred to as a "full check."` produces
+    // exactly this, and 22,162 characters of correct extraction were
+    // discarded over it on 2026-10-06.
+    const repair = parseJsonWithRepair(candidate);
+    if (repair) {
+      // At `warn`, not silently: the model emitting invalid JSON is a defect
+      // worth seeing even when it is survivable, and a prompt fix for the
+      // same thing is in flight.
+      this.logger.warn(
+        {
+          sourceUrl,
+          parseError: originalError.message,
+          candidateChars: candidate.length,
+          repairedChars: repair.repairedChars,
+          // Which classes fired, so the log says what the model did wrong
+          // rather than only that something was fixed.
+          repaired: repair.applied,
+          promptVersion,
+          promptHash,
+        },
+        `Civics extraction: recovered ${sourceUrl} — the model's JSON was ` +
+          `invalid, the content was intact. Repaired: ` +
+          `${repair.applied.map((c) => REPAIR_LABELS[c]).join(' and ')}.`,
+      );
+      // The empty check, the upsert and the glossary write all apply
+      // unchanged downstream. Nothing there needs to know the JSON arrived
+      // bent.
+      return repair.value as CivicsBlockDraft;
+    }
+
+    await this.reportUnsalvageableJson(
+      candidate,
+      sourceUrl,
+      promptText,
+      result,
+      originalError,
+      promptVersion,
+      promptHash,
+    );
+    return undefined;
+  }
+
+  /**
+   * Log and capture a response whose JSON could not be salvaged.
+   *
+   * Separate from the decision above so that neither the repair path nor the
+   * complexity gate has to carry it: this is all reporting, and the thing it
+   * reports — the bytes either side of the offending position — is the only
+   * part a human can actually act on.
+   */
+  private async reportUnsalvageableJson(
+    candidate: string,
+    sourceUrl: string,
+    promptText: string,
+    result: { text: string; finishReason?: string },
+    error: Error,
+    promptVersion: string | undefined,
+    promptHash: string | undefined,
+  ): Promise<void> {
+    const at = /position (\d+)/.exec(error.message)?.[1];
+    const around = at
+      ? candidate.slice(Math.max(0, Number(at) - 60), Number(at) + 60)
+      : undefined;
+    this.logger.warn(
+      {
+        sourceUrl,
+        parseError: error.message,
+        // Scraped civic text, like the rest of the prompt — same disclosure
+        // as the capture below.
+        around,
+        candidateChars: candidate.length,
+        responseChars: result.text.length,
+        finishReason: result.finishReason,
+        promptVersion,
+        promptHash,
+      },
+      `Civics extraction: JSON.parse failed for ${sourceUrl} at position ` +
+        `${at ?? 'unknown'} — the response had a complete JSON object that ` +
+        `is not valid JSON, usually a bad escape inside a string. Not a ` +
+        `budget problem and not a missing object.`,
+    );
+    await this.captureFailedExtraction(sourceUrl, promptText, result.text);
   }
 
   /**
@@ -400,7 +610,34 @@ export class CivicsSyncService extends LlmGeneratorBase {
       const maxTokens = ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS;
       const result = await this.llm.generate(promptText, {
         maxTokens,
+        // GREEDY. `temperature: 0.1` alone does not make this deterministic,
+        // which cost three runs to work out: temperature sharpens the
+        // DIFFERENCE between candidate probabilities and does nothing to a
+        // genuine tie. The model appears near-50/50 on one decision — "does
+        // this page carry civic content?" — and a 0.5/0.5 split stays 0.5/0.5
+        // at any temperature above zero. Three runs on 2026-10-02 bore that
+        // out: `failed-qualify` returned an empty block on all three while the
+        // eval harness extracted it at three fixed seeds, and the Assembly
+        // glossary page (55 terms, the largest contributor in the corpus)
+        // landed on two runs and not the third.
+        //
+        // `topK: 1` takes the argmax even when the argmax wins 0.501 to
+        // 0.499, which makes the output a function of the input. If a page
+        // then extracts to nothing, that is a fact about the page or the
+        // prompt — diagnosable — rather than a roll of the dice.
+        //
+        // This does NOT reintroduce the risk the seed comment below warns
+        // about. A pinned seed freezes one arbitrary draw out of many; greedy
+        // takes the model's single best answer, which is the branch a sampler
+        // lands on most often anyway.
+        //
+        // `temperature: 0` would be the honest way to say this, but #1325
+        // makes `||` coerce an explicit 0 to the default 0.7 — the exact
+        // opposite of determinism. 0.1 is kept because it is harmless once
+        // only one candidate survives top-k, and `topK: 1` is truthy so it
+        // passes through that same `||` intact.
         temperature: 0.1,
+        topK: 1,
         ...(civicsSeed() !== undefined ? { seed: civicsSeed() } : {}),
         requestTimeoutMs: ds.llmRequestTimeoutMs,
       });
@@ -463,54 +700,30 @@ export class CivicsSyncService extends LlmGeneratorBase {
         return 'failed';
       }
 
-      let block: Partial<{
-        chambers: unknown;
-        measureTypes: unknown;
-        lifecycleStages: unknown;
-        sessionScheme: unknown;
-        glossary: unknown;
-      }>;
-      try {
-        block = JSON.parse(candidate) as typeof block;
-      } catch (e) {
-        // The THIRD failure class, and until now the only one that captured
-        // nothing. A slice with balanced braces that still will not parse is
-        // almost always a bad escape inside a string — a raw control character,
-        // or a `\x`/`\'` the model invented — some thousands of characters into
-        // otherwise perfect output. The message alone cannot be acted on: the
-        // offending bytes are the whole question, and they are not in the log.
-        //
-        // Observed twice on 2026-09-24, on different pages each time, and not
-        // reproducible on a re-run because extraction is unseeded. A failure
-        // that moves between runs and leaves no artifact cannot be fixed, which
-        // is exactly the position the output-ceiling failure was in for two days.
-        const message = (e as Error).message;
-        const at = /position (\d+)/.exec(message)?.[1];
-        const around = at
-          ? candidate.slice(Math.max(0, Number(at) - 60), Number(at) + 60)
-          : undefined;
-        this.logger.warn(
-          {
-            sourceUrl,
-            parseError: message,
-            // The bytes either side of the offending position, which is what a
-            // human actually needs. Scraped civic text, like the rest of the
-            // prompt — same disclosure as the capture below.
-            around,
-            candidateChars: candidate.length,
-            responseChars: result.text.length,
-            finishReason: result.finishReason,
-            promptVersion,
-            promptHash,
-          },
-          `Civics extraction: JSON.parse failed for ${sourceUrl} at ` +
-            `position ${at ?? 'unknown'} — the response had a complete JSON ` +
-            `object that is not valid JSON, usually a bad escape inside a ` +
-            `string. Not a budget problem and not a missing object.`,
-        );
-        await this.captureFailedExtraction(sourceUrl, promptText, result.text);
-        return 'failed';
-      }
+      const block = await this.parseBlockWithRepair(
+        candidate,
+        sourceUrl,
+        promptText,
+        result,
+        promptVersion,
+        promptHash,
+      );
+      if (!block) return 'failed';
+
+      // Ground the measure types against the page before anything persists.
+      // Deliberately BEFORE the empty check below: a block whose only types
+      // were fabrications becomes empty here, and an empty block is a skip,
+      // not a row. See civics-grounding.ts for the measured case this exists
+      // for — three real types filed under initialisms the page never uses,
+      // plus two invented outright, on one page of one run.
+      block.measureTypes = this.groundTypes(
+        block.measureTypes,
+        content,
+        ds,
+        sourceUrl,
+        promptVersion,
+        promptHash,
+      );
 
       // A page the crawler reached under the source's scope but that holds no
       // civic content (e.g. dining services, records-request) extracts to a
@@ -646,7 +859,89 @@ export class CivicsSyncService extends LlmGeneratorBase {
         });
       }),
     );
+
+    // Provenance, written AFTER the canonical rows and in its own batch
+    // because `glossary_entry_sources` has a foreign key to them — a source
+    // row for a term that does not exist yet is rejected, correctly.
+    //
+    // `glossary_entries` is keyed (regionId, slug) and last-write-wins, so its
+    // own `sourceUrl` only ever records the most recent writer. That is why
+    // deleting a block cannot be allowed to cascade from it: 23 of 137 terms
+    // in the 2026-10-02 California corpus were defined on more than one page.
+    // One row per (term, page) here is what lets the cascade be correct.
+    await batchTransaction(
+      this.db!,
+      valid.map((entry) =>
+        this.db!.glossaryEntrySource.upsert({
+          where: {
+            regionId_slug_sourceUrl: { regionId, slug: entry.slug, sourceUrl },
+          },
+          create: { regionId, slug: entry.slug, sourceUrl, extractedAt: now },
+          update: { extractedAt: now },
+        }),
+      ),
+    );
+
     return valid.length;
+  }
+
+  /**
+   * Retire glossary terms whose defining page is gone.
+   *
+   * The cascade on `glossary_entry_sources` removes a page's contributions
+   * when its `CivicsBlock` is deleted, but "delete the canonical term when its
+   * FINAL source disappears" is not expressible as a constraint — so it runs
+   * here, explicitly, rather than in a trigger nobody would find.
+   *
+   * **Keyed on blocks, not on provenance — and that distinction is the whole
+   * correctness of this method.** The first version deleted any term with no
+   * source rows, which cost 81 glossary entries on the 2026-10-05 run: three
+   * pages did not re-extract that run, so their blocks survived from 10-02
+   * with no provenance, and their terms were retired as though the pages were
+   * gone. A term is only unreachable when NOTHING defines it — no provenance
+   * AND no block at the page it came from.
+   *
+   * That version also carried a guard that was useless by construction: it
+   * skipped the prune when a region had zero source rows, but provenance is
+   * written earlier in the same run, so by the time this ran there was always
+   * some and the guard never fired during the one transition it was meant to
+   * cover. The second condition below replaces it properly — a term whose page
+   * still has a block is safe whether or not provenance exists yet.
+   *
+   * Known limitation, deliberately accepted: a term that a still-present page
+   * has STOPPED emitting is not retired, because this cannot tell "the page
+   * dropped the term" from "the page did not re-extract this run". Catching
+   * that needs per-run tracking of which pages were actually visited. Keeping
+   * a stale term is the cheaper error — it is visible and overwritable, where
+   * deleting a live one is neither.
+   */
+  private async pruneUnsourcedGlossaryEntries(
+    regionId: string,
+  ): Promise<number> {
+    // `$executeRaw` resolves to a row count in production. Coerced rather
+    // than trusted because a mocked DbService resolves to a jest object, and
+    // comparing that to a number throws — which is how this broke 12 unit
+    // tests that never mocked a method that did not exist when they were
+    // written. Nothing is logged unless a real count comes back.
+    const rawPruned = await this.db!.$executeRaw`
+      DELETE FROM glossary_entries g
+      WHERE g.region_id = ${regionId}
+        AND NOT EXISTS (
+          SELECT 1 FROM glossary_entry_sources s
+          WHERE s.region_id = g.region_id AND s.slug = g.slug
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM civics_blocks c
+          WHERE c.region_id = g.region_id AND c.source_url = g.source_url
+        )`;
+    const pruned = typeof rawPruned === 'number' ? rawPruned : 0;
+    if (pruned > 0) {
+      this.logger.log(
+        `Glossary prune: retired ${pruned} term(s) in ${regionId} with no ` +
+          `provenance and no block at their source page`,
+      );
+    }
+    return pruned;
   }
 }
 
