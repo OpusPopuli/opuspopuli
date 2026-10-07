@@ -17,6 +17,7 @@ import {
   type PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
 } from './legislative-committee.service';
 import { CivicsBlockModel } from './models/region-info.model';
+import { mergeMeasureTypes } from './civics-identity';
 import {
   PaginatedPropositions,
   PropositionModel,
@@ -343,10 +344,9 @@ export class RegionQueryService {
     if (rows.length === 0) return null;
 
     const chambers = new Map<string, CivicsBlockModel['chambers'][number]>();
-    const measureTypes = new Map<
-      string,
-      CivicsBlockModel['measureTypes'][number]
-    >();
+    // A list, not a Map: measure types are de-duplicated in one pass below,
+    // because their identity resolves on name OR code rather than a single key.
+    const measureTypeCandidates: CivicsBlockModel['measureTypes'] = [];
     const lifecycleStages = new Map<
       string,
       CivicsBlockModel['lifecycleStages'][number]
@@ -361,8 +361,8 @@ export class RegionQueryService {
         row.chambers as Record<string, unknown>[] | null,
         src,
       );
-      this.mergeMeasureTypes(
-        measureTypes,
+      this.collectMeasureTypes(
+        measureTypeCandidates,
         row.measureTypes as Record<string, unknown>[] | null,
         src,
       );
@@ -384,9 +384,26 @@ export class RegionQueryService {
       }
     }
 
+    const { types: measureTypes, conflicts } = mergeMeasureTypes(
+      measureTypeCandidates,
+    );
+    for (const conflict of conflicts) {
+      this.logger.warn(
+        {
+          regionId,
+          measureType: conflict.type,
+          disagreements: conflict.disagreements,
+        },
+        `Civics merge: pages disagree about what ${conflict.type} IS ` +
+          `(${conflict.disagreements.join('; ')}). The first copy wins — ` +
+          `that is a judgement between contradictory claims, not a ` +
+          `de-duplication, so it should not be silent.`,
+      );
+    }
+
     if (
       chambers.size === 0 &&
-      measureTypes.size === 0 &&
+      measureTypes.length === 0 &&
       lifecycleStages.size === 0 &&
       glossary.size === 0
     ) {
@@ -395,7 +412,7 @@ export class RegionQueryService {
 
     return {
       chambers: Array.from(chambers.values()),
-      measureTypes: Array.from(measureTypes.values()),
+      measureTypes,
       lifecycleStages: Array.from(lifecycleStages.values()),
       sessionScheme: sessionScheme ?? undefined,
       glossary: Array.from(glossary.values()),
@@ -473,27 +490,55 @@ export class RegionQueryService {
     }
   }
 
-  private mergeMeasureTypes(
-    measureTypes: Map<string, CivicsBlockModel['measureTypes'][number]>,
+  /**
+   * Collect the measure types from one row, for the merge pass that runs once
+   * all rows have been read.
+   *
+   * Collect-then-merge rather than merge-as-you-go: identity here resolves on
+   * name OR code, so a copy can join a group that an earlier copy established
+   * under a different alias. Doing that incrementally meant threading an alias
+   * index through every call; doing it in one pass over everything keeps the
+   * logic pure and testable. See civics-identity.ts.
+   */
+  private collectMeasureTypes(
+    into: CivicsBlockModel['measureTypes'],
     rawM: Record<string, unknown>[] | null,
     src: string,
   ): void {
     if (!rawM) return;
     for (const mt of rawM) {
-      const code = String(mt['code'] ?? '');
-      if (!code || measureTypes.has(code)) continue;
-      measureTypes.set(code, {
-        code,
-        name: String(mt['name'] ?? ''),
-        chamber: String(mt['chamber'] ?? ''),
-        votingThreshold: String(mt['votingThreshold'] ?? 'majority'),
-        reachesGovernor: Boolean(mt['reachesGovernor']),
-        purpose: this.normalizeCivicText(mt['purpose'], src),
-        lifecycleStageIds: Array.isArray(mt['lifecycleStageIds'])
-          ? (mt['lifecycleStageIds'] as string[])
-          : [],
-      });
+      const built = this.buildMeasureType(mt, src);
+      if (built) into.push(built);
     }
+  }
+
+  /**
+   * Shape one raw measure type, or `undefined` when it carries no code.
+   *
+   * The `!code` guard is kept exactly as it was, deliberately: a code-less type
+   * would be served with an empty `code` field, and whether that is better than
+   * dropping it is a product question this change is not the place to answer.
+   * The only behaviour this commit changes is the key entries merge ON.
+   */
+  private buildMeasureType(
+    mt: Record<string, unknown>,
+    src: string,
+  ): CivicsBlockModel['measureTypes'][number] | undefined {
+    const code = String(mt['code'] ?? '');
+    const name = String(mt['name'] ?? '');
+    if (!code) return undefined;
+
+    return {
+      code,
+      name,
+      chamber: String(mt['chamber'] ?? ''),
+      votingThreshold: String(mt['votingThreshold'] ?? 'majority'),
+      reachesGovernor: Boolean(mt['reachesGovernor']),
+      purpose: this.normalizeCivicText(mt['purpose'], src),
+      lifecycleStageIds: Array.isArray(mt['lifecycleStageIds'])
+        ? (mt['lifecycleStageIds'] as string[])
+        : [],
+    };
   }
 
   private buildCitizenAction(

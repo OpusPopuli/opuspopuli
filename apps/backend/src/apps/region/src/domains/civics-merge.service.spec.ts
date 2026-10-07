@@ -417,3 +417,223 @@ describe('getCivicsData', () => {
     );
   });
 });
+
+// ── measure-type identity across pages (#1340) ────────────────────────────────
+
+/**
+ * Grounding (#1337) makes `code` page-dependent by design: the full name when
+ * the page warrants it, the abbreviation when only the source hints do. Keying
+ * this merge on `code` therefore served one type twice — 8 of 25 entries on the
+ * California region were duplicates.
+ *
+ * `text` builds the CivicText shape the model requires.
+ */
+function text(verbatim: string, plainLanguage = 'P', sourceUrl = SRC): any {
+  return { verbatim, plainLanguage, sourceUrl };
+}
+
+function mtRow(
+  sourceUrl: string,
+  measureTypes: Record<string, unknown>[],
+): any {
+  return {
+    sourceUrl,
+    chambers: null,
+    measureTypes,
+    lifecycleStages: null,
+    glossary: null,
+    sessionScheme: null,
+  };
+}
+
+describe('getCivicsData — measure-type identity', () => {
+  it('serves ONE entry for a type that arrives as AB and as Assembly Bill', async () => {
+    const svc = buildSvc([
+      mtRow('https://a.gov/glossary', [
+        {
+          code: 'Assembly Bill',
+          name: 'Assembly Bill',
+          chamber: 'Assembly',
+          votingThreshold: 'majority',
+          reachesGovernor: true,
+          purpose: text('A bill is a proposed law.'),
+          lifecycleStageIds: ['introduced'],
+        },
+      ]),
+      mtRow('https://a.gov/process', [
+        {
+          code: 'AB',
+          name: 'Assembly Bill',
+          chamber: 'Assembly',
+          votingThreshold: 'majority',
+          reachesGovernor: true,
+          purpose: text('A bill.'),
+          lifecycleStageIds: ['policy-committee'],
+        },
+      ]),
+    ]);
+
+    const result = await svc.getCivicsData('california');
+    expect(result!.measureTypes).toHaveLength(1);
+    expect(result!.measureTypes[0].code).toBe('AB');
+    expect(result!.measureTypes[0].name).toBe('Assembly Bill');
+  });
+
+  it('reaches the same single entry whichever page was extracted last', async () => {
+    const glossary = {
+      code: 'Assembly Bill',
+      name: 'Assembly Bill',
+      chamber: 'Assembly',
+      votingThreshold: 'majority',
+      reachesGovernor: true,
+      purpose: text('A bill is a proposed law.'),
+      lifecycleStageIds: ['introduced'],
+    };
+    const process = {
+      code: 'AB',
+      name: 'Assembly Bill',
+      chamber: 'Assembly',
+      votingThreshold: 'majority',
+      reachesGovernor: true,
+      purpose: text('A bill.'),
+      lifecycleStageIds: ['policy-committee'],
+    };
+
+    const forward = await buildSvc([
+      mtRow('https://a.gov/glossary', [glossary]),
+      mtRow('https://a.gov/process', [process]),
+    ]).getCivicsData('california');
+    const reversed = await buildSvc([
+      mtRow('https://a.gov/process', [process]),
+      mtRow('https://a.gov/glossary', [glossary]),
+    ]).getCivicsData('california');
+
+    expect(forward!.measureTypes).toHaveLength(1);
+    expect(reversed!.measureTypes).toHaveLength(1);
+    expect(reversed!.measureTypes[0].code).toBe(forward!.measureTypes[0].code);
+    expect(reversed!.measureTypes[0].purpose.verbatim).toBe(
+      forward!.measureTypes[0].purpose.verbatim,
+    );
+  });
+
+  it('keeps the richer purpose and unions the stage ids', async () => {
+    const svc = buildSvc([
+      mtRow('https://a.gov/status', [
+        {
+          code: 'AB',
+          name: 'Assembly Bill',
+          purpose: text('A bill.'),
+          lifecycleStageIds: ['introduced', 'chaptered'],
+        },
+      ]),
+      mtRow('https://a.gov/glossary', [
+        {
+          code: 'Assembly Bill',
+          name: 'Assembly Bill',
+          purpose: text(
+            'A bill is a proposed law introduced in either house of the Legislature.',
+          ),
+          lifecycleStageIds: ['chaptered', 'governor-action'],
+        },
+      ]),
+    ]);
+
+    const result = await svc.getCivicsData('california');
+    expect(result!.measureTypes[0].purpose.verbatim).toContain('either house');
+    expect(result!.measureTypes[0].lifecycleStageIds).toEqual([
+      'introduced',
+      'chaptered',
+      'governor-action',
+    ]);
+  });
+
+  /**
+   * HR and SR arrive as abbreviations with no spelled-out counterpart on any
+   * page. A merge that invented a full-name code for them would be fabricating
+   * what no source supplied.
+   */
+  it('leaves an abbreviation-only type alone', async () => {
+    const svc = buildSvc([
+      mtRow(SRC, [
+        {
+          code: 'HR',
+          name: 'House Resolution',
+          purpose: text('A resolution.'),
+          lifecycleStageIds: [],
+        },
+      ]),
+    ]);
+
+    const result = await svc.getCivicsData('california');
+    expect(result!.measureTypes).toHaveLength(1);
+    expect(result!.measureTypes[0].code).toBe('HR');
+  });
+
+  it('still keeps genuinely different types apart', async () => {
+    const svc = buildSvc([
+      mtRow(SRC, [
+        { code: 'AB', name: 'Assembly Bill', purpose: text('A') },
+        { code: 'SB', name: 'Senate Bill', purpose: text('B') },
+      ]),
+    ]);
+
+    const result = await svc.getCivicsData('california');
+    expect(result!.measureTypes).toHaveLength(2);
+    expect(result!.measureTypes.map((m: any) => m.code).sort()).toEqual([
+      'AB',
+      'SB',
+    ]);
+  });
+
+  it('warns when two pages disagree about what the type is', async () => {
+    const svc = buildSvc([
+      mtRow('https://a.gov/one', [
+        {
+          code: 'AB',
+          name: 'Assembly Bill',
+          votingThreshold: 'majority',
+          purpose: text('A'),
+        },
+      ]),
+      mtRow('https://a.gov/two', [
+        {
+          code: 'Assembly Bill',
+          name: 'Assembly Bill',
+          votingThreshold: 'two-thirds',
+          purpose: text('B'),
+        },
+      ]),
+    ]);
+
+    const result = await svc.getCivicsData('california');
+    expect(result!.measureTypes).toHaveLength(1);
+    expect(result!.measureTypes[0].votingThreshold).toBe('majority');
+    expect(svc.logger.warn).toHaveBeenCalled();
+    const [meta] = svc.logger.warn.mock.calls[0];
+    expect(meta.disagreements).toEqual([
+      'votingThreshold: majority vs two-thirds',
+    ]);
+  });
+
+  it('does not warn when the copies agree', async () => {
+    const svc = buildSvc([
+      mtRow('https://a.gov/one', [
+        { code: 'AB', name: 'Assembly Bill', purpose: text('A') },
+      ]),
+      mtRow('https://a.gov/two', [
+        { code: 'Assembly Bill', name: 'Assembly Bill', purpose: text('B') },
+      ]),
+    ]);
+
+    await svc.getCivicsData('california');
+    expect(svc.logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('drops a measure type with no code, as it always has', async () => {
+    const svc = buildSvc([
+      mtRow(SRC, [{ name: 'Assembly Bill', purpose: text('A') }]),
+    ]);
+
+    expect(await svc.getCivicsData('california')).toBeNull();
+  });
+});
