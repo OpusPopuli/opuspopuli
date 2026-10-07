@@ -5,6 +5,7 @@ import {
   extractJsonObjectSlice,
   type DataSourceConfig,
   type ILLMProvider,
+  repairTrailingCommas,
   repairUnescapedQuotes,
 } from '@opuspopuli/common';
 import { DataType } from '@opuspopuli/region-provider';
@@ -532,7 +533,14 @@ export class CivicsSyncService extends LlmGeneratorBase {
         // invalid JSON is a defect worth seeing even when it is survivable,
         // and a prompt fix for the same thing is in flight. If the repair does
         // not parse either, fall through to the capture below unchanged.
-        const repaired = repairUnescapedQuotes(candidate);
+        // Two repair classes, applied together because they are independent
+        // and a response can carry both. Measured on the same page in
+        // sequence: v5 failed on unescaped quotes at position 10116, and once
+        // prompt v6 fixed those the failure moved PAST it to 12898, an
+        // illegal trailing comma that had been hidden behind the first defect
+        // all along.
+        const quoted = repairUnescapedQuotes(candidate);
+        const repaired = repairTrailingCommas(quoted);
         if (repaired !== candidate) {
           try {
             block = JSON.parse(repaired) as typeof block;
@@ -542,12 +550,18 @@ export class CivicsSyncService extends LlmGeneratorBase {
                 parseError: (e as Error).message,
                 candidateChars: candidate.length,
                 repairedChars: repaired.length,
+                // Which class fired, so the log says what the model did
+                // wrong rather than only that something was fixed.
+                quotesEscaped: quoted !== candidate,
+                trailingCommasRemoved: repaired !== quoted,
                 promptVersion,
                 promptHash,
               },
-              `Civics extraction: recovered ${sourceUrl} by escaping ` +
-                `unescaped quote(s) inside a string value. The model's JSON ` +
-                `was invalid; the content was intact.`,
+              `Civics extraction: recovered ${sourceUrl} — the model's JSON ` +
+                `was invalid, the content was intact. Repaired: ` +
+                `${quoted !== candidate ? 'unescaped quote(s)' : ''}` +
+                `${quoted !== candidate && repaired !== quoted ? ' and ' : ''}` +
+                `${repaired !== quoted ? 'trailing comma(s)' : ''}.`,
             );
             // Fall through to the normal path below — the empty check, the
             // upsert and the glossary write all apply unchanged. Nothing

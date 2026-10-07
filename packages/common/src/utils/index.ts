@@ -8,6 +8,7 @@ export type { SupabaseClientOptions } from "./supabase-client.js";
 export {
   extractFieldString,
   extractJsonObjectSlice,
+  repairTrailingCommas,
   repairUnescapedQuotes,
   stripCodeFences,
 } from "./json-salvage.js";

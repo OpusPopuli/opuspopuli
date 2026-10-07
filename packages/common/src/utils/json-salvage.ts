@@ -161,6 +161,76 @@ export function repairUnescapedQuotes(text: string): string {
 }
 
 /**
+ * Remove a comma that sits immediately before a closing brace or bracket.
+ *
+ * The second malformation class measured on the civics corpus, and a separate
+ * one from {@link repairUnescapedQuotes} — which is why it is a separate
+ * function rather than more behaviour hidden behind that name.
+ *
+ * Measured 2026-10-06 on the SoS referendum page under civics prompt v6:
+ *
+ *     "...qualifies for the following general election instead.",
+ *     },
+ *
+ * `Illegal trailing comma before end of object` at char 12890. Worth noting
+ * where it appeared: v5 failed on unescaped quotes at position 10116, and once
+ * v6 fixed those the failure moved PAST it to 12898. The defect was always
+ * there, hidden behind an earlier one.
+ *
+ * JSON forbids this; every mainstream language that borrows JSON's syntax
+ * allows it, so a model trained on code emits it. Dropping the comma changes
+ * no value and loses no content, which makes this the safest repair in the
+ * module — safer than the quote repair, which has to guess whether a quote
+ * terminates a string.
+ *
+ * String-aware: a comma inside a string value is content and stays. Returns
+ * the input unchanged when there is nothing to remove, so it is free to run
+ * speculatively and idempotent on valid JSON.
+ */
+export function repairTrailingCommas(text: string): string {
+  const out: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let removed = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) {
+      out.push(ch);
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out.push(ch);
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      out.push(ch);
+      continue;
+    }
+    if (inString || ch !== ",") {
+      out.push(ch);
+      continue;
+    }
+
+    // A comma outside a string: is the next meaningful character a close?
+    let j = i + 1;
+    while (j < text.length && /\s/.test(text[j])) j++;
+    const next = j < text.length ? text[j] : undefined;
+    if (next === "}" || next === "]") {
+      removed++; // drop it, keeping the whitespace that follows
+    } else {
+      out.push(ch);
+    }
+  }
+
+  return removed === 0 ? text : out.join("");
+}
+
+/**
  * Extract the value of `"<fieldName>": "…"` from raw LLM text using a
  * char-by-char scan that handles JSON escape sequences. Used when the
  * surrounding JSON is malformed or truncated but the field's own
