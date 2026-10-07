@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import {
   extractJsonObjectSlice,
+  parseJsonWithRepair,
   repairTrailingCommas,
   repairUnescapedQuotes,
 } from "../src/utils/json-salvage.js";
@@ -162,5 +163,60 @@ describe("repairTrailingCommas", () => {
     const parsed = JSON.parse(fixed);
     expect(parsed.v).toContain('"full check."');
     expect(parsed.list).toEqual([1, 2]);
+  });
+});
+
+/**
+ * `parseJsonWithRepair` is the entry point the civics pipeline actually calls.
+ * It exists so the decision — parse, else repair, else give up — lives next to
+ * the repairs and is testable without a NestJS service, and so the caller gets
+ * told WHICH class fired rather than diffing the strings itself to find out.
+ */
+describe("parseJsonWithRepair", () => {
+  it("parses valid JSON untouched, and reports no repair", () => {
+    const result = parseJsonWithRepair('{"a": 1}');
+    expect(result).toEqual({
+      value: { a: 1 },
+      applied: [],
+      repairedChars: 8,
+    });
+  });
+
+  it("names the quote class when only quotes were wrong", () => {
+    const result = parseJsonWithRepair(
+      `{"v": "referred to as a "full check.""}`,
+    );
+    expect(result?.applied).toEqual(["quotes"]);
+    expect((result?.value as { v: string }).v).toContain('"full check."');
+  });
+
+  it("names the comma class when only commas were wrong", () => {
+    const result = parseJsonWithRepair('{"list": [1, 2, ], }');
+    expect(result?.applied).toEqual(["commas"]);
+    expect((result?.value as { list: number[] }).list).toEqual([1, 2]);
+  });
+
+  /**
+   * The sequence that motivated applying both at once: v5 failed on unescaped
+   * quotes at position 10116, and once prompt v6 fixed those the failure moved
+   * PAST it to an illegal trailing comma that had been hidden behind the first
+   * defect. One call has to clear both or the second defect costs another run.
+   */
+  it("applies both classes in one pass, in order", () => {
+    const result = parseJsonWithRepair(
+      `{"v": "referred to as a "full check."", "list": [1, 2, ], }`,
+    );
+    expect(result?.applied).toEqual(["quotes", "commas"]);
+    expect((result?.value as { list: number[] }).list).toEqual([1, 2]);
+  });
+
+  it("returns undefined when neither repair changes anything", () => {
+    // Structurally broken, not a bad escape: no repair class applies.
+    expect(parseJsonWithRepair('{"a": ')).toBeUndefined();
+  });
+
+  it("returns undefined when a repair fires but the result still will not parse", () => {
+    // A trailing comma to remove, and a truncation that removing it cannot fix.
+    expect(parseJsonWithRepair('{"a": [1, 2, ]')).toBeUndefined();
   });
 });

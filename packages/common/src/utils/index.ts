@@ -8,10 +8,12 @@ export type { SupabaseClientOptions } from "./supabase-client.js";
 export {
   extractFieldString,
   extractJsonObjectSlice,
+  parseJsonWithRepair,
   repairTrailingCommas,
   repairUnescapedQuotes,
   stripCodeFences,
 } from "./json-salvage.js";
+export type { JsonRepairClass, RepairedJson } from "./json-salvage.js";
 export { redactContactDetails, findContactDetails } from "./redaction.js";
 export type { RedactionHit, RedactionResult } from "./redaction.js";
 export { locateQuote, normaliseForLocate } from "./quote-locator.js";

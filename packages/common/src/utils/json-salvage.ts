@@ -293,3 +293,59 @@ function decodeEscapedChar(ch: string): string {
       return ch;
   }
 }
+
+/** Which repair classes a successful salvage had to apply, in order. */
+export type JsonRepairClass = "quotes" | "commas";
+
+export interface RepairedJson {
+  /** The parsed value. */
+  value: unknown;
+  /**
+   * Empty when the text parsed as-is. Non-empty names exactly what the
+   * producer got wrong, which is the part worth logging — the caller should
+   * not have to diff the strings itself to find out.
+   */
+  applied: JsonRepairClass[];
+  /** Character count after repair, for the caller's log line. */
+  repairedChars: number;
+}
+
+/**
+ * Parse JSON, repairing the two malformations that are both common in model
+ * output and fully recoverable, and reporting which ones fired.
+ *
+ * Both repairs are applied together because they are independent and one
+ * response can carry both. Measured on the same civics page in sequence:
+ * prompt v5 failed on unescaped quotes at position 10116, and once v6 fixed
+ * those the failure moved PAST it to 12898 — an illegal trailing comma that
+ * had been hidden behind the first defect all along. Attempting only one
+ * repair per call would have needed a second round trip to find that.
+ *
+ * Returns `undefined` when the text is not salvageable, leaving the caller to
+ * report the ORIGINAL parse error: that is the one describing what the
+ * producer actually emitted, and the post-repair error describes a string
+ * nothing ever sent.
+ */
+export function parseJsonWithRepair(text: string): RepairedJson | undefined {
+  try {
+    return { value: JSON.parse(text), applied: [], repairedChars: text.length };
+  } catch {
+    const quoted = repairUnescapedQuotes(text);
+    const repaired = repairTrailingCommas(quoted);
+    if (repaired === text) return undefined;
+
+    const applied: JsonRepairClass[] = [];
+    if (quoted !== text) applied.push("quotes");
+    if (repaired !== quoted) applied.push("commas");
+
+    try {
+      return {
+        value: JSON.parse(repaired),
+        applied,
+        repairedChars: repaired.length,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+}
