@@ -108,11 +108,30 @@ function advanceJsonState(state: JsonScanState, ch: string): boolean {
  *
  * Returns the repaired text, or the input unchanged when nothing needed fixing.
  */
-export function repairUnescapedQuotes(text: string): string {
+/**
+ * How far to the next character that is not whitespace — shared because both
+ * repairs decide by looking at what FOLLOWS a candidate character.
+ */
+function nextMeaningful(text: string, from: number): string | undefined {
+  let j = from;
+  while (j < text.length && /\s/.test(text[j])) j++;
+  return j < text.length ? text[j] : undefined;
+}
+
+/**
+ * One pass over JSON-ish text, tracking escape and in-string state, with the
+ * per-character decision selected by `mode`.
+ *
+ * The two repairs need byte-identical state tracking and differ only in what
+ * they do when they reach their candidate character. Writing that loop twice
+ * tripped the duplication gate on push — correctly, since the escape handling
+ * is exactly the part that must not drift between them.
+ */
+function rewriteJson(text: string, mode: "quotes" | "commas"): string {
   const out: string[] = [];
   let inString = false;
   let escaped = false;
-  let repairs = 0;
+  let changes = 0;
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -127,37 +146,59 @@ export function repairUnescapedQuotes(text: string): string {
       escaped = true;
       continue;
     }
-    if (ch !== '"') {
-      out.push(ch);
+
+    if (mode === "quotes") {
+      if (ch !== '"') {
+        out.push(ch);
+        continue;
+      }
+      if (!inString) {
+        inString = true;
+        out.push(ch);
+        continue;
+      }
+      // Inside a string: this quote closes it only if a JSON delimiter
+      // follows. Anything else means it is content.
+      const next = nextMeaningful(text, i + 1);
+      if (
+        next === undefined ||
+        next === "," ||
+        next === "}" ||
+        next === "]" ||
+        next === ":"
+      ) {
+        inString = false;
+        out.push(ch);
+      } else {
+        out.push('\\"');
+        changes++;
+      }
       continue;
     }
 
-    if (!inString) {
-      inString = true;
+    // mode === "commas"
+    if (ch === '"') {
+      inString = !inString;
       out.push(ch);
       continue;
     }
-
-    // Inside a string: does this quote actually close it?
-    let j = i + 1;
-    while (j < text.length && /\s/.test(text[j])) j++;
-    const next = j < text.length ? text[j] : undefined;
-    if (
-      next === undefined ||
-      next === "," ||
-      next === "}" ||
-      next === "]" ||
-      next === ":"
-    ) {
-      inString = false;
+    if (inString || ch !== ",") {
       out.push(ch);
+      continue;
+    }
+    const next = nextMeaningful(text, i + 1);
+    if (next === "}" || next === "]") {
+      changes++; // drop it, keeping the whitespace that follows
     } else {
-      out.push('\\"');
-      repairs++;
+      out.push(ch);
     }
   }
 
-  return repairs === 0 ? text : out.join("");
+  return changes === 0 ? text : out.join("");
+}
+
+export function repairUnescapedQuotes(text: string): string {
+  return rewriteJson(text, "quotes");
 }
 
 /**
@@ -188,46 +229,7 @@ export function repairUnescapedQuotes(text: string): string {
  * speculatively and idempotent on valid JSON.
  */
 export function repairTrailingCommas(text: string): string {
-  const out: string[] = [];
-  let inString = false;
-  let escaped = false;
-  let removed = 0;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-
-    if (escaped) {
-      out.push(ch);
-      escaped = false;
-      continue;
-    }
-    if (ch === "\\") {
-      out.push(ch);
-      escaped = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      out.push(ch);
-      continue;
-    }
-    if (inString || ch !== ",") {
-      out.push(ch);
-      continue;
-    }
-
-    // A comma outside a string: is the next meaningful character a close?
-    let j = i + 1;
-    while (j < text.length && /\s/.test(text[j])) j++;
-    const next = j < text.length ? text[j] : undefined;
-    if (next === "}" || next === "]") {
-      removed++; // drop it, keeping the whitespace that follows
-    } else {
-      out.push(ch);
-    }
-  }
-
-  return removed === 0 ? text : out.join("");
+  return rewriteJson(text, "commas");
 }
 
 /**
