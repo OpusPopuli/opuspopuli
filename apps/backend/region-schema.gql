@@ -81,6 +81,8 @@ type PropositionAnalysisClaimModel {
   field: String!
   sourceStart: Int!
   sourceEnd: Int!
+  sourceQuote: String
+  verified: Boolean
   confidence: String
 }
 
@@ -356,6 +358,7 @@ enum SyncJobStatus {
   RUNNING
   SUCCEEDED
   FAILED
+  CANCELLED
 }
 
 """What triggered the sync job"""
@@ -441,6 +444,22 @@ type PaginatedMeetings {
   items: [MeetingModel!]!
   total: Int!
   hasMore: Boolean!
+}
+
+type EvidenceDistributionModel {
+  verified: Int!
+  snapped: Int!
+  unverified: Int!
+  unsourced: Int!
+}
+
+type ClaimBackfillResultModel {
+  propositions: Int!
+  minutes: Int!
+  representatives: Int!
+  claimsWritten: Int!
+  failed: Int!
+  distribution: EvidenceDistributionModel!
 }
 
 type MinutesSummaryCitationModel {
@@ -868,11 +887,14 @@ enum BillLifecycle {
 type Mutation {
   regeneratePropositionAnalysis(id: ID!): PropositionModel
   regenerateMinutesSummaries(body: String, limit: Int): Int!
+  backfillClaims(limit: Int): ClaimBackfillResultModel!
+  backfillPropositionSummaries(limit: Int): Int!
   invalidateManifest(regionId: String!, sourceUrl: String!): Int!
   updateRegionPlugin(name: String!, enabled: Boolean!, cascade: Boolean! = false): RegionPluginModel!
   refreshActiveRegion: Boolean!
   refreshBoundaries(force: Boolean): RegionSyncJob!
   syncRegionData(dataTypes: [DataType!], depth: SyncDepth, regionId: String, maxReps: Int, maxBills: Int, maxDocuments: Int, resetWatermark: Boolean): RegionSyncJob!
+  cancelRegionSync(jobId: ID!, reason: String): Boolean!
 }
 
 """
