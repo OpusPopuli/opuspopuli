@@ -1,0 +1,85 @@
+# Alertmanager configuration — LOCAL DEVELOPMENT ONLY
+#
+# Structurally identical to alertmanager.yml (same routes, same severities, same
+# inhibit rule) and differing only in transport: this one delivers to Inbucket,
+# the local SMTP catch-all already in the stack for magic-link testing, with no
+# credentials of any kind.
+#
+# ── Why a second file ────────────────────────────────────────────────────────
+#
+# Alertmanager does not expand environment variables, so the smarthost cannot be
+# parameterised in one file. The production config points at Resend and reads
+# credentials from mounted files; neither works locally. Rather than have the
+# local stack carry placeholder secrets — which would produce a receiver that
+# silently discards everything, the exact failure #1343 fixed — the dev compose
+# mounts this and the prod compose mounts the other.
+#
+# **Keep the route and receiver STRUCTURE in sync between the two.** The point of
+# this file is to exercise the same routing locally that production uses, so a
+# routing mistake is caught here rather than in production. If you add a route or
+# a receiver to one, add it to both. Only the transport should differ.
+#
+# Read delivered alerts at http://localhost:54324 — Inbucket accepts any
+# recipient and any sender, with no authentication.
+
+global:
+  resolve_timeout: 5m
+  smtp_from: 'alerts@opuspopuli.local'
+  # Inbucket, on the compose network. No auth, no TLS — it is a catch-all that
+  # accepts everything and delivers nothing onward, which is what makes it safe
+  # to point alerts at from a developer machine.
+  smtp_smarthost: 'inbucket:2500'
+  smtp_require_tls: false
+
+route:
+  receiver: 'default-email'
+  group_by: ['alertname', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # The heartbeat. In production this leaves the building to a dead-man's
+    # switch, because its value is entirely in its ABSENCE being noticed.
+    # Locally it goes to Inbucket on the same 5-minute cadence, which is what
+    # makes it the quickest end-to-end proof that the pipeline works: if a
+    # message appears in Inbucket, rule evaluation, routing and delivery are all
+    # alive.
+    - receiver: 'watchdog-email'
+      matchers:
+        - alertname = "AlertingPipelineAlive"
+      group_wait: 0s
+      group_interval: 5m
+      repeat_interval: 5m
+      continue: false
+
+    - receiver: 'critical-email'
+      matchers:
+        - severity = "critical"
+      continue: false
+
+receivers:
+  - name: 'default-email'
+    email_configs:
+      - to: 'alerts@opuspopuli.local'
+        send_resolved: true
+
+  # Separate addresses rather than one, so the local inbox shows which route an
+  # alert actually took. Routing bugs are invisible when everything arrives in
+  # the same place.
+  - name: 'critical-email'
+    email_configs:
+      - to: 'critical@opuspopuli.local'
+        send_resolved: true
+
+  - name: 'watchdog-email'
+    email_configs:
+      - to: 'watchdog@opuspopuli.local'
+        send_resolved: false
+
+inhibit_rules:
+  # A service being down explains its own error rate and latency; suppress the
+  # consequences so the page says what is actually wrong.
+  - source_matchers: [alertname = "ServiceDown"]
+    target_matchers: [severity = "warning"]
+    equal: ['service']

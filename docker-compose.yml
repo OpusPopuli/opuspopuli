@@ -568,10 +568,12 @@ services:
       # Needed for links in notifications to resolve to something clickable.
       - '--web.external-url=http://localhost:9093'
     volumes:
-      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      # Credentials by file, never baked into the config or the image. The
-      # directory is gitignored; see observability/alertmanager.yml.
-      - ./observability/secrets:/etc/alertmanager/secrets:ro
+      # The LOCAL config: delivers to Inbucket with no credentials, so the dev
+      # stack comes up without secrets. Production mounts alertmanager.yml,
+      # which points at Resend and reads credentials from mounted files. Keep
+      # the route and receiver structure of the two in sync — only the
+      # transport should differ.
+      - ./observability/alertmanager.local.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     networks:
       - opuspopuli-network
