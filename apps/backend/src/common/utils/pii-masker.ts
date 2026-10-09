@@ -1,3 +1,5 @@
+import { STREET_ADDRESS } from '@opuspopuli/common';
+
 const SENSITIVE_FIELDS = new Set([
   'password',
   'newpassword',
@@ -69,6 +71,7 @@ const PARTIAL_MASK_FIELDS = new Set(['email', 'phone', 'phonenumber']);
  * Used to redact PII that appears in log messages and error strings.
  * @see https://github.com/OpusPopuli/opuspopuli/issues/192
  */
+
 export const PII_PATTERNS = {
   // Email: matches standard email format
   email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
@@ -80,6 +83,18 @@ export const PII_PATTERNS = {
   creditCard: /\b(?:\d{4}[-.\s]?){3,4}\d{1,4}\b/g,
   // IP Address: matches IPv4 format
   ipAddress: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,
+  /**
+   * Street address. Imported rather than written again: this file had NO
+   * address rule, which is how a resident street address reached the logs at
+   * `warn` (#1094), while a tested pattern already existed in
+   * @opuspopuli/common for the claim locator and fixture redaction (#1263).
+   *
+   * Note what this is and is not. The pattern requires a recognised
+   * street-type word, so `123 Broadway` slips past it — it is defence in
+   * depth for text we did not write, not a licence to interpolate an address
+   * into a log line. The fix for a known address is not to log it.
+   */
+  streetAddress: STREET_ADDRESS,
 };
 
 /**
@@ -186,6 +201,13 @@ export function redactPiiFromString(value: string): string {
   let result = value;
 
   // Order matters: apply more specific patterns before general ones
+
+  // Street address first: it is the most specific pattern here, anchored on a
+  // street-type word rather than on digit runs. City, state and ZIP are left
+  // alone deliberately — locality is what distinguishes a systemic failure
+  // from one bad record, it is not directly identifying, and over-redaction
+  // costs the debuggability these logs exist for.
+  result = result.replaceAll(PII_PATTERNS.streetAddress, '[REDACTED_ADDRESS]');
 
   // Fully redact credit card numbers (before phone, as CC can look like phone)
   result = result.replaceAll(PII_PATTERNS.creditCard, '[REDACTED_CC]');

@@ -413,4 +413,63 @@ describe('PII Masker', () => {
       expect(masked).toContain('[REDACTED]');
     });
   });
+
+  /**
+   * This file had no address rule at all until #1094 follow-up work, which is
+   * how a resident street address reached the logs at `warn`. The pattern is
+   * imported from @opuspopuli/common rather than written again, so these tests
+   * also assert the shared pattern is actually wired in here.
+   */
+  describe('street address redaction', () => {
+    it('redacts a street address out of a log message', () => {
+      expect(
+        redactPiiFromString('Geocoding failed for 645 Taraval Street, SF'),
+      ).toContain('[REDACTED_ADDRESS]');
+    });
+
+    it('does not leave the street name behind', () => {
+      const out = redactPiiFromString('addr=645 Taraval Street');
+      expect(out).not.toContain('Taraval');
+      expect(out).not.toContain('645');
+    });
+
+    it('handles the Census normalised form', () => {
+      const out = redactPiiFromString(
+        'Geocoded 645 TARAVAL ST, SAN FRANCISCO, CA, 94116',
+      );
+      expect(out).not.toContain('TARAVAL');
+      // Locality is deliberately kept: it separates a systemic failure from
+      // one bad record and is not directly identifying.
+      expect(out).toContain('SAN FRANCISCO');
+    });
+
+    it('redacts unit and suite designators with the address', () => {
+      const out = redactPiiFromString('1234 Mission Blvd Apt 7B');
+      expect(out).not.toContain('Mission');
+      expect(out).not.toContain('7B');
+    });
+
+    /**
+     * The pattern is deliberately narrow so that statutory references survive
+     * — redaction that eats "Section 3" would make civic text unreadable.
+     */
+    it('leaves statutory references and ordinary numbers alone', () => {
+      for (const safe of [
+        'Section 3 of Article XIII',
+        'processed 1234 records in 56ms',
+        'retry 3 of 5',
+      ]) {
+        expect(redactPiiFromString(safe)).toBe(safe);
+      }
+    });
+
+    /**
+     * Honest about the limit: the pattern needs a recognised street-type word,
+     * so this slips past. Recorded as a test so the gap is visible rather than
+     * assumed away — the real defence is not logging a known address at all.
+     */
+    it('does NOT catch an address with no street-type word', () => {
+      expect(redactPiiFromString('123 Broadway')).toBe('123 Broadway');
+    });
+  });
 });
