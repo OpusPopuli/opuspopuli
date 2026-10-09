@@ -273,3 +273,32 @@ groups:
             No source_store_last_measured_timestamp_seconds series is being
             scraped. Either region-service is down or its metrics endpoint is
             not reachable from Prometheus.
+
+  # ── The heartbeat ──────────────────────────────────────────────────────────
+  #
+  # Always firing, on purpose. This is not an incident; it is the proof that
+  # rule evaluation, Alertmanager and the notification path are all alive.
+  #
+  # Every other rule in this file signals by FIRING, which means a broken
+  # pipeline is indistinguishable from a healthy system — that is precisely how
+  # 44 days of failed backups went unnoticed (#1343). This rule inverts the
+  # polarity: it is routed to a dead-man's-switch endpoint that alerts when the
+  # pings STOP, so the silence that used to mean "nothing to report" now means
+  # "tell someone".
+  #
+  # Keep the route for this alert, and the dead-man's-switch it feeds, outside
+  # the thing being monitored. A heartbeat consumer that shares the Studio's
+  # power and network fails at the same instant the Studio does, which is the
+  # one moment it has to work.
+  - name: opuspopuli-watchdog
+    rules:
+      - alert: AlertingPipelineAlive
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: 'Alerting pipeline heartbeat'
+          description: >-
+            Fires continuously by design. Its absence is the signal: if these
+            stop arriving, Prometheus, Alertmanager, the node, its power or its
+            network has gone away, and no other alert can tell you that.

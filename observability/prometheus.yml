@@ -4,12 +4,38 @@
 # @see https://github.com/OpusPopuli/opuspopuli/issues/213
 
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  # 30s rather than 15s. Nothing here needs sub-30s resolution — the tightest
+  # `for:` clause in prometheus-alerts.yml is 2m — and the interval multiplies
+  # into samples, chunk churn and CPU on every series (#1344).
+  scrape_interval: 30s
+  evaluation_interval: 30s
 
 rule_files:
   - /etc/prometheus/alerts/*.yml
 
+# Without this block the rules in prometheus-alerts.yml evaluate, transition to
+# FIRING, and reach nobody: Prometheus itself never notifies. That is why
+# BackupMissing could fire for 44 days unnoticed (#1343).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# ── Shared metric_relabel_configs ────────────────────────────────────────────
+#
+# Anchored on the FIRST job below and aliased into the rest, so the drop list
+# cannot drift between services.
+#
+# The anchor lives on a real job rather than a top-level `x-` key, because
+# Prometheus parses its config with UnmarshalStrict and rejects any top-level
+# field it does not know — unlike docker-compose, it has no extension-field
+# convention.
+#
+# Every `nodejs_*` and `process_*` metric is queried by ZERO dashboards and ZERO
+# alert rules today, so the whole default set could be dropped. It is not,
+# deliberately: resident memory, CPU, fds and heap-used are what you reach for
+# while diagnosing an incident, and they are a handful of cheap series each.
+# What goes is the high-cardinality, low-value end.
 scrape_configs:
   # Prometheus self-monitoring
   - job_name: 'prometheus'
@@ -21,49 +47,72 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:4000']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: &drop-default-noise
+    # GC duration is a histogram multiplied by GC kind (major/minor/incremental/
+    # weakcb) — the largest single contributor in the prom-client defaults.
+    - source_labels: [__name__]
+      regex: 'nodejs_gc_duration_seconds.*'
+      action: drop
+    # Seven pre-computed percentile gauges for event-loop lag. `nodejs_eventloop_
+    # lag_seconds` is kept, which is the one worth alerting on.
+    - source_labels: [__name__]
+      regex: 'nodejs_eventloop_lag_(p50|p90|p99|min|max|mean|stddev)_seconds'
+      action: drop
+    # Per-heap-space breakdown: ~6 V8 spaces x 3 metrics. `nodejs_heap_size_used_
+    # bytes` and `_total_bytes` are kept and answer the same question.
+    - source_labels: [__name__]
+      regex: 'nodejs_heap_space_size_(total|used|available)_bytes'
+      action: drop
+    # Per-type handle/request/resource gauges. The `_total` variants are kept.
+    - source_labels: [__name__]
+      regex: 'nodejs_active_(handles|requests|resources)'
+      action: drop
+    # A constant-valued info series per process.
+    - source_labels: [__name__]
+      regex: 'nodejs_version_info'
+      action: drop
 
   # Users Service metrics
   - job_name: 'users-service'
     static_configs:
       - targets: ['host.docker.internal:4001']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: *drop-default-noise
 
   # Documents Service metrics
   - job_name: 'documents-service'
     static_configs:
       - targets: ['host.docker.internal:4002']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: *drop-default-noise
 
   # Knowledge Service metrics
   - job_name: 'knowledge-service'
     static_configs:
       - targets: ['host.docker.internal:4003']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: *drop-default-noise
 
   # Region Service metrics
   - job_name: 'region-service'
     static_configs:
       - targets: ['host.docker.internal:4004']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: *drop-default-noise
 
   # Region Worker metrics
   - job_name: 'region-worker'
     static_configs:
       - targets: ['host.docker.internal:4005']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: *drop-default-noise
 
   # Structural Analysis Worker metrics
   - job_name: 'structural-analysis-worker'
     static_configs:
       - targets: ['host.docker.internal:4006']
     metrics_path: /metrics
-    scrape_interval: 10s
+    metric_relabel_configs: *drop-default-noise
 
   # Redis metrics (if redis_exporter is added)
   # - job_name: 'redis'
