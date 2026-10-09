@@ -144,6 +144,144 @@ describe('CivicsSyncService', () => {
     expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
   });
 
+  // ── #1335: an empty extraction over an EXISTING block ──────────────────
+  //
+  // #874 established that an empty extraction must not CREATE a noise row.
+  // That check ran before anything knew whether a row already existed, so
+  // "this page has no civic content" and "this page used to have content and
+  // now extracts none" were the same code path and the same `log` line.
+  //
+  // The second case is a problem: keeping the row is right, but its prompt
+  // provenance stops matching its siblings. Measured 2026-10-07 — one of twelve
+  // California pages sat on prompt v5 while eleven moved to v6, because two
+  // later successful syncs passed over it and said nothing.
+  describe('empty extraction over an existing block (#1335)', () => {
+    /** drivePage, but with a row already present for the page. */
+    const driveOverExisting = async (
+      extractedJson: string,
+      existing: Record<string, unknown> = {
+        id: 'block-1',
+        promptVersion: 'v5',
+        extractedAt: new Date('2026-10-06T21:26:06Z'),
+      },
+    ) => {
+      const { service, mockLlm, mockDb, mockPromptClient } =
+        await buildService();
+      mockPromptClient.getCivicsExtractionPrompt.mockResolvedValue({
+        promptText: 'prompt',
+        promptHash: 'hash',
+        promptVersion: 'v6',
+      } as never);
+      mockLlm.generate.mockResolvedValue({ text: extractedJson } as never);
+      (mockDb.civicsBlock.findUnique as jest.Mock).mockResolvedValue(existing);
+
+      const sourceUrl =
+        'https://www.sos.ca.gov/elections/ballot-measures/how-qualify-initiative';
+      const plugin = {
+        getName: () => 'california',
+        getDataSources: jest
+          .fn()
+          .mockReturnValue([
+            { url: sourceUrl, contentGoal: 'goal', category: 'SoS' },
+          ]),
+      } as unknown as CivicsProvider;
+      const helpers: jest.Mocked<CivicsCrawlHelpers> = {
+        fetchUrlText: jest.fn().mockResolvedValue('<html/>'),
+        htmlToReadableText: jest.fn().mockReturnValue('readable text'),
+        crawlCivicsUrls: jest.fn().mockResolvedValue([sourceUrl]),
+      };
+
+      const result = await service.sync(plugin, helpers);
+      return { result, mockDb, sourceUrl };
+    };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('keeps the existing row rather than deleting or blanking it', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const { mockDb } = await driveOverExisting(EMPTY_BLOCK);
+
+      // Serving the last good extraction beats serving nothing.
+      expect(mockDb.civicsBlock.upsert).not.toHaveBeenCalled();
+      expect(mockDb.civicsBlock.delete).not.toHaveBeenCalled();
+    });
+
+    it('warns, naming the provenance drift', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      await driveOverExisting(EMPTY_BLOCK);
+
+      const perPage = warn.mock.calls.find((c) =>
+        JSON.stringify(c).includes('extracted EMPTY over an existing'),
+      );
+      expect(perPage).toBeDefined();
+      const meta = perPage![0] as Record<string, unknown>;
+      expect(meta.storedPromptVersion).toBe('v5');
+      expect(meta.livePromptVersion).toBe('v6');
+      expect(meta.promptVersionDrifted).toBe(true);
+    });
+
+    /**
+     * The per-page warning is easy to lose in a long sync, and the aggregate is
+     * the thing worth noticing — the job still reports success either way.
+     */
+    it('warns once per run with the stale count against what was written', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      await driveOverExisting(EMPTY_BLOCK);
+
+      const summary = warn.mock.calls.find((c) =>
+        JSON.stringify(c).includes('existing block(s) that extracted empty'),
+      );
+      expect(summary).toBeDefined();
+      expect((summary![0] as Record<string, unknown>).stale).toBe(1);
+      expect((summary![0] as Record<string, unknown>).written).toBe(0);
+    });
+
+    it('does not count the page as processed, created or updated', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const { result } = await driveOverExisting(EMPTY_BLOCK);
+
+      expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+    });
+
+    /**
+     * The benign case must stay quiet. Warning on every genuinely content-free
+     * page — dining services, records-request forms — would be noise, and noise
+     * is what let the real case hide.
+     */
+    it('stays at log level when there is no existing row', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      await drivePage(EMPTY_BLOCK);
+
+      expect(
+        warn.mock.calls.find((c) =>
+          JSON.stringify(c).includes('extracted EMPTY over an existing'),
+        ),
+      ).toBeUndefined();
+      expect(
+        warn.mock.calls.find((c) =>
+          JSON.stringify(c).includes('existing block(s) that extracted empty'),
+        ),
+      ).toBeUndefined();
+    });
+
+    /** A non-empty extraction over an existing row must still update it. */
+    it('still updates normally when the extraction has content', async () => {
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const { result, mockDb } = await driveOverExisting(
+        JSON.stringify({
+          chambers: [{ name: 'Assembly', abbreviation: 'A' }],
+          measureTypes: [],
+          lifecycleStages: [],
+          glossary: [],
+          sessionScheme: null,
+        }),
+      );
+
+      expect(mockDb.civicsBlock.upsert).toHaveBeenCalled();
+      expect(result).toEqual({ processed: 1, created: 0, updated: 1 });
+    });
+  });
+
   it('persists a block that has any list content (#874)', async () => {
     const { result, mockDb } = await drivePage(
       JSON.stringify({
