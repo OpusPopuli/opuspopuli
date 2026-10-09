@@ -152,11 +152,57 @@ export class GeocodingService {
 
       // Network failure, DNS, timeout, or malformed JSON. We never got an
       // answer, so we cannot say the address is wrong.
-      this.logger.warn(
-        `Geocoding failed for ${addressLine1}, ${city}, ${state}: ${(error as Error).message}`,
+      //
+      // City and state only, matching the two log lines above — this one was
+      // missed when they were fixed, and it interpolated `addressLine1`
+      // directly at `warn`, which production emits.
+      //
+      // The upstream message is scrubbed rather than trusted: we put the
+      // street into the request URL as a query parameter, and an error raised
+      // by `fetch` may carry that URL. Today undici keeps the URL in the
+      // `cause` rather than the top-level `message`, so this is defence
+      // against an implementation detail changing under us, not a known leak.
+      const safeMessage = this.scrubRequestValues(
+        (error as Error).message,
+        addressLine1,
+        postalCode,
       );
-      throw new GeocoderUnavailableError((error as Error).message);
+      this.logger.warn(
+        `Geocoding failed for an address in ${city}, ${state}: ${safeMessage}`,
+      );
+      // Scrubbed here too, because callers log this error's message: see
+      // profile.service, which reports it on both the create and edit paths.
+      // Sanitising at the one point that still holds the raw values makes
+      // every downstream consumer safe without each having to remember.
+      throw new GeocoderUnavailableError(safeMessage);
     }
+  }
+
+  /**
+   * Remove the values we sent from a message we did not write.
+   *
+   * Deterministic, and that is the point. A regex for street addresses — the
+   * one in `@opuspopuli/common` included — is necessarily approximate: it
+   * requires a recognised street-type word, so `123 Broadway` slips past it.
+   * Here we know the exact strings, so exact replacement is complete where
+   * pattern matching would not be.
+   *
+   * Also covers the URL-encoded forms, because a value that reaches us via a
+   * request URL arrives with `+` or `%20` where the spaces were.
+   */
+  private scrubRequestValues(message: string, ...values: string[]): string {
+    let out = message;
+    for (const value of values) {
+      if (!value) continue;
+      for (const form of new Set([
+        value,
+        encodeURIComponent(value),
+        value.replaceAll(' ', '+'),
+      ])) {
+        out = out.replaceAll(form, '[REDACTED]');
+      }
+    }
+    return out;
   }
 
   /**

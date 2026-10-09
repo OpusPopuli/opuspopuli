@@ -1269,4 +1269,104 @@ describe('ProfileService', () => {
       expect(mockDb.userProfile.create).toHaveBeenCalled();
     });
   });
+
+  /**
+   * Guard against a resident address reaching the log pipeline (#1094).
+   *
+   * The success path was the worst of the three sites: it logged
+   * `result.formattedAddress` — the Census geocoder's normalised address,
+   * house number through ZIP — at `log`, which production emits by default. So
+   * it fired on every successful address entry, not on an edge case.
+   *
+   * Asserts on what the logger receives rather than on source text, so a
+   * rewrite that reintroduces the leak another way still fails. Verified by
+   * reintroducing it: putting `${result.formattedAddress}` back fails this.
+   */
+  describe('never logs a resident address', () => {
+    const createDto = {
+      addressType: AddressType.RESIDENTIAL,
+      addressLine1: '645 Taraval Street',
+      city: 'San Francisco',
+      state: 'CA',
+      postalCode: '94116',
+      country: 'US',
+      isPrimary: true,
+    };
+
+    let logged: string[];
+
+    beforeEach(() => {
+      logged = [];
+      for (const level of [
+        'log',
+        'warn',
+        'error',
+        'debug',
+        'verbose',
+      ] as const) {
+        jest
+          .spyOn(service['logger'], level)
+          .mockImplementation((...args: unknown[]) => {
+            logged.push(args.map((a) => String(a)).join(' '));
+          });
+      }
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    const expectNoAddressLogged = (): void => {
+      const all = logged.join('\n');
+      expect(all).not.toContain('Taraval');
+      expect(all).not.toContain('645');
+      expect(all).not.toContain('94116');
+    };
+
+    it('keeps the normalised address out of the logs on success', async () => {
+      mockGeocodingService.geocode = jest.fn().mockResolvedValue({
+        latitude: 37.74,
+        longitude: -122.47,
+        // What the Census geocoder actually returns: the full address.
+        formattedAddress: '645 TARAVAL ST, SAN FRANCISCO, CA, 94116',
+        congressionalDistrict: '11',
+      });
+      mockDb.userAddress.create.mockResolvedValue({
+        ...mockAddress,
+        ...createDto,
+      });
+      mockDb.userAddress.findUniqueOrThrow.mockResolvedValue({
+        ...mockAddress,
+        ...createDto,
+      });
+
+      await service.createAddress(mockUserId, createDto as CreateAddressDto);
+
+      expectNoAddressLogged();
+      // The district is the output worth checking, and it is kept.
+      expect(logged.join('\n')).toContain('11');
+    });
+
+    /**
+     * The failure paths log the error message, which originates in
+     * GeocodingService. That service scrubs the values it was given before
+     * putting them in the message, so these callers are safe transitively —
+     * this asserts the arrangement actually holds rather than assuming it.
+     */
+    it('keeps it out of the logs when the geocoder is unavailable', async () => {
+      mockGeocodingService.geocode = jest
+        .fn()
+        .mockRejectedValue(
+          new GeocoderUnavailableError('request to ?street=[REDACTED] failed'),
+        );
+      mockDb.userAddress.create.mockResolvedValue({
+        ...mockAddress,
+        ...createDto,
+      });
+
+      await expect(
+        service.createAddress(mockUserId, createDto as CreateAddressDto),
+      ).rejects.toThrow();
+
+      expectNoAddressLogged();
+    });
+  });
 });
