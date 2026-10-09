@@ -55,3 +55,11 @@ tmp/
 # belongs in the hands of the person applying it rather than in git history.
 *.bundle.json
 bundle.json
+
+# Alertmanager runtime credentials, passed by file because Alertmanager does
+# not expand environment variables (#1343). Real values come from the Keychain
+# via op-compose on the node, or a developer-supplied file locally. The .example
+# files ARE tracked; the secrets themselves must never be.
+observability/secrets/*
+!observability/secrets/*.example
+!observability/secrets/README.md

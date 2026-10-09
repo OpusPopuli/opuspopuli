@@ -25,6 +25,25 @@ import { DbService } from '@opuspopuli/relationaldb-provider';
 import { MetricsModuleOptions } from './metrics.module';
 
 /**
+ * A GraphQL Name, per the spec: the only shape an operation name may take.
+ * Anything else is a client sending something that is not an operation name.
+ *
+ * The spec writes this as `[_A-Za-z][_0-9A-Za-z]*`; `\w` is exactly
+ * `[A-Za-z0-9_]` in JavaScript without the `u` flag, so this is the same
+ * pattern spelled the way the lint gate prefers.
+ */
+const GRAPHQL_NAME = /^[A-Za-z_]\w*$/;
+
+/**
+ * Ceiling on distinct `operation_name` label values (#1344).
+ *
+ * Set well above any plausible real operation count for this app — the frontend
+ * has on the order of tens of named operations — so normal traffic never
+ * reaches it and the cap is only ever hit by something anomalous.
+ */
+const MAX_OPERATION_NAMES = 200;
+
+/**
  * Service for managing Prometheus metrics
  *
  * ## Metric Types:
@@ -39,6 +58,13 @@ import { MetricsModuleOptions } from './metrics.module';
 @Injectable()
 export class MetricsService implements OnModuleInit, OnModuleDestroy {
   private poolMetricsInterval: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Operation names already admitted as label values, so the set of series this
+   * process can create is bounded by `MAX_OPERATION_NAMES` rather than by what
+   * callers send. Per-process and not shared: each service has its own ceiling.
+   */
+  private readonly seenOperationNames = new Set<string>();
 
   constructor(
     @Inject('METRICS_OPTIONS')
@@ -161,15 +187,19 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     durationSeconds: number,
     service: string,
   ): void {
-    const labels = {
+    const shared = {
       method,
-      route: this.normalizeRoute(route),
       status_code: String(statusCode),
       service,
     };
 
-    this.httpRequestDuration.observe(labels, durationSeconds);
-    this.httpRequestsTotal.inc(labels);
+    // The histogram deliberately carries no `route` — twelve series per
+    // combination versus the counter's one, for a label nothing queries (#1344).
+    this.httpRequestDuration.observe(shared, durationSeconds);
+    this.httpRequestsTotal.inc({
+      ...shared,
+      route: this.normalizeRoute(route),
+    });
   }
 
   /**
@@ -182,14 +212,54 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     service: string,
     status: 'success' | 'error',
   ): void {
-    const labels = {
-      operation_name: operationName || 'anonymous',
+    const shared = {
       operation_type: operationType,
       service,
     };
 
-    this.graphqlOperationsTotal.inc({ ...labels, status });
-    this.graphqlOperationDuration.observe(labels, durationSeconds);
+    // The histogram carries no `operation_name`: the name comes from the
+    // client, so it is unbounded by nature, and twelve series per distinct
+    // value is how a caller could evict a 512M Prometheus (#1344). The counter
+    // keeps it, bounded.
+    this.graphqlOperationDuration.observe(shared, durationSeconds);
+    this.graphqlOperationsTotal.inc({
+      ...shared,
+      operation_name: this.boundOperationName(operationName),
+      status,
+    });
+  }
+
+  /**
+   * Keep the client-supplied operation name usable as a metric label without
+   * letting a caller choose how many series exist.
+   *
+   * Two independent limits, because each lets through what the other stops:
+   *
+   * 1. **Shape.** A GraphQL operation name is a Name per the spec —
+   *    `/^[_A-Za-z][_0-9A-Za-z]*$/`. Anything else is a client sending
+   *    something that is not an operation name, and is recorded as `invalid`
+   *    rather than echoed into the label. This also keeps arbitrary caller text
+   *    out of `/metrics`, which anything that scrapes it would then store.
+   * 2. **Count.** Shape alone is no bound — `a1`, `a2`, `a3`... are all valid
+   *    Names. So distinct values are capped; past the cap everything is
+   *    `other`. The cap is above any plausible real operation count for this
+   *    app, so normal traffic never reaches it.
+   *
+   * Deliberately a plain `Set` and not an LRU: an LRU would let a caller churn
+   * the window and keep minting series as old ones fall out, which is the thing
+   * being prevented. Once full, this stops admitting new names until restart.
+   * The cost is that a genuinely new operation added after the cap is reached
+   * reports as `other` until the next deploy — acceptable, and visible, because
+   * `other` appearing at all is the signal that the cap was hit.
+   */
+  private boundOperationName(operationName: string): string {
+    if (!operationName) return 'anonymous';
+    if (!GRAPHQL_NAME.test(operationName)) return 'invalid';
+    if (this.seenOperationNames.has(operationName)) return operationName;
+    if (this.seenOperationNames.size >= MAX_OPERATION_NAMES) return 'other';
+
+    this.seenOperationNames.add(operationName);
+    return operationName;
   }
 
   /**

@@ -1,0 +1,99 @@
+# Alertmanager configuration
+#
+# Exists because 16 alert rules were evaluating and firing into nothing: there
+# was no `alerting:` block in prometheus.yml and no Alertmanager anywhere, so
+# `BackupMissing` most likely fired for the whole 44-day backup outage and
+# reached nobody. See #1343.
+#
+# ── Secrets ──────────────────────────────────────────────────────────────────
+#
+# NOTHING IN THIS FILE IS A SECRET, and it must stay that way — it is committed.
+# Alertmanager does not expand environment variables, so credentials are passed
+# by FILE and mounted in. Each `*_file` key below points at a path that exists
+# only at runtime:
+#
+#   observability/secrets/smtp_password      (gitignored, mode 600)
+#   observability/secrets/webhook_url        (gitignored, mode 600)
+#
+# On the node those come from the Keychain via `op-compose`, consistent with
+# every other runtime secret (see reference_node_secrets_keychain). Locally they
+# are developer-supplied files. If a file is absent Alertmanager fails to start,
+# which is the correct outcome: a silently unroutable alerting stack is the bug
+# being fixed, so failing loudly is the point.
+
+global:
+  resolve_timeout: 5m
+  smtp_from: 'alerts@opuspopuli.org'
+  # send.opuspopuli.org is the Resend subdomain already used for magic links;
+  # root SPF belongs to Proton. See reference_email_auth_dns.
+  smtp_smarthost: 'smtp.resend.com:587'
+  smtp_auth_username: 'resend'
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+  smtp_require_tls: true
+
+route:
+  receiver: 'default-email'
+  # Group by alertname and service so one broken service does not arrive as
+  # fifty separate notifications.
+  group_by: ['alertname', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  # 4h, not the 1h default: these alerts go to one person, and an unresolved
+  # critical re-notifying hourly overnight trains you to mute the channel. The
+  # thing that must never be muted is the watchdog below.
+  repeat_interval: 4h
+
+  routes:
+    # The watchdog is always firing by design. It is NOT an incident — it is the
+    # heartbeat that proves this whole pipeline works. It must leave the
+    # building, because its value is entirely in its ABSENCE being noticed: a
+    # dead-man's-switch endpoint alerts when these stop arriving.
+    #
+    # This is the one route that would have caught the 44-day outage, because it
+    # fails in the direction that gets noticed.
+    - receiver: 'deadmanssnitch'
+      matchers:
+        - alertname = "AlertingPipelineAlive"
+      group_wait: 0s
+      group_interval: 5m
+      repeat_interval: 5m
+      continue: false
+
+    # Critical goes to email AND the push webhook. Warnings go to email only —
+    # a warning that wakes you is a warning you will learn to ignore.
+    - receiver: 'critical-push'
+      matchers:
+        - severity = "critical"
+      continue: false
+
+receivers:
+  - name: 'default-email'
+    email_configs:
+      - to: 'alerts@opuspopuli.org'
+        send_resolved: true
+
+  - name: 'critical-push'
+    email_configs:
+      - to: 'alerts@opuspopuli.org'
+        send_resolved: true
+    webhook_configs:
+      # URL supplied by file so no endpoint or token is committed. Point this at
+      # whatever reaches a phone — ntfy, Pushover, a Shortcuts webhook.
+      - url_file: /etc/alertmanager/secrets/webhook_url
+        send_resolved: true
+        max_alerts: 10
+
+  # Receives only the heartbeat. A dead-man's-switch service alerts when pings
+  # STOP, which is the only way to detect that Prometheus, Alertmanager, the
+  # node, its power or its network has gone away.
+  - name: 'deadmanssnitch'
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/deadmanssnitch_url
+        send_resolved: false
+
+inhibit_rules:
+  # A service being down explains its own error rate and latency; suppress the
+  # consequences so the page says what is actually wrong.
+  - source_matchers: [alertname = "ServiceDown"]
+    target_matchers: [severity = "warning"]
+    equal: ['service']

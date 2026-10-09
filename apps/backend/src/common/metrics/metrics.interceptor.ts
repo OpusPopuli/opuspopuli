@@ -79,18 +79,26 @@ export class MetricsInterceptor implements NestInterceptor {
   }
 
   /**
-   * Get the route pattern (using Express route if available)
+   * Get the route **pattern**, or a fixed placeholder — never the raw URL.
+   *
+   * The pattern (`/users/:id`) is bounded by the routes the app registers. The
+   * raw path is bounded by nothing, because it is chosen by the caller, so the
+   * previous fallback put caller-controlled text into a metric label (#1344).
+   *
+   * In practice little reached that fallback: the interceptor is bound globally
+   * via `APP_INTERCEPTOR` and the app registers no wildcard routes, so NestJS
+   * answers an unmatched path with a 404 without running interceptors. That
+   * makes this hardening rather than an incident — but "no handler matched" is
+   * all the fallback can honestly report, and reporting it as a distinct value
+   * is more useful than a thousand one-off paths anyway: `unmatched` rising is
+   * a signal, whereas the raw paths were noise that also cost memory.
    */
   private getRoute(request: {
     route?: { path?: string };
     path?: string;
     url?: string;
   }): string {
-    // Prefer route pattern if available (e.g., /users/:id instead of /users/123)
-    if (request.route?.path) {
-      return request.route.path;
-    }
-    return request.path || request.url || 'unknown';
+    return request.route?.path ?? 'unmatched';
   }
 
   /**
