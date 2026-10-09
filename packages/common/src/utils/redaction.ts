@@ -69,8 +69,20 @@ const PHONE = /\b\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/g;
  * so must the Sacramento office addresses that appear as part of the filing
  * apparatus rather than as anyone's home.
  */
-const STREET =
+/**
+ * Exported because the backend's log and audit masking needs the same pattern
+ * and had no address rule at all — which is how a resident street address
+ * reached the logs at `warn` (#1094). A second copy would drift, and per the
+ * note at the top of this file, the copy that drifts is the one guarding
+ * production.
+ *
+ * Use with `replace`/`replaceAll` only. The `g` flag makes this instance
+ * stateful under `test`/`exec`, and it is shared across modules.
+ */
+export const STREET_ADDRESS =
   /\b\d{2,6}\s+(?:[A-Z][A-Za-z.'-]+\s+){1,4}(?:ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|RD|ROAD|DR|DRIVE|LN|LANE|WAY|CT|COURT|PL|PLACE|TERRACE|PKWY|PARKWAY)\b\.?(?:\s+(?:SUITE|STE|#|APT|UNIT)\s*[\w-]+)?/gi;
+
+const STREET = STREET_ADDRESS;
 
 export function redactContactDetails(text: string): RedactionResult {
   const hits: RedactionHit[] = [];

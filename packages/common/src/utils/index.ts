@@ -14,7 +14,11 @@ export {
   stripCodeFences,
 } from "./json-salvage.js";
 export type { JsonRepairClass, RepairedJson } from "./json-salvage.js";
-export { redactContactDetails, findContactDetails } from "./redaction.js";
+export {
+  redactContactDetails,
+  findContactDetails,
+  STREET_ADDRESS,
+} from "./redaction.js";
 export type { RedactionHit, RedactionResult } from "./redaction.js";
 export { locateQuote, normaliseForLocate } from "./quote-locator.js";
 export type { LocatedQuote } from "./quote-locator.js";

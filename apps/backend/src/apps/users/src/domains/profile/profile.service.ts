@@ -473,8 +473,18 @@ export class ProfileService {
       result.longitude,
     );
 
+    // No `formattedAddress`. That field is the Census geocoder's normalised
+    // address — house number, street, city, state, ZIP — and this line runs at
+    // `log`, which production emits by default. It therefore wrote a
+    // resident's full address to the log pipeline on every SUCCESSFUL address
+    // entry, not on an edge case.
+    //
+    // `addressId` identifies the row for anyone debugging, and the district is
+    // the output actually worth checking. Neither is directly identifying, and
+    // the address is still in the database for anyone who legitimately needs
+    // it (#1094).
     this.logger.log(
-      `Geocoded address ${addressId}: ${result.formattedAddress} → ${result.congressionalDistrict}`,
+      `Geocoded address ${addressId} → ${result.congressionalDistrict}`,
     );
 
     // Auto-set timezone on user profile from primary address

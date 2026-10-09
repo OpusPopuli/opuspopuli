@@ -248,4 +248,141 @@ describe('GeocodingService', () => {
       jest.restoreAllMocks();
     });
   });
+
+  /**
+   * Guard against a resident street address reaching the log pipeline.
+   *
+   * The #1094 audit fixed two of the three log lines in this file and missed
+   * the catch block, which interpolated `addressLine1` at `warn` — a level
+   * production emits. These tests drive the real code paths with a
+   * recognisable address and assert it does not appear in anything logged,
+   * rather than asserting on the source text, so a future rewrite that
+   * reintroduces the leak by another route still fails.
+   *
+   * Verified by reintroducing each leak: restoring `${addressLine1}` to the
+   * warn, or passing the raw upstream message to GeocoderUnavailableError,
+   * fails these.
+   */
+  describe('never logs the street address', () => {
+    const ADDRESS = '645 Taraval Street';
+    const ZIP = '94116';
+
+    let logged: string[];
+
+    beforeEach(() => {
+      logged = [];
+      for (const level of [
+        'log',
+        'warn',
+        'error',
+        'debug',
+        'verbose',
+      ] as const) {
+        jest
+          .spyOn(service['logger'], level)
+          .mockImplementation((...args: unknown[]) => {
+            logged.push(args.map((a) => String(a)).join(' '));
+          });
+      }
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    const expectNoAddressLogged = (): void => {
+      const all = logged.join('\n');
+      expect(all).not.toContain(ADDRESS);
+      expect(all).not.toContain('Taraval');
+      expect(all).not.toContain(ZIP);
+    };
+
+    it('keeps it out of the logs when the geocoder returns non-OK', async () => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue({ ok: false, status: 503 } as Response);
+
+      await expect(
+        service.geocode(ADDRESS, 'San Francisco', 'CA', ZIP),
+      ).rejects.toThrow(GeocoderUnavailableError);
+
+      expectNoAddressLogged();
+      // Locality is kept: it distinguishes a systemic outage from one bad
+      // address, and a city is not directly identifying.
+      expect(logged.join('\n')).toContain('San Francisco');
+    });
+
+    it('keeps it out of the logs when the geocoder finds no match', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ result: { addressMatches: [] } }),
+      } as Response);
+
+      await expect(
+        service.geocode(ADDRESS, 'San Francisco', 'CA', ZIP),
+      ).resolves.toBeNull();
+
+      expectNoAddressLogged();
+    });
+
+    it('keeps it out of the logs when the request itself fails', async () => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockRejectedValue(new Error('getaddrinfo ENOTFOUND'));
+
+      await expect(
+        service.geocode(ADDRESS, 'San Francisco', 'CA', ZIP),
+      ).rejects.toThrow(GeocoderUnavailableError);
+
+      expectNoAddressLogged();
+    });
+
+    /**
+     * We put the street into the request URL as a query parameter, so an error
+     * raised by the HTTP layer can carry it back to us inside a message we did
+     * not write. Exact-value scrubbing covers the encoded forms too, which a
+     * street-address regex would miss entirely: `645+Taraval+Street` has no
+     * spaces for a pattern to anchor on.
+     */
+    it('scrubs the address out of an upstream message that echoes the URL', async () => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockRejectedValue(
+          new Error(
+            'request to https://geocoding.geo.census.gov/x?street=645+Taraval+Street&zip=94116 failed',
+          ),
+        );
+
+      await expect(
+        service.geocode(ADDRESS, 'San Francisco', 'CA', ZIP),
+      ).rejects.toThrow(GeocoderUnavailableError);
+
+      expectNoAddressLogged();
+    });
+
+    /**
+     * Callers log this error's message — profile.service does, on both the
+     * create and the edit path. Scrubbing at the one place that still holds
+     * the raw values is what makes those callers safe without each of them
+     * having to remember.
+     */
+    it('scrubs the address out of the error it throws, not just its own logs', async () => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockRejectedValue(
+          new Error(
+            'connect ECONNREFUSED while fetching ?street=645+Taraval+Street',
+          ),
+        );
+
+      let caught: Error | undefined;
+      try {
+        await service.geocode(ADDRESS, 'San Francisco', 'CA', ZIP);
+      } catch (e) {
+        caught = e as Error;
+      }
+
+      expect(caught).toBeInstanceOf(GeocoderUnavailableError);
+      expect(caught?.message).not.toContain('Taraval');
+      expect(caught?.message).toContain('[REDACTED]');
+    });
+  });
 });
