@@ -151,10 +151,11 @@ describe('MetricsService', () => {
     it('should record HTTP request duration and count', () => {
       service.recordHttpRequest('GET', '/users', 200, 0.123, 'users-service');
 
+      // No `route` on the histogram — twelve series per combination for a
+      // label nothing queries (#1344). The counter below still carries it.
       expect(mockHttpRequestDuration.observe).toHaveBeenCalledWith(
         {
           method: 'GET',
-          route: '/users',
           status_code: '200',
           service: 'users-service',
         },
@@ -177,18 +178,16 @@ describe('MetricsService', () => {
         'test',
       );
 
-      expect(mockHttpRequestDuration.observe).toHaveBeenCalledWith(
+      expect(mockHttpRequestsTotal.inc).toHaveBeenCalledWith(
         expect.objectContaining({ route: '/users/:id' }),
-        0.1,
       );
     });
 
     it('should normalize routes with numeric IDs', () => {
       service.recordHttpRequest('GET', '/users/123', 200, 0.1, 'test');
 
-      expect(mockHttpRequestDuration.observe).toHaveBeenCalledWith(
+      expect(mockHttpRequestsTotal.inc).toHaveBeenCalledWith(
         expect.objectContaining({ route: '/users/:id' }),
-        0.1,
       );
     });
 
@@ -201,9 +200,8 @@ describe('MetricsService', () => {
         'test',
       );
 
-      expect(mockHttpRequestDuration.observe).toHaveBeenCalledWith(
+      expect(mockHttpRequestsTotal.inc).toHaveBeenCalledWith(
         expect.objectContaining({ route: '/users' }),
-        0.1,
       );
     });
   });
@@ -224,9 +222,11 @@ describe('MetricsService', () => {
         service: 'api-gateway',
         status: 'success',
       });
+      // No `operation_name` on the histogram: the client picks that string, so
+      // it is unbounded by nature and costs twelve series per value (#1344).
+      // The counter above keeps it, bounded by `boundOperationName`.
       expect(mockGraphqlOperationDuration.observe).toHaveBeenCalledWith(
         {
-          operation_name: 'GetUser',
           operation_type: 'query',
           service: 'api-gateway',
         },
@@ -691,6 +691,95 @@ describe('MetricsService', () => {
         expect.anything(),
         7,
       );
+    });
+  });
+
+  /**
+   * #1344. GraphQL operation names come from the client, so this label is
+   * reachable from untrusted input. Prometheus runs under a 512M container
+   * limit and an OOM-killed Prometheus delivers no alerts (#1343), so the bound
+   * is about keeping monitoring available, not about disk.
+   */
+  describe('operation_name bounding', () => {
+    const recordOperation = (name: string): void =>
+      service.recordGraphQLOperation(
+        name,
+        'query',
+        0.01,
+        'api-gateway',
+        'success',
+      );
+
+    const lastRecordedName = (): unknown => {
+      const calls = mockGraphqlOperationsTotal.inc.mock.calls;
+      return (calls[calls.length - 1][0] as Record<string, unknown>)
+        .operation_name;
+    };
+
+    it('passes through a well-formed operation name', () => {
+      recordOperation('GetUser');
+      expect(lastRecordedName()).toBe('GetUser');
+    });
+
+    it('labels an empty name anonymous, as before', () => {
+      recordOperation('');
+      expect(lastRecordedName()).toBe('anonymous');
+    });
+
+    /**
+     * A GraphQL Name is `/^[_A-Za-z][_0-9A-Za-z]*$/`. Anything else is not an
+     * operation name, and echoing it would put caller-chosen text into
+     * /metrics for anything scraping it to store.
+     */
+    it.each([
+      ['a dotted path', 'some.nested.thing'],
+      ['a URL', 'https://evil.example/x'],
+      ['whitespace', 'Get User'],
+      ['a leading digit', '1Query'],
+      ['quotes and braces', 'Get{User}"x"'],
+      ['a newline injection attempt', 'Get\nUser'],
+    ])('records %s as invalid rather than echoing it', (_label, name) => {
+      recordOperation(name);
+      expect(lastRecordedName()).toBe('invalid');
+    });
+
+    /**
+     * Shape alone is no bound: `a1`, `a2`, `a3`... are all valid Names. The
+     * count cap is what actually stops a caller choosing how many series exist.
+     */
+    it('stops admitting new names once the cap is reached', () => {
+      for (let i = 0; i < 200; i++) recordOperation(`Op${i}`);
+      expect(lastRecordedName()).toBe('Op199');
+
+      recordOperation('OneTooMany');
+      expect(lastRecordedName()).toBe('other');
+    });
+
+    it('still reports names admitted before the cap was reached', () => {
+      for (let i = 0; i < 250; i++) recordOperation(`Op${i}`);
+
+      recordOperation('Op0');
+      expect(lastRecordedName()).toBe('Op0');
+    });
+
+    /**
+     * Deliberately a Set, not an LRU. An LRU would let a caller churn the
+     * window and keep minting series as old entries fall out — which is the
+     * thing being prevented, so "full stays full" is the intended behaviour.
+     */
+    it('does not free capacity as new names keep arriving', () => {
+      for (let i = 0; i < 200; i++) recordOperation(`Op${i}`);
+      for (let i = 0; i < 50; i++) recordOperation(`Flood${i}`);
+
+      recordOperation('StillNew');
+      expect(lastRecordedName()).toBe('other');
+    });
+
+    it('counts distinct names, not calls', () => {
+      for (let i = 0; i < 500; i++) recordOperation('GetUser');
+
+      recordOperation('GetOtherThing');
+      expect(lastRecordedName()).toBe('GetOtherThing');
     });
   });
 });

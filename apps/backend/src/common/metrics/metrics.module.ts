@@ -87,10 +87,21 @@ export class MetricsModule {
         help: 'Total number of HTTP requests',
         labelNames: ['method', 'route', 'status_code', 'service'],
       }),
+      /**
+       * No `route` label here, deliberately — see #1344.
+       *
+       * A histogram emits one series per bucket plus `_sum`, `_count` and
+       * `+Inf`: twelve series for every label combination, where the counter
+       * above costs one. `route` is the highest-cardinality dimension of the
+       * four and is queried by **zero** dashboards and **zero** alert rules,
+       * while `http_requests_total` keeps it for the per-route breakdowns that
+       * are actually used. So dropping it here costs no signal and removes the
+       * multiplier.
+       */
       makeHistogramProvider({
         name: 'http_request_duration_seconds',
-        help: 'Duration of HTTP requests in seconds',
-        labelNames: ['method', 'route', 'status_code', 'service'],
+        help: 'Duration of HTTP requests in seconds (no route label — see #1344)',
+        labelNames: ['method', 'status_code', 'service'],
         // Tighter buckets for API work: 5ms to 2.5s with more granularity in 10-100ms range
         buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
       }),
@@ -99,10 +110,24 @@ export class MetricsModule {
         help: 'Total number of GraphQL operations',
         labelNames: ['operation_name', 'operation_type', 'service', 'status'],
       }),
+      /**
+       * No `operation_name` label here either, and this one matters more than
+       * the HTTP case (#1344).
+       *
+       * GraphQL operation names are chosen by the **client**, so this label is
+       * reachable from untrusted input: a caller sending arbitrary names adds
+       * twelve series each. Prometheus runs under a 512M container limit, and an
+       * OOM-killed Prometheus stops delivering alerts (#1343) — so unbounded
+       * labels are a monitoring-availability problem, not just a storage one.
+       *
+       * The name is still recorded on `graphql_operations_total`, now bounded by
+       * `MetricsService.boundOperationName`, which is where the useful
+       * per-operation counts live. Nothing queries the name on this histogram.
+       */
       makeHistogramProvider({
         name: 'graphql_operation_duration_seconds',
-        help: 'Duration of GraphQL operations in seconds',
-        labelNames: ['operation_name', 'operation_type', 'service'],
+        help: 'Duration of GraphQL operations in seconds (no operation_name label — see #1344)',
+        labelNames: ['operation_type', 'service'],
         // Tighter buckets for GraphQL: same as HTTP for consistency
         buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
       }),

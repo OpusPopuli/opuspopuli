@@ -49,7 +49,10 @@ describe('MetricsInterceptor', () => {
 
   describe('intercept', () => {
     it('should record metrics for successful HTTP request', (done) => {
-      const context = createMockContext('http', { path: '/users' });
+      const context = createMockContext('http', {
+        path: '/users',
+        route: { path: '/users' },
+      });
       const handler = createMockCallHandler({ data: 'test' });
 
       interceptor.intercept(context, handler).subscribe({
@@ -67,7 +70,10 @@ describe('MetricsInterceptor', () => {
     });
 
     it('should record metrics for error response', (done) => {
-      const context = createMockContext('http', { path: '/users' });
+      const context = createMockContext('http', {
+        path: '/users',
+        route: { path: '/users' },
+      });
       const error = { status: 404, message: 'Not found' };
       const handler = createMockCallHandler(error, true);
 
@@ -86,7 +92,10 @@ describe('MetricsInterceptor', () => {
     });
 
     it('should use 500 for errors without status code', (done) => {
-      const context = createMockContext('http', { path: '/users' });
+      const context = createMockContext('http', {
+        path: '/users',
+        route: { path: '/users' },
+      });
       const error = new Error('Internal error');
       const handler = createMockCallHandler(error, true);
 
@@ -161,10 +170,18 @@ describe('MetricsInterceptor', () => {
       });
     });
 
-    it('should fall back to url when path is not available', (done) => {
+    /**
+     * Replaces a test that asserted the raw URL was used as the route label.
+     * That was the defect (#1344): the path is chosen by the caller, so it is
+     * bounded by nothing, and every distinct value cost twelve histogram series.
+     * `unmatched` is the only thing this case can honestly report, and it is
+     * also more useful — a rising `unmatched` is a signal, where a thousand
+     * one-off paths were noise that cost memory.
+     */
+    it('reports unmatched rather than echoing a caller-supplied path', (done) => {
       const context = createMockContext('http', {
-        path: undefined,
-        url: '/api/test',
+        path: '/api/wherever-the-caller-likes',
+        url: '/api/wherever-the-caller-likes',
       });
       const handler = createMockCallHandler();
 
@@ -172,11 +189,14 @@ describe('MetricsInterceptor', () => {
         complete: () => {
           expect(mockMetricsService.recordHttpRequest).toHaveBeenCalledWith(
             'GET',
-            '/api/test',
+            'unmatched',
             200,
             expect.any(Number),
             'test-service',
           );
+          const [, route] =
+            mockMetricsService.recordHttpRequest.mock.calls[0] ?? [];
+          expect(route).not.toContain('wherever-the-caller-likes');
           done();
         },
       });
