@@ -33,7 +33,7 @@
  */
 
 /** The `CivicText` shape, structurally — avoids importing the GraphQL model. */
-interface MergeableText {
+export interface MergeableText {
   verbatim: string;
   plainLanguage: string;
   sourceUrl: string;
@@ -282,4 +282,257 @@ function registerAliases(
   index: number,
 ): void {
   for (const alias of aliases) groupByAlias.set(alias, index);
+}
+
+// ── Lifecycle stages ────────────────────────────────────────────────────────
+//
+// Measure types merged cleanly because `name` was stable and only `code`
+// varied, so there was a reliable key. Stages have no such luck: the id varies
+// across pages AND so does the name, so there are two defects, and they need
+// different treatment.
+//
+// Measured on the California region, 2026-10-10, 11 pages, 38 distinct ids:
+//
+//   NAMES          14 of 38 ids carry more than one name, and the one served
+//                  is whichever page was extracted last. `governor-action`
+//                  appears on 6 pages under four names — "Governor Action",
+//                  "Governor's Action", "Governor's action" and "Approved by
+//                  the Governor" — three of which differ only in apostrophe
+//                  and case. So the API's answer changes between syncs with no
+//                  code change at all.
+//
+//   IDS            variants of one stage arrive under different ids:
+//                  `chaptered`/`chaptering`, `introduced`/`introduction`,
+//                  `qualified-for-ballot`/`qualified-for-the-ballot`.
+//
+// This block fixes the first exactly and the second conservatively. See
+// `normaliseStageKey` for what is deliberately left alone.
+
+/** The subset of a lifecycle stage this module reasons about. */
+export interface MergeableStage {
+  id: string;
+  name: MergeableText;
+  shortDescription: MergeableText;
+  longDescription?: MergeableText;
+  statusStringPatterns: string[];
+}
+
+export interface StageMergeResult<T> {
+  /** One entry per distinct stage, in order of first appearance. */
+  stages: T[];
+  /**
+   * `oldId -> survivingId` for every id that was folded into another.
+   *
+   * The caller MUST apply this to `measureTypes.lifecycleStageIds`. Those
+   * fields reference stage ids, so collapsing an id without rewriting the
+   * references leaves measure types pointing at stages that no longer exist —
+   * which is a worse failure than the duplication being fixed.
+   */
+  aliases: Map<string, string>;
+  /** Stage keys whose copies disagreed on a name, with the names seen. */
+  nameConflicts: { stage: string; names: string[] }[];
+}
+
+/**
+ * Pick the name a stage should be served under.
+ *
+ * Most frequent wins, ties broken by the first occurrence, so the result is a
+ * function of the data rather than of which page was scraped last. Frequency
+ * rather than length, deliberately: it reflects what the sources actually call
+ * the stage, where "longest" would promote whichever page elaborated most.
+ * `governor-action` becomes "Governor Action" (2 pages) rather than "Approved
+ * by the Governor" (1).
+ *
+ * The whole `CivicText` moves together, never field-by-field — `sourceUrl` is
+ * the attestation for the text beside it, so splicing them would attribute a
+ * quote to a page that does not contain it. Same rule as `richerText`.
+ */
+function mostFrequentText(values: readonly MergeableText[]): MergeableText {
+  const counts = new Map<string, { text: MergeableText; n: number }>();
+  for (const value of values) {
+    const key = value.verbatim.trim().toLowerCase();
+    const seen = counts.get(key);
+    if (seen) seen.n++;
+    else counts.set(key, { text: value, n: 1 });
+  }
+  let best: { text: MergeableText; n: number } | undefined;
+  for (const entry of counts.values()) {
+    if (!best || entry.n > best.n) best = entry;
+  }
+  return best!.text;
+}
+
+/**
+ * Words that carry no identity, so a stage id differing only by one of them is
+ * the same stage: `qualified-for-the-ballot` and `qualified-for-ballot`.
+ */
+const STAGE_STOPWORDS = new Set([
+  'the',
+  'of',
+  'a',
+  'an',
+  'for',
+  'by',
+  'or',
+  'to',
+  'in',
+  'at',
+  'and',
+  'on',
+  'with',
+]);
+
+const MONTH =
+  /^(january|february|march|april|may|june|july|august|september|october|november|december)$/;
+
+/**
+ * Strip the suffixes that distinguish a stage's tense or part of speech but not
+ * its identity: `chaptered`/`chaptering`, `introduced`/`introduction`.
+ *
+ * Deliberately a short, explicit list rather than a real stemmer. A proper
+ * Porter implementation would also fold `ballot-qualification` into
+ * `qualified-for-ballot` — correctly, as it happens — but aggressive stemming
+ * is exactly how a matcher like this starts merging stages that are genuinely
+ * distinct, and there is no test that would catch that on a region whose data
+ * nobody has looked at yet.
+ */
+function stemStageWord(word: string): string {
+  return word.replace(/(ation|ication|ment|tion|sion|ing|ed|es|s)$/, '');
+}
+
+/**
+ * The key a stage id is grouped under.
+ *
+ * Case, punctuation, word order, stopwords and tense are all dropped; a
+ * four-digit year or a month name is dropped as well, because a date makes an
+ * id describe an INSTANCE rather than an identity — California emitted
+ * `eligible-for-november-2028-general-election`, which is dead weight the
+ * moment that election passes and which fragments the `eligible` stage
+ * meanwhile.
+ *
+ * **Conservative on purpose.** Verified against all 38 ids California produced,
+ * this groups exactly three pairs and touches nothing else:
+ *
+ *   qualified-for-ballot + qualified-for-the-ballot
+ *   chaptered            + chaptering
+ *   introduced           + introduction
+ *
+ * What it deliberately does NOT group, because distinguishing a variant from a
+ * real sub-stage needs domain knowledge this module does not have:
+ *
+ *   random-sample-count vs random-sample-verification   different last word
+ *   ballot-qualification vs qualified-for-ballot        needs real stemming
+ *   second-house vs second-house-fiscal vs -policy      plausibly real stages
+ *   pending-signature-verification vs full-check-...    plausibly real steps
+ *   withdrawn-by-proponents vs withdrawn-or-failed-...  overlapping, not equal
+ *
+ * Those belong in a canonical stage list in the region config, authored by
+ * someone who knows the legislature — which is where "region launch = JSON
+ * only" puts region-specific knowledge, and not here in platform code.
+ */
+export function normaliseStageKey(id: string): string {
+  const tokens = id
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .filter((w) => !STAGE_STOPWORDS.has(w))
+    .filter((w) => !/^\d{4}$/.test(w))
+    .filter((w) => !MONTH.test(w))
+    .map(stemStageWord)
+    .filter(Boolean);
+  // Deduplicated and sorted, so word order cannot split one stage in two.
+  return [...new Set(tokens)].sort().join('-');
+}
+
+/**
+ * Collapse lifecycle stages across pages into one entry each.
+ *
+ * Two things happen here, and the order matters: ids are grouped by
+ * `normaliseStageKey`, then within each group the surviving id is the one the
+ * most pages used — ties broken alphabetically, so the outcome does not depend
+ * on scrape order. The name is then chosen by frequency, independently of which
+ * page won the id.
+ */
+export function mergeLifecycleStages<T extends MergeableStage>(
+  candidates: readonly T[],
+): StageMergeResult<T> {
+  const groups = new Map<string, T[]>();
+  const order: string[] = [];
+  for (const stage of candidates) {
+    const key = normaliseStageKey(stage.id) || stage.id.toLowerCase();
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)!.push(stage);
+  }
+
+  const stages: T[] = [];
+  const aliases = new Map<string, string>();
+  const nameConflicts: { stage: string; names: string[] }[] = [];
+
+  for (const key of order) {
+    const group = groups.get(key)!;
+
+    // Surviving id: most-used, then alphabetical. Alphabetical matters more
+    // than it looks — `introduced` and `introduction` appeared on three pages
+    // each, so without a stable tie-break the served id would flip per sync.
+    const idCounts = new Map<string, number>();
+    for (const s of group) idCounts.set(s.id, (idCounts.get(s.id) ?? 0) + 1);
+    const survivingId = [...idCounts.entries()].sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )[0][0];
+
+    for (const id of idCounts.keys()) {
+      if (id !== survivingId) aliases.set(id, survivingId);
+    }
+
+    const names = group.map((s) => s.name);
+    const distinctNames = [...new Set(names.map((n) => n.verbatim.trim()))];
+    if (distinctNames.length > 1) {
+      nameConflicts.push({ stage: survivingId, names: distinctNames });
+    }
+
+    stages.push({
+      ...group[0],
+      id: survivingId,
+      name: mostFrequentText(names),
+      shortDescription: group
+        .map((s) => s.shortDescription)
+        .reduce((a, b) => richerText(a, b)),
+      longDescription: group
+        .map((s) => s.longDescription)
+        .filter((d): d is MergeableText => !!d)
+        .reduce<MergeableText | undefined>(
+          (a, b) => (a ? richerText(a, b) : b),
+          undefined,
+        ),
+      statusStringPatterns: Array.from(
+        new Set(group.flatMap((s) => s.statusStringPatterns)),
+      ),
+    });
+  }
+
+  return { stages, aliases, nameConflicts };
+}
+
+/**
+ * Rewrite `lifecycleStageIds` onto the ids that survived the stage merge.
+ *
+ * Not optional. Measure types reference stage ids, so collapsing an id without
+ * applying the aliases leaves those references pointing at stages that are no
+ * longer served — a dangling link, which is a worse defect than the duplicate
+ * stage it replaced.
+ */
+export function remapStageIds<T extends MergeableMeasureType>(
+  types: readonly T[],
+  aliases: Map<string, string>,
+): T[] {
+  if (aliases.size === 0) return [...types];
+  return types.map((type) => ({
+    ...type,
+    lifecycleStageIds: Array.from(
+      new Set(type.lifecycleStageIds.map((id) => aliases.get(id) ?? id)),
+    ),
+  }));
 }

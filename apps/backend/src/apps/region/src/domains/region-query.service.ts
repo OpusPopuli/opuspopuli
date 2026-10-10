@@ -17,7 +17,11 @@ import {
   type PaginatedLegislativeCommittees as PaginatedLegislativeCommitteesShape,
 } from './legislative-committee.service';
 import { CivicsBlockModel } from './models/region-info.model';
-import { mergeMeasureTypes } from './civics-identity';
+import {
+  mergeLifecycleStages,
+  mergeMeasureTypes,
+  remapStageIds,
+} from './civics-identity';
 import {
   PaginatedPropositions,
   PropositionModel,
@@ -347,10 +351,9 @@ export class RegionQueryService {
     // A list, not a Map: measure types are de-duplicated in one pass below,
     // because their identity resolves on name OR code rather than a single key.
     const measureTypeCandidates: CivicsBlockModel['measureTypes'] = [];
-    const lifecycleStages = new Map<
-      string,
-      CivicsBlockModel['lifecycleStages'][number]
-    >();
+    // A list, not a Map: stage identity resolves on a normalised form of the
+    // id, so grouping needs every candidate in hand (#1341).
+    const lifecycleStageCandidates: CivicsBlockModel['lifecycleStages'] = [];
     const glossary = new Map<string, CivicsBlockModel['glossary'][number]>();
     let sessionScheme: CivicsBlockModel['sessionScheme'] | null = null;
 
@@ -366,8 +369,8 @@ export class RegionQueryService {
         row.measureTypes as Record<string, unknown>[] | null,
         src,
       );
-      this.mergeLifecycleStages(
-        lifecycleStages,
+      this.collectLifecycleStages(
+        lifecycleStageCandidates,
         row.lifecycleStages as Record<string, unknown>[] | null,
         src,
       );
@@ -384,9 +387,29 @@ export class RegionQueryService {
       }
     }
 
-    const { types: measureTypes, conflicts } = mergeMeasureTypes(
+    const { types: mergedTypes, conflicts } = mergeMeasureTypes(
       measureTypeCandidates,
     );
+    const {
+      stages: lifecycleStages,
+      aliases,
+      nameConflicts,
+    } = mergeLifecycleStages(lifecycleStageCandidates);
+
+    // Applied AFTER both merges: measure types reference stage ids, so an id
+    // that was folded into another has to be rewritten here or the reference
+    // dangles (#1341).
+    const measureTypes = remapStageIds(mergedTypes, aliases);
+
+    for (const nc of nameConflicts) {
+      this.logger.warn(
+        { regionId, stage: nc.stage, names: nc.names },
+        `Civics merge: lifecycle stage ${nc.stage} arrived under ` +
+          `${nc.names.length} different names (${nc.names.join(' / ')}). ` +
+          `Serving the most frequent. Previously this was whichever page was ` +
+          `extracted last, so the answer changed between syncs.`,
+      );
+    }
     for (const conflict of conflicts) {
       this.logger.warn(
         {
@@ -404,7 +427,7 @@ export class RegionQueryService {
     if (
       chambers.size === 0 &&
       measureTypes.length === 0 &&
-      lifecycleStages.size === 0 &&
+      lifecycleStages.length === 0 &&
       glossary.size === 0
     ) {
       return null;
@@ -413,7 +436,7 @@ export class RegionQueryService {
     return {
       chambers: Array.from(chambers.values()),
       measureTypes,
-      lifecycleStages: Array.from(lifecycleStages.values()),
+      lifecycleStages,
       sessionScheme: sessionScheme ?? undefined,
       glossary: Array.from(glossary.values()),
     };
@@ -560,20 +583,28 @@ export class RegionQueryService {
     };
   }
 
-  private mergeLifecycleStages(
-    lifecycleStages: Map<string, CivicsBlockModel['lifecycleStages'][number]>,
+  /**
+   * Collect the lifecycle stages from one row, for the merge pass that runs
+   * once every row has been read (#1341).
+   *
+   * Collect-then-merge for the same reason as measure types: identity here
+   * resolves on a normalised form of the id, so a stage can join a group an
+   * earlier page established under a different spelling.
+   */
+  private collectLifecycleStages(
+    into: CivicsBlockModel['lifecycleStages'],
     rawL: Record<string, unknown>[] | null,
     src: string,
   ): void {
     if (!rawL) return;
     for (const ls of rawL) {
       const id = String(ls['id'] ?? '');
-      if (!id || lifecycleStages.has(id)) continue;
+      if (!id) continue;
       const citizenAction = this.buildCitizenAction(
         ls['citizenAction'] as Record<string, unknown> | null,
         src,
       );
-      lifecycleStages.set(id, {
+      into.push({
         id,
         name: this.normalizeCivicText(ls['name'], src),
         shortDescription: this.normalizeCivicText(ls['shortDescription'], src),
