@@ -37,6 +37,22 @@ alerting:
 # while diagnosing an incident, and they are a handful of cheap series each.
 # What goes is the high-cardinality, low-value end.
 scrape_configs:
+  # Ports are 3000-3007, matching what the services actually publish.
+  #
+  # They were 4000-4006 — off by 1000 from the documented scheme — so every
+  # application target was down and Prometheus had collected nothing but its
+  # own self-scrape since the day it was configured. 758 active series, all of
+  # them Prometheus measuring itself; `http_requests_total` and the request-
+  # duration histograms had no data at all. That is the other half of #1343:
+  # the 17 alert rules could not notify anyone AND had nothing to evaluate.
+  #
+  # Verified 2026-10-09: curl localhost:3000/metrics returns real metrics,
+  # curl localhost:4000/metrics returns nothing.
+  #
+  # Each environment gets its own Prometheus on its own front-door machine per
+  # D5, at which point these become container names on :8080 rather than
+  # published host ports. Until the front tiers are split, one instance scrapes
+  # whatever is running locally.
   # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
@@ -45,7 +61,7 @@ scrape_configs:
   # API Gateway metrics
   - job_name: 'api-gateway'
     static_configs:
-      - targets: ['host.docker.internal:4000']
+      - targets: ['host.docker.internal:3000']
     metrics_path: /metrics
     metric_relabel_configs: &drop-default-noise
     # GC duration is a histogram multiplied by GC kind (major/minor/incremental/
@@ -75,42 +91,52 @@ scrape_configs:
   # Users Service metrics
   - job_name: 'users-service'
     static_configs:
-      - targets: ['host.docker.internal:4001']
+      - targets: ['host.docker.internal:3001']
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
   # Documents Service metrics
   - job_name: 'documents-service'
     static_configs:
-      - targets: ['host.docker.internal:4002']
+      - targets: ['host.docker.internal:3002']
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
   # Knowledge Service metrics
   - job_name: 'knowledge-service'
     static_configs:
-      - targets: ['host.docker.internal:4003']
+      - targets: ['host.docker.internal:3003']
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
   # Region Service metrics
   - job_name: 'region-service'
     static_configs:
-      - targets: ['host.docker.internal:4004']
+      - targets: ['host.docker.internal:3004']
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
   # Region Worker metrics
   - job_name: 'region-worker'
     static_configs:
-      - targets: ['host.docker.internal:4005']
+      - targets: ['host.docker.internal:3005']
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
   # Structural Analysis Worker metrics
   - job_name: 'structural-analysis-worker'
     static_configs:
-      - targets: ['host.docker.internal:4006']
+      - targets: ['host.docker.internal:3006']
+    metrics_path: /metrics
+    metric_relabel_configs: *drop-default-noise
+
+  # LLM Rerank Worker metrics
+  #
+  # This worker has been publishing metrics on 3007 with no scrape job to
+  # collect them. Added 2026-10-09 alongside the port correction below.
+  - job_name: 'llm-rerank-worker'
+    static_configs:
+      - targets: ['host.docker.internal:3007']
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
