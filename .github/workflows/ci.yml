@@ -93,6 +93,29 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Prisma fetches a query engine AND a schema engine from its CDN for
+      # every entry in schema.prisma's `binaryTargets`, at `prisma generate`
+      # time — the npm package ships only the native one. There are four
+      # targets, `generate` runs in four jobs, and nothing cached the result,
+      # so a CI run made ~16 CDN downloads and any one of them could fail the
+      # build. On 2026-10-09 one did: ECONNRESET mid-download took out
+      # `Build Packages`, which skipped Build, Test, E2E and Trivy with it,
+      # on a PR that touched no dependency (#1347).
+      #
+      # ~/.cache/prisma is where @prisma/fetch-engine looks before downloading,
+      # and it survives `pnpm install` because it lives outside node_modules.
+      # Keyed on the schema (so a binaryTargets change invalidates) and the
+      # lockfile (so a Prisma bump does); restore-keys means unrelated lockfile
+      # churn still restores a warm cache rather than re-downloading.
+      - name: Cache Prisma engines
+        if: needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/prisma
+          key: prisma-engines-${{ runner.os }}-${{ hashFiles('packages/relationaldb-provider/prisma/schema.prisma', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            prisma-engines-${{ runner.os }}-
+
       - name: Build packages
         if: needs.changes.outputs.docs_only != 'true'
         run: pnpm -r --filter './packages/*' build
@@ -241,6 +264,29 @@ jobs:
           name: packages-dist
           path: packages/
 
+      # Prisma fetches a query engine AND a schema engine from its CDN for
+      # every entry in schema.prisma's `binaryTargets`, at `prisma generate`
+      # time — the npm package ships only the native one. There are four
+      # targets, `generate` runs in four jobs, and nothing cached the result,
+      # so a CI run made ~16 CDN downloads and any one of them could fail the
+      # build. On 2026-10-09 one did: ECONNRESET mid-download took out
+      # `Build Packages`, which skipped Build, Test, E2E and Trivy with it,
+      # on a PR that touched no dependency (#1347).
+      #
+      # ~/.cache/prisma is where @prisma/fetch-engine looks before downloading,
+      # and it survives `pnpm install` because it lives outside node_modules.
+      # Keyed on the schema (so a binaryTargets change invalidates) and the
+      # lockfile (so a Prisma bump does); restore-keys means unrelated lockfile
+      # churn still restores a warm cache rather than re-downloading.
+      - name: Cache Prisma engines
+        if: needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/prisma
+          key: prisma-engines-${{ runner.os }}-${{ hashFiles('packages/relationaldb-provider/prisma/schema.prisma', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            prisma-engines-${{ runner.os }}-
+
       - name: Generate Prisma client
         if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
@@ -292,6 +338,29 @@ jobs:
         with:
           name: packages-dist
           path: packages/
+
+      # Prisma fetches a query engine AND a schema engine from its CDN for
+      # every entry in schema.prisma's `binaryTargets`, at `prisma generate`
+      # time — the npm package ships only the native one. There are four
+      # targets, `generate` runs in four jobs, and nothing cached the result,
+      # so a CI run made ~16 CDN downloads and any one of them could fail the
+      # build. On 2026-10-09 one did: ECONNRESET mid-download took out
+      # `Build Packages`, which skipped Build, Test, E2E and Trivy with it,
+      # on a PR that touched no dependency (#1347).
+      #
+      # ~/.cache/prisma is where @prisma/fetch-engine looks before downloading,
+      # and it survives `pnpm install` because it lives outside node_modules.
+      # Keyed on the schema (so a binaryTargets change invalidates) and the
+      # lockfile (so a Prisma bump does); restore-keys means unrelated lockfile
+      # churn still restores a warm cache rather than re-downloading.
+      - name: Cache Prisma engines
+        if: needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/prisma
+          key: prisma-engines-${{ runner.os }}-${{ hashFiles('packages/relationaldb-provider/prisma/schema.prisma', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            prisma-engines-${{ runner.os }}-
 
       - name: Generate Prisma client
         if: needs.changes.outputs.docs_only != 'true'
@@ -485,6 +554,28 @@ jobs:
         with:
           name: packages-dist
           path: packages/
+
+      # Prisma fetches a query engine AND a schema engine from its CDN for
+      # every entry in schema.prisma's `binaryTargets`, at `prisma generate`
+      # time — the npm package ships only the native one. There are four
+      # targets, `generate` runs in four jobs, and nothing cached the result,
+      # so a CI run made ~16 CDN downloads and any one of them could fail the
+      # build. On 2026-10-09 one did: ECONNRESET mid-download took out
+      # `Build Packages`, which skipped Build, Test, E2E and Trivy with it,
+      # on a PR that touched no dependency (#1347).
+      #
+      # ~/.cache/prisma is where @prisma/fetch-engine looks before downloading,
+      # and it survives `pnpm install` because it lives outside node_modules.
+      # Keyed on the schema (so a binaryTargets change invalidates) and the
+      # lockfile (so a Prisma bump does); restore-keys means unrelated lockfile
+      # churn still restores a warm cache rather than re-downloading.
+      - name: Cache Prisma engines
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/prisma
+          key: prisma-engines-${{ runner.os }}-${{ hashFiles('packages/relationaldb-provider/prisma/schema.prisma', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            prisma-engines-${{ runner.os }}-
 
       - name: Generate Prisma client
         run: pnpm --filter @opuspopuli/relationaldb-provider db:generate
