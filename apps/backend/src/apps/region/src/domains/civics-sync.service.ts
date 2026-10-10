@@ -262,6 +262,10 @@ export class CivicsSyncService extends LlmGeneratorBase {
     let processed = 0;
     let created = 0;
     let updated = 0;
+    // Pages that extracted empty over an existing row, so the row was kept and
+    // is now staler than its siblings (#1335). Counted separately from
+    // `skipped`, which is the benign "this page has no civic content" case.
+    let stale = 0;
 
     // ─── Phase 1/2 — discover ──────────────────────────────────────
     const discoverTracker = civicsSyncTracker(
@@ -330,6 +334,19 @@ export class CivicsSyncService extends LlmGeneratorBase {
           outcomeLabel: 'failed',
           outcome: 'error',
         });
+      } else if (result === 'stale') {
+        // Counted as `skipped` structurally — nothing was written — but with a
+        // label that says WHY, so the phase log distinguishes a page with no
+        // civic content from a page whose existing extraction just failed to
+        // refresh (#1335). The tracker's `outcome` union is fixed; its
+        // `outcomeLabel` is free text for exactly this.
+        stale++;
+        extractTracker.item({
+          name: url,
+          externalId: null,
+          outcomeLabel: 'skipped (empty over existing — row kept, now stale)',
+          outcome: 'skipped',
+        });
       } else {
         extractTracker.item({
           name: url,
@@ -340,6 +357,21 @@ export class CivicsSyncService extends LlmGeneratorBase {
       }
     }
     extractTracker.complete();
+
+    // Surfaced once per run at `warn`, because the per-page warnings are easy
+    // to lose in a long sync and the aggregate is the thing worth noticing: a
+    // job that reports `succeeded` while N pages silently failed to refresh is
+    // exactly how one California page sat three syncs behind on prompt v5
+    // while the other eleven moved to v6 (#1335).
+    if (stale > 0) {
+      this.logger.warn(
+        { regionId, stale, written: created + updated },
+        `Civics sync kept ${stale} existing block(s) that extracted empty ` +
+          `this run, against ${created + updated} written. Those pages are ` +
+          `now staler than the rest and their prompt provenance no longer ` +
+          `matches the live prompt. The run still reports success.`,
+      );
+    }
 
     // Once per run, not per page: a term can lose a source on one page and
     // gain one on the next, and pruning mid-run would churn rows that the
@@ -592,7 +624,7 @@ export class CivicsSyncService extends LlmGeneratorBase {
     sourceUrl: string,
     ds: DataSourceConfig,
     helpers: CivicsCrawlHelpers,
-  ): Promise<'created' | 'updated' | 'failed' | 'skipped'> {
+  ): Promise<'created' | 'updated' | 'failed' | 'skipped' | 'stale'> {
     if (!this.promptClient || !this.llm) return 'failed';
     try {
       const html = await helpers.fetchUrlText(sourceUrl);
@@ -725,21 +757,55 @@ export class CivicsSyncService extends LlmGeneratorBase {
         promptHash,
       );
 
+      // Looked up BEFORE the empty check, not after, which is the fix for
+      // #1335. "This page has no civic content" and "this page used to have
+      // civic content and now extracts none" are different events, and only
+      // the second one is a problem — but they were indistinguishable while
+      // the empty check returned before anything knew a row existed.
+      const existing = await this.db!.civicsBlock.findUnique({
+        where: { regionId_sourceUrl: { regionId, sourceUrl } },
+        select: { id: true, promptVersion: true, extractedAt: true },
+      });
+
       // A page the crawler reached under the source's scope but that holds no
       // civic content (e.g. dining services, records-request) extracts to a
       // well-formed but entirely empty block. Persisting it creates a noise
       // CivicsBlock, so skip the upsert entirely. See #874.
       if (isEmptyCivicsExtraction(block)) {
-        this.logger.log(
-          `Civics extraction: no civic content on ${sourceUrl} — skipping empty block`,
-        );
-        return 'skipped';
-      }
+        if (!existing) {
+          this.logger.log(
+            `Civics extraction: no civic content on ${sourceUrl} — skipping empty block`,
+          );
+          return 'skipped';
+        }
 
-      const existing = await this.db!.civicsBlock.findUnique({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        select: { id: true },
-      });
+        // An empty extraction over an EXISTING row. The row is kept — serving
+        // the last good extraction beats serving nothing — but keeping it
+        // silently is what #1335 is about: measured on 2026-10-07, one of
+        // twelve California pages sat on prompt v5 while the other eleven were
+        // v6, because two later successful syncs passed over it and said
+        // nothing. The job reported `succeeded` both times.
+        //
+        // So this is a `warn`, and it names the drift explicitly: a reader
+        // comparing pages otherwise has no signal that one of them is several
+        // syncs behind, and the stored promptHash/promptVersion no longer
+        // describe what the region is being served elsewhere.
+        this.logger.warn(
+          {
+            sourceUrl,
+            storedPromptVersion: existing.promptVersion,
+            livePromptVersion: promptVersion,
+            storedExtractedAt: existing.extractedAt,
+            promptVersionDrifted: existing.promptVersion !== promptVersion,
+          },
+          `Civics extraction: ${sourceUrl} extracted EMPTY over an existing ` +
+            `block, so the previous extraction is being kept. It was stored ` +
+            `by prompt ${existing.promptVersion ?? 'unknown'} and the live ` +
+            `prompt is ${promptVersion ?? 'unknown'} — this row is now ` +
+            `staler than its siblings and its provenance no longer matches.`,
+        );
+        return 'stale';
+      }
 
       const fields = {
         chambers: toJsonField(block.chambers),
