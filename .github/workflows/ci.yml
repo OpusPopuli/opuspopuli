@@ -158,6 +158,29 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Catch an overrides entry that has stopped doing anything (#1338).
+      #
+      # The overrides block is the only mechanism this repo has for remediating
+      # a transitive CVE, and both of its failure modes are silent and look
+      # safe: a pin whose VALUE has fallen below the advisory (`sharp` sat at
+      # `>=0.35.4` against one needing `>=0.35.5`), and a version-scoped KEY
+      # that no longer matches anything in the tree. Either way a reader scans
+      # the block, sees the package listed, and concludes it is handled.
+      #
+      # Fails only on what can be decided exactly — a dead key, or a package
+      # that `pnpm audit` still flags despite being pinned here. Version-scoped
+      # ranges are reported for review rather than judged, because deciding
+      # them needs semver and a wrong answer is how this class of bug starts.
+      #
+      # A network failure in `pnpm audit` warns rather than fails: no advisory
+      # consulted is not the same as nothing found, and the Trivy and audit
+      # gates still cover that case.
+      - name: Check dependency overrides
+        if: needs.changes.outputs.docs_only != 'true'
+        run: |
+          pnpm exec node scripts/check-overrides.mjs --self-test
+          pnpm check:overrides
+
       # Runs even for documentation-only changes, unlike the steps above.
       #
       # `Trivy` is a REQUIRED status check, and it is not a job — it is the
