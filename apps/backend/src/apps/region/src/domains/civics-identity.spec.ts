@@ -1,9 +1,14 @@
 import {
   measureTypeKey,
+  mergeLifecycleStages,
   mergeMeasureTypes,
+  normaliseStageKey,
+  remapStageIds,
   normaliseIdentity,
   reconcileMeasureType,
   type MergeableMeasureType,
+  type MergeableStage,
+  type MergeableText,
 } from './civics-identity';
 
 /**
@@ -387,5 +392,234 @@ describe('mergeMeasureTypes', () => {
       'governor-action',
       'chaptered',
     ]);
+  });
+});
+
+// ── Lifecycle stages (#1341) ────────────────────────────────────────────────
+
+const text = (verbatim: string, sourceUrl = 'p'): MergeableText => ({
+  verbatim,
+  plainLanguage: '',
+  sourceUrl,
+});
+
+function stage(over: Partial<MergeableStage> = {}): MergeableStage {
+  return {
+    id: 'governor-action',
+    name: text('Governor Action'),
+    shortDescription: text('The Governor acts on the bill.'),
+    statusStringPatterns: [],
+    ...over,
+  };
+}
+
+describe('normaliseStageKey', () => {
+  /**
+   * The three pairs this is designed to catch, measured on California's 38 ids.
+   */
+  it.each([
+    ['stopword only', 'qualified-for-the-ballot', 'qualified-for-ballot'],
+    ['tense', 'chaptered', 'chaptering'],
+    ['part of speech', 'introduced', 'introduction'],
+  ])('groups ids differing by %s', (_label, a, b) => {
+    expect(normaliseStageKey(a)).toBe(normaliseStageKey(b));
+  });
+
+  /**
+   * A date makes an id describe an INSTANCE, not an identity. California
+   * emitted `eligible-for-november-2028-general-election`, which is dead weight
+   * once that election passes.
+   */
+  it('drops years and month names', () => {
+    expect(
+      normaliseStageKey('eligible-for-november-2028-general-election'),
+    ).toBe(normaliseStageKey('eligible-for-general-election'));
+  });
+
+  it('ignores word order and punctuation', () => {
+    expect(normaliseStageKey('second_house-policy')).toBe(
+      normaliseStageKey('policy-second-house'),
+    );
+  });
+
+  /**
+   * The non-merges matter as much as the merges. Each of these was checked
+   * against the real data: grouping them needs domain knowledge this module
+   * does not have, and over-merging stages is worse than leaving duplicates.
+   */
+  it.each([
+    [
+      'different last word',
+      'random-sample-count',
+      'random-sample-verification',
+    ],
+    ['plausibly real sub-stages', 'second-house', 'second-house-fiscal'],
+    [
+      'plausibly real steps',
+      'pending-signature-verification',
+      'full-check-verification',
+    ],
+    [
+      'overlapping but not equal',
+      'withdrawn-by-proponents',
+      'withdrawn-or-failed-to-qualify',
+    ],
+    ['state vs deadline', 'pending-raw-count', 'raw-count-deadline'],
+    ['distinct readings', 'second-reading', 'third-reading'],
+    ['distinct committees', 'policy-committee', 'fiscal-committee'],
+  ])('does NOT group %s', (_label, a, b) => {
+    expect(normaliseStageKey(a)).not.toBe(normaliseStageKey(b));
+  });
+});
+
+describe('mergeLifecycleStages', () => {
+  /**
+   * The headline defect: `governor-action` appeared on 6 pages under four
+   * names, three differing only in apostrophe and case, and the served one was
+   * whichever page was extracted last — so the API's answer changed between
+   * syncs with no code change.
+   */
+  it('serves the most frequent name, not the last one extracted', () => {
+    const { stages } = mergeLifecycleStages([
+      stage({ name: text('Governor Action') }),
+      stage({ name: text('Governor Action') }),
+      stage({ name: text("Governor's Action") }),
+      stage({ name: text('Approved by the Governor') }),
+    ]);
+
+    expect(stages).toHaveLength(1);
+    expect(stages[0].name.verbatim).toBe('Governor Action');
+  });
+
+  it('is order-independent', () => {
+    const a = stage({ name: text('Governor Action') });
+    const b = stage({ name: text('Approved by the Governor') });
+    expect(mergeLifecycleStages([a, a, b]).stages[0].name.verbatim).toBe(
+      mergeLifecycleStages([b, a, a]).stages[0].name.verbatim,
+    );
+  });
+
+  it('keeps the whole CivicText together, preserving its sourceUrl', () => {
+    const { stages } = mergeLifecycleStages([
+      stage({ name: text('Chaptered', 'page-a') }),
+      stage({ name: text('Chaptered', 'page-a') }),
+      stage({ name: text('Chaptering', 'page-b') }),
+    ]);
+    expect(stages[0].name.sourceUrl).toBe('page-a');
+  });
+
+  it('survives on the most-used id', () => {
+    const { stages, aliases } = mergeLifecycleStages([
+      stage({ id: 'chaptered' }),
+      stage({ id: 'chaptered' }),
+      stage({ id: 'chaptering' }),
+    ]);
+    expect(stages[0].id).toBe('chaptered');
+    expect([...aliases]).toEqual([['chaptering', 'chaptered']]);
+  });
+
+  /**
+   * `introduced` and `introduction` appeared on three pages each. Without a
+   * stable tie-break the served id would flip between syncs, which is the same
+   * non-determinism being fixed.
+   */
+  it('breaks an id tie alphabetically, not by order', () => {
+    const forward = mergeLifecycleStages([
+      stage({ id: 'introduction' }),
+      stage({ id: 'introduced' }),
+    ]);
+    const reversed = mergeLifecycleStages([
+      stage({ id: 'introduced' }),
+      stage({ id: 'introduction' }),
+    ]);
+    expect(forward.stages[0].id).toBe('introduced');
+    expect(reversed.stages[0].id).toBe('introduced');
+  });
+
+  it('unions statusStringPatterns', () => {
+    const { stages } = mergeLifecycleStages([
+      stage({ id: 'chaptered', statusStringPatterns: ['Chaptered'] }),
+      stage({
+        id: 'chaptering',
+        statusStringPatterns: ['Chaptered', 'Enrolled'],
+      }),
+    ]);
+    expect(stages[0].statusStringPatterns.sort()).toEqual([
+      'Chaptered',
+      'Enrolled',
+    ]);
+  });
+
+  /**
+   * Reporting rather than resolving. Real example: extraction gave
+   * `first-committee` both "First Committee" and "Held in Committee", which are
+   * a stage and an outcome — a disagreement worth a human seeing, not one this
+   * module should silently pick between.
+   */
+  it('reports a name disagreement instead of hiding it', () => {
+    const { nameConflicts } = mergeLifecycleStages([
+      stage({ id: 'first-committee', name: text('First Committee') }),
+      stage({ id: 'first-committee', name: text('Held in Committee') }),
+    ]);
+    expect(nameConflicts).toEqual([
+      {
+        stage: 'first-committee',
+        names: ['First Committee', 'Held in Committee'],
+      },
+    ]);
+  });
+
+  it('reports nothing when the names agree', () => {
+    expect(mergeLifecycleStages([stage(), stage()]).nameConflicts).toEqual([]);
+  });
+
+  it('keeps genuinely different stages apart', () => {
+    const { stages } = mergeLifecycleStages([
+      stage({ id: 'second-reading' }),
+      stage({ id: 'third-reading' }),
+      stage({ id: 'fiscal-committee' }),
+    ]);
+    expect(stages.map((s) => s.id)).toEqual([
+      'second-reading',
+      'third-reading',
+      'fiscal-committee',
+    ]);
+  });
+});
+
+describe('remapStageIds', () => {
+  /**
+   * The safety property. Measure types reference stage ids, so collapsing an id
+   * without rewriting the references leaves a dangling link — worse than the
+   * duplicate it replaced.
+   */
+  it('rewrites references onto the surviving id', () => {
+    const [t] = remapStageIds(
+      [measureType({ lifecycleStageIds: ['chaptering', 'introduced'] })],
+      new Map([['chaptering', 'chaptered']]),
+    );
+    expect(t.lifecycleStageIds).toEqual(['chaptered', 'introduced']);
+  });
+
+  it('de-duplicates when two ids collapse into one', () => {
+    const [t] = remapStageIds(
+      [measureType({ lifecycleStageIds: ['chaptered', 'chaptering'] })],
+      new Map([['chaptering', 'chaptered']]),
+    );
+    expect(t.lifecycleStageIds).toEqual(['chaptered']);
+  });
+
+  it('leaves everything alone when nothing was aliased', () => {
+    const input = [measureType({ lifecycleStageIds: ['a', 'b'] })];
+    expect(remapStageIds(input, new Map())[0].lifecycleStageIds).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it('does not mutate its input', () => {
+    const input = measureType({ lifecycleStageIds: ['chaptering'] });
+    remapStageIds([input], new Map([['chaptering', 'chaptered']]));
+    expect(input.lifecycleStageIds).toEqual(['chaptering']);
   });
 });
