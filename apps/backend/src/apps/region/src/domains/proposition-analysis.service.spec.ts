@@ -642,14 +642,78 @@ describe('PropositionAnalysisService', () => {
       expectFailureRecorded(built, 'no_json');
     });
 
-    it('records parse_error separately from a response with no JSON at all', async () => {
-      // Balanced braces, invalid JSON inside — the model finished and wrote
-      // something malformed, which is a different failure from stopping early.
+    /**
+     * This case used to assert `parse_error`, and it was right to until the
+     * JSON repair was wired in: a trailing comma is one of the two
+     * malformations civics already recovers from (#1337), and losing an entire
+     * proposition analysis to one is the outcome that fix exists to prevent.
+     * Here it costs ~38,000 characters of statutory prose and a 32B-model run,
+     * because `normalizePayload` refuses a partial salvage.
+     */
+    it('recovers from a trailing comma rather than failing the analysis', async () => {
       const built = await buildService({
         llmText: '{"analysisSummary": "x",}',
       });
+      await expect(built.service.generate('prop-1')).resolves.toBe(true);
+    });
+
+    it('recovers from an unescaped quote in a string value', async () => {
+      // What statutory prose does to a model: the source quotes something, the
+      // model reproduces the inner quotes without escaping them.
+      const built = await buildService({
+        llmText: '{"analysisSummary": "referred to as a "full check.""}',
+      });
+      await expect(built.service.generate('prop-1')).resolves.toBe(true);
+    });
+
+    it('still records parse_error when no repair applies', async () => {
+      // Balanced braces, invalid JSON inside, and neither repair class
+      // touches it — a missing value is not a stray quote or a stray comma.
+      // The failure path has to survive the repair being added.
+      const built = await buildService({
+        llmText: '{"analysisSummary": }',
+      });
       await expect(built.service.generate('prop-1')).resolves.toBe(false);
       expectFailureRecorded(built, 'parse_error');
+    });
+
+    /**
+     * The failure detail must describe the string the MODEL produced, not the
+     * one the repair produced — a post-repair position sends whoever reads the
+     * log to a byte offset in a string that was never sent, and the repair
+     * inserts characters, so the two offsets are guaranteed to disagree.
+     *
+     * This fixture is built so both offsets are observable and different:
+     *
+     *   sent     `..."he said "hi" there"...`  -> SyntaxError at position 30
+     *   repaired `..."he said \"hi\" there"...` -> SyntaxError at position 60
+     *
+     * The unescaped quotes repair cleanly (position 30 goes away), the `1 2`
+     * after `confidence` does not, so the analysis still fails — and the
+     * surviving defect sits 30 characters later in the repaired string than
+     * the original error did. Reporting the wrong one is a silent 30-byte lie.
+     */
+    it('reports the position of the error the model made, not the repaired one', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
+      try {
+        const built = await buildService({
+          llmText:
+            '{"analysisSummary": "he said "hi" there", "confidence": 1 2}',
+        });
+        await expect(built.service.generate('prop-1')).resolves.toBe(false);
+        expectFailureRecorded(built, 'parse_error');
+
+        const line = warn.mock.calls
+          .map((call) => call[0])
+          .filter((arg): arg is string => typeof arg === 'string')
+          .find((arg) => arg.includes('reason=parse_error'));
+        expect(line).toContain('detail=SyntaxError at position 30');
+        expect(line).not.toContain('position 60');
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('returns false and records the reason when the payload has no summary', async () => {
