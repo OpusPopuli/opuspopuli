@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   extractJsonObjectSlice,
+  type JsonRepairClass,
+  parseJsonWithRepair,
   type PropositionAnalysisClaim,
   type PropositionAnalysisSection,
   type PropositionExistingVsProposed,
@@ -95,6 +97,31 @@ function describeParseError(error: Error): string {
   const position = /position (\d+)/.exec(error.message);
   return position ? `${error.name} at position ${position[1]}` : error.name;
 }
+
+/**
+ * Re-parse to recover the error the MODEL caused, for the failure detail.
+ *
+ * `parseJsonWithRepair` returns `undefined` rather than an error, deliberately
+ * — it has no opinion about which error is worth reporting. The one worth
+ * reporting is the original: a post-repair message describes a string that was
+ * never sent, and the position it names would send a reader to the wrong byte.
+ */
+function originalParseError(candidate: string): Error {
+  try {
+    JSON.parse(candidate);
+    // Unreachable: only called after a failed repair, which only happens after
+    // a failed parse. Stated rather than asserted away with a non-null.
+    return new Error('SyntaxError');
+  } catch (error) {
+    return error as Error;
+  }
+}
+
+/** Log-facing names for the repair classes, kept out of the shared util. */
+const REPAIR_LABELS: Record<JsonRepairClass, string> = {
+  quotes: 'unescaped quote(s)',
+  commas: 'trailing comma(s)',
+};
 
 @Injectable()
 export class PropositionAnalysisService extends LlmGeneratorBase {
@@ -522,19 +549,53 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
       };
     }
 
-    let parsed: Partial<AnalysisPayload>;
-    try {
-      parsed = JSON.parse(candidate) as Partial<AnalysisPayload>;
-    } catch (error) {
+    // Repair before giving up, the same two malformation classes civics
+    // recovers from (#1337). This path had a bare `JSON.parse`, which is the
+    // shape civics-sync had before that work: a slice with balanced braces
+    // that still will not parse is almost always a bad escape inside a string
+    // — an unescaped quote the model carried in from quoted source text, or an
+    // illegal trailing comma. Both are recoverable, and on civics the quote
+    // repair alone recovered 22,162 characters of correct extraction that had
+    // been discarded whole.
+    //
+    // It matters more here than there. A proposition's `full_text` runs to
+    // ~38,000 characters of statutory prose full of quotation marks, the
+    // payload spans eight fields, and `normalizePayload` refuses a partial
+    // salvage — so one stray character costs the entire analysis of one
+    // measure, and on a 32B model that is a long time to spend on nothing.
+    const repaired = parseJsonWithRepair(candidate);
+    if (!repaired) {
       return {
         ok: false,
         failure: {
           reason: truncated ? 'truncated' : 'parse_error',
           ...context,
-          detail: describeParseError(error as Error),
+          // The ORIGINAL error, not the post-repair one: it describes what the
+          // model actually produced, where the other describes a string that
+          // was never sent.
+          detail: describeParseError(originalParseError(candidate)),
         },
       };
     }
+
+    if (repaired.applied.length > 0) {
+      // At `warn`, not silently. The model emitting invalid JSON is a defect
+      // worth seeing even when it is survivable, and knowing WHICH class fired
+      // is what tells you whether the prompt or the source text is at fault.
+      this.logger.warn(
+        {
+          externalId: prop.externalId,
+          repaired: repaired.applied,
+          candidateChars: candidate.length,
+          repairedChars: repaired.repairedChars,
+        },
+        `Proposition analysis: recovered ${prop.externalId} — the model's ` +
+          `JSON was invalid, the content was intact. Repaired: ` +
+          `${repaired.applied.map((c: JsonRepairClass) => REPAIR_LABELS[c]).join(' and ')}.`,
+      );
+    }
+
+    const parsed = repaired.value as Partial<AnalysisPayload>;
 
     // Propositions are verbose and the payload spans ~8 fields, so partial
     // salvage is not useful — a half-populated analysis leaves UI sections
