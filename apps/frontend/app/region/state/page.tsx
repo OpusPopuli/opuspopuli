@@ -108,6 +108,39 @@ export default function StateLayerPage() {
               })}
             </p>
           </div>
+
+          {/* The civics hub, restored to the top of the page.
+
+              This card existed on the old five-card /region directory and was
+              lost in f0c3a956 when "Where you live" replaced it. Rebuilding it
+              as an index row at the foot of "Browse this level" buried it: the
+              hub explains the vocabulary — measure types, the glossary, the
+              lifecycle — that the rest of this page assumes you already have,
+              so it belongs before the content that needs it, not after.
+
+              It sits on the STATE layer because that is the only government
+              whose process is scraped: @opuspopuli/regions carries three
+              California civics sources, all state-level. County and federal
+              carry the same destination behind a building tag.
+
+              Copy is the original's, now translated — the card shipped with
+              hardcoded English, which is why no locale key existed for it. */}
+          <Link
+            href="/region/how-it-works"
+            className="mt-4 flex items-center justify-between rounded-lg border border-info-line bg-info-surface px-6 py-4 transition-colors hover:bg-info-line"
+          >
+            <div>
+              <h2 className="text-base font-semibold text-info">
+                {t("layer.howItWorksLead")}
+              </h2>
+              <p className="mt-0.5 text-sm text-info">
+                {t("layer.howItWorksBody")}
+              </p>
+            </div>
+            <span aria-hidden="true" className="text-2xl">
+              🏛️
+            </span>
+          </Link>
         </div>
       }
     >

@@ -368,6 +368,14 @@ function CountyLayerPageInner() {
               label={t("layer.county.filers")}
               count={<BuildingTag label={t("layer.building")} />}
             />
+            {/* No href: county civics is not scraped. The region package's
+                civics sources are all state-level, so linking this to
+                /region/how-it-works would show state process under a county
+                heading — which is worse than saying nothing. */}
+            <IndexRow
+              label={t("layer.howItWorks")}
+              count={<BuildingTag label={t("layer.building")} />}
+            />
           </LayerSection>
         </>
       )}

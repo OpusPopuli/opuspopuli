@@ -88,6 +88,15 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
   const [expanded, setExpanded] = useState(false);
   const longDefId = useId();
 
+  // Compared on normalised text so that trailing whitespace or a differing
+  // case does not read as new information.
+  const normalise = (value: string): string =>
+    value.trim().replaceAll(/\s+/g, " ").toLowerCase();
+  const hasDistinctLongDefinition =
+    !!entry.longDefinition &&
+    normalise(entry.longDefinition.plainLanguage) !==
+      normalise(entry.definition.plainLanguage);
+
   return (
     <section
       id={`term-${entry.slug}`}
@@ -105,8 +114,21 @@ function GlossaryEntry({ entry }: { entry: CivicsGlossaryEntry }) {
         {entry.definition.plainLanguage}
       </p>
 
-      {/* Long definition expandable */}
-      {entry.longDefinition && (
+      {/* Long definition expandable — only when it actually says something
+          the definition above does not.
+
+          Measured on the California corpus: 159 of 159 entries carrying a
+          `longDefinition` had a `verbatim` identical to their `definition`,
+          and 158 of 159 an identical `plainLanguage`. So "Full definition"
+          expanded to the same sentence the reader had just read, every time.
+
+          The duplication is in the extracted DATA, not here — the model emits
+          the same text into both fields — so this is a presentation guard, not
+          the fix. It is still worth having: a disclosure control that reveals
+          nothing teaches the reader that disclosure controls are not worth
+          opening. Dropping the redundancy at extraction is tracked separately;
+          this keeps working whether or not that lands. */}
+      {entry.longDefinition && hasDistinctLongDefinition && (
         <div className="mt-2">
           <button
             type="button"
