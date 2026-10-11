@@ -88,6 +88,9 @@
   "layer": {
     "recent": "Recently",
     "browse": "Browse this level",
+    "howItWorks": "How your government works",
+    "howItWorksLead": "How your government works →",
+    "howItWorksBody": "Measure types, glossary, and the legislative process explained",
     "alsoHere": "Also at this level",
     "seeAll": "See all →",
     "building": "Building",

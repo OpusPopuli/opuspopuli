@@ -3,6 +3,7 @@
 import { useTranslation } from "react-i18next";
 import {
   BuildingTag,
+  IndexRow,
   LayerPageShell,
   LayerSection,
 } from "@/components/region/LayerPageShell";
@@ -65,6 +66,21 @@ export default function FederalLayerPage() {
         <p className="py-5 text-sm leading-relaxed text-content-dim">
           {t("layer.federal.thin")}
         </p>
+      </LayerSection>
+
+      {/* The same row the state and county layers carry, so the civics hub is
+          findable from whichever government the reader started at — and so the
+          absence here is explicit rather than an omission.
+
+          No href: the region package's civics sources are all state-level, and
+          pointing this at /region/how-it-works would present California's
+          legislative process as federal process. A building tag says "not yet";
+          a wrong link says something false. */}
+      <LayerSection title={t("layer.alsoHere")}>
+        <IndexRow
+          label={t("layer.howItWorks")}
+          count={<BuildingTag label={t("layer.building")} />}
+        />
       </LayerSection>
     </LayerPageShell>
   );
