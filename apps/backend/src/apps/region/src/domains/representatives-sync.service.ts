@@ -5,6 +5,7 @@ import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
+import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
 import { repSyncTracker } from './sync-phase-logger';
 import {
   stripLeadingZerosFromExternalId,
@@ -61,6 +62,8 @@ export class RepresentativesSyncService {
     private readonly legislativeCommitteeLinker?: LegislativeCommitteeLinkerService,
     @Optional()
     private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
+    @Optional()
+    private readonly entityActivitySummaries?: EntityActivitySummaryGeneratorService,
   ) {}
 
   async sync(
@@ -235,6 +238,8 @@ export class RepresentativesSyncService {
       }
     }
 
+    await this.generateActivitySummaries();
+
     // ─── Phase 5/5 — prune_stale ───────────────────────────────────
     // Stale-rep pruning isn't currently wired (reps don't go inactive
     // by data-source absence the way bills do — they leave office in
@@ -257,6 +262,49 @@ export class RepresentativesSyncService {
    * Plugin-agnostic — the derive function is passed in so this service
    * doesn't have to import from `region.service.ts` directly.
    */
+
+  /**
+   * Activity summaries, which until now ran ONLY from a hand-invoked script
+   * (#665) and had therefore never run at all: 0 of 125 representatives,
+   * against 125 bios and 79 committee summaries produced by the generators
+   * beside it in `sync()`. It was the one AI generator in this domain that no
+   * sync reached, and a feature whose only trigger is someone remembering it
+   * exists is a feature that stays empty.
+   *
+   * It summarises the `legislative_actions` ALREADY stored, not any arriving
+   * in the same run — those are ingested by a different path. That is fine for
+   * a 90-day window, and stated here so it is not mistaken for a freshness
+   * bug.
+   *
+   * Extracted rather than inlined because inlining it took `sync()` from 15 to
+   * 17 cognitive complexity, past the Sonar gate.
+   */
+  private async generateActivitySummaries(): Promise<void> {
+    if (!this.entityActivitySummaries) return;
+
+    try {
+      const activity = await this.entityActivitySummaries.generateAll();
+      // Reported even when zero, and worded to separate "no entity had
+      // activity in the window" from "this never ran". The window closes
+      // ~2026-11-10 for the current corpus (actions stop 2026-08-12, default
+      // window 90 days), after which the honest answer becomes zero and the
+      // two are indistinguishable without this line.
+      this.logger.log(
+        `Activity summaries: ${activity.repsUpdated} representative(s) and ` +
+          `${activity.committeesUpdated} committee(s) updated` +
+          (activity.repsUpdated === 0 && activity.committeesUpdated === 0
+            ? ' — no entity had legislative actions inside the window'
+            : ''),
+      );
+    } catch (error) {
+      // Non-fatal, like its two siblings in `sync()`: a roster sync that
+      // worked must not be reported as failed because a summary pass did not.
+      this.logger.warn(
+        `Activity summary generation failed: ${(error as Error).message}`,
+      );
+    }
+  }
+
   private sanitizeDistrict(
     rep: Representative,
     deriveDistrictFromExternalId: (externalId: string) => string | undefined,
