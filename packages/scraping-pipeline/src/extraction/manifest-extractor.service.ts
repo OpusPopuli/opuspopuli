@@ -22,6 +22,57 @@ import { safeRegex } from "./safe-regex.js";
 import { extractStructuredArray } from "./structured-extractor.js";
 import { resolveCompositeTemplate } from "./composite-template.js";
 
+/** Attributes whose value is a URL, and so is affected by `<base href>`. */
+const URL_BEARING_ATTRIBUTES = new Set(["href", "src"]);
+
+/** Already absolute, protocol-relative, or a non-fetchable scheme. */
+const ABSOLUTE_OR_SCHEME = /^(?:[a-z][a-z0-9+.\-]*:|\/\/)/i;
+
+/**
+ * Honour the document's own `<base href>` when reading a URL attribute.
+ *
+ * A relative href means whatever the page says it means, and a page is
+ * entitled to say so with `<base>`. Without this, an href is carried out of
+ * extraction as a bare relative string and resolved much later against the
+ * SOURCE PAGE's url — which is the wrong base whenever `<base>` disagrees, and
+ * produces a confident 404 rather than an error.
+ *
+ * Sonoma County's registrar does exactly this: every ballot-measure voter
+ * guide is linked as `Main%20County%20Site/…/SoCo_…_MeasH_…_EN.pdf` under
+ * `<base href="https://sonomacounty.gov/" />`. Resolved against the page it
+ * appears on, that becomes
+ * `…/registrar-of-voters/elections/Main%20County%20Site/…` — a path that has
+ * never existed.
+ *
+ * Deliberately narrow, so nothing that works today can change:
+ *
+ * - only `href` and `src`, the attributes a base tag actually governs;
+ * - only when the document declares a `<base href>`. With no base tag the
+ *   value is returned untouched and resolved downstream exactly as before.
+ *   Verified against the two live California propositions sources
+ *   (oag.ca.gov, sos.ca.gov) — neither declares one;
+ * - never a fragment, and never something already absolute, protocol-relative
+ *   or carrying a scheme such as `mailto:`.
+ */
+function resolveAgainstBaseHref(
+  value: string,
+  attribute: string,
+  $: CheerioAPI,
+): string {
+  if (!URL_BEARING_ATTRIBUTES.has(attribute.toLowerCase())) return value;
+  if (value.startsWith("#") || ABSOLUTE_OR_SCHEME.test(value)) return value;
+
+  const base = $("base[href]").first().attr("href");
+  if (!base) return value;
+
+  try {
+    return new URL(value, base).href;
+  } catch {
+    // A malformed base is the page's problem, not a reason to lose the href.
+    return value;
+  }
+}
+
 @Injectable()
 export class ManifestExtractorService {
   private readonly logger = new Logger(ManifestExtractorService.name);
@@ -488,11 +539,15 @@ export class ManifestExtractorService {
       case "text":
         return first.text().trim() || undefined;
 
-      case "attribute":
+      case "attribute": {
         if (!mapping.attribute) {
           return undefined;
         }
-        return first.attr(mapping.attribute) || undefined;
+        const attr = first.attr(mapping.attribute) || undefined;
+        return attr === undefined
+          ? undefined
+          : resolveAgainstBaseHref(attr, mapping.attribute, $);
+      }
 
       case "html":
         return first.html() || undefined;

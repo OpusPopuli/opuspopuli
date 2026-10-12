@@ -1200,3 +1200,133 @@ describe("selector failure diagnostics (#966 W1)", () => {
     });
   });
 });
+
+describe("<base href> resolution for URL attributes", () => {
+  let extractor: ManifestExtractorService;
+
+  beforeEach(() => {
+    extractor = new ManifestExtractorService();
+  });
+
+  // Sonoma County's registrar links every ballot-measure voter guide as a
+  // page-relative path with no leading slash, under
+  // `<base href="https://sonomacounty.gov/" />`. Resolved against the page
+  // it appears on, that path has never existed — so the guide 404s, the
+  // measure gets no fullText, and nothing about it looks like an error.
+  const guideHref =
+    "Main%20County%20Site/Registrar%20of%20Voters/SoCo_Nov2026GenElec_9451_MeasH_SalesTax_EN.pdf";
+
+  const hrefManifest = (selector = "a") =>
+    createTestManifest({
+      extractionRules: {
+        containerSelector: "body",
+        itemSelector: "tr",
+        fieldMappings: [
+          {
+            fieldName: "detailUrl",
+            selector,
+            extractionMethod: "attribute",
+            attribute: "href",
+            required: true,
+          },
+        ],
+      },
+    });
+
+  it("resolves a relative href against the document's base href", () => {
+    const html = `
+      <html><head><base href="https://sonomacounty.gov/" /></head>
+      <body><table><tr><td><a href="${guideHref}">English</a></td></tr></table></body>
+      </html>`;
+
+    const result = extractor.extract(
+      html,
+      hrefManifest(),
+      "https://sonomacounty.gov/registrar-of-voters/elections/november-3-2026",
+    );
+
+    expect(result.items).toHaveLength(1);
+    // Absolute, and rooted at the ORIGIN rather than under the page's path.
+    expect(result.items[0].detailUrl).toBe(
+      `https://sonomacounty.gov/${guideHref}`,
+    );
+    expect(result.items[0].detailUrl).not.toContain("registrar-of-voters");
+  });
+
+  it("leaves the value relative when the page declares no base", () => {
+    // The pre-existing contract: with no base tag the href is carried out
+    // untouched and resolved downstream against the source url. Both live
+    // California propositions sources (oag.ca.gov, sos.ca.gov) rely on this,
+    // so a change here would be a silent regression for them.
+    const html = `
+      <html><head></head>
+      <body><table><tr><td><a href="initiatives/26-0006.pdf">doc</a></td></tr></table></body>
+      </html>`;
+
+    const result = extractor.extract(
+      html,
+      hrefManifest(),
+      "https://oag.ca.gov/x",
+    );
+
+    expect(result.items[0].detailUrl).toBe("initiatives/26-0006.pdf");
+  });
+
+  it("leaves absolute, protocol-relative and scheme URLs alone", () => {
+    const html = `
+      <html><head><base href="https://sonomacounty.gov/" /></head>
+      <body><table>
+        <tr><td><a id="a" href="https://elsewhere.gov/doc.pdf">abs</a></td></tr>
+        <tr><td><a id="b" href="//cdn.example.gov/doc.pdf">proto</a></td></tr>
+        <tr><td><a id="c" href="mailto:clerk@sonomacounty.gov">mail</a></td></tr>
+        <tr><td><a id="d" href="#analysis">frag</a></td></tr>
+      </table></body>
+      </html>`;
+
+    const result = extractor.extract(
+      html,
+      hrefManifest(),
+      "https://sonomacounty.gov/x",
+    );
+
+    expect(result.items.map((i) => i.detailUrl)).toEqual([
+      "https://elsewhere.gov/doc.pdf",
+      "//cdn.example.gov/doc.pdf",
+      "mailto:clerk@sonomacounty.gov",
+      "#analysis",
+    ]);
+  });
+
+  it("does not touch attributes that are not URLs", () => {
+    // `title` happens to be the attribute Sonoma's guide links carry next to
+    // href, so a rule keyed on "any attribute" would rewrite it.
+    const html = `
+      <html><head><base href="https://sonomacounty.gov/" /></head>
+      <body><table><tr><td><a href="x.pdf" title="About Measure H">English</a></td></tr></table></body>
+      </html>`;
+
+    const manifest = createTestManifest({
+      extractionRules: {
+        containerSelector: "body",
+        itemSelector: "tr",
+        fieldMappings: [
+          {
+            fieldName: "label",
+            selector: "a",
+            extractionMethod: "attribute",
+            attribute: "title",
+            required: true,
+          },
+        ],
+      },
+    });
+
+    const result = extractor.extract(
+      html,
+      manifest,
+      "https://sonomacounty.gov/x",
+    );
+
+    expect(result.items[0].label).toBe("About Measure H");
+  });
+});

@@ -97,8 +97,19 @@ export class ScrapingPipelineService {
      * Records which run produced which rows (#1280). Optional so the pipeline
      * still runs where nothing is bound; a run then records nothing, and
      * beginSession says so rather than failing silently.
+     *
+     * `@Inject` is REQUIRED here and is not redundant with the type. The
+     * annotation is a union (`… | null`), and TypeScript emits `Object` as the
+     * `design:paramtypes` entry for any union — so with `@Optional()` alone
+     * Nest resolves a token of `Object`, finds no provider, and injects
+     * undefined. The `= null` default then takes over and the pipeline runs
+     * with tracking silently off, which is exactly what #1280 set out to end:
+     * every data type except campaign_finance recorded zero executions,
+     * because the bulk and api handlers are constructed by hand with the
+     * tracker passed explicitly while this service gets it by DI.
      */
     @Optional()
+    @Inject(ExecutionTrackerService)
     private readonly executionTracker: ExecutionTrackerService | null = null,
   ) {}
 
