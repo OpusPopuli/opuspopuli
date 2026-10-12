@@ -197,13 +197,44 @@ describe('source version derivation (#1306)', () => {
     // must write an explicit NULL. Leaving the field out of the update would
     // keep the row pointing at the previous fetch's bytes — a stale reference
     // that reads as current, which is worse than no reference at all.
+    //
+    // The rewrite carries NEW TEXT, because that is what "rewritten from a
+    // fetch" means and it is what makes the old pointer stale. The fixture
+    // used to omit it, which made this case indistinguishable from the one
+    // below — a write that touches no text at all.
+    const REFETCHED = `${EXTRACTED} — re-extracted, archive unavailable`;
     const rewritten = await db.proposition.update({
       where: { id: prop.id },
-      data: { ...rowProvenance({}) },
+      data: { fullText: REFETCHED, ...rowProvenance({ fullText: REFETCHED }) },
       select: { sourceVersionId: true },
     });
 
     expect(rewritten.sourceVersionId).toBeNull();
+  });
+
+  it('keeps the link when the write carries no text of its own', async () => {
+    const sourceVersionId = await archive();
+    const prop = await upsertProposition(sourceVersionId);
+
+    // Two dataSources may write one row — Sonoma's ballot measures are NAMED
+    // by a filings page and DOCUMENTED by a voter-guide page, merged on
+    // externalId, and the second one upserts last. The filings source carries
+    // no text, so it has nothing to say about which bytes the text came from.
+    //
+    // Nulling here discarded a CORRECT reference: on 2026-10-12 it orphaned
+    // all 15 archived Sonoma guides, leaving 15 source_versions rows that
+    // nothing pointed at and claims that all reported `no-derived-text`.
+    //
+    // The retained pointer is not stale, because the text it describes is
+    // exactly the text still stored — this write did not touch it.
+    const rewritten = await db.proposition.update({
+      where: { id: prop.id },
+      data: { title: 'Documentary transfer tax', ...rowProvenance({}) },
+      select: { sourceVersionId: true, fullText: true },
+    });
+
+    expect(rewritten.sourceVersionId).toBe(sourceVersionId);
+    expect(rewritten.fullText).toBe(EXTRACTED);
   });
 
   it('archives the bytes once however many rows derive from them', async () => {
