@@ -340,11 +340,41 @@ export class ScrapingPipelineService {
       ...(session?.executionId && { executionId: session.executionId }),
     });
 
+    // Stage 4 runs here too — and for the same reason Stage 3.5 above does.
+    //
+    // This method used to end `return rawResult as unknown as
+    // ExtractionResult<T>`, and that cast was false: `rawResult` holds raw
+    // `Record<string, unknown>` rows, not domain objects. So a staticManifest
+    // silently disabled domain mapping, exactly as it had once disabled
+    // enrichment — the defect the comment above documents, one stage later and
+    // directly beneath it.
+    //
+    // What a static source therefore lost: Zod validation (an invalid `status`
+    // or a missing `title` persisted instead of being rejected),
+    // `cleanPropositionTitle`, the #1219 summary-echo lint, the schemaRejects
+    // diagnostics — and `sourceUrl: record.sourceUrl ?? record.detailUrl`,
+    // which is the ONLY place `sourceUrl` is derived. That last one is why
+    // every static source left `source_url` null: all 15 Sonoma measures, and
+    // the two California initiatives that appear on the AG list but never on
+    // the SoS one.
+    //
+    // Measured over all three live static sources before changing this:
+    // 12 + 3 + 46 items extracted, 61 of 61 mapped, NONE dropped, and all 61
+    // gained a `sourceUrl`.
+    const result = this.mapper.map<T>(rawResult, source);
+
     const duration = Date.now() - pipelineStart;
+    const dropped = rawResult.items.length - result.items.length;
     this.logger.log(
-      `Pipeline complete [static]: ${rawResult.items.length} items extracted in ${duration}ms`,
+      `Pipeline complete [static]: ${result.items.length} items extracted in ${duration}ms` +
+        // Never silent about a drop. Mapping rejects a row that fails the
+        // domain schema, and a quiet count is how a config change that
+        // invalidates every row looks like a successful run.
+        (dropped > 0
+          ? ` (${dropped} of ${rawResult.items.length} dropped by domain mapping)`
+          : ""),
     );
-    return rawResult as unknown as ExtractionResult<T>;
+    return result;
   }
 
   /**
