@@ -219,6 +219,26 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
    * Generate analyses for all propositions that have fullText but no
    * analysis yet (or whose prompt template has since changed). Used by
    * the backfill script and the post-ingestion hook.
+   *
+   * ── CORPUS-WIDE, not region-scoped ───────────────────────────────────
+   *
+   * There is no `regionPluginName` filter, so this regenerates every stale
+   * proposition in the database regardless of which region's sync invoked
+   * it. Measured 2026-10-12: a sync scoped to `california` moved all 15
+   * `california-sonoma` measures to prompt v4 as well — 70 rows, not the 56
+   * the job named.
+   *
+   * That is RIGHT for the backfill script and for a prompt revision, which
+   * makes the whole corpus stale at once and should regenerate it. It is
+   * surprising as the tail of a region-scoped job: the GPU cost of every
+   * other region lands on whoever synced one, and the job's own counters
+   * describe a subset of what it did.
+   *
+   * Left corpus-wide deliberately. Scoping it to the calling region would
+   * mean a prompt revision only reached the regions someone happened to
+   * sync, which is the worse failure — a corpus split across prompt
+   * versions with nothing saying so. Documented here instead, because the
+   * surprise is in the invocation and not in the selection.
    */
   async generateMissing(maxPropsOverride?: number): Promise<void> {
     if (!this.promptClient || !this.llm || !this.db) return;
