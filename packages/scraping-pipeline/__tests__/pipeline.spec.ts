@@ -1073,6 +1073,50 @@ describe("staticManifest enrichment (#1219)", () => {
     expect(item.sourceUrl).toBe("/measure.pdf");
   });
 
+  /**
+   * Mapping is Zod, and `.parse()` drops every key the domain schema does not
+   * declare — `sourceVersionId` among them. The detail crawler stamps that id
+   * PER ITEM at the fetch (#1306), before mapping, so adding the mapping call
+   * above would otherwise have thrown it away: the id gets computed, archives
+   * the bytes, and then vanishes one stage later.
+   *
+   * That is not hypothetical. Before this, the static path preserved the id by
+   * accident — by skipping mapping — and it is where California's 45 archived
+   * initiative references came from. Mapping without re-attaching would have
+   * nulled all 45 on their next sync.
+   */
+  it("carries each item's sourceVersionId across the mapping boundary", async () => {
+    // A real mapper's output: schema-shaped, with sourceVersionId gone.
+    const map = jest.fn().mockImplementation((raw: { items: unknown[] }) => ({
+      items: raw.items.map((item) => ({
+        externalId: (item as Record<string, unknown>).externalId,
+        title: "mapped",
+      })),
+      warnings: [],
+      errors: [],
+    }));
+
+    // The crawler stamps the id on the raw item, as the real one does.
+    const enrichItems = jest
+      .fn()
+      .mockImplementation((r: { items: Record<string, unknown>[] }) => {
+        r.items[0].sourceVersionId = "sv-from-this-items-own-pdf";
+        return r;
+      });
+
+    const pipeline = build(
+      enrichItems,
+      jest.fn().mockImplementation((r: unknown) => r),
+      { map },
+    );
+
+    const result = await pipeline.execute(staticSource, "california");
+
+    expect((result.items[0] as Record<string, unknown>).sourceVersionId).toBe(
+      "sv-from-this-items-own-pdf",
+    );
+  });
+
   it("reports rows the domain mapping dropped instead of counting quietly", async () => {
     // A mapper that rejects everything is what a schema-invalidating config
     // change looks like. The count alone would read as a healthy small run.

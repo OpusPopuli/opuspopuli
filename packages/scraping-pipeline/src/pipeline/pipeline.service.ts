@@ -67,6 +67,77 @@ function stampProvenance<T>(items: T[], provenance: RowProvenance): T[] {
   );
 }
 
+/** Read `sourceVersionId` off a record without asserting its shape. */
+function sourceVersionIdOf(item: unknown): string | undefined {
+  if (!item || typeof item !== "object") return undefined;
+  const value = (item as Record<string, unknown>).sourceVersionId;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Read `externalId` off a record without asserting its shape. */
+function externalIdOf(item: unknown): string | undefined {
+  if (!item || typeof item !== "object") return undefined;
+  const value = (item as Record<string, unknown>).externalId;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Carry each item's `sourceVersionId` across the mapping boundary (#1306).
+ *
+ * The detail crawler stamps it PER ITEM, at the fetch, because each row's text
+ * came from its own document — then domain mapping validates with Zod, and
+ * `.parse()` drops every key the domain schema does not declare. So the id was
+ * computed, used to archive the bytes, and thrown away one stage later.
+ *
+ * `stampProvenance` cannot cover this: it applies ONE provenance object to
+ * every item in a result, which is right for the run columns and wrong here —
+ * a shared reference would point most rows at some other document's bytes.
+ *
+ * Matched on `externalId`, not position, because mapping drops rows that fail
+ * the schema and the two arrays stop corresponding the moment it does. Items
+ * that carry no externalId fall back to position, and only when nothing was
+ * dropped.
+ */
+function preserveSourceVersionIds<T>(
+  raw: RawExtractionResult,
+  mapped: ExtractionResult<T>,
+): ExtractionResult<T> {
+  const byExternalId = new Map<string, string>();
+  const positional: (string | undefined)[] = [];
+
+  for (const item of raw.items) {
+    const sourceVersionId = sourceVersionIdOf(item);
+    positional.push(sourceVersionId);
+    const externalId = externalIdOf(item);
+    // First writer wins: if two raw rows share an externalId, the one that
+    // brought bytes is the one that archived them.
+    if (externalId && sourceVersionId && !byExternalId.has(externalId)) {
+      byExternalId.set(externalId, sourceVersionId);
+    }
+  }
+
+  if (byExternalId.size === 0 && !positional.some(Boolean)) return mapped;
+
+  const sameLength = raw.items.length === mapped.items.length;
+
+  return {
+    ...mapped,
+    items: mapped.items.map((item, index) => {
+      if (!item || typeof item !== "object") return item;
+      if (sourceVersionIdOf(item)) return item;
+
+      const externalId = externalIdOf(item);
+      const sourceVersionId = externalId
+        ? byExternalId.get(externalId)
+        : sameLength
+          ? positional[index]
+          : undefined;
+
+      return sourceVersionId ? { ...item, sourceVersionId } : item;
+    }),
+  };
+}
+
 @Injectable()
 export class ScrapingPipelineService {
   private readonly logger = new Logger(ScrapingPipelineService.name);
@@ -361,7 +432,10 @@ export class ScrapingPipelineService {
     // Measured over all three live static sources before changing this:
     // 12 + 3 + 46 items extracted, 61 of 61 mapped, NONE dropped, and all 61
     // gained a `sourceUrl`.
-    const result = this.mapper.map<T>(rawResult, source);
+    const result = preserveSourceVersionIds(
+      rawResult,
+      this.mapper.map<T>(rawResult, source),
+    );
 
     const duration = Date.now() - pipelineStart;
     const dropped = rawResult.items.length - result.items.length;
@@ -484,7 +558,10 @@ export class ScrapingPipelineService {
     });
 
     // Stage 4: Map to domain types
-    let result = this.mapper.map<T>(rawResult, source);
+    let result = preserveSourceVersionIds(
+      rawResult,
+      this.mapper.map<T>(rawResult, source),
+    );
 
     // Stage 4.5: Mapping-aware heal (#966 W1). A drifted selector that
     // matches the wrong elements passes the pre-mapping gate — extraction
@@ -509,7 +586,10 @@ export class ScrapingPipelineService {
         manifestId: manifest.id,
         ...(session?.executionId && { executionId: session.executionId }),
       });
-      const remapped = this.mapper.map<T>(healedRaw, source);
+      const remapped = preserveSourceVersionIds(
+        healedRaw,
+        this.mapper.map<T>(healedRaw, source),
+      );
       // Keep whichever outcome mapped more items — a failed heal must not
       // discard the (partial) original result.
       if (remapped.items.length > result.items.length) {
