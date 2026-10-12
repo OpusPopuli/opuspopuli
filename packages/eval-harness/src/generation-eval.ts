@@ -46,6 +46,7 @@ import { resolveAnalysisPrompt } from "./prompt-attribution.js";
 import { createLlmBackend, type GenerationRun } from "./backends/llm.js";
 import { scoreJsonValidity } from "./scoring/json-validity.js";
 import { scoreGrounding } from "./scoring/grounding.js";
+import { scoreSectioning } from "./scoring/sectioning.js";
 import {
   scoreAbstention,
   type FieldExpectation,
@@ -113,6 +114,20 @@ export interface MeasureResult {
   json: string;
   jsonValid: boolean;
   grounding: { rate: number; figures: number; fabricated: string[] };
+  /**
+   * Table-of-contents grounding. The prompt requires each heading to be a
+   * verbatim substring of FullText, because the consumer locates the section
+   * by string-matching it; an ungrounded heading silently fails to anchor.
+   */
+  sectioning: {
+    sections: number;
+    grounded: number;
+    rate: number;
+    /** The emitted list IS the prompt's OUTPUT FORMAT example, and nothing else. */
+    looksCopiedFromExample: boolean;
+    /** The prompt permits a synthetic heading when the source has none. */
+    sourceHasHeadings: boolean;
+  };
   abstention: {
     rate: number;
     fabricated: number;
@@ -206,6 +221,12 @@ export function scoreOne(
     .join("\n");
 
   const grounding = scoreGrounding(prose, item.fullText);
+  const sectioning = scoreSectioning(
+    Array.isArray(payload.analysisSections)
+      ? (payload.analysisSections as { heading: string }[])
+      : [],
+    item.fullText,
+  );
   const abstention = scoreAbstention(payload, gold.fieldExpectations);
 
   const claims = toEmittedClaims(payload.analysisClaims);
@@ -247,6 +268,13 @@ export function scoreOne(
       rate: grounding.rate,
       figures: grounding.figures.length,
       fabricated: grounding.fabricated.map((f) => f.raw),
+    },
+    sectioning: {
+      sections: sectioning.sections,
+      grounded: sectioning.grounded,
+      rate: sectioning.rate,
+      looksCopiedFromExample: sectioning.looksCopiedFromExample,
+      sourceHasHeadings: sectioning.sourceHasHeadings,
     },
     abstention: {
       rate: abstention.rate,
@@ -335,6 +363,40 @@ function report(results: MeasureResult[], header: string[]): string {
       (fabricatedFigures.length ? ` — ${fabricatedFigures.join(", ")}` : ""),
     `Fabricated fields  ${abstainFab} (populated where the source cannot support it)`,
   );
+
+  // Table-of-contents grounding. Reported separately for documents that HAVE
+  // their own headings, because the prompt permits a synthetic heading where
+  // the source has none — averaging the two together would score a correct
+  // answer as a failure.
+  const withHeadings = results.filter((r) => r.sectioning.sourceHasHeadings);
+  const secs = results.reduce((a, r) => a + r.sectioning.sections, 0);
+  const secGrounded = results.reduce((a, r) => a + r.sectioning.grounded, 0);
+  const reqSecs = withHeadings.reduce((a, r) => a + r.sectioning.sections, 0);
+  const reqGrounded = withHeadings.reduce(
+    (a, r) => a + r.sectioning.grounded,
+    0,
+  );
+  const copied = results.filter((r) => r.sectioning.looksCopiedFromExample);
+  if (secs > 0) {
+    lines.push(
+      "",
+      `Section headings   ${secGrounded}/${secs} grounded` +
+        (secs ? ` (${pct(secGrounded / secs)})` : "") +
+        (reqSecs
+          ? ` · ${reqGrounded}/${reqSecs} (${pct(reqGrounded / reqSecs)}) where the source has its own`
+          : ""),
+    );
+    if (copied.length > 0) {
+      // Measured 2026-10-12: 50 of 71 live measures came back as exactly the
+      // prompt's example pair, on texts containing neither phrase. A rate
+      // alone says "worse"; this says why.
+      lines.push(
+        `  !! ${copied.length}/${n} returned the prompt's OUTPUT FORMAT EXAMPLE verbatim` +
+          " and nothing else",
+        "     — the illustration is being copied instead of the document read.",
+      );
+    }
+  }
 
   // Calibration across every claim in the run. Asked on behalf of #1209: if a
   // verification gate kept only high-confidence claims, would the survivors be
