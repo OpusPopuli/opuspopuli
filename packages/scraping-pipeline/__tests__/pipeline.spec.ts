@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service.js";
 import { ScrapingPipelineService } from "../src/pipeline/pipeline.service";
 import type { StructuralAnalyzerService } from "../src/analysis/structural-analyzer.service";
@@ -956,6 +957,9 @@ describe("staticManifest enrichment (#1219)", () => {
     enrichSummaries: jest.Mock = jest
       .fn()
       .mockImplementation((r: unknown) => r),
+    mapper: { map: jest.Mock } = {
+      map: jest.fn().mockImplementation((r: unknown) => r),
+    },
   ) => {
     const extractor = {
       extract: jest.fn().mockReturnValue({
@@ -981,7 +985,7 @@ describe("staticManifest enrichment (#1219)", () => {
       { analyze: jest.fn() } as never,
       { findActive: jest.fn(), save: jest.fn() } as never,
       extractor as never,
-      { map: jest.fn().mockImplementation((r: unknown) => r) } as never,
+      mapper as never,
       { evaluate: jest.fn().mockReturnValue({ shouldHeal: false }) } as never,
       {} as never,
       {} as never,
@@ -1026,6 +1030,121 @@ describe("staticManifest enrichment (#1219)", () => {
     await pipeline.execute(staticSource, "california");
 
     expect(enrichSummaries).toHaveBeenCalled();
+  });
+
+  /**
+   * The same defect one stage later, found 2026-10-12.
+   *
+   * `executeStaticManifest` ended `return rawResult as unknown as
+   * ExtractionResult<T>`, and that cast was false — `rawResult` holds raw
+   * records, not domain objects. So a staticManifest silently disabled Stage 4
+   * as well, costing Zod validation, `cleanPropositionTitle`, the #1219
+   * summary-echo lint, and `sourceUrl: record.sourceUrl ?? record.detailUrl`
+   * — the only place `sourceUrl` is derived. That is why every static source
+   * left `source_url` null: all 15 Sonoma measures, and the two California
+   * initiatives that appear on the AG list but never on the SoS one.
+   */
+  it("runs domain mapping on the static path, not only the AI path", async () => {
+    const map = jest.fn().mockImplementation((raw: { items: unknown[] }) => ({
+      // A mapper that transforms, so passing the raw result straight through
+      // cannot masquerade as success — which is what the identity mapper the
+      // other tests use would allow.
+      items: raw.items.map((item) => ({
+        ...(item as Record<string, unknown>),
+        sourceUrl: (item as Record<string, unknown>).detailUrl,
+        mapped: true,
+      })),
+      warnings: [],
+      errors: [],
+    }));
+
+    const pipeline = build(
+      jest.fn().mockImplementation((r: unknown) => r),
+      jest.fn().mockImplementation((r: unknown) => r),
+      { map },
+    );
+
+    const result = await pipeline.execute(staticSource, "california");
+
+    expect(map).toHaveBeenCalled();
+    const item = result.items[0] as Record<string, unknown>;
+    expect(item.mapped).toBe(true);
+    // The field the real mapper derives, and the reason this matters.
+    expect(item.sourceUrl).toBe("/measure.pdf");
+  });
+
+  /**
+   * Mapping is Zod, and `.parse()` drops every key the domain schema does not
+   * declare — `sourceVersionId` among them. The detail crawler stamps that id
+   * PER ITEM at the fetch (#1306), before mapping, so adding the mapping call
+   * above would otherwise have thrown it away: the id gets computed, archives
+   * the bytes, and then vanishes one stage later.
+   *
+   * That is not hypothetical. Before this, the static path preserved the id by
+   * accident — by skipping mapping — and it is where California's 45 archived
+   * initiative references came from. Mapping without re-attaching would have
+   * nulled all 45 on their next sync.
+   */
+  it("carries each item's sourceVersionId across the mapping boundary", async () => {
+    // A real mapper's output: schema-shaped, with sourceVersionId gone.
+    const map = jest.fn().mockImplementation((raw: { items: unknown[] }) => ({
+      items: raw.items.map((item) => ({
+        externalId: (item as Record<string, unknown>).externalId,
+        title: "mapped",
+      })),
+      warnings: [],
+      errors: [],
+    }));
+
+    // The crawler stamps the id on the raw item, as the real one does.
+    const enrichItems = jest
+      .fn()
+      .mockImplementation((r: { items: Record<string, unknown>[] }) => {
+        r.items[0].sourceVersionId = "sv-from-this-items-own-pdf";
+        return r;
+      });
+
+    const pipeline = build(
+      enrichItems,
+      jest.fn().mockImplementation((r: unknown) => r),
+      { map },
+    );
+
+    const result = await pipeline.execute(staticSource, "california");
+
+    expect((result.items[0] as Record<string, unknown>).sourceVersionId).toBe(
+      "sv-from-this-items-own-pdf",
+    );
+  });
+
+  it("reports rows the domain mapping dropped instead of counting quietly", async () => {
+    // A mapper that rejects everything is what a schema-invalidating config
+    // change looks like. The count alone would read as a healthy small run.
+    const map = jest
+      .fn()
+      .mockReturnValue({ items: [], warnings: [], errors: [] });
+    const log = jest
+      .spyOn(Logger.prototype, "log")
+      .mockImplementation(() => {});
+
+    try {
+      const pipeline = build(
+        jest.fn().mockImplementation((r: unknown) => r),
+        jest.fn().mockImplementation((r: unknown) => r),
+        { map },
+      );
+
+      const result = await pipeline.execute(staticSource, "california");
+
+      expect(result.items).toHaveLength(0);
+      const line = log.mock.calls
+        .map((c) => c[0])
+        .filter((a): a is string => typeof a === "string")
+        .find((a) => a.includes("[static]"));
+      expect(line).toContain("1 of 1 dropped by domain mapping");
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 
