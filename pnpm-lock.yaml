@@ -1048,8 +1048,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: 1.0.101
-        version: 1.0.101
+        specifier: 1.0.102
+        version: 1.0.102
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -4498,8 +4498,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@opuspopuli/regions@1.0.101':
-    resolution: {integrity: sha512-IwBZNTbXik51HjvQQn8e2bqo3VsXDkrLozanQCq+DpaTdE77+nfHGvwDrbJjBZakvdsQhQK0XCvW6jJmn/j7BA==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.101/f08525d1c6aeca98fa2e1cc72569b3e9c67d3f43}
+  '@opuspopuli/regions@1.0.102':
+    resolution: {integrity: sha512-6nyt017v6KdLjHjxEF/isE8sYb78c312UVJugRrTtavR09LaL3VqYR0gHVt53/WcDjnUj2kcSowy+7yF4pELDQ==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.102/900d2fa52db4e25f361385fbda6a2555319a5928}
     hasBin: true
 
   '@paralleldrive/cuid2@2.3.1':
@@ -15316,7 +15316,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
 
-  '@opuspopuli/regions@1.0.101':
+  '@opuspopuli/regions@1.0.102':
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
