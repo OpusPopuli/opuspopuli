@@ -1037,6 +1037,117 @@ describe("DomainMapperService", () => {
     });
   });
 
+  /**
+   * Reject reasons are COUNTED and ranked (#991).
+   *
+   * The reasons were always collected and never counted, so a run that
+   * dropped more than half its source reported a few distinct messages with
+   * no magnitudes. Diagnosing #991 meant downloading a 1.6 GB archive and
+   * re-implementing the validator by hand to learn that `EXPN_CD` loses
+   * 5,232,951 rows to a blank date and a nearly-disjoint 3,811,692 to a
+   * blank payee — two causes where the issue had hypothesised one. Both
+   * numbers were available to the run that dropped them.
+   */
+  describe("reject reason tally (#991)", () => {
+    /** Two reject causes in different proportions, as EXPN_CD has. */
+    const rawWithRejects = () =>
+      createRawResult({
+        items: [
+          // 3 rejected for a blank date
+          {
+            externalId: "E1",
+            payeeName: "A",
+            amount: "1",
+            date: "",
+            sourceSystem: "cal_access",
+          },
+          {
+            externalId: "E2",
+            payeeName: "B",
+            amount: "1",
+            date: "",
+            sourceSystem: "cal_access",
+          },
+          {
+            externalId: "E3",
+            payeeName: "C",
+            amount: "1",
+            date: "",
+            sourceSystem: "cal_access",
+          },
+          // 1 rejected for a blank payee
+          {
+            externalId: "E4",
+            payeeName: "",
+            amount: "1",
+            date: "2026-03-01",
+            sourceSystem: "cal_access",
+          },
+          // 1 valid, so missRatio is not 1
+          {
+            externalId: "E5",
+            payeeName: "D",
+            amount: "1",
+            date: "2026-03-01",
+            sourceSystem: "cal_access",
+          },
+        ],
+      });
+
+    const financeSource = () =>
+      createSource({
+        dataType: DataType.CAMPAIGN_FINANCE,
+        category: "expenditure",
+      });
+
+    it("names the biggest reason first, with its count", () => {
+      const result = mapper.map(rawWithRejects(), financeSource());
+
+      const warning = result.warnings.find((w) =>
+        w.includes("rejected by the"),
+      );
+      // Ranked by count: the date cause (3) must precede the payee cause (1).
+      expect(warning).toMatch(/date.*×3/);
+      expect(warning).toContain("×1");
+      expect(warning!.indexOf("×3")).toBeLessThan(warning!.indexOf("×1"));
+    });
+
+    it("still reports the reject ratio", () => {
+      const result = mapper.map(rawWithRejects(), financeSource());
+
+      const failure = result.selectorFailures?.find(
+        (f) => f.kind === "schema_reject",
+      );
+      expect(failure?.missRatio).toBeCloseTo(4 / 5);
+      expect(failure?.message).toContain("4/5");
+    });
+
+    it("bounds the issue samples so a 9M-reject run cannot retain 9M strings", () => {
+      // Only the first 10 DISTINCT samples are ever surfaced, so retaining
+      // one per reject bought nothing. EXPN_CD rejects ~9.0M of 16.1M rows.
+      const many = createRawResult({
+        items: Array.from({ length: 500 }, (_, i) => ({
+          externalId: `E${i}`,
+          payeeName: "X",
+          amount: "1",
+          date: "",
+          sourceSystem: "cal_access",
+        })),
+      });
+
+      const result = mapper.map(many, financeSource());
+      const failure = result.selectorFailures?.find(
+        (f) => f.kind === "schema_reject",
+      );
+
+      expect(result.items).toHaveLength(0);
+      // The cap is on the sample array, not on the tally: the count must
+      // still be the true total.
+      expect(failure?.message).toContain("500/500");
+      expect((failure?.schemaIssues ?? []).length).toBeLessThanOrEqual(10);
+    });
+  });
+
   describe("campaign finance — expenditures", () => {
     it("should map valid expenditure records", () => {
       const result = mapper.map(
