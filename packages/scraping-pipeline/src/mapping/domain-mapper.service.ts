@@ -36,9 +36,37 @@ import {
  * without any identity, CVR2 rows without a ballot link) are filtering,
  * not drift, and must not feed the heal loop.
  */
+/**
+ * Samples of `issues` kept for the selector-repair agent (#966).
+ *
+ * Only the first 10 DISTINCT entries are ever surfaced, so an unbounded array
+ * bought nothing and cost everything at scale: `EXPN_CD` rejects ~9.0M of its
+ * 16.1M rows, which is ~9M strings retained for ten to be read. The tally
+ * below is what actually answers "why", so this only has to hold a sample.
+ */
+const ISSUE_SAMPLE_CAP = 200;
+
+/** Most reject reasons to name in the summary, highest count first. */
+const TOP_REJECT_REASONS = 5;
+
 interface MappingDiagnostics {
   schemaRejects: number;
   issues: string[];
+  /**
+   * `field: message` -> how many records failed that way (#991).
+   *
+   * The reasons were always collected and never counted, so a run that
+   * dropped more than half its source reported a handful of distinct
+   * messages and no magnitudes. Diagnosing #991 therefore meant downloading
+   * a 1.6 GB archive and re-implementing the validator to count by hand —
+   * which produced `date blank: 5,232,951` and `payeeName blank: 3,811,692`,
+   * two nearly-disjoint causes where the issue had hypothesised one. Both
+   * numbers were available to the run that dropped them.
+   *
+   * Bounded by the schema's shape rather than the row count: a field can only
+   * fail in so many ways, so this is a few dozen entries at most.
+   */
+  rejectReasons: Map<string, number>;
   /**
    * Title-echo findings (#1219).
    *
@@ -73,6 +101,7 @@ export class DomainMapperService {
     const items: T[] = [];
     const diagnostics: MappingDiagnostics = {
       schemaRejects: 0,
+      rejectReasons: new Map(),
       issues: [],
       summaryEchoes: [],
     };
@@ -132,6 +161,14 @@ export class DomainMapperService {
 
     if (diagnostics.schemaRejects > 0 && raw.items.length > 0) {
       const schemaIssues = [...new Set(diagnostics.issues)].slice(0, 10);
+      // Ranked WITH counts. The first reason alphabetically, or the first one
+      // encountered, is not the one that matters — `EXPN_CD` drops 5.2M rows
+      // on a blank date and 3.8M on a blank payee, and reporting either alone
+      // describes a different bug than the one that happened.
+      const ranked = [...diagnostics.rejectReasons.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, TOP_REJECT_REASONS)
+        .map(([reason, count]) => `${reason} ×${count.toLocaleString()}`);
       const message =
         diagnostics.schemaRejects +
         "/" +
@@ -146,7 +183,7 @@ export class DomainMapperService {
         message,
       });
       warnings.push(
-        message + (schemaIssues.length > 0 ? " — " + schemaIssues[0] : ""),
+        ranked.length > 0 ? `${message} — ${ranked.join("; ")}` : message,
       );
     }
 
@@ -172,7 +209,10 @@ export class DomainMapperService {
     diag.schemaRejects++;
     for (const issue of result.error.issues) {
       const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
-      diag.issues.push(label + "." + path + ": " + issue.message);
+      const reason = label + "." + path + ": " + issue.message;
+      diag.rejectReasons.set(reason, (diag.rejectReasons.get(reason) ?? 0) + 1);
+      // Sample only. The tally above carries the magnitudes.
+      if (diag.issues.length < ISSUE_SAMPLE_CAP) diag.issues.push(reason);
     }
     return null;
   }
