@@ -28,7 +28,12 @@ export interface FundingBasis {
   /** Expenditures in `totalSpent` with no reported date. */
   undatedAmount: number;
   undatedCount: number;
-  /** Expenditures in `totalSpent` with no reported payee. */
+  /**
+   * Expenditures in `totalSpent` with **no recipient named anywhere** on the
+   * row — not merely a blank `payeeName`. Schedule D names its recipient as a
+   * candidate or a measure instead, and counting those as unattributed
+   * overstated this figure ~10x (#991 follow-up).
+   */
   unattributedAmount: number;
   unattributedCount: number;
   /**
@@ -153,7 +158,28 @@ export class FundingBasisService {
         _count: { _all: true },
       }),
       this.db.expenditure.aggregate({
-        where: { ...where, payeeName: null },
+        // A blank `payeeName` alone does NOT mean the recipient is unknown.
+        //
+        // Schedule D ("Summary of Expenditures Supporting/Opposing Other
+        // Candidates, Measures and Committees") records its recipient as a
+        // CANDIDATE or a MEASURE, so `PAYEE_NAML` is legitimately blank while
+        // `CAND_NAML` / `BAL_NAME` name who the money went to. Counting those
+        // as unattributed told readers "who received it was not reported"
+        // about money whose recipient the filing states plainly.
+        //
+        // Measured on the 2026-10-14 resync: 3,522,438 rows had no payee, but
+        // 2,171,960 of them (61.7%) named a candidate or a measure. The
+        // disclosure therefore overstated unattributed money ~10x
+        // ($1.516B vs $0.152B), and far worse per page — one member's panel
+        // read $1,024,518 where the truth was $11,800.
+        //
+        // So: unattributed means no recipient named ANYWHERE on the row.
+        where: {
+          ...where,
+          payeeName: null,
+          candidateName: null,
+          propositionTitle: null,
+        },
         _sum: { amount: true },
         _count: { _all: true },
       }),
