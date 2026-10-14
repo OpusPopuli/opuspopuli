@@ -2,10 +2,15 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CommitteeMeasurePositionType,
   DbService,
-  Prisma,
 } from '@opuspopuli/relationaldb-provider';
 import type { ICache } from '@opuspopuli/common';
 import { REGION_CACHE } from './region.tokens';
+import {
+  EMPTY_FUNDING_BASIS,
+  FundingBasisService,
+  type FundingBasis,
+} from './funding-basis.service';
+import { reviveBasis, toNumber } from './finance-money';
 
 /** Output shape — mirrored by PropositionFundingModel for the GraphQL surface. */
 export interface SidedFunding {
@@ -19,6 +24,8 @@ export interface SidedFunding {
     contributionCount: number;
   }[];
   primaryCommittees: { id: string; name: string; totalRaised: number }[];
+  /** What this side's totals rest on (#991) — never omitted, zeros included. */
+  basis: FundingBasis;
 }
 
 export interface PropositionFunding {
@@ -27,6 +34,22 @@ export interface PropositionFunding {
   support: SidedFunding;
   oppose: SidedFunding;
 }
+
+/**
+ * Bumped whenever the cached SHAPE changes (#991).
+ *
+ * The entry is JSON, so a deploy that adds a field to the cached object meets
+ * entries written by the previous build for the full 4-hour TTL. Guarding on
+ * one field's presence does not scale: this change added `basis`, then added
+ * `measured` inside it, and an entry written between those two revisions
+ * satisfies `!!parsed.basis` while leaving a non-nullable GraphQL field
+ * undefined — which fails EVERY query for that id until the TTL expires.
+ *
+ * A version in the key makes a shape change a cache miss by construction:
+ * stale entries are never read and expire on their own. Bump this on any
+ * change to the cached interface.
+ */
+const CACHE_VERSION = 'v2';
 
 const TOP_DONORS_LIMIT = 5;
 const PRIMARY_COMMITTEES_LIMIT = 3;
@@ -47,7 +70,7 @@ const PRIMARY_COMMITTEES_LIMIT = 3;
  * `totalSpent` follows the same dual-channel logic with `Expenditure` rows.
  * `topDonors` aggregates by donor name across the side's committees.
  *
- * Cached in REGION_CACHE under `propositionFunding:{id}` for 4 hours; the
+ * Cached in REGION_CACHE under `propositionFunding:{version}:{id}` for 4 hours; the
  * linker is responsible for invalidating after each sync (this service
  * doesn't know when the underlying data changes).
  */
@@ -58,6 +81,7 @@ export class PropositionFundingService {
   constructor(
     @Optional() private readonly db?: DbService,
     @Optional() @Inject(REGION_CACHE) private readonly cache?: ICache<string>,
+    @Optional() private readonly basis?: FundingBasisService,
   ) {}
 
   /**
@@ -65,14 +89,10 @@ export class PropositionFundingService {
    * an empty-shaped result when the service has no DB or no positions exist.
    */
   async getFunding(propositionId: string): Promise<PropositionFunding> {
-    const cacheKey = `propositionFunding:${propositionId}`;
+    const cacheKey = `propositionFunding:${CACHE_VERSION}:${propositionId}`;
     const cached = await this.cache?.get(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached) as PropositionFunding;
-      // Revive the asOf Date which JSON serializes to a string.
-      parsed.asOf = new Date(parsed.asOf);
-      return parsed;
-    }
+    const revived = cached ? reviveCached(cached) : null;
+    if (revived) return revived;
 
     const fresh = await this.computeFunding(propositionId);
     await this.cache?.set(cacheKey, JSON.stringify(fresh));
@@ -89,9 +109,21 @@ export class PropositionFundingService {
     if (!this.db) {
       return this.emptyFunding(propositionId);
     }
+    // Resolved ONCE for both sides. The two sides are two committee sets and
+    // each would otherwise issue the identical snapshot query for the
+    // identical row.
+    const asOfSource = (await this.basis?.sourceDate()) ?? null;
     const [support, oppose] = await Promise.all([
-      this.computeSide(propositionId, CommitteeMeasurePositionType.support),
-      this.computeSide(propositionId, CommitteeMeasurePositionType.oppose),
+      this.computeSide(
+        propositionId,
+        CommitteeMeasurePositionType.support,
+        asOfSource,
+      ),
+      this.computeSide(
+        propositionId,
+        CommitteeMeasurePositionType.oppose,
+        asOfSource,
+      ),
     ]);
     return {
       propositionId,
@@ -109,6 +141,7 @@ export class PropositionFundingService {
   private async computeSide(
     propositionId: string,
     position: CommitteeMeasurePositionType,
+    asOfSource: Date | null,
   ): Promise<SidedFunding> {
     const positions = await this.db!.committeeMeasurePosition.findMany({
       where: { propositionId, position },
@@ -129,6 +162,7 @@ export class PropositionFundingService {
         committeeCount: 0,
         topDonors: [],
         primaryCommittees: [],
+        basis: await this.resolveBasis(committeeIds, asOfSource),
       };
     }
 
@@ -139,6 +173,10 @@ export class PropositionFundingService {
       donorAgg,
       uniqueDonors,
       primaryCommittees,
+      // Inside the fan-out, not awaited after it: the basis depends on none of
+      // the others, so a serial await only added a round trip to the critical
+      // path — twice per proposition, once per side.
+      basis,
     ] = await Promise.all([
       this.db!.contribution.aggregate({
         where: { committeeId: { in: committeeIds } },
@@ -163,9 +201,11 @@ export class PropositionFundingService {
         select: { donorName: true },
       }),
       this.computePrimaryCommittees(propositionId, position),
+      this.resolveBasis(committeeIds, asOfSource),
     ]);
 
     return {
+      basis,
       totalRaised: toNumber(contributionAgg._sum.amount) + ieAgg.totalRaised,
       totalSpent: toNumber(expenditureAgg._sum.amount) + ieAgg.totalSpent,
       donorCount: uniqueDonors.length,
@@ -243,6 +283,20 @@ export class PropositionFundingService {
       .slice(0, PRIMARY_COMMITTEES_LIMIT);
   }
 
+  /**
+   * `FundingBasisService` is @Optional(). Unwired, the zeros carry
+   * `measured: false` so the surface says "not computed" rather than
+   * rendering them as an all-clear (#991).
+   */
+  private async resolveBasis(
+    committeeIds: string[],
+    asOfSource: Date | null,
+  ): Promise<FundingBasis> {
+    return this.basis
+      ? this.basis.forCommittees(committeeIds, { asOfSource })
+      : { ...EMPTY_FUNDING_BASIS };
+  }
+
   private emptyFunding(propositionId: string): PropositionFunding {
     const empty: SidedFunding = {
       totalRaised: 0,
@@ -251,6 +305,7 @@ export class PropositionFundingService {
       committeeCount: 0,
       topDonors: [],
       primaryCommittees: [],
+      basis: { ...EMPTY_FUNDING_BASIS },
     };
     return {
       propositionId,
@@ -265,14 +320,18 @@ export class PropositionFundingService {
    * linker after each sync so subsequent reads recompute from fresh data.
    */
   async invalidateCache(propositionId: string): Promise<void> {
-    await this.cache?.delete(`propositionFunding:${propositionId}`);
+    await this.cache?.delete(
+      `propositionFunding:${CACHE_VERSION}:${propositionId}`,
+    );
   }
 }
 
-/** Coerce Prisma.Decimal | null | undefined to a JS number. */
-function toNumber(value: Prisma.Decimal | null | undefined): number {
-  if (value === null || value === undefined) return 0;
-  // Prisma.Decimal exposes toNumber() — preferred over Number(value) which
-  // goes through toString() first.
-  return value.toNumber();
+/** Rehydrate a cached result, or null to force a recompute. See `reviveBasis`. */
+function reviveCached(cached: string): PropositionFunding | null {
+  const parsed = JSON.parse(cached) as PropositionFunding;
+  // Both sides, and either one failing means the whole entry is stale.
+  if (!reviveBasis(parsed.support?.basis)) return null;
+  if (!reviveBasis(parsed.oppose?.basis)) return null;
+  parsed.asOf = new Date(parsed.asOf);
+  return parsed;
 }

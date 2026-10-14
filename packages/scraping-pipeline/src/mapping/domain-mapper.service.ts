@@ -558,6 +558,46 @@ const coerceFlexibleDate = z
   .transform(parseFlexibleDate)
   .pipe(z.date({ message: "Invalid date format" }));
 
+/**
+ * Blank → absent. Present-but-unparseable → REJECT (#991).
+ *
+ * `coerceFlexibleDateOptional` cannot serve this: it pipes
+ * `parseFlexibleDate` into `z.date().optional()`, so a malformed value and a
+ * blank one both arrive as `undefined` and both are accepted. The row then
+ * reports "no date reported by the filer" when the filer DID report one we
+ * could not read — a false statement about someone's filing, which is worse
+ * than the rejection it replaces.
+ *
+ * Missing data and conflicting data are different claims and must not collapse
+ * into one. Zero non-blank `EXPN_DATE` values in the 2026-10-12 archive are
+ * unparseable, so this rejects nothing today; it exists so that the day
+ * CAL-ACCESS emits a malformed date, we say so instead of mislabelling it.
+ */
+const coerceBlankableDate = z
+  .unknown()
+  .transform((val, ctx) => {
+    if (val === null || val === undefined) return undefined;
+    if (String(val).trim() === "") return undefined;
+
+    const parsed = parseFlexibleDate(val);
+    if (parsed === undefined) {
+      // Same message as the required path, so the #991 reject tally keeps
+      // grouping these together.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid date format",
+      });
+      return z.NEVER;
+    }
+    return parsed;
+  })
+  .pipe(z.date().optional());
+// `.pipe` closes a hole the required path got from `z.date()` for free:
+// `parseFlexibleDate` returns a `Date` unchanged when handed one, including
+// `new Date("garbage")` — an Invalid Date instance, whose `getTime()` is NaN
+// and which Postgres cannot store. Unreachable from the TSV path, where every
+// value is a string, so this is a latent hole rather than a live bug.
+
 /** Zod schema for optional date fields (null/empty → undefined) */
 const coerceFlexibleDateOptional = z
   .unknown()
@@ -1146,9 +1186,20 @@ const ExpenditureSchema = z
     /// See ContributionSchema.scheduleCode. 'E' is payments made (F460 line 6);
     /// 'D' is a MEMO schedule restating E entries, so the two must not be summed.
     scheduleCode: z.string().min(1).optional(),
-    payeeName: z.string().min(1),
+    /// Nullable (#991). CAL-ACCESS leaves PAYEE_NAML blank on 3,811,692 of
+    /// 16,061,732 EXPN_CD rows, carrying $2.11B; `min(1)` rejected every one.
+    /// An expenditure with no payee label still has an amount, a filing and a
+    /// committee, so the money is admitted and the gap disclosed.
+    payeeName: z
+      .string()
+      .nullable()
+      .transform((v) => (v && v.trim() !== "" ? v : undefined))
+      .optional(),
     amount: z.coerce.number(),
-    date: coerceFlexibleDate,
+    /// Nullable (#991). Blank EXPN_DATE on 5,232,951 rows carrying $9.75B.
+    /// Zero non-blank dates are unparseable, so this admits blanks only — a
+    /// malformed date still fails, which is the behaviour worth keeping.
+    date: coerceBlankableDate,
     purposeDescription: z
       .string()
       .nullable()
@@ -1195,6 +1246,19 @@ const ExpenditureSchema = z
   .transform(({ ballotNumber, ...rest }) => ({
     ...rest,
     propositionTitle: ballotNumber ? rest.propositionTitle : undefined,
+    // `payeeName` is restated EXPLICITLY, and this line is load-bearing
+    // (#991). `sortCampaignFinanceItems` discriminates on field PRESENCE —
+    // expenditures are `"payeeName" in rec && "amount" in rec` — because the
+    // bulk TSVs carry no type tag. The bulk handler only sets a key for a
+    // non-blank cell (`if (val) record[targetField] = val`), and Zod emits
+    // only keys it saw, so without this a blank PAYEE_NAML produces a record
+    // with NO `payeeName` key: it validates, then matches no route, and is
+    // discarded with no counted reject. All 3,811,692 rows / $2.11B that
+    // making this column nullable exists to admit would be lost one stage
+    // later than before, and less visibly. Spreading `rest` is not enough —
+    // an absent key stays absent. Assigning it sets the key to `undefined`,
+    // which Prisma writes as NULL on create.
+    payeeName: rest.payeeName,
   }));
 
 const IndependentExpenditureSchema = z.object({

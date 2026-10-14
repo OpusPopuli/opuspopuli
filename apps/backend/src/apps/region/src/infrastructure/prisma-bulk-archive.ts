@@ -48,10 +48,36 @@ export class PrismaBulkArchive implements IBulkArchive {
   async archive(candidate: BulkSnapshotCandidate): Promise<void> {
     const existing = await this.db.bulkSnapshot.findUnique({
       where: { contentHash: candidate.contentHash },
-      select: { id: true },
+      select: { id: true, lastModified: true, etag: true },
     });
 
     if (existing) {
+      // Backfill provenance onto a row archived before these were captured.
+      //
+      // `last_modified` and `etag` were never written here, so every snapshot
+      // taken since #1277 has them null — and #991 surfaces `last_modified`
+      // to readers as `asOfSource`. Returning early on a content-hash match
+      // would make that permanent: the same export re-fetched is "unchanged",
+      // so the null row would never be corrected and the figure could never
+      // be dated. Only ever fills a null; it does not overwrite a recorded
+      // value, because the bytes are identical by definition here and a
+      // differing header would be the less trustworthy of the two.
+      const backfill = {
+        ...(existing.lastModified === null &&
+          candidate.lastModified && { lastModified: candidate.lastModified }),
+        ...(existing.etag === null &&
+          candidate.etag && { etag: candidate.etag }),
+      };
+      if (Object.keys(backfill).length > 0) {
+        await this.db.bulkSnapshot.update({
+          where: { id: existing.id },
+          data: backfill,
+        });
+        this.logger.log(
+          `Backfilled snapshot provenance (${Object.keys(backfill).join(', ')}): ${candidate.sourceUrl}`,
+        );
+        return;
+      }
       this.logger.debug(
         `Bulk export unchanged, already archived: ${candidate.sourceUrl}`,
       );
@@ -67,6 +93,10 @@ export class PrismaBulkArchive implements IBulkArchive {
         sourceUrl: candidate.sourceUrl,
         byteSize: BigInt(candidate.byteSize),
         contentType: candidate.contentType ?? null,
+        // Raw header strings. `last_modified` is what #991 shows readers as
+        // `asOfSource`; both columns existed and neither was ever written.
+        lastModified: candidate.lastModified ?? null,
+        etag: candidate.etag ?? null,
         fetchedAt: new Date(candidate.fetchedAt),
         regionId: candidate.regionId ?? null,
         dataType: candidate.dataType ?? null,

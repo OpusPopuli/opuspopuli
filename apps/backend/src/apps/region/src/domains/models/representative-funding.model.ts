@@ -1,4 +1,5 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
+import { FundingBasisModel } from './funding-basis.model';
 
 /**
  * Campaign-finance surface for a representative (#943, epic #936). Aggregates
@@ -71,4 +72,8 @@ export class RepresentativeFundingModel {
 
   @Field(() => [RepFundingCommitteeModel])
   committees!: RepFundingCommitteeModel[];
+
+  /** What the totals above rest on (#991). Never optional — see the model. */
+  @Field(() => FundingBasisModel)
+  basis!: FundingBasisModel;
 }

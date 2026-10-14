@@ -69,6 +69,7 @@ import { IndependentExpenditureLinkerService } from './independent-expenditure-l
 import { CoverPageLinkerService } from './cover-page-linker.service';
 import { AmendmentSupersessionService } from './amendment-supersession.service';
 import { FilingReconciliationService } from './filing-reconciliation.service';
+import { FundingBasisService } from './funding-basis.service';
 import { PropositionFundingService } from './proposition-funding.service';
 import { RepresentativeFundingService } from './representative-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
@@ -290,6 +291,7 @@ const promptClientAsyncConfig = {
     CoverPageLinkerService,
     AmendmentSupersessionService,
     FilingReconciliationService,
+    FundingBasisService,
     PropositionFundingService,
     RepresentativeFundingService,
     LegislativeCommitteeLinkerService,

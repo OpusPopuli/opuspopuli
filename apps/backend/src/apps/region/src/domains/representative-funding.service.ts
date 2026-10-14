@@ -1,7 +1,13 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
+import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { ICache } from '@opuspopuli/common';
 import { REGION_CACHE } from './region.tokens';
+import {
+  EMPTY_FUNDING_BASIS,
+  FundingBasisService,
+  type FundingBasis,
+} from './funding-basis.service';
+import { reviveBasis, toNumber } from './finance-money';
 
 export interface RepFundingTopDonor {
   donorName: string;
@@ -31,7 +37,25 @@ export interface RepresentativeFunding {
   topDonors: RepFundingTopDonor[];
   topEmployers: RepFundingTopEmployer[];
   committees: RepFundingCommittee[];
+  /** What the totals rest on (#991) — never omitted, zeros included. */
+  basis: FundingBasis;
 }
+
+/**
+ * Bumped whenever the cached SHAPE changes (#991).
+ *
+ * The entry is JSON, so a deploy that adds a field to the cached object meets
+ * entries written by the previous build for the full 4-hour TTL. Guarding on
+ * one field's presence does not scale: this change added `basis`, then added
+ * `measured` inside it, and an entry written between those two revisions
+ * satisfies `!!parsed.basis` while leaving a non-nullable GraphQL field
+ * undefined — which fails EVERY query for that id until the TTL expires.
+ *
+ * A version in the key makes a shape change a cache miss by construction:
+ * stale entries are never read and expire on their own. Bump this on any
+ * change to the cached interface.
+ */
+const CACHE_VERSION = 'v2';
 
 const TOP_DONORS_LIMIT = 8;
 const TOP_EMPLOYERS_LIMIT = 8;
@@ -138,9 +162,17 @@ function bucketByCanonicalName(groups: RawDonorGroup[]): DonorBucket[] {
  * the rep-page "follow the money" surface: totals, top donors, and the top
  * employers behind the money (the industry / conflict-of-interest lens).
  *
- * Cached in REGION_CACHE under `representativeFunding:{id}`; returns an
+ * Cached in REGION_CACHE under `representativeFunding:{version}:{id}`; returns an
  * empty-shaped result when the rep has no linked committees (or no DB).
  */
+/** Rehydrate a cached result, or null to force a recompute. See `reviveBasis`. */
+function reviveCached(cached: string): RepresentativeFunding | null {
+  const parsed = JSON.parse(cached) as RepresentativeFunding;
+  if (!reviveBasis(parsed.basis)) return null;
+  parsed.asOf = new Date(parsed.asOf);
+  return parsed;
+}
+
 @Injectable()
 export class RepresentativeFundingService {
   private readonly logger = new Logger(RepresentativeFundingService.name);
@@ -148,16 +180,14 @@ export class RepresentativeFundingService {
   constructor(
     @Optional() private readonly db?: DbService,
     @Optional() @Inject(REGION_CACHE) private readonly cache?: ICache<string>,
+    @Optional() private readonly basis?: FundingBasisService,
   ) {}
 
   async getFunding(representativeId: string): Promise<RepresentativeFunding> {
-    const cacheKey = `representativeFunding:${representativeId}`;
+    const cacheKey = `representativeFunding:${CACHE_VERSION}:${representativeId}`;
     const cached = await this.cache?.get(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached) as RepresentativeFunding;
-      parsed.asOf = new Date(parsed.asOf);
-      return parsed;
-    }
+    const revived = cached ? reviveCached(cached) : null;
+    if (revived) return revived;
     const fresh = await this.computeFunding(representativeId);
     // Don't cache the empty-shaped result: a rep freshly attributed committees
     // by the linker (#941) + a finance sync would otherwise stay empty until
@@ -187,6 +217,9 @@ export class RepresentativeFundingService {
       donorAgg,
       employerAgg,
       perCommittee,
+      // Inside the fan-out: the basis depends on none of the others, so
+      // awaiting it afterwards only added a round trip to the critical path.
+      basis,
     ] = await Promise.all([
       this.db.contribution.aggregate({ where, _sum: { amount: true } }),
       this.db.expenditure.aggregate({ where, _sum: { amount: true } }),
@@ -215,6 +248,11 @@ export class RepresentativeFundingService {
         where,
         _sum: { amount: true },
       }),
+      // @Optional(); unwired, the zeros carry `measured: false` so the
+      // surface says "not computed" rather than rendering an all-clear.
+      this.basis
+        ? this.basis.forCommittees(committeeIds)
+        : Promise.resolve({ ...EMPTY_FUNDING_BASIS }),
     ]);
 
     const raisedByCommittee = new Map(
@@ -263,6 +301,7 @@ export class RepresentativeFundingService {
           totalRaised: raisedByCommittee.get(c.id) ?? 0,
         }))
         .sort((a, b) => b.totalRaised - a.totalRaised),
+      basis,
     };
   }
 
@@ -277,10 +316,7 @@ export class RepresentativeFundingService {
       topDonors: [],
       topEmployers: [],
       committees: [],
+      basis: { ...EMPTY_FUNDING_BASIS },
     };
   }
-}
-
-function toNumber(value: Prisma.Decimal | null | undefined): number {
-  return value ? value.toNumber() : 0;
 }

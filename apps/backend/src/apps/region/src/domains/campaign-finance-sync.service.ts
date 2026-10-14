@@ -46,6 +46,24 @@ type UpsertConfig = {
    * win. Enables the `amendId` guard in {@link upsertRecordsByFields} (#992).
    */
   amendable?: boolean;
+  /**
+   * Columns that an amendment may legitimately CLEAR (#991).
+   *
+   * `pick` builds the update with `Object.fromEntries`, which always sets the
+   * key — so an absent field arrives as `undefined`, and Prisma reads
+   * `undefined` in an `update` as "leave unchanged". That is the right
+   * default: it stops a partial record from blanking columns it never
+   * carried. But CAL-ACCESS restates the whole schedule on amendment, and a
+   * restatement can drop a value the earlier version had. Now that
+   * `expenditures.date` and `payee_name` are nullable, a filing that blanks
+   * `EXPN_DATE` would otherwise leave the superseded date in place — the page
+   * would show a date the current filing does not report, and
+   * `undatedAmount` would under-report it.
+   *
+   * Listed fields are written as explicit `null` when absent, so a cleared
+   * value is cleared. Only list columns that are nullable in the schema.
+   */
+  clearableFields?: string[];
 };
 
 type CommitteeRecord = {
@@ -473,6 +491,9 @@ export class CampaignFinanceSyncService {
         records: data.expenditures,
         model: this.db.expenditure,
         amendable: true,
+        // Both became nullable in #991, and an amendment that blanks either
+        // must clear it rather than leave the superseded value standing.
+        clearableFields: ['date', 'payeeName'],
         fields: [
           'committeeId',
           'filingId',
@@ -607,8 +628,17 @@ export class CampaignFinanceSyncService {
       ? this.keepNewestAmendment(incoming, existing)
       : incoming;
 
+    // `undefined` means "skip" to Prisma; `null` means "clear". Fields the
+    // source may legitimately blank on amendment must send null — see
+    // `clearableFields`.
+    const clearable = new Set(config.clearableFields ?? []);
     const pick = (r: Record<string, unknown>) =>
-      Object.fromEntries(fields.map((f: string) => [f, r[f]]));
+      Object.fromEntries(
+        fields.map((f: string) => [
+          f,
+          r[f] === undefined && clearable.has(f) ? null : r[f],
+        ]),
+      );
 
     if (rows.length === 0) return { processed: 0, created: 0, updated: 0 };
 

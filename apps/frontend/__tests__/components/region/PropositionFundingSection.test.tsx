@@ -32,6 +32,15 @@ const emptySide: SidedFunding = {
   committeeCount: 0,
   topDonors: [],
   primaryCommittees: [],
+  basis: {
+    undatedAmount: 0,
+    undatedCount: 0,
+    unattributedAmount: 0,
+    unattributedCount: 0,
+    unitemizedAmount: 0,
+    asOfSource: "2026-10-12T08:52:56Z",
+    measured: true,
+  },
 };
 
 const populatedFunding: PropositionFunding = {
@@ -54,6 +63,15 @@ const populatedFunding: PropositionFunding = {
         contributionCount: 1,
       },
     ],
+    basis: {
+      undatedAmount: 0,
+      undatedCount: 0,
+      unattributedAmount: 0,
+      unattributedCount: 0,
+      unitemizedAmount: 0,
+      asOfSource: "2026-10-12T08:52:56Z",
+      measured: true,
+    },
     primaryCommittees: [
       { id: "c-1", name: "Yes on Prop 1", totalRaised: 1_200_000 },
       { id: "c-2", name: "Coalition for Yes", totalRaised: 50_000 },
@@ -71,6 +89,15 @@ const populatedFunding: PropositionFunding = {
         contributionCount: 3,
       },
     ],
+    basis: {
+      undatedAmount: 0,
+      undatedCount: 0,
+      unattributedAmount: 0,
+      unattributedCount: 0,
+      unitemizedAmount: 0,
+      asOfSource: "2026-10-12T08:52:56Z",
+      measured: true,
+    },
     primaryCommittees: [
       { id: "c-3", name: "No on Prop 1", totalRaised: 600_000 },
     ],

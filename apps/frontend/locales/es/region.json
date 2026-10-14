@@ -201,5 +201,9 @@
   "claims": {
     "seeSourceQuote": "Ver el pasaje citado: «{{quote}}»",
     "seeSourcePassage": "Ver el pasaje citado en el texto original"
+  },
+  "finance": {
+    "dateNotReported": "Fecha no declarada por el declarante",
+    "payeeNotReported": "Beneficiario no declarado por el declarante"
   }
 }

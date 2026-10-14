@@ -648,9 +648,9 @@ export interface Expenditure {
   filingId?: string; // CalAccess FILING_ID from EXPN_CD — join key to the campaign-disclosure cover page (#980)
   amendId?: number; // CalAccess AMEND_ID (#992)
   scheduleCode?: string; // EXPN_CD FORM_TYPE — the SCHEDULE: 'E' payments (F460 line 6); 'D' is a MEMO restating E, so summing both double-counts (#992)
-  payeeName: string;
+  payeeName?: string; // blank on 3,811,692 EXPN_CD rows carrying $2.11B — admitted and disclosed, not dropped (#991)
   amount: number;
-  date: Date;
+  date?: Date; // blank on 5,232,951 EXPN_CD rows carrying $9.75B (#991). ORDER BY date DESC is NULLS FIRST in Postgres — order `nulls: 'last'`
   purposeDescription?: string;
   expenditureCode?: string;
   candidateName?: string;

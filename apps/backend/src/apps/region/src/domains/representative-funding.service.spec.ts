@@ -246,6 +246,15 @@ describe('RepresentativeFundingService (#943)', () => {
       topDonors: [],
       topEmployers: [],
       committees: [],
+      basis: {
+        undatedAmount: 0,
+        undatedCount: 0,
+        unattributedAmount: 0,
+        unattributedCount: 0,
+        unitemizedAmount: 0,
+        asOfSource: '2026-10-12T08:52:56.000Z',
+        measured: true,
+      },
     };
     const committeeFindMany = jest.fn();
     const cache = {
@@ -260,7 +269,40 @@ describe('RepresentativeFundingService (#943)', () => {
     const f = await svc.getFunding('rep-1');
     expect(committeeFindMany).not.toHaveBeenCalled(); // cache hit → no compute
     expect(f.asOf).toBeInstanceOf(Date);
+    expect(f.basis.asOfSource).toBeInstanceOf(Date);
     expect(f.totalRaised).toBe(500);
+  });
+
+  it('recomputes a pre-#991 cached entry instead of asserting a false all-clear', async () => {
+    // Entries written before `basis` existed survive for the 4-hour TTL. The
+    // alternatives are both wrong: throwing fails every funding query until
+    // expiry, and defaulting to the all-zero basis tells a reader "nothing is
+    // undated" about a figure nobody measured. So: treat it as a miss.
+    const stale = {
+      representativeId: 'rep-1',
+      asOf: '2026-07-24T00:00:00.000Z',
+      totalRaised: 500,
+      totalSpent: 100,
+      donorCount: 10,
+      committeeCount: 1,
+      topDonors: [],
+      topEmployers: [],
+      committees: [],
+    };
+    const committeeFindMany = jest.fn().mockResolvedValue([]);
+    const cache = {
+      get: jest.fn().mockResolvedValue(JSON.stringify(stale)),
+      set: jest.fn(),
+    };
+    const db = {
+      committee: { findMany: committeeFindMany },
+    } as unknown as DbService;
+    const svc = new RepresentativeFundingService(db, cache as unknown as never);
+
+    const f = await svc.getFunding('rep-1');
+
+    expect(committeeFindMany).toHaveBeenCalled();
+    expect(f.basis).toBeDefined();
   });
 
   it('does not cache an empty-shaped result (so a freshly-linked rep is not stuck empty)', async () => {

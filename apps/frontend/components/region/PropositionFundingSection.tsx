@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@apollo/client/react";
+import { useTranslation } from "react-i18next";
 import {
   GET_PROPOSITION_FUNDING,
   type PropositionFundingData,
@@ -10,6 +11,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/format";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
+import { FundingBasisNote } from "@/components/region/FundingBasisNote";
 
 /**
  * "Who's Funding This" section for the proposition detail page (Layer 2).
@@ -100,6 +102,7 @@ function FundingSideCard({
   readonly label: string;
   readonly side: SidedFunding;
 }) {
+  const { t } = useTranslation("civics");
   return (
     <div className="border-2 border-line rounded-lg p-5">
       <p className="text-xs uppercase tracking-[1.5px] font-extrabold text-content-dim mb-3">
@@ -109,10 +112,38 @@ function FundingSideCard({
       <p className="text-2xl font-extrabold text-content">
         {formatCurrency(side.totalRaised)}
       </p>
-      <p className="text-sm text-content-dim mb-4">
+      <p className="text-sm text-content-dim">
         raised by {pluralize(side.committeeCount, "committee")} from{" "}
         {pluralize(side.donorCount, "donor")}
       </p>
+      {/*
+        The spend figure was fetched and discarded before #991. It has to be
+        shown: the basis note below discloses what share of SPENDING has no
+        date or payee, and a caveat about a number the reader cannot see is
+        not a disclosure.
+      */}
+      <p className="text-sm text-content-dim mb-4">
+        {t("propFinance.spent", { amount: formatCurrency(side.totalSpent) })}
+      </p>
+
+      {/*
+        `unitemizedBase` is deliberately NOT passed here.
+        A proposition side's `totalRaised` is committee contributions PLUS
+        independent-expenditure spending counted into "raised" — two different
+        populations. `unitemizedAmount` is a Schedule-A residual on committee
+        contributions only, so dividing it by that sum would misattribute: a
+        side with $0 contributions and $5M of IEs would read "$100,000 of the
+        $5,100,000 reported raised (2.0%)" when none of the $5M was raised by
+        those committees. Without a base the dollar figure still shows, exact,
+        and no share is invented. The representative surface passes a base
+        because its totals are pure committee aggregates.
+      */}
+      <FundingBasisNote
+        basis={side.basis}
+        totalRaised={side.totalRaised}
+        totalSpent={side.totalSpent}
+        className="mb-4"
+      />
 
       {side.topDonors.length > 0 && (
         <div className="mb-4">

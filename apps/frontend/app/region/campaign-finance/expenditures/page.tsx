@@ -24,15 +24,23 @@ const PAGE_SIZE = 10;
 function ExpenditureCard({
   expenditure,
 }: Readonly<{ expenditure: Expenditure }>) {
+  const { t } = useTranslation("region");
+
   return (
     <div className="bg-surface rounded-lg p-6 transition-shadow">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-content">
-            {expenditure.payeeName}
+            {expenditure.payeeName ?? t("finance.payeeNotReported")}
           </h3>
+          {/* Never pass a null date to formatDate: `new Date(null)` is the
+              epoch, so the row would read "Jan 1, 1970" — a fabricated fact,
+              and worse than the omission this admits (#991). The filer left it
+              blank; say so. */}
           <p className="mt-1 text-sm text-content-dim">
-            {formatDate(expenditure.date)}
+            {expenditure.date
+              ? formatDate(expenditure.date)
+              : t("finance.dateNotReported")}
           </p>
           {expenditure.purposeDescription && (
             <p className="mt-2 text-sm text-content-dim line-clamp-2">
