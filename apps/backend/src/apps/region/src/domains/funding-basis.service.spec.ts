@@ -23,7 +23,7 @@ interface DbStub {
 
 const buildDb = (stub: DbStub) => {
   const aggregate = jest.fn(
-    async ({ where }: { where: { date?: null; payeeName?: null } }) => {
+    async ({ where }: { where: Record<string, unknown> }) => {
       const pick = where.date === null ? stub.undated : stub.unattributed;
       return {
         _sum: { amount: decimal(pick.amount) },
@@ -102,6 +102,31 @@ describe('FundingBasisService (#991)', () => {
     // not "nothing hidden" — the surface must not claim the good reading.
     expect(basis.reconciledFilings).toBe(0);
     expect(basis.measured).toBe(true);
+  });
+
+  it('does NOT call a row unattributed when the recipient is named elsewhere', async () => {
+    // The defect this exists for (#991 follow-up, found 2026-10-14): Schedule
+    // D records its recipient as a CANDIDATE or a MEASURE, so `PAYEE_NAML` is
+    // legitimately blank while `CAND_NAML` names who was paid. Counting a
+    // blank payee alone told readers "who received it was not reported" about
+    // 2,171,960 rows whose recipient the filing states — overstating the
+    // figure ~10x platform-wide, and 87x on one member's page.
+    const { db, aggregate } = buildDb({
+      undated: { amount: 0, count: 0 },
+      unattributed: { amount: 0, count: 0 },
+      unitemized: 0,
+    });
+
+    await new FundingBasisService(db).forCommittees(['c1']);
+
+    const unattributedWhere = aggregate.mock.calls
+      .map((c) => c[0].where)
+      .find((w) => w.payeeName === null);
+    expect(unattributedWhere).toMatchObject({
+      payeeName: null,
+      candidateName: null,
+      propositionTitle: null,
+    });
   });
 
   it('filters the two expenditure gaps on different columns', async () => {

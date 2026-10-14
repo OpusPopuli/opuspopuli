@@ -36,7 +36,8 @@ export interface PropositionFunding {
 }
 
 /**
- * Bumped whenever the cached SHAPE changes (#991).
+ * Bumped whenever the cached shape OR THE MEANING of a cached value changes
+ * (#991).
  *
  * The entry is JSON, so a deploy that adds a field to the cached object meets
  * entries written by the previous build for the full 4-hour TTL. Guarding on
@@ -45,11 +46,15 @@ export interface PropositionFunding {
  * satisfies `!!parsed.basis` while leaving a non-nullable GraphQL field
  * undefined — which fails EVERY query for that id until the TTL expires.
  *
- * A version in the key makes a shape change a cache miss by construction:
+ * A version in the key makes such a change a cache miss by construction:
  * stale entries are never read and expire on their own. Bump this on any
- * change to the cached interface.
+ * change to the cached interface — and on any change to what a field MEANS,
+ * which is why v3 exists: `unattributedAmount` was overstated ~10x by
+ * counting a blank payee as an unknown recipient, and without a bump every
+ * page would have kept serving the wrong figure for the full 4-hour TTL after
+ * the fix deployed.
  */
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 
 const TOP_DONORS_LIMIT = 5;
 const PRIMARY_COMMITTEES_LIMIT = 3;

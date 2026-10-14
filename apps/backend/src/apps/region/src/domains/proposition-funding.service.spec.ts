@@ -59,7 +59,7 @@ describe('PropositionFundingService', () => {
     } = opts;
 
     const cacheStore = new Map<string, string>();
-    if (cached) cacheStore.set('propositionFunding:v2:prop-1', cached);
+    if (cached) cacheStore.set('propositionFunding:v3:prop-1', cached);
 
     const mockCache: ICache<string> = {
       get: jest.fn(async (k: string) => cacheStore.get(k) ?? null),
@@ -319,7 +319,7 @@ describe('PropositionFundingService', () => {
       expect(out.support.basis.asOfSource).toBeInstanceOf(Date);
       expect(out.oppose.basis.asOfSource).toBeInstanceOf(Date);
       expect(built.mockCache.get).toHaveBeenCalledWith(
-        'propositionFunding:v2:prop-1',
+        'propositionFunding:v3:prop-1',
       );
       expect(out.asOf).toBeInstanceOf(Date);
     });
@@ -374,7 +374,7 @@ describe('PropositionFundingService', () => {
       await built.service.getFunding('prop-1');
 
       expect(built.mockCache.set).toHaveBeenCalledWith(
-        'propositionFunding:v2:prop-1',
+        'propositionFunding:v3:prop-1',
         expect.any(String),
       );
     });
@@ -405,7 +405,7 @@ describe('PropositionFundingService', () => {
 
       await built.service.invalidateCache('prop-1');
       expect(built.mockCache.delete).toHaveBeenCalledWith(
-        'propositionFunding:v2:prop-1',
+        'propositionFunding:v3:prop-1',
       );
     });
 

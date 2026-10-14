@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Issue** | [#991](https://github.com/OpusPopuli/opuspopuli/issues/991) — `EXPN_CD` ingests ~40% of its rows |
-| **Status** | **ACCEPTED WITH CAVEATS 2026-10-14.** Subtasks 1-4 done; resync verified on real data. Two scope findings are NOT resolved — see Acceptance. |
+| **Status** | **ACCEPTED WITH CAVEATS 2026-10-14**, plus a post-merge correction the same day: `unattributed` was overstated ~10x. See both sections below. |
 | **Adjacent** | [#992](https://github.com/OpusPopuli/opuspopuli/issues/992) subtask 5 is the same resync; [#983](https://github.com/OpusPopuli/opuspopuli/issues/983) assumes a complete expenditure set |
 | **Decision taken** | `date` becomes nullable; the resulting gap is **stated in the public record** rather than absorbed silently |
 
@@ -380,6 +380,54 @@ half-translated, and `pluralize(n, "committee")` needs real per-locale plural
 keys. Filed as
 [#1362](https://github.com/OpusPopuli/opuspopuli/issues/1362), the companion
 to #1081.
+
+## Post-merge correction: `unattributed` was overstated ~10x (2026-10-14)
+
+Found the day after #1364 merged, while investigating the Schedule D
+double-count. **A blank `payeeName` does not mean the recipient is unknown.**
+
+Schedule D — "Summary of Expenditures Supporting/Opposing Other Candidates,
+Measures and Committees" — records its recipient as a **candidate or a
+measure**, so `PAYEE_NAML` is legitimately blank while `CAND_NAML` / `BAL_NAME`
+state plainly who the money went to. Counting a blank payee alone told readers
+*"names no payee in the filing … who received it was not reported"* about money
+whose recipient the filing reports.
+
+| | rows | dollars |
+|---|---:|---:|
+| as shipped (`payee_name IS NULL`) | 3,522,438 | **$1.516B** |
+| recipient named in another column | 2,171,960 (61.7%) | — |
+| truthful (no recipient anywhere) | 1,350,430 | **$0.152B** |
+
+Per page it was far worse than the 10x platform ratio:
+
+| page | as shipped | truthful |
+|---|---:|---:|
+| Buffy Wicks | $1,024,518 (200 rows) | **$11,800 (2 rows)** |
+| Jesse Gabriel | $891,288 | $1,000 |
+| Al Muratsuchi | $92,909 | $1,000 |
+
+So the disclosure built to stop the site making unsupported claims was itself
+making one, about named public figures' finances. 3,521,942 of the 3,522,438
+no-payee rows are Schedule D, which is why this dominated the figure.
+
+`FundingBasisService` now counts a row as unattributed only when **no
+recipient is named anywhere** — `payeeName`, `candidateName` and
+`propositionTitle` all null. The locale wording needed no change: it is simply
+true now. Mutation-verified.
+
+**`undated` is unaffected** — Schedule D has exactly 1 undated row, so that
+figure is essentially pure Schedule E and stands as reported.
+
+### What this says about the original work
+
+The review caught me twice comparing populations that were not the same
+population (raw vs deduplicated rows; `payeeName: ""` vs an absent key). This
+is the same error a third time: `payee_name IS NULL` and "recipient unknown"
+are different populations, and I treated them as one. The lesson that keeps
+not sticking is to ask what a column *means* in the source before treating its
+absence as a fact about the world — the schema comment on `scheduleCode` said
+Schedule D was a memo schedule all along.
 
 ## Acceptance — recorded 2026-10-14
 
