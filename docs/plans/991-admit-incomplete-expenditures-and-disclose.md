@@ -481,10 +481,31 @@ errors.
    decision** — a committee-level surface, or an explicit statewide total —
    and it is not what this issue delivered.
 
-2. **4,505 filings now itemize MORE expenditures than reported**, which
-   `FilingReconciliationService` itself calls "a fault, not a source quirk".
-   Admitting 8.1M rows is what surfaced it. Unmeasurable before, because
-   expenditures were 56% absent. Needs investigation; not diagnosed here.
+2. **4,505 filings itemize MORE expenditures than reported — diagnosed
+   2026-10-14, and it is a SOURCE discrepancy this change revealed, not one it
+   caused.**
+
+   | hypothesis | test | result |
+   |---|---|---|
+   | the admitted rows duplicate existing ones | undated Schedule E rows on those filings having a dated twin (same payee + amount) | **0 of 258,785** |
+   | reconciliation compares mismatched amendments (#992 item 1) | `filing_reconciliations.amend_id` vs `max(amend_id)` of the detail | **4,423 of 4,505 match**; 82 mismatch |
+
+   Neither duplication nor version skew. The undated rows admitted here are
+   87.9% of the Schedule E detail on those filings ($1,565.68M vs $215.69M
+   dated) and the excess over reported line 6 is **$361.25M across 2.57% of
+   filings** — i.e. those filers itemized more on Schedule E than they
+   reported on the summary line. Invisible while 56% of Schedule E was being
+   rejected.
+
+   So this belongs to this issue's own principle — *say when we are not
+   certain due to missing and/or conflicting data* — as a **disclosure**
+   question, not a pipeline bug. `FilingReconciliationService`'s warning text
+   ("detail exceeding the source is a fault, not a source quirk") may need
+   revisiting now that the population it was written to catch is measurable.
+
+   I had asserted on #1367 that Schedule D memo double-counting explained
+   this. It does not: reconciliation already filters to `E`
+   (`EXPENDITURE_SCHEDULE = 'E'`, applied in `detail_e`). Retracted there.
 
 3. **`asOfSource` is still null.** The run used the container built before the
    `last_modified` capture fix, so the figures cannot be dated to an export.
