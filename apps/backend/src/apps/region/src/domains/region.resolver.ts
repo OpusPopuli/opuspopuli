@@ -104,6 +104,7 @@ import {
 import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { CountyThresholdModel } from './models/county-threshold.model';
 import { toPublicContribution } from './region-query.service';
+import { committeeCandidateFields } from './committee-candidate-display';
 
 /**
  * Region Resolver
@@ -867,8 +868,10 @@ export class RegionResolver {
     if (!result) return null;
     return {
       ...result,
-      candidateName: result.candidateName ?? undefined,
-      candidateOffice: result.candidateOffice ?? undefined,
+      // Same gate as the list path (#1365) — a cover-page `candidate_name`
+      // names someone unrelated on 17.7% of committees, and the detail page
+      // must not be the one surface that still asserts it.
+      ...committeeCandidateFields(result),
       propositionId: result.propositionId ?? undefined,
       party: result.party ?? undefined,
       sourceUrl: result.sourceUrl ?? undefined,

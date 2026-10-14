@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 
 import { RegionCacheService } from './region-cache.service';
+import { committeeCandidateFields } from './committee-candidate-display';
 import {
   PropositionFundingService,
   type PropositionFunding,
@@ -1276,8 +1277,9 @@ export class RegionQueryService {
     return {
       items: paginatedItems.map((item: CommitteeRecord) => ({
         ...item,
-        candidateName: item.candidateName ?? undefined,
-        candidateOffice: item.candidateOffice ?? undefined,
+        // NOT a bare passthrough (#1365): `candidate_name` is a cover-page
+        // value and names someone unrelated on 17.7% of committees.
+        ...committeeCandidateFields(item),
         propositionId: item.propositionId ?? undefined,
         party: item.party ?? undefined,
         sourceUrl: item.sourceUrl ?? undefined,
