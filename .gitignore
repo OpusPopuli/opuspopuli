@@ -63,3 +63,11 @@ bundle.json
 observability/secrets/*
 !observability/secrets/*.example
 !observability/secrets/README.md
+
+# Local-only compose overlays. These carry absolute developer paths and can
+# set SECRETS_PROVIDER=env, which disables Supabase Vault hydration — a
+# committed overlay layered onto a real node would be a change-management
+# hazard in a PUBLIC repo. The files say "not committed" in their headers;
+# this makes `git add -A` honour that.
+*.local.yml
+docker-compose-*.local.yml

@@ -31,6 +31,12 @@ const FINANCE_ROUTES: ReadonlyArray<{
     bucket: "contributions",
     matches: (r) => "donorName" in r && "amount" in r,
   },
+  // `payeeName` is OPTIONAL on the expenditure schema (#991) but this rule
+  // needs the KEY, so `ExpenditureSchema`'s object-level transform restates it
+  // explicitly to guarantee presence. If that line is ever removed, every
+  // blank-payee row (3,811,692 of them) matches no rule here and is dropped by
+  // `sortCampaignFinanceItems` below with no counted reject. Changing either
+  // side requires changing both.
   { bucket: "expenditures", matches: (r) => "payeeName" in r && "amount" in r },
   {
     bucket: "independentExpenditures",

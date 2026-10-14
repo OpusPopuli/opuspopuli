@@ -264,9 +264,9 @@ type ExpenditureRecord = {
   /// Null until the cover-page linker attributes the filing (#980).
   committeeId: string | null;
   filingId: string | null;
-  payeeName: string;
+  payeeName: string | null;
   amount: Prisma.Decimal;
-  date: Date;
+  date: Date | null;
   purposeDescription: string | null;
   expenditureCode: string | null;
   candidateName: string | null;
@@ -1357,7 +1357,31 @@ export class RegionQueryService {
     const [items, total] = await Promise.all([
       this.db.expenditure.findMany({
         where: whereClause,
-        orderBy: [{ date: 'desc' }, { amount: 'desc' }],
+        // `nulls: 'last'` is load-bearing (#991). Postgres sorts NULLS FIRST
+        // on DESC, and 5,232,951 expenditures have no reported date — without
+        // this, page one of every listing is undated rows and the most recent
+        // spending becomes unreachable.
+        //
+        // It also makes `expenditures_date_idx` unusable for this ordering: a
+        // default B-tree is (date ASC NULLS LAST), readable forward as
+        // ASC NULLS LAST or backward as DESC NULLS FIRST, and DESC NULLS LAST
+        // is neither. Measured on 4.84M rows, the plan went from a 0.147 ms
+        // backward index scan to a 1065 ms parallel seq scan + sort.
+        // `expenditures_date_desc_amount_idx` (migration
+        // 20261012233000_expenditure_null_aware_indexes) matches this ORDER BY
+        // exactly and restores it to 0.279 ms. Changing this ordering means
+        // changing that index.
+        //
+        // `id` is the tiebreaker, and it is not decoration: 5.2M rows will
+        // share `date = NULL` with heavy duplication in `amount`, and without
+        // a unique final key the sort is not reproducible between queries —
+        // offset pagination would show the same expenditure on two pages and
+        // skip others entirely.
+        orderBy: [
+          { date: { sort: 'desc', nulls: 'last' } },
+          { amount: 'desc' },
+          { id: 'asc' },
+        ],
         skip,
         take: take + 1,
       }),
@@ -1378,6 +1402,11 @@ export class RegionQueryService {
         candidateName: item.candidateName ?? undefined,
         propositionTitle: item.propositionTitle ?? undefined,
         supportOrOppose: item.supportOrOppose ?? undefined,
+        // Nullable since #991. Converted to undefined at this boundary like
+        // every other optional field — GraphQL omits an absent field, which is
+        // what "the filer reported none" should look like over the wire.
+        payeeName: item.payeeName ?? undefined,
+        date: item.date ?? undefined,
       })),
       total,
       hasMore,

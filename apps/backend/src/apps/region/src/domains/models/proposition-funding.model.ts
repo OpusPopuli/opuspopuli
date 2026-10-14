@@ -1,4 +1,5 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
+import { FundingBasisModel } from './funding-basis.model';
 
 /**
  * A single donor's aggregated giving to one side of a measure.
@@ -65,6 +66,14 @@ export class SidedFundingModel {
 
   @Field(() => [CommitteeSummaryModel])
   primaryCommittees!: CommitteeSummaryModel[];
+
+  /**
+   * What this side's totals rest on (#991). Per-side rather than per-measure
+   * because the two sides are different committees with different gaps —
+   * one side's spending can be fully dated while the other's is not.
+   */
+  @Field(() => FundingBasisModel)
+  basis!: FundingBasisModel;
 }
 
 /**

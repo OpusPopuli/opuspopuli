@@ -59,7 +59,12 @@ function createMockMapper(): jest.Mocked<DomainMapperService> {
  * Create a mock fetch response with a readable stream body.
  * The new handler uses response.body (stream) instead of arrayBuffer().
  */
-function mockStreamResponse(content: string, ok = true, status = 200) {
+function mockStreamResponse(
+  content: string,
+  ok = true,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   const stream = new Readable({
     read() {
       this.push(Buffer.from(content));
@@ -74,7 +79,7 @@ function mockStreamResponse(content: string, ok = true, status = 200) {
     // Real Headers: the handler reads Content-Type off the response, and a
     // fake without them made every test fail for a reason unrelated to what
     // they were asserting.
-    headers: new Headers({ "content-type": "text/csv" }),
+    headers: new Headers({ "content-type": "text/csv", ...extraHeaders }),
     body: stream,
   };
 }
@@ -119,6 +124,38 @@ describe("BulkDownloadHandler", () => {
       expect(candidate.byteSize).toBe(Buffer.byteLength(csv));
       expect(candidate.sourceUrl).toBe("https://example.com/data.csv");
       expect(candidate.regionId).toBe("california");
+    });
+
+    it("carries the export's own publication date and etag (#991)", async () => {
+      // `bulk_snapshots.last_modified` was null on every row since #1277
+      // because this header was never read, and #991 shows it to readers as
+      // `asOfSource` — so a funding total could never be tied to a snapshot
+      // of the public record. CAL-ACCESS does send it.
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse(csv, true, 200, {
+          "last-modified": "Tue, 13 Oct 2026 08:59:20 GMT",
+          etag: '"0b1e6b2c6c702da86bd3a5b440948647-153"',
+        }),
+      );
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(candidate.lastModified).toBe("Tue, 13 Oct 2026 08:59:20 GMT");
+      expect(candidate.etag).toBe('"0b1e6b2c6c702da86bd3a5b440948647-153"');
+    });
+
+    it("leaves the publication date undefined when the server sends none", async () => {
+      // Read defensively: a missing header must not fail an ingest measured
+      // in tens of hours, and the read side reports "unknown" rather than
+      // inventing a date.
+      const handlerWithArchive = new BulkDownloadHandler(mapper, null, archive);
+
+      await handlerWithArchive.execute(createSource(), "california");
+
+      const [candidate] = archive.archive.mock.calls[0];
+      expect(candidate.lastModified).toBeUndefined();
     });
 
     it("hands over a stream that still reads the file", async () => {

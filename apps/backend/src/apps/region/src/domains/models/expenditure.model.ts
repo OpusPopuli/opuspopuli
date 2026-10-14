@@ -35,14 +35,20 @@ export class ExpenditureModel {
   @Field()
   committeeId!: string;
 
-  @Field()
-  payeeName!: string;
+  /** Nullable (#991): blank on 3,811,692 rows carrying $2.11B. */
+  @Field({ nullable: true })
+  payeeName?: string;
 
   @Field(() => Float)
   amount!: number;
 
-  @Field()
-  date!: Date;
+  /**
+   * Nullable (#991). Blank on 5,232,951 EXPN_CD rows carrying $9.75B, which
+   * were rejected outright until those rows were admitted. Left non-null, a
+   * single undated row errors the ENTIRE query rather than blanking one field.
+   */
+  @Field({ nullable: true })
+  date?: Date;
 
   @Field({ nullable: true })
   purposeDescription?: string;

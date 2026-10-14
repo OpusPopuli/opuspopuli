@@ -95,5 +95,26 @@
     "disclaimerLabel": "Campaign-finance data disclaimer",
     "sources": "This data comes directly from official public records — the California Secretary of State's CAL-ACCESS database and the U.S. Federal Election Commission (FEC).",
     "bestEffort": "Those filings are authoritative; the links this site draws between committees and representatives, and its grouping of donors, are generated automatically and may be incomplete or inaccurate — they are not an allegation of wrongdoing by anyone named. Verify against the official filings before relying on or republishing this information."
+  },
+  "fundingBasis": {
+    "label": "What these figures rest on",
+    "unavailable": "Whether this total is complete could not be determined from the data on hand — it may have been cached before this disclosure existed, or computed without the measurement. Reload the page to fetch it.",
+    "undated_one": "{{amount}} of the {{total}} spent{{share}} has no spending date in the filing — 1 payment. The money is counted in the total; when it was spent was not reported.",
+    "undated_other": "{{amount}} of the {{total}} spent{{share}} has no spending date in the filing, across {{formatted}} payments. The money is counted in the total; when it was spent was not reported.",
+    "unattributed_one": "{{amount}} of the {{total}} spent{{share}} names no payee in the filing — 1 payment. The money is counted in the total; who received it was not reported.",
+    "unattributed_other": "{{amount}} of the {{total}} spent{{share}} names no payee in the filing, across {{formatted}} payments. The money is counted in the total; who received it was not reported.",
+    "doNotAdd": "A single payment can be missing both its date and its payee, so these two amounts overlap and do not add together.",
+    "expendituresComplete": "No expenditure on file is missing its spending date or its payee.",
+    "unitemized": "{{amount}} of the {{total}} reported raised{{share}} was filed only as a summary figure, with no donor detail. That money is NOT included in the raised total shown above, and we hold no record of who gave it.",
+    "unitemizedNoBase": "{{amount}} was filed only as a summary figure, with no donor detail. That money is NOT included in the raised total shown above, and we hold no record of who gave it.",
+    "contributionsComplete_one": "The 1 filing reconciled here reported its contributions in itemized detail.",
+    "contributionsComplete_other": "All {{formatted}} filings reconciled here reported their contributions in itemized detail.",
+    "unreconciled": "None of these filings has been checked against its own summary totals, so whether contributions were reported without donor detail is unknown.",
+    "scope": "These statements describe the records on file. They are not a guarantee that the source export held no others.",
+    "source": "From the official bulk export published {{date}}.",
+    "sourceUnknown": "These figures cannot be tied to a single bulk export, so they cannot be dated to a specific snapshot of the public record."
+  },
+  "propFinance": {
+    "spent": "{{amount}} spent"
   }
 }

@@ -5629,13 +5629,9 @@
             "isDeprecated": false,
             "name": "date",
             "type": {
-              "kind": "NON_NULL",
-              "name": null,
-              "ofType": {
-                "kind": "SCALAR",
-                "name": "DateTime",
-                "ofType": null
-              }
+              "kind": "SCALAR",
+              "name": "DateTime",
+              "ofType": null
             }
           },
           {
@@ -5685,13 +5681,9 @@
             "isDeprecated": false,
             "name": "payeeName",
             "type": {
-              "kind": "NON_NULL",
-              "name": null,
-              "ofType": {
-                "kind": "SCALAR",
-                "name": "String",
-                "ofType": null
-              }
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
             }
           },
           {
@@ -6148,6 +6140,132 @@
         "interfaces": null,
         "kind": "SCALAR",
         "name": "Float",
+        "possibleTypes": null
+      },
+      {
+        "enumValues": null,
+        "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "asOfSource",
+            "type": {
+              "kind": "SCALAR",
+              "name": "DateTime",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "measured",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "reconciledFilings",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "unattributedAmount",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "unattributedCount",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "undatedAmount",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "undatedCount",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "unitemizedAmount",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "FundingBasisModel",
         "possibleTypes": null
       },
       {
@@ -19249,6 +19367,21 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "basis",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "OBJECT",
+                "name": "FundingBasisModel",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "committeeCount",
             "type": {
               "kind": "NON_NULL",
@@ -20986,6 +21119,21 @@
       {
         "enumValues": null,
         "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "basis",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "OBJECT",
+                "name": "FundingBasisModel",
+                "ofType": null
+              }
+            }
+          },
           {
             "args": [],
             "deprecationReason": null,

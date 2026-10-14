@@ -272,7 +272,11 @@ export class RegionResolver {
    */
   @Public()
   @Query(() => PropositionFundingModel, { nullable: true })
-  @Extensions({ complexity: 25 })
+  // Raised from 25 with the #991 basis: a cache miss now runs the three
+  // disclosure aggregates per side on top of the existing fan-out. The
+  // 1000-point budget admits ~22 aliased copies of this field in one
+  // unauthenticated request rather than ~40.
+  @Extensions({ complexity: 45 })
   async propositionFunding(
     @Args({ name: 'propositionId', type: () => ID }) propositionId: string,
   ): Promise<PropositionFundingModel | null> {
@@ -284,7 +288,9 @@ export class RegionResolver {
 
   @Public()
   @Query(() => RepresentativeFundingModel, { nullable: true })
-  @Extensions({ complexity: 25 })
+  // Raised from 25 with the #991 basis — one side rather than two, so a
+  // smaller increase than `propositionFunding` above.
+  @Extensions({ complexity: 35 })
   async representativeFunding(
     @Args({ name: 'id', type: () => ID }) id: string,
   ): Promise<RepresentativeFundingModel | null> {
@@ -942,6 +948,9 @@ export class RegionResolver {
       candidateName: result.candidateName ?? undefined,
       propositionTitle: result.propositionTitle ?? undefined,
       supportOrOppose: result.supportOrOppose ?? undefined,
+      // Nullable since #991 — absent means the filer reported none.
+      payeeName: result.payeeName ?? undefined,
+      date: result.date ?? undefined,
     };
   }
 

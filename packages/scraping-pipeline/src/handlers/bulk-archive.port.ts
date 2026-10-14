@@ -18,6 +18,19 @@ export interface BulkSnapshotCandidate {
   fetchedAt: string;
   /** Response Content-Type, if the server sent one */
   contentType?: string;
+  /**
+   * Response `Last-Modified`, verbatim, if the server sent one.
+   *
+   * This is WHICH SNAPSHOT of the public record a figure came from, and it is
+   * the only field here that reaches readers: #991 surfaces it as
+   * `asOfSource` beside every funding total. Stored as the raw header string
+   * rather than a parsed date because a server may send anything, and a
+   * provenance claim must not be a guess — the read side parses defensively
+   * and reports "unknown" rather than the epoch.
+   */
+  lastModified?: string;
+  /** Response `ETag`, if the server sent one. */
+  etag?: string;
   /** Region whose sync fetched it */
   regionId?: string;
   /** Pipeline data type */

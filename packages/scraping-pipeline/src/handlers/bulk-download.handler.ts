@@ -245,6 +245,13 @@ export class BulkDownloadHandler {
         // Optional metadata, read defensively: a missing or unusual header
         // must not fail an ingest measured in tens of hours.
         contentType: response.headers?.get("content-type") ?? undefined,
+        // `last-modified` is the export's own publication date — the
+        // provenance #991 shows readers as `asOfSource`. It was never read
+        // here, so `bulk_snapshots.last_modified` had been null since the
+        // column was added (#1277) and the figure could never be dated. The
+        // CDN does send it: `last-modified: Tue, 13 Oct 2026 08:59:20 GMT`.
+        lastModified: response.headers?.get("last-modified") ?? undefined,
+        etag: response.headers?.get("etag") ?? undefined,
         regionId,
         dataType: source.dataType,
         ...(session.executionId && { executionId: session.executionId }),

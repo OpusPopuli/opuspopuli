@@ -10,6 +10,7 @@ import {
   type IdVars,
 } from "@/lib/graphql/region";
 import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
+import { FundingBasisNote } from "@/components/region/FundingBasisNote";
 
 type Formatter = (n: number) => string;
 
@@ -86,6 +87,21 @@ export function RepresentativeFundingPanel({
           value={funding.committeeCount.toLocaleString()}
         />
       </dl>
+
+      {/*
+        Directly under the totals, not at the bottom of the panel: a
+        disclosure a reader meets after scrolling past the donor lists is a
+        disclosure about numbers they have already taken at face value (#991).
+      */}
+      <FundingBasisNote
+        basis={funding.basis}
+        totalRaised={funding.totalRaised}
+        totalSpent={funding.totalSpent}
+        // Sound here, unlike the proposition surface: a rep's totals are pure
+        // committee aggregates with no independent-expenditure spending mixed
+        // into "raised", so it is a real denominator for the unitemized share.
+        unitemizedBase={funding.totalRaised}
+      />
 
       <p className="text-xs text-content-dim">
         {t("repFinance.itemizationNote")}

@@ -95,5 +95,26 @@
     "disclaimerLabel": "Aviso sobre los datos de financiamiento de campaña",
     "sources": "Estos datos provienen directamente de registros públicos oficiales: la base de datos CAL-ACCESS de la Secretaría de Estado de California y la Comisión Federal Electoral (FEC) de EE. UU.",
     "bestEffort": "Esos informes son la fuente autorizada; los vínculos que este sitio establece entre comités y representantes, y su agrupación de donantes, se generan automáticamente y pueden estar incompletos o ser inexactos; no constituyen una acusación de conducta indebida contra ninguna persona mencionada. Verifique los informes oficiales antes de utilizar o republicar esta información."
+  },
+  "fundingBasis": {
+    "label": "En qué se basan estas cifras",
+    "unavailable": "No se pudo determinar si este total está completo con los datos disponibles — puede provenir de una caché anterior a esta divulgación, o haberse calculado sin la medición. Vuelva a cargar la página para obtenerla.",
+    "undated_one": "{{amount}} de los {{total}} gastados{{share}} no tienen fecha de gasto en la declaración — 1 pago. El dinero se cuenta en el total; cuándo se gastó no se declaró.",
+    "undated_other": "{{amount}} de los {{total}} gastados{{share}} no tienen fecha de gasto en la declaración, en {{formatted}} pagos. El dinero se cuenta en el total; cuándo se gastó no se declaró.",
+    "unattributed_one": "{{amount}} de los {{total}} gastados{{share}} no identifican al beneficiario en la declaración — 1 pago. El dinero se cuenta en el total; quién lo recibió no se declaró.",
+    "unattributed_other": "{{amount}} de los {{total}} gastados{{share}} no identifican al beneficiario en la declaración, en {{formatted}} pagos. El dinero se cuenta en el total; quién lo recibió no se declaró.",
+    "doNotAdd": "Un mismo pago puede carecer de fecha y de beneficiario, por lo que estas dos cantidades se solapan y no se suman.",
+    "expendituresComplete": "Ningún gasto registrado carece de fecha de gasto ni de beneficiario.",
+    "unitemized": "{{amount}} de los {{total}} declarados como recaudados{{share}} se declararon solo como cifra global, sin detalle de donantes. Ese dinero NO está incluido en el total recaudado que se muestra arriba, y no tenemos registro de quién lo aportó.",
+    "unitemizedNoBase": "{{amount}} se declararon solo como cifra global, sin detalle de donantes. Ese dinero NO está incluido en el total recaudado que se muestra arriba, y no tenemos registro de quién lo aportó.",
+    "contributionsComplete_one": "La única declaración conciliada aquí informó sus contribuciones con detalle desglosado.",
+    "contributionsComplete_other": "Las {{formatted}} declaraciones conciliadas aquí informaron sus contribuciones con detalle desglosado.",
+    "unreconciled": "Ninguna de estas declaraciones se ha comparado con sus propios totales globales, por lo que no se sabe si hubo contribuciones declaradas sin detalle de donantes.",
+    "scope": "Estas afirmaciones describen los registros en archivo. No garantizan que el archivo de origen no contuviera otros.",
+    "source": "Del archivo masivo oficial publicado el {{date}}.",
+    "sourceUnknown": "Estas cifras no pueden vincularse a un único archivo masivo, por lo que no pueden fecharse a una instantánea concreta del registro público."
+  },
+  "propFinance": {
+    "spent": "{{amount}} gastados"
   }
 }

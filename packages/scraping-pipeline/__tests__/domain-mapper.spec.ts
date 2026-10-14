@@ -4,6 +4,7 @@ import {
 } from "../src/mapping/domain-mapper.service";
 import {
   DataType,
+  sortCampaignFinanceItems,
   type RawExtractionResult,
   type DataSourceConfig,
 } from "@opuspopuli/common";
@@ -1049,44 +1050,51 @@ describe("DomainMapperService", () => {
    * numbers were available to the run that dropped them.
    */
   describe("reject reason tally (#991)", () => {
-    /** Two reject causes in different proportions, as EXPN_CD has. */
+    /**
+     * Two reject causes in different proportions, as EXPN_CD has.
+     *
+     * Deliberately NOT blank date / blank payee: #991 made both nullable, and
+     * a tally test that depends on which fields happen to be required breaks
+     * every time that policy changes. A missing `externalId` and a
+     * `sourceSystem` outside the enum are structural instead.
+     */
     const rawWithRejects = () =>
       createRawResult({
         items: [
-          // 3 rejected for a blank date
+          // 3 rejected for a missing externalId
           {
-            externalId: "E1",
+            externalId: "",
             payeeName: "A",
-            amount: "1",
-            date: "",
-            sourceSystem: "cal_access",
-          },
-          {
-            externalId: "E2",
-            payeeName: "B",
-            amount: "1",
-            date: "",
-            sourceSystem: "cal_access",
-          },
-          {
-            externalId: "E3",
-            payeeName: "C",
-            amount: "1",
-            date: "",
-            sourceSystem: "cal_access",
-          },
-          // 1 rejected for a blank payee
-          {
-            externalId: "E4",
-            payeeName: "",
             amount: "1",
             date: "2026-03-01",
             sourceSystem: "cal_access",
           },
+          {
+            externalId: "",
+            payeeName: "B",
+            amount: "1",
+            date: "2026-03-01",
+            sourceSystem: "cal_access",
+          },
+          {
+            externalId: "",
+            payeeName: "C",
+            amount: "1",
+            date: "2026-03-01",
+            sourceSystem: "cal_access",
+          },
+          // 1 rejected for a sourceSystem outside the enum
+          {
+            externalId: "E4",
+            payeeName: "D",
+            amount: "1",
+            date: "2026-03-01",
+            sourceSystem: "nope",
+          },
           // 1 valid, so missRatio is not 1
           {
             externalId: "E5",
-            payeeName: "D",
+            payeeName: "E",
             amount: "1",
             date: "2026-03-01",
             sourceSystem: "cal_access",
@@ -1107,7 +1115,7 @@ describe("DomainMapperService", () => {
         w.includes("rejected by the"),
       );
       // Ranked by count: the date cause (3) must precede the payee cause (1).
-      expect(warning).toMatch(/date.*×3/);
+      expect(warning).toMatch(/externalId.*×3/);
       expect(warning).toContain("×1");
       expect(warning!.indexOf("×3")).toBeLessThan(warning!.indexOf("×1"));
     });
@@ -1126,11 +1134,11 @@ describe("DomainMapperService", () => {
       // Only the first 10 DISTINCT samples are ever surfaced, so retaining
       // one per reject bought nothing. EXPN_CD rejects ~9.0M of 16.1M rows.
       const many = createRawResult({
-        items: Array.from({ length: 500 }, (_, i) => ({
-          externalId: `E${i}`,
+        items: Array.from({ length: 500 }, () => ({
+          externalId: "",
           payeeName: "X",
           amount: "1",
-          date: "",
+          date: "2026-03-01",
           sourceSystem: "cal_access",
         })),
       });
@@ -1145,6 +1153,150 @@ describe("DomainMapperService", () => {
       // still be the true total.
       expect(failure?.message).toContain("500/500");
       expect((failure?.schemaIssues ?? []).length).toBeLessThanOrEqual(10);
+    });
+  });
+
+  /**
+   * Money the filer reported without a date or a payee is ADMITTED (#991).
+   *
+   * Measured on `dbwebexport.zip` 2026-10-12: CAL-ACCESS leaves `EXPN_DATE`
+   * blank on 5,232,951 of 16,061,732 `EXPN_CD` rows ($9.75B) and `PAYEE_NAML`
+   * blank on a nearly-disjoint 3,811,692 ($2.11B) — 292 fail both. Requiring
+   * either dropped 56.31% of rows and 15.2% of the money, so `totalSpent` read
+   * ~15% low on every representative and proposition page.
+   *
+   * The decision was to admit the amount and disclose the gap: a transparency
+   * platform understating spending by $11.87B is worse than a row with a
+   * missing field, and the money was really spent.
+   */
+  describe("admitting incomplete expenditures (#991)", () => {
+    const financeSource = () =>
+      createSource({
+        dataType: DataType.CAMPAIGN_FINANCE,
+        category: "expenditure",
+      });
+
+    const one = (over: Record<string, unknown>) =>
+      createRawResult({
+        items: [
+          {
+            externalId: "E1",
+            payeeName: "Ad Agency LLC",
+            amount: "10000",
+            date: "2026-03-01",
+            sourceSystem: "cal_access",
+            ...over,
+          },
+        ],
+      });
+
+    it("admits an expenditure with no date, keeping the amount", () => {
+      const result = one({ date: "" });
+      const mapped = mapper.map(result, financeSource());
+
+      expect(mapped.items).toHaveLength(1);
+      expect(mapped.items[0]).toMatchObject({ amount: 10000 });
+      // Absent, not fabricated. An epoch date would be a false fact.
+      expect((mapped.items[0] as { date?: Date }).date).toBeUndefined();
+    });
+
+    it("admits an expenditure with no payee, keeping the amount", () => {
+      const mapped = mapper.map(one({ payeeName: "" }), financeSource());
+
+      expect(mapped.items).toHaveLength(1);
+      expect(mapped.items[0]).toMatchObject({ amount: 10000 });
+      expect(
+        (mapped.items[0] as { payeeName?: string }).payeeName,
+      ).toBeUndefined();
+    });
+
+    it("admits one missing both, which is 292 real rows", () => {
+      const mapped = mapper.map(
+        one({ date: "", payeeName: "" }),
+        financeSource(),
+      );
+
+      expect(mapped.items).toHaveLength(1);
+      expect(mapped.items[0]).toMatchObject({ amount: 10000 });
+    });
+
+    /**
+     * The admitted rows must survive ROUTING, not just validation.
+     *
+     * `sortCampaignFinanceItems` discriminates on field PRESENCE —
+     * expenditures are `"payeeName" in r && "amount" in r` — because the bulk
+     * TSVs carry no type tag. A blank payee is transformed to `undefined`, so
+     * whether the key survives Zod's output decides whether 3,811,692 rows
+     * reach the expenditures table or fall through the route table to be
+     * dropped without a counted reject. Admitting rows at validation and
+     * losing them one stage later would look exactly like a fix.
+     */
+    const route = (over: Record<string, unknown>) =>
+      sortCampaignFinanceItems(
+        mapper.map(one(over), financeSource()).items as Record<
+          string,
+          unknown
+        >[],
+      );
+
+    /**
+     * The shape the bulk handler ACTUALLY produces for a blank cell.
+     *
+     * `mapRow` does `if (val) record[targetField] = val`
+     * (bulk-download.handler.ts), so a blank `PAYEE_NAML` yields a record with
+     * **no `payeeName` key** — not `""`. Zod only emits keys it saw, so the
+     * key is still absent after validation, and the route table discriminates
+     * on `"payeeName" in rec`. Testing with `payeeName: ""` tests a shape the
+     * pipeline never sees, and passes while all 3,811,692 rows are dropped
+     * with no counted reject — strictly less visible than the rejection this
+     * change replaces.
+     */
+    const omitting = (key: string) => {
+      const raw = one({});
+      const item = raw.items[0] as Record<string, unknown>;
+      delete item[key];
+      return sortCampaignFinanceItems(
+        mapper.map(raw, financeSource()).items as Record<string, unknown>[],
+      );
+    };
+
+    it("routes an expenditure whose payee KEY is absent, not blank", () => {
+      const sorted = omitting("payeeName");
+
+      expect(sorted.expenditures).toHaveLength(1);
+      expect(sorted.committees).toHaveLength(0);
+      expect(sorted.contributions).toHaveLength(0);
+    });
+
+    it("routes an expenditure whose date KEY is absent", () => {
+      expect(omitting("date").expenditures).toHaveLength(1);
+    });
+
+    it("routes a payee-less expenditure to the expenditures table", () => {
+      const sorted = route({ payeeName: "" });
+
+      expect(sorted.expenditures).toHaveLength(1);
+      // Nowhere else, in particular not `committees`, whose rule is the
+      // loosest and would silently absorb it.
+      expect(sorted.committees).toHaveLength(0);
+      expect(sorted.contributions).toHaveLength(0);
+    });
+
+    it("routes a dateless expenditure to the expenditures table", () => {
+      expect(route({ date: "" }).expenditures).toHaveLength(1);
+    });
+
+    it("routes one missing both to the expenditures table", () => {
+      expect(route({ date: "", payeeName: "" }).expenditures).toHaveLength(1);
+    });
+
+    it("still rejects a MALFORMED date rather than admitting it as absent", () => {
+      // Zero non-blank dates in the real file are unparseable, so this admits
+      // blanks only. A garbage date is a different fact from a missing one and
+      // must not be silently converted into one.
+      const mapped = mapper.map(one({ date: "not-a-date" }), financeSource());
+
+      expect(mapped.items).toHaveLength(0);
     });
   });
 

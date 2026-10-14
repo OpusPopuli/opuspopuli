@@ -1011,7 +1011,7 @@ describe('RegionQueryService — query methods', () => {
           donorCity: null,
           donorState: null,
           donorZip: '95814-1234',
-          amount: { toNumber: () => 500 } as unknown as Prisma.Decimal,
+          amount: new Prisma.Decimal(500),
           date: new Date(),
           electionType: null,
           contributionType: null,
@@ -1028,7 +1028,9 @@ describe('RegionQueryService — query methods', () => {
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
-      expect(typeof result.items[0].amount).toBe('number');
+      // Value, not just type: `typeof NaN === 'number'` passes a type-only
+      // check, so this asserted nothing about the conversion (#991).
+      expect(result.items[0].amount).toBe(500);
       expect(result.items[0].electionType).toBeUndefined();
 
       // Withheld from GraphQL (#980) — and stripped from the object, not just
@@ -1101,7 +1103,7 @@ describe('RegionQueryService — query methods', () => {
           externalId: 'exp-1',
           committeeId: 'comm-1',
           payeeName: 'Ad Agency Inc',
-          amount: { toNumber: () => 1500 } as unknown as Prisma.Decimal,
+          amount: new Prisma.Decimal(1500),
           date: new Date(),
           purposeDescription: null,
           expenditureCode: null,
@@ -1121,7 +1123,9 @@ describe('RegionQueryService — query methods', () => {
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
-      expect(typeof result.items[0].amount).toBe('number');
+      // Value, not just type: `typeof NaN === 'number'`, so a
+      // type-only check asserted nothing about the conversion (#991).
+      expect(result.items[0].amount).toBe(1500);
       expect(result.items[0].purposeDescription).toBeUndefined();
       expect(result.items[0].supportOrOppose).toBeUndefined();
     });
@@ -1139,6 +1143,70 @@ describe('RegionQueryService — query methods', () => {
       );
     });
 
+    it('sorts undated rows LAST, with a unique tiebreaker (#991)', async () => {
+      mockDb.expenditure.findMany.mockResolvedValue([]);
+      mockDb.expenditure.count.mockResolvedValue(0);
+
+      await service.getExpenditures();
+
+      // Three separate failures are pinned here, none of which any other
+      // assertion in this file would catch:
+      //
+      // 1. Without `nulls: 'last'`, Postgres sorts NULLS FIRST on DESC and
+      //    page one of the public listing is 5.2M undated rows — the most
+      //    recent spending becomes unreachable.
+      // 2. The exact shape must match `expenditures_date_desc_amount_idx`
+      //    (date DESC NULLS LAST, amount DESC, id). Measured: with no
+      //    matching index this query is a 1065 ms seq scan, not 0.19 ms.
+      // 3. Without a unique final key, offset pagination over 5.2M rows
+      //    sharing date = NULL is not reproducible — the same row appears on
+      //    two pages and others are never shown.
+      expect(mockDb.expenditure.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [
+            { date: { sort: 'desc', nulls: 'last' } },
+            { amount: 'desc' },
+            { id: 'asc' },
+          ],
+        }),
+      );
+    });
+
+    it('passes a null date and payee through as undefined, not null (#991)', async () => {
+      // Both columns are nullable now, and every other fixture in this file
+      // populates both — so this boundary coercion was never executed.
+      mockDb.expenditure.findMany.mockResolvedValue([
+        {
+          id: '1',
+          externalId: 'exp-undated',
+          committeeId: 'comm-1',
+          payeeName: null,
+          // `toString`, not `toNumber`: the mapping uses `Number(amount)`,
+          // which goes through toString on a real Prisma.Decimal. A stub with
+          // only `toNumber` yields NaN — and `typeof NaN === 'number'`, which
+          // is why the sibling fixture's type-only assertion never caught it.
+          amount: new Prisma.Decimal(2500),
+          date: null,
+          purposeDescription: null,
+          expenditureCode: null,
+          candidateName: null,
+          propositionTitle: null,
+          supportOrOppose: null,
+          sourceSystem: 'cal-access',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ] as never);
+      mockDb.expenditure.count.mockResolvedValue(1);
+
+      const result = await service.getExpenditures(0, 10);
+
+      expect(result.items).toHaveLength(1);
+      // The money is kept — that is the whole point of admitting the row.
+      expect(result.items[0].amount).toBe(2500);
+      expect(result.items[0].date).toBeUndefined();
+      expect(result.items[0].payeeName).toBeUndefined();
+    });
     it('excludes unattributed rows when no committee filter is given (#980)', async () => {
       mockDb.expenditure.findMany.mockResolvedValue([]);
       mockDb.expenditure.count.mockResolvedValue(0);
@@ -1187,7 +1255,7 @@ describe('RegionQueryService — query methods', () => {
           candidateName: null,
           propositionTitle: null,
           supportOrOppose: 'support',
-          amount: { toNumber: () => 25000 } as unknown as Prisma.Decimal,
+          amount: new Prisma.Decimal(25000),
           date: new Date(),
           electionDate: null,
           description: null,
@@ -1206,7 +1274,9 @@ describe('RegionQueryService — query methods', () => {
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
-      expect(typeof result.items[0].amount).toBe('number');
+      // Value, not just type: `typeof NaN === 'number'`, so a
+      // type-only check asserted nothing about the conversion (#991).
+      expect(result.items[0].amount).toBe(25000);
       expect(result.items[0].candidateName).toBeUndefined();
       expect(result.items[0].description).toBeUndefined();
       expect(result.items[0].supportOrOppose).toBe('support');

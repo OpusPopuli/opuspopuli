@@ -486,9 +486,11 @@ export interface Expenditure {
   id: string;
   externalId: string;
   committeeId: string;
-  payeeName: string;
+  /** Blank on 3.8M CAL-ACCESS rows — the filer reported none (#991). */
+  payeeName?: string | null;
   amount: number;
-  date: string;
+  /** Blank on 5.2M CAL-ACCESS rows — the filer reported none (#991). */
+  date?: string | null;
   purposeDescription?: string;
   expenditureCode?: string;
   candidateName?: string;
@@ -836,6 +838,37 @@ export const GET_PROPOSITION = gql`
   }
 `;
 
+/**
+ * What a funding total rests on (#991). Three kinds of uncertainty, kept
+ * separate because they are different facts about different totals:
+ *
+ * - `undated*` / `unattributed*` — money that IS inside `totalSpent` and that
+ *   we cannot fully describe. **Never sum these two**: a row missing both a
+ *   date and a payee is counted in each.
+ * - `unitemizedAmount` — money that is NOT inside `totalRaised` at all,
+ *   reported only on a Form 460 summary line with no detail behind it.
+ */
+export interface FundingBasis {
+  undatedAmount: number;
+  undatedCount: number;
+  unattributedAmount: number;
+  unattributedCount: number;
+  unitemizedAmount: number;
+  /**
+   * Filings reconciled against their summary totals. Zero means
+   * `unitemizedAmount` was never checked, not that nothing was hidden.
+   */
+  reconciledFilings?: number;
+  /** `last-modified` of the source export; null when unrecorded. */
+  asOfSource?: string | null;
+  /**
+   * False when the backend did not compute these numbers. The zeros then mean
+   * "nobody looked", not "nothing is missing", and must not render as an
+   * all-clear.
+   */
+  measured?: boolean;
+}
+
 /** A single donor's aggregated giving to one side of a measure. */
 export interface TopDonor {
   donorName: string;
@@ -858,6 +891,7 @@ export interface SidedFunding {
   committeeCount: number;
   topDonors: TopDonor[];
   primaryCommittees: CommitteeSummaryFunding[];
+  basis: FundingBasis;
 }
 
 /** Aggregated funding for a single proposition. */
@@ -896,6 +930,16 @@ export const GET_PROPOSITION_FUNDING = gql`
           name
           totalRaised
         }
+        basis {
+          undatedAmount
+          undatedCount
+          unattributedAmount
+          unattributedCount
+          unitemizedAmount
+          reconciledFilings
+          asOfSource
+          measured
+        }
       }
       oppose {
         totalRaised
@@ -911,6 +955,16 @@ export const GET_PROPOSITION_FUNDING = gql`
           id
           name
           totalRaised
+        }
+        basis {
+          undatedAmount
+          undatedCount
+          unattributedAmount
+          unattributedCount
+          unitemizedAmount
+          reconciledFilings
+          asOfSource
+          measured
         }
       }
     }
@@ -943,6 +997,7 @@ export interface RepresentativeFunding {
   topDonors: TopDonor[];
   topEmployers: FinanceTopEmployer[];
   committees: CommitteeSummaryFunding[];
+  basis: FundingBasis;
 }
 
 export interface RepresentativeFundingData {
@@ -972,6 +1027,16 @@ export const GET_REPRESENTATIVE_FUNDING = gql`
         id
         name
         totalRaised
+      }
+      basis {
+        undatedAmount
+        undatedCount
+        unattributedAmount
+        unattributedCount
+        unitemizedAmount
+        reconciledFilings
+        asOfSource
+        measured
       }
     }
   }

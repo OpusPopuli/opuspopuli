@@ -287,7 +287,11 @@ describe('CampaignFinanceSyncService — newest amendment wins (#992)', () => {
     const db = { $transaction } as unknown as DbService;
     const svc = new CampaignFinanceSyncService(db);
 
-    const run = (records: Row[], amendable = true) =>
+    const run = (
+      records: Row[],
+      amendable = true,
+      extra: Record<string, unknown> = {},
+    ) =>
       (
         svc as unknown as {
           upsertRecordsByFields: (c: unknown) => Promise<{
@@ -301,6 +305,7 @@ describe('CampaignFinanceSyncService — newest amendment wins (#992)', () => {
         model: { findMany, upsert },
         fields: ['filingId', 'amendId', 'amount'],
         amendable,
+        ...extra,
       });
 
     // The rows that actually reached the database, in write order.
@@ -335,6 +340,46 @@ describe('CampaignFinanceSyncService — newest amendment wins (#992)', () => {
     expect(written()).toHaveLength(1);
     expect(written()[0].amendId).toBe(1);
     expect(written()[0]).toMatchObject({ amount: 250 });
+  });
+
+  it('CLEARS a clearable field an amendment dropped, rather than keeping the old value', async () => {
+    // `pick` builds the update with `Object.fromEntries`, so an absent field
+    // arrives as `undefined` — which Prisma reads as "leave unchanged". Right
+    // as a default, wrong for a restatement: CAL-ACCESS restates the whole
+    // schedule, so a filing that blanks EXPN_DATE would leave the superseded
+    // date standing. The page would then show a date the current filing does
+    // not report, and #991's `undatedAmount` would under-report it.
+    const { run, upsert } = buildUpsert([]);
+
+    await run(
+      [{ externalId: 'F1:1:T1', filingId: 'F1', amendId: 1, amount: 100 }],
+      true,
+      {
+        fields: ['filingId', 'amendId', 'amount', 'date'],
+        clearableFields: ['date'],
+      },
+    );
+
+    const { update, create } = upsert.mock.calls[0][0] as {
+      update: Row;
+      create: Row;
+    };
+    expect(update.date).toBeNull();
+    // On create, null and undefined both yield NULL; explicit null is fine.
+    expect(create.date).toBeNull();
+  });
+
+  it('leaves a NON-clearable absent field untouched, so a partial record cannot blank it', async () => {
+    const { run, upsert } = buildUpsert([]);
+
+    await run([
+      { externalId: 'F1:1:T1', filingId: 'F1', amendId: 1, amount: 100 },
+    ]);
+
+    const { update } = upsert.mock.calls[0][0] as { update: Row };
+    // `fields` includes nothing absent here except by omission; the guard is
+    // that un-listed fields keep Prisma's skip semantics.
+    expect('date' in update).toBe(false);
   });
 
   it('does not let an older amendment overwrite a newer one already stored', async () => {

@@ -25,6 +25,15 @@ const base = {
     { employer: "Big Oil Co", totalAmount: 18000, contributionCount: 8 },
   ],
   committees: [{ id: "c1", name: "Re-Elect Jane Doe", totalRaised: 100000 }],
+  basis: {
+    undatedAmount: 0,
+    undatedCount: 0,
+    unattributedAmount: 0,
+    unattributedCount: 0,
+    unitemizedAmount: 0,
+    asOfSource: "2026-10-12T08:52:56Z",
+    measured: true,
+  },
 };
 
 describe("RepresentativeFundingPanel (#943)", () => {

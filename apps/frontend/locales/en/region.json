@@ -201,5 +201,9 @@
   "claims": {
     "seeSourceQuote": "See the cited passage: “{{quote}}”",
     "seeSourcePassage": "See the cited passage in the source text"
+  },
+  "finance": {
+    "dateNotReported": "Date not reported by the filer",
+    "payeeNotReported": "Payee not reported by the filer"
   }
 }

@@ -1,0 +1,31 @@
+-- Admit expenditures whose date or payee the filer left blank (#991).
+--
+-- CAL-ACCESS leaves EXPN_DATE blank on 5,232,951 of 16,061,732 EXPN_CD rows
+-- ($9.75B) and PAYEE_NAML blank on a nearly-disjoint 3,811,692 ($2.11B). Only
+-- 292 rows fail both. `ExpenditureSchema` required both, so 56.31% of rows —
+-- 15.2% of the money, $11.87B — were rejected and never reached a total.
+-- `totalSpent` has therefore read ~15% low on every representative and
+-- proposition page.
+--
+-- Measured against dbwebexport.zip, last-modified 2026-10-12 08:52:56 GMT,
+-- counting with `parseFlexibleDate` copied verbatim from the mapper. Zero
+-- non-blank dates are unparseable: this is entirely about blanks.
+--
+-- Widening only. No column is dropped, no value is rewritten, and every row
+-- that satisfies the old constraint still satisfies the new one.
+--
+-- The `date` and `payee_name` B-tree indexes are unaffected — Postgres stores
+-- NULLs in a B-tree, so both remain usable. Note that `ORDER BY date DESC`
+-- defaults to NULLS FIRST, which is why region-query.service.ts now orders
+-- with `nulls: 'last'`: without it the 5.2M undated rows take page one.
+--
+-- ROLLBACK IS LOSSY and deliberately not provided as SQL. Restoring NOT NULL
+-- requires deleting every row this migration exists to admit — the $11.87B
+-- again — so a down migration would quietly destroy data to satisfy a
+-- constraint. If this must be reverted: re-add the schema requirement, delete
+-- the null rows explicitly as a separate recorded decision, then re-apply
+-- NOT NULL. That sequence should be a choice someone makes, not a default a
+-- migration performs.
+
+ALTER TABLE "expenditures" ALTER COLUMN "date" DROP NOT NULL;
+ALTER TABLE "expenditures" ALTER COLUMN "payee_name" DROP NOT NULL;

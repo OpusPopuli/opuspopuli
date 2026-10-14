@@ -59,7 +59,7 @@ describe('PropositionFundingService', () => {
     } = opts;
 
     const cacheStore = new Map<string, string>();
-    if (cached) cacheStore.set('propositionFunding:prop-1', cached);
+    if (cached) cacheStore.set('propositionFunding:v2:prop-1', cached);
 
     const mockCache: ICache<string> = {
       get: jest.fn(async (k: string) => cacheStore.get(k) ?? null),
@@ -281,6 +281,15 @@ describe('PropositionFundingService', () => {
           committeeCount: 0,
           topDonors: [],
           primaryCommittees: [],
+          basis: {
+            undatedAmount: 0,
+            undatedCount: 0,
+            unattributedAmount: 0,
+            unattributedCount: 0,
+            unitemizedAmount: 0,
+            asOfSource: '2026-10-12T08:52:56.000Z',
+            measured: true,
+          },
         },
         oppose: {
           totalRaised: 0,
@@ -289,6 +298,15 @@ describe('PropositionFundingService', () => {
           committeeCount: 0,
           topDonors: [],
           primaryCommittees: [],
+          basis: {
+            undatedAmount: 0,
+            undatedCount: 0,
+            unattributedAmount: 0,
+            unattributedCount: 0,
+            unitemizedAmount: 0,
+            asOfSource: '2026-10-12T08:52:56.000Z',
+            measured: true,
+          },
         },
       });
       const built = await buildService({ cached: cachedShape });
@@ -296,10 +314,55 @@ describe('PropositionFundingService', () => {
       const out = await built.service.getFunding('prop-1');
 
       expect(out.support.totalRaised).toBe(999);
+      // Revived per side, both of them. Left as strings these reach the
+      // GraphQL Date scalar as strings; `new Date(null)` would be the epoch.
+      expect(out.support.basis.asOfSource).toBeInstanceOf(Date);
+      expect(out.oppose.basis.asOfSource).toBeInstanceOf(Date);
       expect(built.mockCache.get).toHaveBeenCalledWith(
-        'propositionFunding:prop-1',
+        'propositionFunding:v2:prop-1',
       );
       expect(out.asOf).toBeInstanceOf(Date);
+    });
+
+    it('recomputes a cached entry that predates `basis` (#991)', async () => {
+      // The representative service has this guard AND a test for it; this
+      // side had the guard and no test — the drift the shared basis service
+      // exists to prevent. Serving an entry whose `basis` is missing would
+      // leave a non-nullable GraphQL field undefined and fail every query for
+      // this proposition for the full 4-hour TTL; defaulting it to zeros
+      // would assert "nothing undated" about a figure nobody measured. So it
+      // must be treated as a miss.
+      const built = await buildService({
+        positions: [{ committeeId: 'c-yes', position: 'support' }],
+        contributionSums: new Map([['c-yes', 1_000]]),
+        cached: JSON.stringify({
+          propositionId: 'prop-1',
+          asOf: new Date('2026-04-25T00:00:00Z').toISOString(),
+          support: {
+            totalRaised: 999,
+            totalSpent: 0,
+            donorCount: 0,
+            committeeCount: 0,
+            topDonors: [],
+            primaryCommittees: [],
+          },
+          oppose: {
+            totalRaised: 0,
+            totalSpent: 0,
+            donorCount: 0,
+            committeeCount: 0,
+            topDonors: [],
+            primaryCommittees: [],
+          },
+        }),
+      });
+
+      const out = await built.service.getFunding('prop-1');
+
+      // Recomputed, not served: the stale 999 does not survive.
+      expect(out.support.totalRaised).not.toBe(999);
+      expect(out.support.basis).toBeDefined();
+      expect(out.oppose.basis).toBeDefined();
     });
 
     it('writes to cache after computing fresh', async () => {
@@ -311,7 +374,7 @@ describe('PropositionFundingService', () => {
       await built.service.getFunding('prop-1');
 
       expect(built.mockCache.set).toHaveBeenCalledWith(
-        'propositionFunding:prop-1',
+        'propositionFunding:v2:prop-1',
         expect.any(String),
       );
     });
@@ -342,7 +405,7 @@ describe('PropositionFundingService', () => {
 
       await built.service.invalidateCache('prop-1');
       expect(built.mockCache.delete).toHaveBeenCalledWith(
-        'propositionFunding:prop-1',
+        'propositionFunding:v2:prop-1',
       );
     });
 
