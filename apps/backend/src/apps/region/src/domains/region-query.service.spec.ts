@@ -1138,7 +1138,31 @@ describe('RegionQueryService — query methods', () => {
 
       expect(mockDb.expenditure.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { committeeId: 'comm-1', sourceSystem: 'cal-access' },
+          where: {
+            committeeId: 'comm-1',
+            sourceSystem: 'cal-access',
+            // #1367: payments made only — see the schedule test below.
+            scheduleCode: { in: ['E', 'F450P5', 'F461P5', 'F465P3'] },
+          },
+        }),
+      );
+    });
+
+    it('lists only payments made, excluding memo schedules (#1367)', async () => {
+      mockDb.expenditure.findMany.mockResolvedValue([]);
+      mockDb.expenditure.count.mockResolvedValue(0);
+
+      await service.getExpenditures();
+
+      // Per `cal_format_201.pdf`: `D` is a "Summary of Expenditures" and ALL
+      // Schedule `G` entries are "sub-itemizations for items that appear on
+      // the 460's Schedule E or Schedule F". Listing them beside a total that
+      // excludes them lets a reader sum the page and miss the figure.
+      expect(mockDb.expenditure.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            scheduleCode: { in: ['E', 'F450P5', 'F461P5', 'F465P3'] },
+          }),
         }),
       );
     });
@@ -1213,10 +1237,17 @@ describe('RegionQueryService — query methods', () => {
 
       await service.getExpenditures();
 
-      const expected = { where: { committeeId: { not: null } } };
+      const expected = {
+        where: {
+          committeeId: { not: null },
+          scheduleCode: { in: ['E', 'F450P5', 'F461P5', 'F465P3'] },
+        },
+      };
       expect(mockDb.expenditure.findMany).toHaveBeenCalledWith(
         expect.objectContaining(expected),
       );
+      // The count must share the predicate, or pagination claims a total the
+      // list cannot reach.
       expect(mockDb.expenditure.count).toHaveBeenCalledWith(expected);
     });
   });

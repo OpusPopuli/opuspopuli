@@ -174,6 +174,9 @@ describe('AmendmentSupersessionService (#992)', () => {
           amount: amt,
           date: new Date('2026-03-01'),
           sourceSystem: 'cal_access',
+          // CAL-ACCESS always supplies FORM_TYPE; the funding surfaces
+          // filter to the payment schedules (#1367).
+          scheduleCode: 'E',
         },
       });
     await expenditure(0, '900600:1:A', '500.00');

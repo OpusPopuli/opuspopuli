@@ -2,6 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import { toNumber } from './finance-money';
+import { spentScheduleFilter } from './expenditure-schedules';
 
 /**
  * What a funding figure rests on (#991).
@@ -151,9 +152,20 @@ export class FundingBasisService {
     }
 
     const where = { committeeId: { in: committeeIds } };
+    // Scoped to the SAME schedules as `totalSpent` (#1367). These figures
+    // describe money inside that total, so a different population here would
+    // make the numerator and denominator incomparable — `undated` was
+    // including 87,137 Schedule G rows ($0.994B) that are sub-itemizations of
+    // payments already counted.
+    //
+    // Applied per-aggregate, NOT folded into `where`: that object is also
+    // used for `filingReconciliation`, a table with no `scheduleCode` column,
+    // and Prisma rejects the query at runtime. The unit mocks do not validate
+    // the where shape, so only the live stack caught it.
+    const spentWhere = { ...where, ...spentScheduleFilter() };
     const [undated, unattributed, unitemized, asOfSource] = await Promise.all([
       this.db.expenditure.aggregate({
-        where: { ...where, date: null },
+        where: { ...spentWhere, date: null },
         _sum: { amount: true },
         _count: { _all: true },
       }),
@@ -175,7 +187,7 @@ export class FundingBasisService {
         //
         // So: unattributed means no recipient named ANYWHERE on the row.
         where: {
-          ...where,
+          ...spentWhere,
           payeeName: null,
           candidateName: null,
           propositionTitle: null,

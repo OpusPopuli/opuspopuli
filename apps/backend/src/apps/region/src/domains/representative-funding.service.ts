@@ -8,6 +8,7 @@ import {
   type FundingBasis,
 } from './funding-basis.service';
 import { reviveBasis, toNumber } from './finance-money';
+import { spentScheduleFilter } from './expenditure-schedules';
 
 export interface RepFundingTopDonor {
   donorName: string;
@@ -227,7 +228,14 @@ export class RepresentativeFundingService {
       basis,
     ] = await Promise.all([
       this.db.contribution.aggregate({ where, _sum: { amount: true } }),
-      this.db.expenditure.aggregate({ where, _sum: { amount: true } }),
+      // Payments made only (#1367). Summing every schedule counted Schedule D
+      // summaries and Schedule G sub-itemizations of rows already in the
+      // total — the old figure agreed with the filer's own Form 460 line 6
+      // just 14% of the time.
+      this.db.expenditure.aggregate({
+        where: { ...where, ...spentScheduleFilter() },
+        _sum: { amount: true },
+      }),
       // Scan the top DONOR_SCAN_LIMIT raw names by amount, then canonicalize +
       // merge in-memory (a fragmented donor's pieces can each rank low yet
       // dominate once summed). donorCount comes from the merged buckets, so a

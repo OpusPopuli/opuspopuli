@@ -131,6 +131,17 @@ describe("FundingBasisNote (#991)", () => {
     expect(noteText()).toContain("has been checked against its own summary");
   });
 
+  it("states what the total COUNTS, not only what is missing (#1367)", () => {
+    renderNote(clean);
+
+    const text = noteText();
+    // Published totals fell 34% when Schedule D summaries and Schedule G
+    // sub-itemizations stopped being summed. A reader comparing against an
+    // older figure, or against CAL-ACCESS directly, needs the basis stated.
+    expect(text).toContain("payments the committee reported making");
+    expect(text).toContain("counted twice");
+  });
+
   it("never asserts the source export was complete", () => {
     // The trap this replaced: the corpus on hand was ingested under the
     // schema that REJECTED blank-date rows, so every stored row has a date.
