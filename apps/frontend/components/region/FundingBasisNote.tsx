@@ -95,6 +95,11 @@ export function FundingBasisNote({
     ...contributionLines(basis, unitemizedBase ?? totalRaised, t, usd, lang, {
       hasBase: unitemizedBase !== undefined || totalRaised > 0,
     }),
+    // What the total counts, not only what is missing from it (#1367).
+    // Published figures dropped 34% platform-wide when memo and
+    // sub-itemization schedules stopped being summed, so the basis of the
+    // number belongs beside it rather than in a changelog.
+    t("fundingBasis.spendBasis"),
     t("fundingBasis.scope"),
     basis.asOfSource
       ? t("fundingBasis.source", { date: formatSourceDate(basis.asOfSource) })

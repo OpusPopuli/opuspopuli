@@ -549,6 +549,14 @@ export interface CreateExpenditureOptions {
   propositionTitle?: string;
   supportOrOppose?: string;
   sourceSystem?: string;
+  /**
+   * `EXPN_CD.FORM_TYPE` — the SCHEDULE. Defaults to `'E'` (Payments Made),
+   * because CAL-ACCESS always supplies one and the funding surfaces now
+   * filter to the payment schedules (#1367). A fixture with no schedule was
+   * a row the real pipeline never produces, and it silently vanished from
+   * every total. Pass `'D'` or `'G'` to exercise the memo-exclusion path.
+   */
+  scheduleCode?: string;
 }
 
 /**
@@ -574,6 +582,7 @@ export async function createExpenditure(
       propositionTitle: options.propositionTitle,
       supportOrOppose: options.supportOrOppose,
       sourceSystem: options.sourceSystem ?? 'cal_access',
+      scheduleCode: options.scheduleCode ?? 'E',
     },
   });
 }

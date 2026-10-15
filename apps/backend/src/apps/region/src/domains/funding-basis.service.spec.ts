@@ -38,6 +38,7 @@ const buildDb = (stub: DbStub) => {
         ? null
         : { lastModified: stub.lastModified },
     );
+  const reconAggregate = jest.fn();
   // The distinct-source probe: one source = unambiguous. `stub.sources`
   // overrides it to simulate CAL-ACCESS and FEC exports side by side.
   const snapshotFindMany = jest
@@ -51,7 +52,7 @@ const buildDb = (stub: DbStub) => {
     db: {
       expenditure: { aggregate },
       filingReconciliation: {
-        aggregate: jest.fn().mockResolvedValue({
+        aggregate: reconAggregate.mockResolvedValue({
           _sum: {
             unitemizedContributions:
               stub.unitemized === null ? null : decimal(stub.unitemized),
@@ -62,6 +63,7 @@ const buildDb = (stub: DbStub) => {
       bulkSnapshot: { findFirst, findMany: snapshotFindMany },
     } as unknown as DbService,
     aggregate,
+    reconAggregate,
     findFirst,
     snapshotFindMany,
   };
@@ -127,6 +129,45 @@ describe('FundingBasisService (#991)', () => {
       candidateName: null,
       propositionTitle: null,
     });
+  });
+
+  it('does NOT apply the expenditure schedule filter to filing_reconciliations', async () => {
+    // `filing_reconciliations` has no `scheduleCode` column, so folding the
+    // #1367 filter into the shared `where` made Prisma reject the query at
+    // runtime — on every rep and proposition page. The unit mocks do not
+    // validate the where shape, so nothing here caught it and the live stack
+    // did. This asserts the shape the mocks otherwise ignore.
+    const { db, reconAggregate } = buildDb({
+      undated: { amount: 0, count: 0 },
+      unattributed: { amount: 0, count: 0 },
+      unitemized: 0,
+    });
+
+    await new FundingBasisService(db).forCommittees(['c1']);
+
+    expect(reconAggregate).toHaveBeenCalledTimes(1);
+    expect(reconAggregate.mock.calls[0][0].where).not.toHaveProperty(
+      'scheduleCode',
+    );
+  });
+
+  it('scopes the expenditure gaps to the spend schedules (#1367)', async () => {
+    // The numerator must use the same population as `totalSpent`, or the
+    // share shown on the page is computed across two different sets —
+    // `undated` was including 87,137 Schedule G sub-itemization rows.
+    const { db, aggregate } = buildDb({
+      undated: { amount: 0, count: 0 },
+      unattributed: { amount: 0, count: 0 },
+      unitemized: 0,
+    });
+
+    await new FundingBasisService(db).forCommittees(['c1']);
+
+    for (const call of aggregate.mock.calls) {
+      expect(call[0].where.scheduleCode).toEqual({
+        in: ['E', 'F450P5', 'F461P5', 'F465P3'],
+      });
+    }
   });
 
   it('filters the two expenditure gaps on different columns', async () => {

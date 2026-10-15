@@ -111,6 +111,7 @@
     "contributionsComplete_other": "Las {{formatted}} declaraciones conciliadas aquí informaron sus contribuciones con detalle desglosado.",
     "unreconciled": "Ninguna de estas declaraciones se ha comparado con sus propios totales globales, por lo que no se sabe si hubo contribuciones declaradas sin detalle de donantes.",
     "scope": "Estas afirmaciones describen los registros en archivo. No garantizan que el archivo de origen no contuviera otros.",
+    "spendBasis": "El gasto cuenta los pagos que el comité declaró haber realizado (Formulario 460, Anexo E, y el anexo equivalente en los Formularios 450, 461 y 465). Se excluyen los anexos de resumen y de subdesglose, que reiteran esos mismos pagos, para no contar ningún pago dos veces.",
     "source": "Del archivo masivo oficial publicado el {{date}}.",
     "sourceUnknown": "Estas cifras no pueden vincularse a un único archivo masivo, por lo que no pueden fecharse a una instantánea concreta del registro público."
   },
