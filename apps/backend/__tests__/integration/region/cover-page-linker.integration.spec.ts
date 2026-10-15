@@ -93,6 +93,9 @@ describe('CoverPageLinkerService (#980)', () => {
         amount: '1000.00',
         date: new Date('2026-03-01'),
         sourceSystem: 'cal_access',
+        // CAL-ACCESS always supplies FORM_TYPE; the funding surfaces
+        // filter to the payment schedules (#1367).
+        scheduleCode: 'E',
       },
     });
 

@@ -126,6 +126,9 @@ describe('#980 cover-page join columns', () => {
         amount: '1000.00',
         date: new Date('2026-03-01'),
         sourceSystem: 'cal_access',
+        // CAL-ACCESS always supplies FORM_TYPE; the funding surfaces
+        // filter to the payment schedules (#1367).
+        scheduleCode: 'E',
       },
     });
 
@@ -216,6 +219,9 @@ describe('#980 cover-page join columns', () => {
             amount: '100.00',
             date: new Date('2026-03-01'),
             sourceSystem: 'cal_access',
+            // CAL-ACCESS always supplies FORM_TYPE; the funding surfaces
+            // filter to the payment schedules (#1367).
+            scheduleCode: 'E',
           },
           {
             externalId: '6666666:0:1:FFF',
@@ -280,6 +286,7 @@ describe('#980 cover-page join columns', () => {
         amount: '1000.00',
         date: new Date('2026-03-01'),
         sourceSystem: 'cal_access',
+        scheduleCode: 'E',
       },
     });
 
