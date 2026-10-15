@@ -11,6 +11,7 @@ import {
   type FundingBasis,
 } from './funding-basis.service';
 import { reviveBasis, toNumber } from './finance-money';
+import { spentScheduleFilter } from './expenditure-schedules';
 
 /** Output shape — mirrored by PropositionFundingModel for the GraphQL surface. */
 export interface SidedFunding {
@@ -187,8 +188,9 @@ export class PropositionFundingService {
         where: { committeeId: { in: committeeIds } },
         _sum: { amount: true },
       }),
+      // Payments made only (#1367) — see representative-funding for why.
       this.db!.expenditure.aggregate({
-        where: { committeeId: { in: committeeIds } },
+        where: { committeeId: { in: committeeIds }, ...spentScheduleFilter() },
         _sum: { amount: true },
       }),
       this.computeIndependentExpenditureAggregates(propositionId, position),

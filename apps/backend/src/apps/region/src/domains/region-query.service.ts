@@ -3,6 +3,7 @@ import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 
 import { RegionCacheService } from './region-cache.service';
 import { committeeCandidateFields } from './committee-candidate-display';
+import { spentScheduleFilter } from './expenditure-schedules';
 import {
   PropositionFundingService,
   type PropositionFunding,
@@ -1348,7 +1349,15 @@ export class RegionQueryService {
   ): Promise<PaginatedExpenditures> {
     // Same as contributions above: EXPN_CD line items are unattributed until the
     // cover-page linker resolves filingId -> spender (#980).
-    const where: Record<string, unknown> = { committeeId: { not: null } };
+    // Payments made only (#1367). The list must not show rows the totals
+    // exclude, or a reader can sum the page and fail to reach the figure above
+    // it — Schedule D summaries and Schedule G sub-itemizations restate
+    // payments already listed. Contributions and independent expenditures are
+    // separate tables and are deliberately untouched.
+    const where: Record<string, unknown> = {
+      committeeId: { not: null },
+      ...spentScheduleFilter(),
+    };
     // Overwriting the guard is safe *only* because an explicit id is non-null,
     // which is strictly narrower. A future filter on a nullable column (e.g.
     // filingId) must merge rather than replace.

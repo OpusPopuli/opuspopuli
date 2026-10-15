@@ -111,6 +111,7 @@
     "contributionsComplete_other": "All {{formatted}} filings reconciled here reported their contributions in itemized detail.",
     "unreconciled": "None of these filings has been checked against its own summary totals, so whether contributions were reported without donor detail is unknown.",
     "scope": "These statements describe the records on file. They are not a guarantee that the source export held no others.",
+    "spendBasis": "Spending counts payments the committee reported making (Form 460 Schedule E, and the equivalent schedule on Forms 450, 461 and 465). Summary and sub-itemization schedules, which restate those same payments, are excluded so no payment is counted twice.",
     "source": "From the official bulk export published {{date}}.",
     "sourceUnknown": "These figures cannot be tied to a single bulk export, so they cannot be dated to a specific snapshot of the public record."
   },
