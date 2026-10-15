@@ -15,7 +15,7 @@ describe('PrismaBulkArchive', () => {
       update: jest.Mock;
     };
   };
-  let storage: { putStream: jest.Mock };
+  let storage: { putStream: jest.Mock; ensureBucket: jest.Mock };
   let archive: PrismaBulkArchive;
 
   const candidate = (
@@ -47,7 +47,10 @@ describe('PrismaBulkArchive', () => {
         update: jest.fn().mockResolvedValue({}),
       },
     };
-    storage = { putStream: jest.fn().mockResolvedValue(undefined) };
+    storage = {
+      putStream: jest.fn().mockResolvedValue(undefined),
+      ensureBucket: jest.fn().mockResolvedValue(true),
+    };
     archive = new PrismaBulkArchive(
       db as unknown as DbService,
       storage as unknown as IStorageProvider,
@@ -81,6 +84,56 @@ describe('PrismaBulkArchive', () => {
     const [{ data }] = db.bulkSnapshot.create.mock.calls[0];
     expect(typeof data.byteSize).toBe('bigint');
     expect(data.byteSize).toBe(3_221_225_472n);
+  });
+
+  it('provisions the bucket before uploading (#1363)', async () => {
+    // The `bulk-archives` bucket had never existed in ANY environment, so
+    // every upload was rejected and the archive tier (#1277) retained nothing
+    // while recording each snapshot as simply having no payload. Nothing in
+    // the stack could create a bucket — the capability did not exist.
+    await archive.archive(candidate());
+
+    expect(storage.ensureBucket).toHaveBeenCalledWith('bulk-archives', true);
+    // Private: the archive holds raw public-record exports carrying
+    // contributor names and addresses. Lawfully public is not world-readable.
+    expect(storage.putStream).toHaveBeenCalled();
+  });
+
+  it('resolves the bucket once, not once per export', async () => {
+    await archive.archive(candidate({ contentHash: 'a'.repeat(64) }));
+    db.bulkSnapshot.findUnique.mockResolvedValue(null);
+    await archive.archive(candidate({ contentHash: 'b'.repeat(64) }));
+
+    // A finance sync archives 7 sources; re-checking per export would be 7
+    // round trips for one answer that cannot change mid-run.
+    expect(storage.ensureBucket).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not upload when the bucket cannot be provisioned', async () => {
+    storage.ensureBucket.mockResolvedValue(false);
+
+    await archive.archive(candidate());
+
+    // Still records the row — the snapshot is worth knowing about even
+    // without its bytes — but does not pretend to have stored them.
+    expect(storage.putStream).not.toHaveBeenCalled();
+    const { data } = db.bulkSnapshot.create.mock.calls[0][0];
+    expect(data.storageBucket).toBeNull();
+    expect(data.storageKey).toBeNull();
+  });
+
+  it('still uploads when the provider cannot provision buckets at all', async () => {
+    // `ensureBucket` is optional. A deployment whose bucket was created out of
+    // band must not regress to never uploading.
+    const noEnsure = new PrismaBulkArchive(
+      db as unknown as DbService,
+      { putStream: storage.putStream } as unknown as IStorageProvider,
+      config,
+    );
+
+    await noEnsure.archive(candidate());
+
+    expect(storage.putStream).toHaveBeenCalled();
   });
 
   it('records the snapshot even when the upload fails', async () => {
