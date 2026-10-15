@@ -107,6 +107,40 @@ export class SupabaseStorageProvider extends BaseStorageProvider {
     }
   }
 
+  /**
+   * Create `bucket` if missing (#1363). Idempotent; "already exists" is a
+   * success.
+   *
+   * The `bulk-archives` bucket had never existed in any environment, so every
+   * bulk-export upload was rejected and the archive tier (#1277) retained
+   * nothing while reporting each snapshot as simply having no payload.
+   * Nothing in the stack could provision one, which is why this exists rather
+   * than a runbook step — a provisioning task nobody runs is how the gap
+   * survived.
+   */
+  async ensureBucket(bucket: string, isPrivate = true): Promise<boolean> {
+    const existing = await this.supabase.storage.getBucket(bucket);
+    if (existing.data) return true;
+
+    const { error } = await this.supabase.storage.createBucket(bucket, {
+      public: !isPrivate,
+    });
+    if (!error) {
+      this.logger.log(
+        `Created ${isPrivate ? "private" : "public"} storage bucket ${bucket}`,
+      );
+      return true;
+    }
+
+    // A concurrent worker may have won the race; that is still success.
+    if (/exist/i.test(error.message)) return true;
+
+    this.logger.warn(
+      `Could not create storage bucket ${bucket}: ${error.message}`,
+    );
+    return false;
+  }
+
   protected async putStreamImpl(
     bucket: string,
     key: string,

@@ -108,6 +108,31 @@ export interface IStorageProvider {
    * Get file metadata
    */
   getMetadata?(bucket: string, key: string): Promise<IStorageFile | null>;
+
+  /**
+   * Create `bucket` if it does not already exist; resolve true when it is
+   * usable afterwards (#1363).
+   *
+   * Exists because nothing in the stack could provision a bucket, so the
+   * bulk-archive tier (#1277) silently retained nothing: the `bulk-archives`
+   * bucket had never been created, every upload was rejected, and each
+   * snapshot row landed with `storage_key` NULL — recorded as having no
+   * payload. The retention guarantee was not in force in any environment.
+   *
+   * Must be IDEMPOTENT: callers invoke it before an upload without knowing
+   * whether a previous run already created it, and "already exists" is a
+   * success, not an error.
+   *
+   * `isPrivate` defaults to true and callers should leave it so unless they
+   * mean otherwise. The archives hold raw public-record exports that include
+   * contributor names and addresses; lawfully public is not the same as
+   * world-readable from our object store.
+   *
+   * Optional: a provider with no concept of buckets, or no authority to
+   * create them, does not implement it. Callers must treat its absence as
+   * "cannot provision" and carry on rather than assuming success.
+   */
+  ensureBucket?(bucket: string, isPrivate?: boolean): Promise<boolean>;
 }
 
 /**

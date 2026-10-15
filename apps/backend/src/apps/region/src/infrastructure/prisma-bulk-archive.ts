@@ -45,6 +45,9 @@ export class PrismaBulkArchive implements IBulkArchive {
       DEFAULT_ARCHIVE_BUCKET;
   }
 
+  /** Memoized `ensureBucket` result; see {@link bucketReady}. */
+  private bucketCheck?: Promise<boolean>;
+
   async archive(candidate: BulkSnapshotCandidate): Promise<void> {
     const existing = await this.db.bulkSnapshot.findUnique({
       where: { contentHash: candidate.contentHash },
@@ -125,6 +128,23 @@ export class PrismaBulkArchive implements IBulkArchive {
    * treats archiving as best-effort alongside an ingest that has already
    * succeeded.
    */
+  /**
+   * Whether the archive bucket exists, resolved once per process.
+   *
+   * `ensureBucket` is optional on the provider: a provider that cannot
+   * provision buckets is treated as "assume it is there and let the upload
+   * report the truth", because refusing to try would be a regression for any
+   * deployment whose bucket was created out of band.
+   */
+  private async bucketReady(): Promise<boolean> {
+    const ensure = this.storage?.ensureBucket;
+    if (!ensure) return true;
+    // Bound to the provider, not called bare: `ensureBucket` reads
+    // `this.supabase` on the provider instance.
+    this.bucketCheck ??= ensure.call(this.storage, this.bucket, true);
+    return this.bucketCheck;
+  }
+
   private async upload(
     candidate: BulkSnapshotCandidate,
     storageKey: string,
@@ -136,6 +156,12 @@ export class PrismaBulkArchive implements IBulkArchive {
       );
       return false;
     }
+
+    // Provision on first use (#1363). The bucket had never existed in any
+    // environment, so every upload was rejected and the archive tier retained
+    // nothing. Memoized per process: this runs once per sync, not once per
+    // export, and a failure here is recorded rather than retried in a loop.
+    if (!(await this.bucketReady())) return false;
 
     try {
       await this.storage.putStream(
