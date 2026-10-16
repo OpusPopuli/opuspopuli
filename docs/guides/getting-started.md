@@ -121,6 +121,28 @@ Open your browser to:
 - **Inbucket (Email Testing)**: http://localhost:54324
 - **Ollama**: http://localhost:11434
 
+#### What is provisioned for you
+
+`db-migrate` runs on every stack start and is idempotent, so there is nothing
+to click in a dashboard:
+
+| | |
+|---|---|
+| database, extensions, Prisma migrations | created / applied |
+| PostGIS spatial setup | applied |
+| default admin user | seeded via the GoTrue admin API |
+| Vault RPC functions + bootstrap secrets | installed and seeded |
+| **`bulk-archives` storage bucket + grants** | **created private, 3 GiB file limit** |
+
+The storage bucket matters more than it looks. Bulk civic exports (the ~1.5 GB
+CAL-ACCESS archive, for instance) are retained so that any published figure can
+be traced back to the exact bytes it came from. That retention silently did
+nothing in every environment until #1363: the bucket existed nowhere, the
+`storage` grants existed nowhere, and nothing created either — so each archive
+was recorded as a snapshot with no payload. It is provisioned declaratively now
+(`supabase/migrations/98_storage_buckets.sql`) precisely because a setup step
+described in a guide is a step that does not happen.
+
 **Test the RAG Pipeline**:
 
 1. Open http://localhost:3000/graphql in your browser

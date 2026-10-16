@@ -180,8 +180,64 @@ fi
 # Seed value is taken from SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY when
 # set; otherwise a deterministic local dev key so UAT just works.
 
-VAULT_FUNCTIONS_FILE="/usr/src/app/supabase/migrations/99_vault_functions.sql"
+# ============================================================
+# Provision storage buckets + grants (#1363)
+# ============================================================
+# Runs BEFORE the vault seed and independently of it: retention must not
+# depend on SERVICE_ROLE_KEY being present, and a stack with no AI features
+# still archives its bulk exports.
+#
+# Applied through pg-meta /query, which executes as `supabase_admin`
+# (superuser). That is the only role that can write `storage.buckets` —
+# `postgres` has no grant on it and cannot SET ROLE to the owner.
+#
+# Idempotent, and deliberately part of `docker compose up` rather than a
+# runbook step: the bulk-archive tier (#1277) retained NOTHING in any
+# environment from the day it shipped, because the bucket and the grants it
+# needed existed in no environment and nothing created them. A new operator
+# must get a stack that retains archives without being told to go and click
+# something.
+STORAGE_BUCKETS_FILE="/usr/src/app/supabase/migrations/98_storage_buckets.sql"
 PG_META_URL="${PG_META_URL:-http://supabase-meta:8080}"
+
+if [ -f "$STORAGE_BUCKETS_FILE" ]; then
+  echo "=== Provisioning storage buckets + grants via pg-meta ==="
+  export STORAGE_BUCKETS_FILE PG_META_URL
+  node -e "
+const fs = require('fs');
+const http = require('http');
+const { URL } = require('url');
+const sql = fs.readFileSync(process.env.STORAGE_BUCKETS_FILE, 'utf8');
+const u = new URL(process.env.PG_META_URL + '/query');
+const body = JSON.stringify({ query: sql });
+const req = http.request({
+  hostname: u.hostname,
+  port: u.port || 80,
+  path: u.pathname,
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+}, (res) => {
+  let data = '';
+  res.on('data', (c) => (data += c));
+  res.on('end', () => {
+    if (res.statusCode >= 400) {
+      // Non-fatal, like the vault seed: a sync must still run, and the
+      // archive degrades to recording the snapshot without its bytes.
+      console.warn('Storage provisioning failed (non-fatal): ' + res.statusCode + ' ' + data.slice(0, 300));
+    } else {
+      console.log('Storage buckets + grants provisioned');
+    }
+  });
+});
+req.on('error', (err) => console.warn('Storage provisioning unreachable (non-fatal):', err.message));
+req.write(body);
+req.end();
+"
+else
+  echo "=== Skipping storage provisioning (98_storage_buckets.sql not found) ==="
+fi
+
+VAULT_FUNCTIONS_FILE="/usr/src/app/supabase/migrations/99_vault_functions.sql"
 # Export SEED_* values so the child `node` process can read them via
 # `process.env`. Doing it this way instead of shell-interpolating into
 # the JS template avoids shell-quote fragility — a SEED value containing
