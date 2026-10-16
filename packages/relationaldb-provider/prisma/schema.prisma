@@ -2510,6 +2510,24 @@ model BulkSnapshot {
   lastModified  String?   @map("last_modified") @db.VarChar(255)
   /// Set when the payload was pruned by the retention sweep. The row remains.
   prunedAt      DateTime? @map("pruned_at") @db.Timestamptz
+  /// Set when a payload this row CLAIMS could not be found in storage — data
+  /// loss or an outage, not retention.
+  ///
+  /// The four states this table can express, which must stay distinguishable:
+  ///
+  /// | storageKey | prunedAt | payloadMissingAt | meaning |
+  /// |---|---|---|---|
+  /// | set | null | null | payload retained |
+  /// | null | null | null | never uploaded |
+  /// | null | set | null | pruned by retention, deliberately |
+  /// | set | null | set | expected, gone |
+  ///
+  /// Reachable because `docker-compose-backup.yml` dumps the database and NOT
+  /// the storage volume: a restored node has every row and none of the bytes.
+  /// `storageKey` is kept rather than nulled so the row stays distinct from
+  /// "never uploaded" and the key survives to match the object if the volume
+  /// comes back. Set and cleared by the retention sweep, so recovery heals it.
+  payloadMissingAt DateTime? @map("payload_missing_at") @db.Timestamptz
   /// Marks the snapshot the retention sweep keeps for its calendar month.
   isMonthly     Boolean   @default(false) @map("is_monthly")
   executionId   String?   @map("execution_id")

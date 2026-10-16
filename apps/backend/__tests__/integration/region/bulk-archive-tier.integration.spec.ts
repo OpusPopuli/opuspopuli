@@ -123,13 +123,74 @@ describe('bulk archive tier (#1277)', () => {
     } as never);
     const result = await service.sweep();
 
-    expect(result).toEqual({ retained: 1, pruned: 2, failed: 0 });
+    expect(result).toEqual({
+      retained: 1,
+      pruned: 2,
+      failed: 0,
+      // This stub has no `exists`, so nothing is claimed either way about
+      // whether the retained payload is really there.
+      missing: 0,
+    });
 
     const survivor = await db.bulkSnapshot.findFirst({
       where: { storageKey: { not: null } },
       select: { contentHash: true },
     });
     expect(survivor!.contentHash).toBe(hashOf('w3'));
+  });
+
+  it('flags a retained payload the store cannot find, against a real DB', async () => {
+    // Mocks cannot prove the column persists or that Prisma accepts the
+    // update — exactly the gap that let a bad `where` shape pass every unit
+    // test and fail at runtime in #1370.
+    await createSnapshot('live', '2026-09-22T00:00:00Z');
+
+    const service = new SnapshotRetentionService(db, {
+      deleteFile: async () => true,
+      exists: async () => false,
+    } as never);
+    const result = await service.sweep();
+
+    expect(result.missing).toBe(1);
+
+    const row = await db.bulkSnapshot.findFirst({
+      where: { contentHash: hashOf('live') },
+      select: {
+        payloadMissingAt: true,
+        storageKey: true,
+        prunedAt: true,
+      },
+    });
+
+    expect(row!.payloadMissingAt).not.toBeNull();
+    // The distinction the column exists for: still claims a key (so it is not
+    // "never uploaded"), and not pruned (so it is not "removed on purpose").
+    expect(row!.storageKey).toBe('bulk/xx/live');
+    expect(row!.prunedAt).toBeNull();
+  });
+
+  it('clears the flag when the payload comes back', async () => {
+    await createSnapshot('restored', '2026-09-22T00:00:00Z');
+    const gone = new SnapshotRetentionService(db, {
+      deleteFile: async () => true,
+      exists: async () => false,
+    } as never);
+    await gone.sweep();
+
+    // A volume restored from backup should heal the state rather than leave a
+    // permanent scar on the provenance record.
+    const back = new SnapshotRetentionService(db, {
+      deleteFile: async () => true,
+      exists: async () => true,
+    } as never);
+    const result = await back.sweep();
+
+    expect(result.missing).toBe(0);
+    const row = await db.bulkSnapshot.findFirst({
+      where: { contentHash: hashOf('restored') },
+      select: { payloadMissingAt: true },
+    });
+    expect(row!.payloadMissingAt).toBeNull();
   });
 
   it('never deletes a snapshot row, only its payload', async () => {
