@@ -134,6 +134,26 @@ to click in a dashboard:
 | Vault RPC functions + bootstrap secrets | installed and seeded |
 | **`bulk-archives` storage bucket + grants** | **created private, 3 GiB file limit** |
 
+#### Disk the archives will use
+
+Retention is tiered (`snapshot-retention.ts`): the newest export always, one
+per calendar month for the last 12 months, then one per year beyond that.
+**The source does not serve history** — CAL-ACCESS overwrites its daily export,
+so a payload pruned here is unverifiable forever.
+
+At the measured 1.52 GB per CAL-ACCESS export, one region:
+
+| | snapshots kept | disk |
+|---|---:|---:|
+| year 1 | 13 | **~20 GB** |
+| year 2 | 14 | ~21 GB |
+| year 5 | 17 | ~26 GB |
+| year 10 | 22 | ~33 GB |
+
+Budget **~50 GB free** for a single-region node and more per additional
+region. Until #1363 these nodes stored nothing at all, so this is new growth on
+an existing deployment, not just on fresh ones.
+
 The storage bucket matters more than it looks. Bulk civic exports (the ~1.5 GB
 CAL-ACCESS archive, for instance) are retained so that any published figure can
 be traced back to the exact bytes it came from. That retention silently did
