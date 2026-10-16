@@ -64,12 +64,16 @@ describe('FilingReconciliationService (#992)', () => {
     amount: string,
     scheduleCode: string | null = 'A',
     committeeId: string | null = null,
+    // Which amendment this detail belongs to. Real CAL-ACCESS detail always
+    // carries one (0 nulls in the corpus), and reconciliation now refuses to
+    // judge a filing whose detail and summary are different amendments.
+    amendId = 0,
   ) =>
     db.contribution.create({
       data: {
         externalId,
         filingId,
-        amendId: 0,
+        amendId,
         scheduleCode,
         committeeId,
         donorName: 'Jane Q. Public',
@@ -249,7 +253,12 @@ describe('FilingReconciliationService (#992)', () => {
   it('compares against the latest amendment of the summary', async () => {
     await summary('700007', '1', '10000.00', 0);
     await summary('700007', '1', '25000.00', 1);
-    await contribution('700007', '700007:9:ZZZ', '25000.00');
+    // Detail at amendment 1 — the shape supersession actually leaves behind,
+    // and what the corpus shows (151,548 of 151,648 filings have detail at
+    // the summary's amendment). The fixture previously pinned amendId 0
+    // against a summary at 1, which is a filing reconciliation can no longer
+    // judge; the assertion below still proves the LATEST summary is used.
+    await contribution('700007', '700007:9:ZZZ', '25000.00', 'A', null, 1);
 
     const res = await svc.reconcileAll();
 
@@ -259,6 +268,70 @@ describe('FilingReconciliationService (#992)', () => {
     expect(row?.contributionStatus).toBe('MATCH');
     expect(row?.amendId).toBe(1);
     expect(Number(row?.reportedContributions)).toBeCloseTo(25000.0, 2);
+  });
+
+  /**
+   * #992 item 1: the summary and the detail can be different amendments.
+   *
+   * `filing_summaries` keeps every amendment — AMEND_ID is part of its key —
+   * while supersession reduces the detail to the newest it holds. When a filer
+   * amends the summary and we hold no detail at that version, `reported` comes
+   * from amendment N and the itemized sum from N-k.
+   *
+   * Measured on the 2026-10-16 corpus: 100 of 151,648 filings, 82 of them
+   * emitting OVER_ITEMIZED — and in every sample the newer summary reported 0
+   * while older detail summed into the millions. Those were not over-itemized;
+   * they were two versions subtracted from each other.
+   */
+  it('refuses to judge when summary and detail are different amendments', async () => {
+    await summary('700017', '1', '0.00', 2);
+    await contribution('700017', '700017:1:AAA', '4223510.00', 'A', null, 1);
+
+    const res = await svc.reconcileAll();
+
+    const row = await verdict('700017');
+    expect(row?.contributionStatus).toBe('VERSION_MISMATCH');
+    // NOT counted as a fault: this is the filer amending a summary, not us
+    // counting money twice.
+    expect(res.overItemizedContributions).toBe(0);
+    expect(res.versionMismatch).toBeGreaterThanOrEqual(1);
+  });
+
+  it('judges a filing whose OTHER schedules are at a different amendment', async () => {
+    // The amendment compared must be that of the rows actually summed, not
+    // the filing's maximum across every schedule. 1,337 filings in the
+    // 2026-10-16 corpus hold schedules at disagreeing amendments, and taking
+    // the max over all of them voided 18 expenditure comparisons for reasons
+    // that had nothing to do with the schedule under test (118 filings vs the
+    // correct 100).
+    //
+    // Found by mutation testing: unscoping the MAX passed all 16 tests before
+    // this one existed.
+    await summary('700019', '1', '750.00', 1);
+    // Schedule A — the rows being reconciled — at the summary's amendment.
+    await contribution('700019', '700019:1:AAA', '750.00', 'A', null, 1);
+    // Schedule C — nonmonetary, irrelevant to line 1 — at a later one.
+    await contribution('700019', '700019:2:BBB', '99999.00', 'C', null, 2);
+
+    await svc.reconcileAll();
+
+    const row = await verdict('700019');
+    expect(row?.contributionStatus).toBe('MATCH');
+    expect(Number(row?.itemizedContributions)).toBeCloseTo(750.0, 2);
+  });
+
+  it('reports NULL itemized for a voided comparison, not 0', async () => {
+    // Zero is a claim — "this filing itemized nothing" — and it would poison
+    // any SUM over the column. Same reasoning the service already applies to
+    // UNKNOWN_SCHEDULE.
+    await summary('700018', '1', '500.00', 3);
+    await contribution('700018', '700018:1:AAA', '500.00', 'A', null, 1);
+
+    await svc.reconcileAll();
+
+    const row = await verdict('700018');
+    expect(row?.contributionStatus).toBe('VERSION_MISMATCH');
+    expect(row?.itemizedContributions).toBeNull();
   });
 
   it('stamps the committee the detail was attributed to', async () => {
@@ -336,6 +409,7 @@ describe('FilingReconciliationService (#992)', () => {
       withUnitemized: 0,
       unitemizedTotal: 0,
       unknownSchedule: 0,
+      versionMismatch: 0,
     });
   });
 });
