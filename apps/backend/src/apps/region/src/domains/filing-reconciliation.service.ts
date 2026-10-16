@@ -29,6 +29,20 @@ export const RECONCILIATION_STATUS = {
   /** Detail rows exist but carry no schedule, so they cannot be attributed to
    *  a summary line. Declines to guess rather than reconciling wrongly. */
   UNKNOWN_SCHEDULE: 'UNKNOWN_SCHEDULE',
+  /** The summary and the detail are DIFFERENT amendments of the filing, so a
+   *  comparison between them is void (#992 item 1).
+   *
+   *  `filing_summaries` keeps every amendment — `AMEND_ID` is part of its key
+   *  — while supersession reduces the detail tables to the newest amendment
+   *  they carry. When a filer amends the summary without us holding detail at
+   *  that version, `reported` comes from amendment N and the itemized sum
+   *  from N-k.
+   *
+   *  Measured 2026-10-16: 100 of 151,648 filings (0.066%), of which 82 were
+   *  emitting OVER_ITEMIZED — and in every sample the newer summary reported
+   *  0 while older detail summed into the millions. Those were not
+   *  over-itemized; they were two versions subtracted from each other. */
+  VERSION_MISMATCH: 'VERSION_MISMATCH',
 } as const;
 
 export type ReconciliationStatus =
@@ -47,6 +61,9 @@ export interface ReconciliationSummary {
   unitemizedTotal: number;
   /** Filings skipped because their detail rows carry no schedule. */
   unknownSchedule: number;
+  /** Filings skipped because the summary and the detail are different
+   *  amendments, so no comparison between them is valid (#992 item 1). */
+  versionMismatch: number;
 }
 
 /**
@@ -77,6 +94,7 @@ const EMPTY: ReconciliationSummary = {
   withUnitemized: 0,
   unitemizedTotal: 0,
   unknownSchedule: 0,
+  versionMismatch: 0,
 };
 
 /**
@@ -130,6 +148,16 @@ export class FilingReconciliationService {
           `filing_reconciliations WHERE contribution_status = 'OVER_ITEMIZED'.`,
       );
     }
+    if (summary.versionMismatch > 0) {
+      this.logger.warn(
+        `${summary.versionMismatch} filing(s) not judged: the summary and the ` +
+          `detail are different amendments, so no comparison between them is ` +
+          `valid. NOT a fault in our data — the filer amended the summary ` +
+          `without us holding detail at that version. Inspect ` +
+          `filing_reconciliations WHERE contribution_status = ` +
+          `'VERSION_MISMATCH' OR expenditure_status = 'VERSION_MISMATCH'.`,
+      );
+    }
     if (summary.unknownSchedule > 0) {
       this.logger.warn(
         `${summary.unknownSchedule} filing(s) skipped: detail rows carry no ` +
@@ -177,6 +205,16 @@ export class FilingReconciliationService {
         SELECT "filing_id",
                SUM("amount") FILTER (
                  WHERE "schedule_code" = '${CONTRIBUTION_SCHEDULE}') AS amt,
+               -- Which amendment the rows WE SUM describe. Filtered to the
+               -- same schedule as the sum above, not taken over the whole
+               -- filing (no backticks here: this is inside a TS template):
+               -- 1,337 filings hold schedules at disagreeing amendments, and
+               -- an unrelated Schedule D row at another version must not void
+               -- a Schedule A comparison. Measured 2026-10-16 — scoped picks
+               -- 100 filings, unscoped 118 (#992).
+               MAX("amend_id") FILTER (
+                 WHERE "schedule_code" = '${CONTRIBUTION_SCHEDULE}')
+                 AS detail_amend,
                COUNT(*) FILTER (WHERE "schedule_code" IS NOT NULL) AS coded,
                COUNT(*) AS total,
                MIN("committee_id") FILTER (
@@ -189,6 +227,10 @@ export class FilingReconciliationService {
         SELECT "filing_id",
                SUM("amount") FILTER (
                  WHERE "schedule_code" = '${EXPENDITURE_SCHEDULE}') AS amt,
+               -- Scoped to Schedule E, for the reason given on detail_c.
+               MAX("amend_id") FILTER (
+                 WHERE "schedule_code" = '${EXPENDITURE_SCHEDULE}')
+                 AS detail_amend,
                COUNT(*) FILTER (WHERE "schedule_code" IS NOT NULL) AS coded,
                COUNT(*) AS total,
                MIN("committee_id") FILTER (
@@ -240,8 +282,13 @@ export class FilingReconciliationService {
   /**
    * Classify one side of one filing.
    *
-   * Order is deliberate. "Rows exist but carry no schedule" is checked before
-   * any arithmetic, because under that condition the filtered sum is 0 and
+   * Order is deliberate, and every branch above the arithmetic is an
+   * admission rather than a verdict.
+   *
+   * "Different amendments" comes first of those because it voids the
+   * comparison outright: no amount of correct arithmetic makes amendment N's
+   * reported total comparable to amendment N-k's detail. "Rows carry no
+   * schedule" follows, because under that condition the filtered sum is 0 and
    * every comparison below would read as "the committee reported money we did
    * not itemize" — a confident, wrong answer instead of an admission.
    */
@@ -249,6 +296,9 @@ export class FilingReconciliationService {
     const S = RECONCILIATION_STATUS;
     return `CASE
       WHEN ${reported} IS NULL THEN '${S.NO_SUMMARY}'
+      WHEN ${d}.amt IS NOT NULL
+           AND ${d}.detail_amend IS DISTINCT FROM r.amend_id
+        THEN '${S.VERSION_MISMATCH}'
       WHEN COALESCE(${d}.total, 0) > 0 AND COALESCE(${d}.coded, 0) = 0
         THEN '${S.UNKNOWN_SCHEDULE}'
       WHEN ${d}.amt IS NULL AND ${reported} <> 0 THEN '${S.NO_DETAIL}'
@@ -270,6 +320,8 @@ export class FilingReconciliationService {
   private itemizedExpr(d: string): string {
     return `CASE
       WHEN COALESCE(${d}.total, 0) > 0 AND COALESCE(${d}.coded, 0) = 0 THEN NULL
+      WHEN ${d}.amt IS NOT NULL
+           AND ${d}.detail_amend IS DISTINCT FROM r.amend_id THEN NULL
       ELSE COALESCE(${d}.amt, 0)
     END`;
   }
@@ -299,6 +351,7 @@ export class FilingReconciliationService {
         with_unitemized: bigint;
         unitemized_total: string | null;
         unknown_schedule: bigint;
+        version_mismatch: bigint;
       }>
     >(`
       SELECT COUNT(*)::bigint AS reconciled,
@@ -318,7 +371,15 @@ export class FilingReconciliationService {
              COUNT(*) FILTER (
                WHERE "contribution_status"
                      = '${RECONCILIATION_STATUS.UNKNOWN_SCHEDULE}')::bigint
-               AS unknown_schedule
+               AS unknown_schedule,
+             -- Either side voids the filing's verdict, so count a filing once
+             -- if either is a version mismatch.
+             COUNT(*) FILTER (
+               WHERE "contribution_status"
+                     = '${RECONCILIATION_STATUS.VERSION_MISMATCH}'
+                  OR "expenditure_status"
+                     = '${RECONCILIATION_STATUS.VERSION_MISMATCH}')::bigint
+               AS version_mismatch
         FROM "filing_reconciliations"
     `);
 
@@ -332,6 +393,7 @@ export class FilingReconciliationService {
       withUnitemized: Number(r.with_unitemized),
       unitemizedTotal: Number(r.unitemized_total ?? 0),
       unknownSchedule: Number(r.unknown_schedule),
+      versionMismatch: Number(r.version_mismatch),
     };
   }
 }
