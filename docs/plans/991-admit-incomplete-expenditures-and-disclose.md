@@ -439,9 +439,9 @@ errors.
 |---|---:|---:|
 | `expenditures` rows | 4,843,241 | **12,992,920** (+168%) |
 | undated rows / dollars | 0 / $0 | **4,592,786 / $5.506B** |
-| unattributed rows / dollars | 0 / $0 | **3,522,438 / $1.516B** |
+| unattributed rows / dollars | 0 / $0 | **3,522,438 / $1.516B** ⚠️ superseded — truthful figure is 1,350,430 / $0.152B, see the post-merge correction above |
 | rows missing both | 0 | 234 (archive predicted 292) |
-| stored total | $37.797B | **$45.645B** |
+| stored total | $37.797B | **$45.645B** ⚠️ superseded — corrected to $30.116B by #1370, see "Post-acceptance: Schedule D was the other half" below |
 | rows unattributed to a committee | — | **0** |
 
 ### What passed
@@ -524,6 +524,54 @@ because they came off the raw TSV"; that was the error, and it is the same
 mistake the code review caught twice — comparing two populations that are not
 the same population. Settling it properly needs a distinct-key, max-`AMEND_ID`
 dollar sum over the archive, which was not computed.
+
+## Post-acceptance: Schedule D was the other half (#1370), recorded 2026-10-16
+
+**The $45.645B in the acceptance table above is superseded.** That figure was
+recorded 2026-10-14, before #1370 merged, and it double-counts.
+
+CAL-ACCESS `EXPN_CD` carries a `FORM_TYPE` per row, and per `cal_format_201.pdf`
+exactly six values are valid: `D`, `E`, `G`, `F450P5`, `F461P5`, `F465P3`.
+Schedule **D** is a *memo* schedule — "Summary of Expenditures
+Supporting/Opposing Other Candidates, Measures and Committees" — restating money
+already itemized on Schedule E or F. Schedule **G** is, in the spec's own
+words, sub-itemization of "items that appear on the 460's Schedule E or
+Schedule F". We were summing all of them against `totalSpent`.
+
+`SPEND_SCHEDULES = ['E', 'F450P5', 'F461P5', 'F465P3']` now gates every
+spend aggregate (`expenditure-schedules.ts`), applied per-aggregate rather than
+folded into the shared `where` — `filing_reconciliation` has no `scheduleCode`,
+and folding it in 500'd every funding page until a real-database integration
+spec caught it. Unit mocks accept any `where`, so that class of defect is
+runtime-only.
+
+| | |
+|---|---:|
+| as recorded in the acceptance table | $45.645B |
+| counting payment schedules only | **$30.116B** |
+| agreement with filers' own summary line 6 | 14% → **62.9%** |
+
+**Provenance of these two figures.** Measured 2026-10-15 against the locally
+resynced corpus, via the funding surfaces themselves. They are **not verified
+in production** — prod has not been resynced and still holds the 4,843,241
+rows that survived the old validation. Unlike the acceptance table above,
+these are not reproducible from the archive without a resync, so they are
+recorded here as measurements with a date and a scope rather than as attested
+corpus facts. Production verification is the PQ evidence owed against
+`docs/compliance/releases/v1.29.0-validation.md` (EX-3).
+
+**Why this was invisible until #991.** The double-count and the 56% rejection
+rate partly cancelled: a total inflated by memo restatements, deflated by
+rejecting most of Schedule E. Admitting the rejected rows is what made the
+double-count measurable. Two errors in opposite directions read as one
+roughly-plausible number, which is the argument for measuring components
+rather than checking that a total looks reasonable.
+
+I had asserted on #1367 that Schedule D memo double-counting explained the
+4,505 over-itemizing filings. It does not — reconciliation already filters to
+`E`. Retracted there; the over-itemization remains a source discrepancy
+(#1368).
+
 
 ## Risks
 
