@@ -1,0 +1,729 @@
+{
+  "kind": "baseline",
+  "note": "Current nemotron output, captured BEFORE any change (D5 of docs/plans/representatives-gold-eval.md). No pre-nemotron rep data survives: the corpus was regenerated in place 2026-10-12/13 and nothing was retained, so this is the baseline a change must beat rather than an older-model comparison.",
+  "reps": [
+    {
+      "bio": "Heather Hadwick is a Republican member of the California State Assembly representing District 1. She was first elected in 2022 and is currently serving her second term, which is scheduled to end in 2026. She serves the communities of Redding, Anderson, and Shasta Lake in Shasta County.\n\nHadwick worked as a small business owner and real estate professional before entering elected office. She holds a Bachelor of Arts in Political Science from California State University, Chico. Her professional background includes experience in business management and community economic development.\n\nHadwick has served on the Shasta County Board of Education and has been involved with local nonprofit organizations focused on education and workforce development. She has participated in community outreach programs related to small business support and youth services in the Shasta County region.\n\nHadwick resides in Redding, California, with her family. She is a native of Northern California and has been active in local civic organizations throughout her adult life, including serving as a mentor for young entrepreneurs and participating in regional economic development initiatives.",
+      "name": "Heather Hadwick",
+      "role": "tune",
+      "party": "Republican",
+      "chamber": "Assembly",
+      "district": "1",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Heather Hadwick is a Republican member of the California State Assembly representing District 1.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Name"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected in 2022 and is currently serving her second term, which is scheduled to end in 2026.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "She serves the communities of Redding, Anderson, and Shasta Lake in Shasta County.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Jurisdiction"
+        },
+        {
+          "origin": "training",
+          "sentence": "Hadwick worked as a small business owner and real estate professional before entering elected office.",
+          "confidence": "high",
+          "sourceHint": "public profile and campaign materials"
+        },
+        {
+          "origin": "training",
+          "sentence": "She holds a Bachelor of Arts in Political Science from California State University, Chico.",
+          "confidence": "high",
+          "sourceHint": "university alumni directory and official biography"
+        },
+        {
+          "origin": "training",
+          "sentence": "Hadwick has served on the Shasta County Board of Education and has been involved with local nonprofit organizations focused on education and workforce development.",
+          "confidence": "high",
+          "sourceHint": "public service records and community profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "Hadwick resides in Redding, California, with her family.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles and campaign websites"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is a native of Northern California and has been active in local civic organizations throughout her adult life.",
+          "confidence": "high",
+          "sourceHint": "public service records and community involvement documentation"
+        }
+      ],
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/01",
+      "claimCounts": {
+        "total": 8,
+        "source": 3,
+        "training": 5
+      }
+    },
+    {
+      "bio": "Cecilia M. Aguiar-Curry represents California State Assembly District 4. She is a Democrat. She was first elected to this seat in 2016. As of 2024, she has served three terms in the current seat.\n\nAguiar-Curry earned a Bachelor of Arts from University of California, Davis. Before elected office, she worked as a community organizer and nonprofit professional. She served as a Yolo County Supervisor prior to her Assembly service.\n\nAguiar-Curry resides in Davis, California. She is married. She speaks Spanish. She has served on the Davis Joint Unified School District board.\n\nAguiar-Curry is a native of California. Her family roots are in Yolo County. She has been active in local civic organizations focused on education and community development.",
+      "name": "Cecilia M. Aguiar-Curry",
+      "role": "tune",
+      "party": "Democratic",
+      "chamber": "Assembly",
+      "district": "4",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Cecilia M. Aguiar-Curry represents California State Assembly District 4.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Name"
+        },
+        {
+          "origin": "source",
+          "sentence": "She is a Democrat.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected to this seat in 2016.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Name"
+        },
+        {
+          "origin": "training",
+          "sentence": "As of 2024, she has served three terms in the current seat.",
+          "confidence": "medium",
+          "sourceHint": "electoral cycle tracking"
+        },
+        {
+          "origin": "training",
+          "sentence": "Aguiar-Curry earned a Bachelor of Arts from University of California, Davis.",
+          "confidence": "high",
+          "sourceHint": "public profile education record"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before elected office, she worked as a community organizer and nonprofit professional.",
+          "confidence": "high",
+          "sourceHint": "biographical directories"
+        },
+        {
+          "origin": "training",
+          "sentence": "She served as a Yolo County Supervisor prior to her Assembly service.",
+          "confidence": "high",
+          "sourceHint": "legislative biography records"
+        },
+        {
+          "origin": "training",
+          "sentence": "Aguiar-Curry resides in Davis, California.",
+          "confidence": "high",
+          "sourceHint": "public profile residence"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is married.",
+          "confidence": "high",
+          "sourceHint": "public profile personal details"
+        },
+        {
+          "origin": "training",
+          "sentence": "She speaks Spanish.",
+          "confidence": "high",
+          "sourceHint": "public profile language skills"
+        },
+        {
+          "origin": "training",
+          "sentence": "She has served on the Davis Joint Unified School District board.",
+          "confidence": "high",
+          "sourceHint": "community service records"
+        },
+        {
+          "origin": "training",
+          "sentence": "Aguiar-Curry is a native of California.",
+          "confidence": "high",
+          "sourceHint": "biographical background"
+        },
+        {
+          "origin": "training",
+          "sentence": "Her family roots are in Yolo County.",
+          "confidence": "high",
+          "sourceHint": "biographical background"
+        },
+        {
+          "origin": "training",
+          "sentence": "She has been active in local civic organizations focused on education and community development.",
+          "confidence": "high",
+          "sourceHint": "public profile civic engagement"
+        }
+      ],
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/04",
+      "claimCounts": {
+        "total": 14,
+        "source": 3,
+        "training": 11
+      }
+    },
+    {
+      "bio": "Matt Haney represents California State Assembly District 17 as a Democrat. He was first elected in 2018 and has served three terms through 2022. His current term expires in November 2024. He is the first openly gay person to represent San Francisco in the California State Assembly.\n\nHaney earned a Bachelor of Arts in Political Science from the University of California, Berkeley. Before elected office, he worked as a nonprofit executive at the San Francisco Education Fund, where he focused on education equity and school improvement. He also served as a legislative aide in the California State Assembly.\n\nHaney has served on the San Francisco Board of Education, winning election in 2014 and re-election in 2016. He co-founded the San Francisco Education Fund in 2008, serving as its executive director until his election to the Assembly. He resides in San Francisco with his spouse.\n\nHaney is fluent in Spanish. He has participated in civic organizations focused on affordable housing and immigrant rights. He was recognized by the San Francisco Chronicle as a rising political figure in the Bay Area.",
+      "name": "Matt Haney",
+      "role": "held-out",
+      "party": "Democratic",
+      "chamber": "Assembly",
+      "district": "17",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Matt Haney represents California State Assembly District 17 as a Democrat.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "He was first elected in 2018 and has served three terms through 2022.",
+          "confidence": "high",
+          "sourceHint": "derived from Name field election history",
+          "sourceField": "Name"
+        },
+        {
+          "origin": "source",
+          "sentence": "His current term expires in November 2024.",
+          "confidence": "high",
+          "sourceHint": "derived from Name field election history",
+          "sourceField": "Name"
+        },
+        {
+          "origin": "training",
+          "sentence": "He is the first openly gay person to represent San Francisco in the California State Assembly.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles and legislative records"
+        },
+        {
+          "origin": "training",
+          "sentence": "Haney earned a Bachelor of Arts in Political Science from the University of California, Berkeley.",
+          "confidence": "high",
+          "sourceHint": "university alumni directory and public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before elected office, he worked as a nonprofit executive at the San Francisco Education Fund, where he focused on education equity and school improvement.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio and press coverage"
+        },
+        {
+          "origin": "training",
+          "sentence": "He also served as a legislative aide in the California State Assembly.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio and press coverage"
+        },
+        {
+          "origin": "training",
+          "sentence": "Haney has served on the San Francisco Board of Education, winning election in 2014 and re-election in 2016.",
+          "confidence": "high",
+          "sourceHint": "public election records and biographical summaries"
+        },
+        {
+          "origin": "training",
+          "sentence": "He co-founded the San Francisco Education Fund in 2008, serving as its executive director until his election to the Assembly.",
+          "confidence": "high",
+          "sourceHint": "public nonprofit records and biographical summaries"
+        },
+        {
+          "origin": "training",
+          "sentence": "He resides in San Francisco with his spouse.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "Haney is fluent in Spanish.",
+          "confidence": "medium",
+          "sourceHint": "public profiles and interviews"
+        },
+        {
+          "origin": "training",
+          "sentence": "He has participated in civic organizations focused on affordable housing and immigrant rights.",
+          "confidence": "medium",
+          "sourceHint": "public profiles and legislative records"
+        },
+        {
+          "origin": "training",
+          "sentence": "He was recognized by the San Francisco Chronicle as a rising political figure in the Bay Area.",
+          "confidence": "medium",
+          "sourceHint": "news media coverage"
+        }
+      ],
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/17",
+      "claimCounts": {
+        "total": 13,
+        "source": 3,
+        "training": 10
+      }
+    },
+    {
+      "bio": "Michelle Rodriguez represents California State Assembly District 53 as a Democrat. She was first elected in 2018 and has served three terms through 2022. Her current term expires in November 2024. She is the first Democrat to hold this seat since 1947.\n\nRodriguez earned a Bachelor of Arts in Political Science from California State University, Los Angeles. Before entering elected office, she worked as a legislative aide in the California State Assembly. She also served as a community organizer with local nonprofit groups focused on education and immigration rights.\n\nRodriguez has prior elected experience on the Los Angeles Community College Board, where she served from 2014 to 2018. She is a founding board member of the East LA Youth Coalition, established in 2010. She resides in Los Angeles with her spouse and two children. She is fluent in Spanish and English.\n\nRodriguez was born in East Los Angeles. She is a first-generation college graduate. She participates annually in the Los Angeles County Latino Heritage Month celebration. She speaks Spanish at home and in her legislative office.",
+      "name": "Michelle Rodriguez",
+      "role": "tune",
+      "party": "Democratic",
+      "chamber": "Assembly",
+      "district": "53",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Michelle Rodriguez represents California State Assembly District 53 as a Democrat.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected in 2018 and has served three terms through 2022.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "District"
+        },
+        {
+          "origin": "source",
+          "sentence": "Her current term expires in November 2024.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "District"
+        },
+        {
+          "origin": "source",
+          "sentence": "She is the first Democrat to hold this seat since 1947.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "District"
+        },
+        {
+          "origin": "training",
+          "sentence": "Rodriguez earned a Bachelor of Arts in Political Science from California State University, Los Angeles.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before entering elected office, she worked as a legislative aide in the California State Assembly.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio"
+        },
+        {
+          "origin": "training",
+          "sentence": "She also served as a community organizer with local nonprofit groups focused on education and immigration rights.",
+          "confidence": "high",
+          "sourceHint": "widely-reported press coverage"
+        },
+        {
+          "origin": "training",
+          "sentence": "Rodriguez has prior elected experience on the Los Angeles Community College Board, where she served from 2014 to 2018.",
+          "confidence": "high",
+          "sourceHint": "public election records"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is a founding board member of the East LA Youth Coalition, established in 2010.",
+          "confidence": "high",
+          "sourceHint": "public nonprofit records"
+        },
+        {
+          "origin": "training",
+          "sentence": "She resides in Los Angeles with her spouse and two children.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is fluent in Spanish and English.",
+          "confidence": "high",
+          "sourceHint": "public biographical profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "Rodriguez was born in East Los Angeles.",
+          "confidence": "high",
+          "sourceHint": "public biographical profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is a first-generation college graduate.",
+          "confidence": "high",
+          "sourceHint": "university alumni directory"
+        },
+        {
+          "origin": "training",
+          "sentence": "She participates annually in the Los Angeles County Latino Heritage Month celebration.",
+          "confidence": "high",
+          "sourceHint": "public event schedules"
+        },
+        {
+          "origin": "training",
+          "sentence": "She speaks Spanish at home and in her legislative office.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio"
+        }
+      ],
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/53",
+      "claimCounts": {
+        "total": 15,
+        "source": 4,
+        "training": 11
+      }
+    },
+    {
+      "bio": "Megan Dahle represents California State Senate District 1 as a Republican. She was first elected to the State Senate in 2022. She has served a total of two years in the current seat. Her current term ends in 2026.\n\nDahle earned a Bachelor of Science in Agriculture from California State University, Chico. Before her election to the State Senate, she worked as a rancher and business owner. She has been active in agricultural and rural advocacy organizations.\n\nDahle has served on the boards of the California Cattlemen's Association and the California Farm Bureau Federation. She has been involved with 4-H and other youth agricultural education programs in rural Northern California.\n\nDahle resides in Bieber, California, with her family. She is a lifelong resident of rural Northern California. Her work focuses on agriculture, water policy, and rural development issues affecting her district.",
+      "name": "Megan Dahle",
+      "role": "held-out",
+      "party": "Republican",
+      "chamber": "Senate",
+      "district": "1",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Megan Dahle represents California State Senate District 1 as a Republican.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "name"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected to the State Senate in 2022.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "name"
+        },
+        {
+          "origin": "source",
+          "sentence": "She has served a total of two years in the current seat.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "name"
+        },
+        {
+          "origin": "source",
+          "sentence": "Her current term ends in 2026.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "name"
+        },
+        {
+          "origin": "training",
+          "sentence": "Dahle earned a Bachelor of Science in Agriculture from California State University, Chico.",
+          "confidence": "high",
+          "sourceHint": "public university alumni records"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before her election to the State Senate, she worked as a rancher and business owner.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio"
+        },
+        {
+          "origin": "training",
+          "sentence": "Dahle has served on the boards of the California Cattlemen's Association and the California Farm Bureau Federation.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio board roles"
+        },
+        {
+          "origin": "training",
+          "sentence": "Dahle has been involved with 4-H and other youth agricultural education programs in rural Northern California.",
+          "confidence": "high",
+          "sourceHint": "public profiles and organizational directories"
+        },
+        {
+          "origin": "training",
+          "sentence": "Dahle resides in Bieber, California, with her family.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is a lifelong resident of rural Northern California.",
+          "confidence": "high",
+          "sourceHint": "public biographical summaries"
+        },
+        {
+          "origin": "training",
+          "sentence": "Her work focuses on agriculture, water policy, and rural development issues affecting her district.",
+          "confidence": "medium",
+          "sourceHint": "official legislative platform statements"
+        }
+      ],
+      "sourceUrl": "https://sr01.senate.ca.gov/",
+      "claimCounts": {
+        "total": 11,
+        "source": 4,
+        "training": 7
+      }
+    },
+    {
+      "bio": "Marie Alvarado-Gil is a Republican member of the California State Senate representing District 4. She was first elected to this seat in 2022 and is currently serving her first term, which is scheduled to end in 2026. Alvarado-Gil assumed office in December 2022 after winning the general election. Her legislative focus includes water policy, education, and small business development in the Inland Empire region.\n\nAlvarado-Gil earned a Bachelor of Arts in Political Science from California State University, San Bernardino. Before her election to the State Senate, she worked as a small business owner and community organizer in Riverside County. She served on the Riverside Community College Board of Trustees from 2014 to 2022, where she focused on workforce development and student access initiatives. Alvarado-Gil also held roles with local nonprofit organizations addressing housing insecurity and youth mentorship programs.\n\nAlvarado-Gil resides in the Inland Empire region of California with her family. She is fluent in Spanish and English. Her public profile notes her commitment to improving educational outcomes and economic opportunities for rural communities in her district. Alvarado-Gil has participated in various civic forums discussing infrastructure investment and agricultural water management issues affecting the San Bernardino and Riverside county areas.",
+      "name": "Marie Alvarado-Gil",
+      "role": "tune",
+      "party": "Republican",
+      "chamber": "Senate",
+      "district": "4",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Marie Alvarado-Gil is a Republican member of the California State Senate representing District 4.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected to this seat in 2022 and is currently serving her first term, which is scheduled to end in 2026.",
+          "confidence": "medium",
+          "sourceHint": "election year derived from party registration and district data",
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "Alvarado-Gil assumed office in December 2022 after winning the general election.",
+          "confidence": "medium",
+          "sourceHint": "election cycle assumption based on standard legislative turnover",
+          "sourceField": "Party"
+        },
+        {
+          "origin": "training",
+          "sentence": "Alvarado-Gil earned a Bachelor of Arts in Political Science from California State University, San Bernardino.",
+          "confidence": "high",
+          "sourceHint": "university alumni directory or official legislative biography"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before her election to the State Senate, she worked as a small business owner and community organizer in Riverside County.",
+          "confidence": "high",
+          "sourceHint": "public profile or campaign biography"
+        },
+        {
+          "origin": "training",
+          "sentence": "She served on the Riverside Community College Board of Trustees from 2014 to 2022, where she focused on workforce development and student access initiatives.",
+          "confidence": "high",
+          "sourceHint": "board membership records or official biography"
+        },
+        {
+          "origin": "training",
+          "sentence": "Alvarado-Gil resides in the Inland Empire region of California with her family.",
+          "confidence": "high",
+          "sourceHint": "public profile or campaign website"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is fluent in Spanish and English.",
+          "confidence": "high",
+          "sourceHint": "public profile or campaign materials"
+        },
+        {
+          "origin": "training",
+          "sentence": "Her public profile notes her commitment to improving educational outcomes and economic opportunities for rural communities in her district.",
+          "confidence": "medium",
+          "sourceHint": "campaign platform or official biography"
+        },
+        {
+          "origin": "training",
+          "sentence": "Alvarado-Gil has participated in various civic forums discussing infrastructure investment and agricultural water management issues affecting the San Bernardino and Riverside county areas.",
+          "confidence": "medium",
+          "sourceHint": "public forum records or legislative testimony"
+        }
+      ],
+      "sourceUrl": "https://sr04.senate.ca.gov/",
+      "claimCounts": {
+        "total": 10,
+        "source": 3,
+        "training": 7
+      }
+    },
+    {
+      "bio": "Angelique V. Ashby represents California State Senate District 8 as a Democrat. She was first elected to the State Senate in 2020 and is currently serving her second term, which expires in November 2024. Her district encompasses the Sacramento County communities of Elk Grove, Rancho Cordova, and portions of Sacramento.\n\nAshby earned a Bachelor of Arts in Political Science from California State University, Sacramento. Before her election to the State Senate, she served as a legislative aide in the California State Assembly and held roles in nonprofit advocacy focused on education and workforce development. She also served on the Elk Grove Unified School District Board of Education from 2012 to 2018.\n\nAshby resides in Sacramento, California, with her family. She is the first Democrat to represent Senate District 8 since its boundaries were redrawn in the 2020 redistricting cycle. Her legislative priorities include education affordability, small business support, and expanding access to healthcare services in the Sacramento region.",
+      "name": "Angelique V. Ashby",
+      "role": "tune",
+      "party": "Democratic",
+      "chamber": "Senate",
+      "district": "8",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Angelique V. Ashby represents California State Senate District 8 as a Democrat.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Name"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected to the State Senate in 2020 and is currently serving her second term, which expires in November 2024.",
+          "confidence": "high",
+          "sourceHint": "party affiliation and election timeline",
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "Her district encompasses the Sacramento County communities of Elk Grove, Rancho Cordova, and portions of Sacramento.",
+          "confidence": "high",
+          "sourceHint": "district geography from jurisdiction field",
+          "sourceField": "Jurisdiction"
+        },
+        {
+          "origin": "training",
+          "sentence": "Ashby earned a Bachelor of Arts in Political Science from California State University, Sacramento.",
+          "confidence": "high",
+          "sourceHint": "public profile education record"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before her election to the State Senate, she served as a legislative aide in the California State Assembly and held roles in nonprofit advocacy focused on education and workforce development.",
+          "confidence": "high",
+          "sourceHint": "pre-politics career from public records"
+        },
+        {
+          "origin": "training",
+          "sentence": "She also served on the Elk Grove Unified School District Board of Education from 2012 to 2018.",
+          "confidence": "high",
+          "sourceHint": "prior elected office from campaign disclosures"
+        },
+        {
+          "origin": "training",
+          "sentence": "Ashby resides in Sacramento, California, with her family.",
+          "confidence": "high",
+          "sourceHint": "widely-reported personal details in public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is the first Democrat to represent Senate District 8 since its boundaries were redrawn in the 2020 redistricting cycle.",
+          "confidence": "medium",
+          "sourceHint": "historical first from election records"
+        },
+        {
+          "origin": "training",
+          "sentence": "Her legislative priorities include education affordability, small business support, and expanding access to healthcare services in the Sacramento region.",
+          "confidence": "medium",
+          "sourceHint": "campaign platform from official website"
+        }
+      ],
+      "sourceUrl": "https://sd08.senate.ca.gov/",
+      "claimCounts": {
+        "total": 9,
+        "source": 3,
+        "training": 6
+      }
+    },
+    {
+      "bio": "Sasha Renée Pérez represents California State Senate District 25 as a Democrat. She was first elected to the State Senate in 2022. Her current term expires in November 2024. She is the first Democrat to hold this seat since 1947.\n\nPérez earned a Bachelor of Arts in Political Science from the University of California, Los Angeles. Before entering elected office, she worked as a community organizer and nonprofit professional focusing on education and immigration issues. She served as a legislative aide in the California State Assembly.\n\nPérez has a background in community advocacy, having founded and led nonprofit organizations addressing educational equity and immigrant rights. She has served on the boards of several civic organizations focused on youth development and education access. Her work has been recognized by local civic groups for service to underserved communities.\n\nPérez resides in Los Angeles, California. She is fluent in Spanish and English. She is married with two children. Her campaign and public profiles emphasize her commitment to representing the diverse communities of the San Fernando Valley and Los Angeles County.",
+      "name": "Sasha Renée Pérez",
+      "role": "tune",
+      "party": "Democratic",
+      "chamber": "Senate",
+      "district": "25",
+      "bioClaims": [
+        {
+          "origin": "source",
+          "sentence": "Sasha Renée Pérez represents California State Senate District 25 as a Democrat.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Name"
+        },
+        {
+          "origin": "source",
+          "sentence": "She was first elected to the State Senate in 2022.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "Her current term expires in November 2024.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "source",
+          "sentence": "She is the first Democrat to hold this seat since 1947.",
+          "confidence": "high",
+          "sourceHint": null,
+          "sourceField": "Party"
+        },
+        {
+          "origin": "training",
+          "sentence": "Pérez earned a Bachelor of Arts in Political Science from the University of California, Los Angeles.",
+          "confidence": "high",
+          "sourceHint": "public university alumni records"
+        },
+        {
+          "origin": "training",
+          "sentence": "Before entering elected office, she worked as a community organizer and nonprofit professional focusing on education and immigration issues.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio"
+        },
+        {
+          "origin": "training",
+          "sentence": "She served as a legislative aide in the California State Assembly.",
+          "confidence": "high",
+          "sourceHint": "official legislative bio"
+        },
+        {
+          "origin": "training",
+          "sentence": "Pérez has a background in community advocacy, having founded and led nonprofit organizations addressing educational equity and immigrant rights.",
+          "confidence": "high",
+          "sourceHint": "public profiles and press coverage"
+        },
+        {
+          "origin": "training",
+          "sentence": "She has served on the boards of several civic organizations focused on youth development and education access.",
+          "confidence": "high",
+          "sourceHint": "public profiles and press coverage"
+        },
+        {
+          "origin": "training",
+          "sentence": "Pérez resides in Los Angeles, California.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is fluent in Spanish and English.",
+          "confidence": "high",
+          "sourceHint": "public profiles and press coverage"
+        },
+        {
+          "origin": "training",
+          "sentence": "She is married with two children.",
+          "confidence": "high",
+          "sourceHint": "widely-reported public profiles"
+        },
+        {
+          "origin": "training",
+          "sentence": "Her campaign and public profiles emphasize her commitment to representing the diverse communities of the San Fernando Valley and Los Angeles County.",
+          "confidence": "high",
+          "sourceHint": "public profiles and press coverage"
+        }
+      ],
+      "sourceUrl": "https://sd25.senate.ca.gov/",
+      "claimCounts": {
+        "total": 13,
+        "source": 4,
+        "training": 9
+      }
+    }
+  ],
+  "model": {
+    "name": "nemotron-3.5-lightning:30b-a3b",
+    "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2",
+    "promptHash": "833edcbb6b450f3afb329238c182f09b1ec652f70ed15641e378e6c394149255",
+    "promptVersion": "v1"
+  },
+  "corpus": "california-state-representatives",
+  "capturedAt": "2026-10-19",
+  "promptInput": "BioGeneratorService.formatRepData: Name, Jurisdiction, District, Party ONLY. No source text (sourceText/sourceTextHash persisted as null).",
+  "schemaVersion": 1
+}
