@@ -151,6 +151,21 @@ is not evidence of copying. The hazard remains unaudited for `bill-extraction`
 
 This gold set was authored by a model scoring a model. Every entry is
 quote-backed so it can be audited without trusting me, but it has not been
-countersigned. Four specific decisions are listed in the fixture's
-`ownerReviewRequired` — the one that matters most: **should a biography be
-generated at all for a rep whose source carries none?**
+countersigned. Specific decisions are listed in the fixture's `ownerReviewRequired`.
+
+**One is resolved (owner, 2026-10-19):** biographies keep being generated for
+reps whose source carries none, and we disclose that we created them. The
+platform already does so in four places — an `AI-generated` badge, a tooltip
+naming the exact four input fields, a "May contain inaccuracies — verify
+against official sources" footnote, and a per-sentence attribution panel
+exposing the source/training split. So this eval's job is to **reduce the
+unsourced share**, not to gate publication.
+
+**One disclosure wording is not covered by that decision and is worth a
+separate look.** The footnote reads "Generated from public record data" — but
+the bio is generated from four structured fields; the public record page was
+never read (#1381, #1383). The tooltip is precise about this; the footnote
+overstates the grounding. Separately, "May contain inaccuracies" is the
+"mood, not quantity" phrasing #991 rejected for funding figures, and the
+quantity is now computable from stored `bio_claims` — e.g. "N of M statements
+are not supported by the cited source".

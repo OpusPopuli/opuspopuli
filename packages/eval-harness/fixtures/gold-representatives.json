@@ -331,6 +331,7 @@
     "This file was authored by a model scoring a model. Every entry is quote-backed so it can be audited without trusting me, but it has not been countersigned.",
     "Committee role fidelity: confirm Vice Chair (Hadwick: Agriculture, Emergency Management) and Co-Chair (Aguiar-Curry: Child Care Costs) are worth scoring separately from Member, or whether a summary may legitimately flatten them.",
     "Confirm 'the Nonprofit Sector' should keep its leading article, as the page writes it.",
-    "Decide whether biography should be generated at all for reps whose source carries none, rather than generated unsourced."
+    "RESOLVED 2026-10-19 (owner): keep generating, and disclose that we created it. The platform already does, in four places — an 'AI-generated' badge, a tooltip naming the exact four input fields, a 'May contain inaccuracies — verify against official sources' footnote, and a per-sentence attribution panel exposing the source/training split. So the eval's job is to reduce the unsourced share, not to gate publication.",
+    "One disclosure wording is itself inaccurate and is NOT covered by the decision above: the footnote says 'Generated from public record data', but the bio is generated from four structured fields — the public record page was never read (#1381/#1383). The tooltip is precise; this line overstates the grounding."
   ]
 }
