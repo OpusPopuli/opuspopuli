@@ -62,6 +62,20 @@ export class AmendmentSupersessionService {
 
   constructor(@Optional() private readonly db?: DbService) {}
 
+  /**
+   * Whether this service can actually do anything.
+   *
+   * `supersedeAll()` returns zeros when `db` is unbound, which is right inside a
+   * sync — an unbound step is skipped and the sync keeps its upserted data. It
+   * is wrong for a caller that asked for this work specifically: zero rows
+   * superseded because nothing was bound reads exactly like zero rows because
+   * nothing needed superseding. The standalone trigger (#1000) checks this and
+   * errors instead of reporting a success it did not achieve.
+   */
+  get available(): boolean {
+    return !!this.db;
+  }
+
   async supersedeAll(): Promise<SupersessionResult> {
     if (!this.db) {
       return { contributions: { ...EMPTY }, expenditures: { ...EMPTY } };

@@ -818,6 +818,56 @@
           }
         },
         {
+          "name": "Reconcile Filings (Admin)",
+          "description": "Re-run filing reconciliation on its own, without a ~15h finance sync (#1000). Returns the recomputed summary.\n\n`filing_reconciliations` is written ONLY by the post-sync chain, and the chain's sole entry point was `syncRegionData`. So any change to reconciliation logic left the stored verdicts stale until someone spent 15 hours. #1000 measured that cost: after supersession corrected 2M rows underneath it, the table went on serving `OVER_ITEMIZED: 7,140` when the true figure was 515 — a 14x overstatement of a fault condition, with nothing marking it stale. #1376 made it live again by changing how `amend_id` is compared.\n\nSafe to re-run: one set-based statement upserting on `filing_id`, so it converges and a timed-out call can simply be retried.\n\nREQUIRES an already-synced and already-linked corpus. Reconciliation reads `committee_id` and runs last in the sync chain for that reason — against a freshly-ingested unlinked corpus it would under-attribute. It corrects derived verdicts; it does not ingest.\n\nCheck `overItemizedContributions` and `overItemizedExpenditures` in the response: detail exceeding the filer's own summary is the fault condition this exists to surface. `versionMismatch` is #1376's new verdict and the stored table cannot currently report it. Requires an admin session.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation ReconcileFilings {\n  reconcileFilings {\n    reconciled\n    overItemizedContributions\n    overItemizedExpenditures\n    withUnitemized\n    unitemizedTotal\n    unknownSchedule\n    versionMismatch\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
+          "name": "Supersede Amendments + Reconcile (Admin)",
+          "description": "Supersede amended filings, then re-reconcile, without a ~15h finance sync (#1000). Returns both halves.\n\nCAL-ACCESS restates a whole schedule on amendment, so a filing with a higher `AMEND_ID` makes every earlier version's rows stale duplicates. This removes them — only rows a higher `amend_id` already supersedes, batched at 25,000 to bound WAL and lock duration.\n\nReconciliation is ALWAYS re-run in the same call and there is no flag to skip it. Supersession is the one step that can invalidate every stored verdict, so letting it run alone is exactly how the 14x overstatement described on `Reconcile Filings` happened. One extra statement is not worth a known-wrong fault count in a table that reads as authoritative.\n\nSafe to re-run: idempotent, so a second run finds nothing left to supersede and returns zeros for `superseded`. Note that zeros from a SECOND run mean \"already clean\", which is the intended result — the mutation errors rather than returning zeros when it cannot reach a database, so a zeroed success is always a real measurement.\n\nThis also gives #997's corrected batch loop its first real exercise: the 2026-08-13 corrective run was hand-written SQL and bypassed that code path entirely. Requires an admin session.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SupersedeAmendments {\n  supersedeAmendments {\n    supersession {\n      contributions {\n        superseded\n        filingsAffected\n      }\n      expenditures {\n        superseded\n        filingsAffected\n      }\n    }\n    reconciliation {\n      reconciled\n      overItemizedContributions\n      overItemizedExpenditures\n      withUnitemized\n      unitemizedTotal\n      unknownSchedule\n      versionMismatch\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{gateway_url}}/api",
+              "host": ["{{gateway_url}}"],
+              "path": ["api"]
+            }
+          }
+        },
+        {
           "name": "Sync — County Reps, All Counties (Admin)",
           "description": "Sync Board of Supervisors for all 58 enabled CA county sub-regions. Saves sync_job_id.",
           "event": [

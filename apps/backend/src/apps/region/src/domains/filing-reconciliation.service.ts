@@ -126,6 +126,16 @@ export class FilingReconciliationService {
 
   constructor(@Optional() private readonly db?: DbService) {}
 
+  /**
+   * Whether this service can actually do anything. See
+   * {@link AmendmentSupersessionService.available} — `reconcileAll()` returns a
+   * zeroed summary when `db` is unbound, and a zeroed summary is
+   * indistinguishable from a clean corpus (#1000).
+   */
+  get available(): boolean {
+    return !!this.db;
+  }
+
   async reconcileAll(): Promise<ReconciliationSummary> {
     if (!this.db) return { ...EMPTY };
 

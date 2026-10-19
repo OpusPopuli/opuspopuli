@@ -11,13 +11,21 @@
  *
  * Issue DEBT-030.
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { DataType, SyncResult } from '@opuspopuli/region-provider';
 import type {
   ArchiveIngestOptions,
   DataSourceConfig,
 } from '@opuspopuli/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
+import {
+  AmendmentSupersessionService,
+  type SupersessionResult,
+} from './amendment-supersession.service';
+import {
+  FilingReconciliationService,
+  type ReconciliationSummary,
+} from './filing-reconciliation.service';
 import { CivicsBlockModel } from './models/region-info.model';
 import { RegionInfoModel } from './models/region-info.model';
 import {
@@ -269,6 +277,8 @@ export class RegionDomainService {
     private readonly syncService: RegionSyncService,
     private readonly queryService: RegionQueryService,
     private readonly claimBackfill: ClaimBackfillService,
+    private readonly amendmentSupersession: AmendmentSupersessionService,
+    private readonly filingReconciliation: FilingReconciliationService,
   ) {}
 
   // ─── Lifecycle (delegated) ────────────────────────────────────────────────
@@ -329,6 +339,78 @@ export class RegionDomainService {
    */
   backfillClaims(limit?: number): Promise<ClaimBackfillReport> {
     return this.claimBackfill.backfillAll(limit);
+  }
+
+  /**
+   * Re-run filing reconciliation on its own (#1000).
+   *
+   * Set-based and idempotent — one statement over the corpus — so a re-run
+   * converges. Reaching it previously meant a ~15h `syncRegionData`, which is
+   * why the 2026-08-13 corrective run was hand-written SQL instead.
+   *
+   * **Precondition: an already-synced, already-linked corpus.** Reconciliation
+   * reads `committee_id`, and in the sync chain it deliberately runs last,
+   * after supersession has dropped stale amendments and the cover-page linker
+   * has stamped attribution. Against a freshly-ingested unlinked corpus it
+   * would under-attribute. This is a corrective tool, not a substitute for a
+   * sync.
+   *
+   * `async` deliberately: the guard below must surface as a REJECTION, not a
+   * synchronous throw. A method typed `Promise<T>` that throws before
+   * returning silently bypasses any caller's `.catch()`, which a test caught
+   * here.
+   */
+  async reconcileFilings(): Promise<ReconciliationSummary> {
+    if (!this.filingReconciliation.available) {
+      throw new ServiceUnavailableException(
+        'Filing reconciliation is unavailable — no database is bound. ' +
+          'Refusing to report a zeroed summary, which would be ' +
+          'indistinguishable from a reconciled corpus.',
+      );
+    }
+
+    return this.filingReconciliation.reconcileAll();
+  }
+
+  /**
+   * Supersede amended filings, then re-reconcile (#1000).
+   *
+   * The second half is not optional and takes no flag. Supersession is the one
+   * step that can invalidate every stored verdict, and #1000 measured what that
+   * costs: after it corrected 2M rows underneath `filing_reconciliations`, the
+   * table went on serving `OVER_ITEMIZED: 7,140` against a true 515 — a 14x
+   * overstatement of a fault condition, with nothing marking it stale.
+   *
+   * Reconciliation is one statement, so chaining it is close to free next to
+   * leaving a known-wrong fault count in a table that reads as authoritative.
+   *
+   * BOTH halves are checked for availability before either runs. Checking
+   * reconciliation lazily — when `reconcileFilings()` is reached — would
+   * delete the superseded rows first and only then refuse, leaving exactly the
+   * half-done state this method exists to prevent: rows gone, verdicts still
+   * describing them. In practice both resolve the same `DbService`, so the
+   * case is unreachable today; it is ordered this way because the cost of
+   * being wrong about that is a corpus nobody can explain.
+   */
+  async supersedeAmendments(): Promise<{
+    supersession: SupersessionResult;
+    reconciliation: ReconciliationSummary;
+  }> {
+    if (
+      !this.amendmentSupersession.available ||
+      !this.filingReconciliation.available
+    ) {
+      throw new ServiceUnavailableException(
+        'Amendment supersession is unavailable — no database is bound. ' +
+          'Refusing to report zero superseded rows, which would be ' +
+          'indistinguishable from a corpus with no amendments.',
+      );
+    }
+
+    const supersession = await this.amendmentSupersession.supersedeAll();
+    const reconciliation = await this.reconcileFilings();
+
+    return { supersession, reconciliation };
   }
 
   regeneratePropositionAnalysis(id: string): Promise<boolean> {
