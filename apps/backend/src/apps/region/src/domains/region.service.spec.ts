@@ -1,4 +1,5 @@
 import {
+  RegionDomainService,
   extractLastName,
   isLikelyValidBio,
   mapPropositionRecord,
@@ -294,5 +295,134 @@ describe('mapPropositionRecord', () => {
     expect(out.keyProvisions).toBeUndefined();
     expect(out.analysisSections).toBeUndefined();
     expect(out.analysisClaims).toBeUndefined();
+  });
+});
+
+// ─── post-sync standalone triggers (#1000) ────────────────────────────────────
+
+describe('RegionService post-sync triggers', () => {
+  const summary = {
+    reconciled: 173_804,
+    overItemizedContributions: 515,
+    overItemizedExpenditures: 4_505,
+    withUnitemized: 12,
+    unitemizedTotal: 3_400.5,
+    unknownSchedule: 0,
+    versionMismatch: 91,
+  };
+
+  const supersession = {
+    contributions: { superseded: 2_832_297, filingsAffected: 10_928 },
+    expenditures: { superseded: 1_107_527, filingsAffected: 15_764 },
+  };
+
+  const build = (
+    overrides: {
+      supersessionAvailable?: boolean;
+      reconciliationAvailable?: boolean;
+    } = {},
+  ) => {
+    const calls: string[] = [];
+
+    const amendmentSupersession = {
+      available: overrides.supersessionAvailable ?? true,
+      supersedeAll: jest.fn(async () => {
+        calls.push('supersede');
+        return supersession;
+      }),
+    };
+
+    const filingReconciliation = {
+      available: overrides.reconciliationAvailable ?? true,
+      reconcileAll: jest.fn(async () => {
+        calls.push('reconcile');
+        return summary;
+      }),
+    };
+
+    const service = new RegionDomainService(
+      {} as never,
+      {} as never,
+      {} as never,
+      amendmentSupersession as never,
+      filingReconciliation as never,
+    );
+
+    return { service, amendmentSupersession, filingReconciliation, calls };
+  };
+
+  describe('reconcileFilings', () => {
+    it('returns the recomputed summary, versionMismatch included', async () => {
+      const { service, filingReconciliation } = build();
+
+      await expect(service.reconcileFilings()).resolves.toEqual(summary);
+      expect(filingReconciliation.reconcileAll).toHaveBeenCalledTimes(1);
+    });
+
+    // The guard, not the happy path: `reconcileAll()` returns a ZEROED summary
+    // when no db is bound, and `reconciled: 0` from an unbound service is
+    // indistinguishable from `reconciled: 0` on a clean corpus. Restoring that
+    // zero-return in place of the throw must fail here.
+    it('throws rather than reporting a zeroed summary when unavailable', async () => {
+      const { service, filingReconciliation } = build({
+        reconciliationAvailable: false,
+      });
+
+      await expect(service.reconcileFilings()).rejects.toThrow(
+        /no database is bound/i,
+      );
+      expect(filingReconciliation.reconcileAll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('supersedeAmendments', () => {
+    it('returns both halves', async () => {
+      const { service } = build();
+
+      await expect(service.supersedeAmendments()).resolves.toEqual({
+        supersession,
+        reconciliation: summary,
+      });
+    });
+
+    // The reason this mutation exists in this shape. Supersession invalidates
+    // every stored verdict, so dropping the chained reconciliation reproduces
+    // #1000's measured 14x overstatement. Deleting the `reconcileFilings()`
+    // call must fail here.
+    it('reconciles AFTER superseding, in that order', async () => {
+      const { service, calls } = build();
+
+      await service.supersedeAmendments();
+
+      expect(calls).toEqual(['supersede', 'reconcile']);
+    });
+
+    it('throws rather than reporting zero superseded rows when unavailable', async () => {
+      const { service, amendmentSupersession, filingReconciliation } = build({
+        supersessionAvailable: false,
+      });
+
+      await expect(service.supersedeAmendments()).rejects.toThrow(
+        /no database is bound/i,
+      );
+      expect(amendmentSupersession.supersedeAll).not.toHaveBeenCalled();
+      expect(filingReconciliation.reconcileAll).not.toHaveBeenCalled();
+    });
+
+    // A half-done run is worse than a refused one: the rows would be gone and
+    // the verdicts describing them stale. So an unavailable RECONCILIATION
+    // must stop the supersede too — before it deletes anything. Moving that
+    // check to be lazy (inside the chained reconcileFilings) must fail here.
+    it('refuses before deleting when reconciliation could not follow', async () => {
+      const { service, amendmentSupersession, filingReconciliation } = build({
+        reconciliationAvailable: false,
+      });
+
+      await expect(service.supersedeAmendments()).rejects.toThrow(
+        /no database is bound/i,
+      );
+      expect(amendmentSupersession.supersedeAll).not.toHaveBeenCalled();
+      expect(filingReconciliation.reconcileAll).not.toHaveBeenCalled();
+    });
   });
 });

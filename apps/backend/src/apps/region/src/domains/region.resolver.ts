@@ -60,6 +60,10 @@ import { PropositionFundingModel } from './models/proposition-funding.model';
 import { RepresentativeFundingModel } from './models/representative-funding.model';
 import { MeetingModel, PaginatedMeetings } from './models/meeting.model';
 import { ClaimBackfillResultModel } from './models/claim-backfill.model';
+import {
+  ReconciliationSummaryModel,
+  SupersedeAmendmentsResultModel,
+} from './models/post-sync-steps.model';
 import { MinutesModel, PaginatedMinutes } from './models/minutes.model';
 import {
   BioClaimModel,
@@ -394,6 +398,52 @@ export class RegionResolver {
     @Args({ name: 'limit', type: () => Int, nullable: true }) limit?: number,
   ): Promise<number> {
     return this.regionService.backfillPropositionSummaries(limit);
+  }
+
+  /**
+   * Re-run filing reconciliation without a full sync (#1000).
+   *
+   * `filing_reconciliations` is written only by the post-sync chain, whose sole
+   * entry point is a ~15h `syncRegionData`. So a reconciliation-logic change
+   * leaves the stored verdicts stale until someone spends that, and #1000
+   * measured the cost of exactly that: `OVER_ITEMIZED` served at 7,140 when the
+   * truth was 515. #1376 made it live again by changing how `amend_id` is
+   * compared.
+   *
+   * Idempotent — one set-based statement upserting on `filing_id` — so a
+   * re-run converges and a timed-out call can simply be retried.
+   *
+   * **Requires an already-synced and already-linked corpus**; reconciliation
+   * reads `committee_id` and runs last in the sync chain for that reason. It
+   * corrects derived verdicts; it does not ingest.
+   */
+  @Mutation(() => ReconciliationSummaryModel)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 100 })
+  async reconcileFilings(): Promise<ReconciliationSummaryModel> {
+    return this.regionService.reconcileFilings();
+  }
+
+  /**
+   * Supersede amended filings, then re-reconcile, without a full sync (#1000).
+   *
+   * Reconciliation is always re-run in the same call and there is no flag to
+   * skip it: supersession is the one step that can invalidate every stored
+   * verdict, so letting it run alone is how the 14x overstatement above
+   * happened. One extra statement against a known-wrong fault count is not a
+   * trade worth offering.
+   *
+   * Deletes only rows a higher `amend_id` already supersedes, batched at 25,000
+   * to bound WAL and lock duration, and idempotent — a second run finds nothing
+   * left to supersede.
+   */
+  @Mutation(() => SupersedeAmendmentsResultModel)
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @Extensions({ complexity: 100 })
+  async supersedeAmendments(): Promise<SupersedeAmendmentsResultModel> {
+    return this.regionService.supersedeAmendments();
   }
 
   /**
