@@ -984,12 +984,31 @@ function canonicalizeRepresentativeId(
   if (/^ca-(assembly|senate)-\d+$/i.test(rawId)) {
     return rawId.toLowerCase();
   }
+
+  // An id carrying no URL punctuation is already a stable key minted by a
+  // region plugin — "sonoma-district-1", for instance. Re-keying it under the
+  // ACTIVE plugin's prefix is what duplicated every Sonoma supervisor
+  // (#1386): the derived "ca-board of supervisors-1" missed the upsert key
+  // and INSERTED a second identity for the same person, each with its own
+  // generated biography and claims.
+  //
+  // This function exists to normalise URL-DERIVED ids, which is what its
+  // docblock describes ("/assemblymembers/22", absolute URLs). An id that was
+  // never a URL is not drifting and must not be rewritten. A bare number is
+  // the exception — it carries no namespace, so it still needs one.
+  if (!/[/.]/.test(rawId) && !/^\d+$/.test(rawId)) {
+    return rawId;
+  }
+
   // Find all digit runs and take the last one. Linear time; avoids the
   // negative-lookahead pattern (e.g. /(\d+)(?!.*\d)/) which is super-linear
   // due to backtracking and flagged by static analysis as a ReDoS risk.
   const digits = rawId.match(/\d+/g)?.at(-1);
   if (!digits) return rawId; // fall back to raw — validation will flag it
-  const normalizedChamber = (chamber ?? "unknown").trim().toLowerCase();
+  // Slugified, not merely lowercased: a chamber like "Board of Supervisors"
+  // otherwise puts SPACES in a database key, which is how
+  // "ca-board of supervisors-1" came to exist.
+  const normalizedChamber = slugify(chamber ?? "unknown") || "unknown";
   return `ca-${normalizedChamber}-${digits}`;
 }
 

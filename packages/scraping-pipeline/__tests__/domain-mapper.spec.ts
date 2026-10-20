@@ -701,6 +701,84 @@ describe("DomainMapperService", () => {
       expect(result.items[0]).toMatchObject({ externalId: "ca-assembly-22" });
     });
 
+    // #1386. Every Sonoma supervisor was duplicated: the county plugin's
+    // "sonoma-district-1" was re-keyed under the ACTIVE (state) plugin as
+    // "ca-board of supervisors-1", which missed the upsert key and INSERTED a
+    // second identity for the same person, each with its own generated biography
+    // and claims. Remove the no-URL-punctuation guard and this fails.
+    it("leaves a plugin-minted externalId alone instead of re-keying it", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "sonoma-district-1",
+              name: "Rebecca Hermosillo",
+              district: "1",
+              party: "Democratic",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.REPRESENTATIVES,
+          category: "Board of Supervisors",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({
+        externalId: "sonoma-district-1",
+      });
+    });
+
+    // The second half of #1386: the chamber was lowercased but not slugified, so
+    // a multi-word chamber put SPACES in a database key.
+    it("slugifies a multi-word chamber rather than embedding spaces", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "/supervisors/3",
+              name: "Chris Coursey",
+              district: "3",
+              party: "Democratic",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.REPRESENTATIVES,
+          category: "Board of Supervisors",
+        }),
+      );
+
+      // Exact equality is the no-spaces assertion: "ca-board of supervisors-3"
+      // cannot satisfy it.
+      expect(result.items[0]).toMatchObject({
+        externalId: "ca-board-of-supervisors-3",
+      });
+    });
+
+    // The behaviour the guard must not break: a bare number carries no namespace,
+    // so it still needs one.
+    it("still namespaces a bare numeric externalId", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "22",
+              name: "Juan Alanis",
+              district: "22",
+              party: "R",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.REPRESENTATIVES,
+          category: "Assembly",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({ externalId: "ca-assembly-22" });
+    });
+
     it("preserves already-canonical externalIds", () => {
       const result = mapper.map(
         createRawResult({
