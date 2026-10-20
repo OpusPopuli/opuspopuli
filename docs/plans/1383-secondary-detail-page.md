@@ -130,7 +130,11 @@ the source blocks ingestion — the owner's call, recorded in
    `fetchDetailContent` (so it is archived), apply `fields`, merge per D2,
    isolate failures per D3.
 3. **Schema** — `secondaryDetail` in `opuspopuli-regions`
-   `schema/region-plugin.schema.json`.
+   `schema/region-plugin.schema.json`, **then `pnpm generate:types`**.
+   `src/cli/lib/generated-types.ts` is derived from the schema and CI has a
+   drift check for it; a schema edit without the regeneration fails
+   "Validate & Test". This step was missing from the first version of this
+   plan and the gate caught it, which is what the gate is for.
 4. **Config** — `secondaryDetail` on `dataSources[6]` (Assembly) in
    `regions/california/california.json`.
 5. **Tests** — absent-only merge (D2), failure isolation (D3), URL joining
@@ -202,6 +206,19 @@ check, with a regression test naming the a04 case that produced it.
 change or the config would have failed validation — the regions repo's
 `validate-configs.spec.ts` is the gate that would have caught it, and does
 (515 tests pass with both changes).
+
+## Note on the regions version number
+
+`package.json`'s version in `opuspopuli-regions` is **cosmetic**: the pre-push
+hook syncs it to the latest *published* version so the CLI review header reads
+correctly, and `publish.yml` assigns the real one at publish time with
+`npm version "1.0.${{ github.run_number }}"`.
+
+Recorded because it reads like a collision when you first see it — the hook
+minted `chore: sync package version to 1.0.102` while 1.0.102 was already on
+the registry, which looks like a double-publish and is not one. Subtask 6's
+"publish" therefore means "merge to main and let `publish.yml` assign the
+version", not "bump by hand".
 
 ## Out of scope
 
