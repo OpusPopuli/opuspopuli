@@ -20,6 +20,45 @@ describe("htmlToReadableText", () => {
     expect(out).not.toContain("Contact us");
   });
 
+  /**
+   * #1382. `<aside>` was stripped as chrome. The California Senate caucus
+   * template puts the member's BIOGRAPHY in one, so a 43 KB page reduced to 96
+   * characters — the title and a skip link — while the bio sat in the fetched
+   * bytes. Re-add the strip and this fails.
+   *
+   * The markup is the real shape from `sd08.senate.ca.gov`
+   * (content hash `14385905b972`), not an invented one.
+   */
+  it("keeps aside content, which is where a Senate bio lives", () => {
+    const out = htmlToReadableText(
+      '<aside class="container-fluid clearfix" role="complementary">' +
+        '<section class="row region region-featured-bottom-first">' +
+        "<p>Senator Ashby was elected in 2022 to represent Sacramento and " +
+        "Elk Grove.</p>" +
+        "<p>The only woman on the Sacramento City Council for over six " +
+        "years.</p>" +
+        "</section></aside>",
+    );
+
+    expect(out).toContain("elected in 2022");
+    expect(out).toContain("Sacramento City Council for over six years");
+  });
+
+  // The other half: keeping aside must not become "keep everything". These
+  // four are still chrome and still go, contents included.
+  it("still drops nav, header, footer, script and style wholesale", () => {
+    const out = htmlToReadableText(
+      "<nav>Home About</nav>" +
+        "<header>Senator Example</header>" +
+        "<script>var x=1</script>" +
+        "<style>.a{color:red}</style>" +
+        "<aside><p>Biography text</p></aside>" +
+        "<footer>Contact us</footer>",
+    );
+
+    expect(out).toBe("Biography text");
+  });
+
   it("keeps table cell text, having lost the table structure", () => {
     // Recorded as a known limitation, not an aspiration: the ballot-measure
     // status pages are tabular, and this is what survives of them.
