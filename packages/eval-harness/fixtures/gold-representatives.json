@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "kind": "gold",
+  "corpus": "california-state-representatives",
+  "authoredAt": "2026-10-19",
+  "note": "Authored by Claude from htmlToReadableText(source_versions.content) for the pinned contentHash of each page — never from a fresh fetch, and never from my own knowledge of these people. Every entry carries a verbatim quote from that extracted text; anything unquotable was omitted however confident I was. See docs/plans/representatives-gold-eval.md decisions D2 and D3, which exist because a gold set that is merely my reading measures how close nemotron is to me and encodes my errors as truth.",
+  "scope": {
+    "covers": "Committee assignments and district facts for three Assembly members, which the roster pages genuinely contain.",
+    "doesNotCover": "Biography. No archived rep page contains biographical prose that survives extraction — see blockedBioGold below. A bio gold set cannot be authored until #1383 fetches a page that has one.",
+    "surface": "document-analysis-representative-committees-summary (79 reps carry a committees_summary today)"
+  },
+  "scoring": {
+    "recall": "of the gold committees, how many did the model name?",
+    "precision": "of the committees the model named, how many are quotable from the extracted text? Anything else is invented.",
+    "labelling": "a claim marked origin:source must be quotable; if it is not, invention was presented as grounded",
+    "roleFidelity": "Vice Chair / Co-Chair / Member is stated on the page and must not be upgraded or dropped",
+    "fieldPresence": "did a field with gold content come back empty?"
+  },
+  "pages": [
+    {
+      "rep": "Heather Hadwick",
+      "chamber": "Assembly",
+      "district": "01",
+      "party": "Republican",
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/01",
+      "contentHash": "805f6b65af7e7161b4445b6920580732cf5ab6b89f0a695fbb6b307f1e42c063",
+      "byteSize": 43930,
+      "fetchedAt": "2026-10-12",
+      "extractedChars": 1804,
+      "why": "Republican Assembly member, neither suspicious phrase present, lowest district in its stratum. The widest committee load in the sample, so a terse model has the most to drop.",
+      "fields": {
+        "counties": {
+          "gold": [
+            "alpine",
+            "amador",
+            "el dorado",
+            "lassen",
+            "modoc",
+            "nevada",
+            "placer",
+            "plumas",
+            "shasta",
+            "sierra",
+            "siskiyou"
+          ],
+          "quote": "Counties: alpine, amador, el dorado, lassen, modoc, nevada, placer, plumas, shasta, sierra, siskiyou"
+        },
+        "standingCommittees": {
+          "gold": [
+            {
+              "name": "Agriculture",
+              "role": "Vice Chair"
+            },
+            {
+              "name": "Budget",
+              "role": "Member"
+            },
+            {
+              "name": "Business and Professions",
+              "role": "Member"
+            },
+            {
+              "name": "Emergency Management",
+              "role": "Vice Chair"
+            },
+            {
+              "name": "Insurance",
+              "role": "Member"
+            },
+            {
+              "name": "Water, Parks, and Wildlife",
+              "role": "Member"
+            }
+          ],
+          "quote": "Standing Committees Vice Chair Agriculture Member Budget Member Business and Professions Vice Chair Emergency Management Member Insurance Member Water, Parks, and Wildlife"
+        },
+        "subcommittees": {
+          "gold": [
+            {
+              "name": "Subcommittee No. 3 on Education Finance",
+              "role": "Member"
+            }
+          ],
+          "quote": "Subcommittee Committees Member Subcommittee No. 3 on Education Finance"
+        },
+        "selectCommittees": {
+          "gold": [
+            "CalFresh Enrollment and Nutrition",
+            "California's Mental Health Crisis",
+            "Child Care Costs",
+            "Cybersecurity",
+            "Effective Postsecondary Career Technical Education and Workforce Development Programs",
+            "Housing Construction Innovation",
+            "Housing Finance and Affordability",
+            "Master Plan for Higher Education in California",
+            "Native American Affairs",
+            "the Nonprofit Sector"
+          ],
+          "quote": "Select Committees Member Select Committee on CalFresh Enrollment and Nutrition Member Select Committee on California's Mental Health Crisis Member Select Committee on Child Care Costs Member Select Committee on Cybersecurity Member Select Committee on Effective Postsecondary Career Technical Education and Workforce Development Programs Member Select Committee on Housing Construction Innovation Member Select Committee on Housing Finance and Affordability Member Select Committee on Master Plan for Higher Education in California Member Select Committee on Native American Affairs Member Select Committee on the Nonprofit Sector",
+          "note": "All ten carry role Member. 'the Nonprofit Sector' retains its leading article because the page writes 'Select Committee on the Nonprofit Sector'."
+        },
+        "jointCommittees": {
+          "gold": [
+            {
+              "name": "Joint Legislative Committee on Emergency Management",
+              "role": "Member"
+            }
+          ],
+          "quote": "Joint Committees Member Joint Legislative Committee on Emergency Management"
+        },
+        "biography": {
+          "gold": null,
+          "why": "The page contains no biographical prose. Absent, not missed — a model emitting biography here is inventing."
+        }
+      },
+      "extractedTextForAudit": "Assembly Member Hadwick | California State Assembly Skip to main content Assembly Member Hadwick Heather Hadwick District: 01 Party: Republican Counties: alpine, amador, el dorado, lassen, modoc, nevada, placer, plumas, shasta, sierra, siskiyou Website Contact Authored Bills District Map Capitol Offices Sacramento 1021 O Street, Suite 4730 Sacramento, CA 95814 (916) 319-2001 Sacramento P.O. Box 942849 Sacramento, CA 94249-0001 District Offices Jackson 810 Court Street, Second Floor Jackson, CA 95642 (530) 265-0601 Redding 930 Executive, Way Suite 201 Redding, CA 96002 (530) 223-6300 Assembly Member Hadwick Assembly Member Hadwick Regular Session Standing Committees Vice Chair Agriculture Member Budget Member Business and Professions Vice Chair Emergency Management Member Insurance Member Water, Parks, and Wildlife Subcommittee Committees Member Subcommittee No. 3 on Education Finance Select Committees Member Select Committee on CalFresh Enrollment and Nutrition Member Select Committee on California's Mental Health Crisis Member Select Committee on Child Care Costs Member Select Committee on Cybersecurity Member Select Committee on Effective Postsecondary Career Technical Education and Workforce Development Programs Member Select Committee on Housing Construction Innovation Member Select Committee on Housing Finance and Affordability Member Select Committee on Master Plan for Higher Education in California Member Select Committee on Native American Affairs Member Select Committee on the Nonprofit Sector Joint Committees Member Joint Legislative Committee on Emergency Management Special Committees Member Assembly Legislative Ethics First Extraordinary Standing Committees Member Budget Copyright © 2026 State of California Site Map Accessibility Terms & Privacy Register to Vote"
+    },
+    {
+      "rep": "Cecilia M. Aguiar-Curry",
+      "chamber": "Assembly",
+      "district": "04",
+      "party": "Democrat",
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/04",
+      "contentHash": "1b6bf7c92ab7782696df4b16e47ba25ab12cf3802a848da89c1e057e5ea703d6",
+      "byteSize": 42196,
+      "fetchedAt": "2026-10-12",
+      "extractedChars": 1385,
+      "why": "Carries the 'community organizer' phrase in its generated bio. Also the page that settles a false alarm: 'Select Committee on Reproductive Health' is a REAL assignment here, so its appearance in output is not evidence of the prompt's \"Health\" + \"Reproductive Health\" example being copied.",
+      "fields": {
+        "counties": {
+          "gold": ["colusa", "lake", "napa", "sonoma", "yolo"],
+          "quote": "Counties: colusa, lake, napa, sonoma, yolo"
+        },
+        "standingCommittees": {
+          "gold": [
+            {
+              "name": "Agriculture",
+              "role": "Member"
+            },
+            {
+              "name": "Health",
+              "role": "Member"
+            },
+            {
+              "name": "Transportation",
+              "role": "Member"
+            }
+          ],
+          "quote": "Standing Committees Member Agriculture Member Health Member Transportation"
+        },
+        "selectCommittees": {
+          "gold": [
+            {
+              "name": "Alternative Protein Innovation",
+              "role": "Member"
+            },
+            {
+              "name": "CalFresh Enrollment and Nutrition",
+              "role": "Member"
+            },
+            {
+              "name": "Child Care Costs",
+              "role": "Co-Chair"
+            },
+            {
+              "name": "Effective Postsecondary Career Technical Education and Workforce Development Programs",
+              "role": "Member"
+            },
+            {
+              "name": "Latina Inequities",
+              "role": "Member"
+            },
+            {
+              "name": "Ports and Goods Movement",
+              "role": "Member"
+            },
+            {
+              "name": "Reproductive Health",
+              "role": "Member"
+            },
+            {
+              "name": "Wildfire Prevention",
+              "role": "Member"
+            },
+            {
+              "name": "Youth Mental Health and Treatment Accessibility",
+              "role": "Member"
+            }
+          ],
+          "quote": "Select Committees Member Select Committee on Alternative Protein Innovation Member Select Committee on CalFresh Enrollment and Nutrition Co-Chair Select Committee on Child Care Costs Member Select Committee on Effective Postsecondary Career Technical Education and Workforce Development Programs Member Select Committee on Latina Inequities Member Select Committee on Ports and Goods Movement Member Select Committee on Reproductive Health Member Select Committee on Wildfire Prevention Member Select Committee on Youth Mental Health and Treatment Accessibility",
+          "note": "Child Care Costs is Co-Chair, not Member. A summary that flattens every role to 'serves on' loses a fact the page states."
+        },
+        "jointCommittees": {
+          "gold": [
+            {
+              "name": "Joint Committee on Rules",
+              "role": "Member"
+            }
+          ],
+          "quote": "Joint Committees Member Joint Committee on Rules"
+        },
+        "biography": {
+          "gold": null,
+          "why": "No biographical prose on the page."
+        }
+      },
+      "extractedTextForAudit": "Assembly Member Aguiar-Curry | California State Assembly Skip to main content Assembly Member Aguiar-Curry Cecilia M. Aguiar-Curry District: 04 Party: Democrat Counties: colusa, lake, napa, sonoma, yolo Website Contact Authored Bills District Map Capitol Offices Sacramento 1021 O Street, Suite 8210 Sacramento, CA 95814 (916) 319-2004 Sacramento P.O. Box 942849 Sacramento, CA 94249-0004 District Offices Davis 600 A Street, Suite D Davis, CA 95616 (530) 757-1034 Napa 2721 Napa Valley Corporate Drive Napa, CA 94558 (707) 224-0440 Assembly Member Aguiar-Curry Assembly Member Aguiar-Curry Regular Session Standing Committees Member Agriculture Member Health Member Transportation Select Committees Member Select Committee on Alternative Protein Innovation Member Select Committee on CalFresh Enrollment and Nutrition Co-Chair Select Committee on Child Care Costs Member Select Committee on Effective Postsecondary Career Technical Education and Workforce Development Programs Member Select Committee on Latina Inequities Member Select Committee on Ports and Goods Movement Member Select Committee on Reproductive Health Member Select Committee on Wildfire Prevention Member Select Committee on Youth Mental Health and Treatment Accessibility Joint Committees Member Joint Committee on Rules Copyright © 2026 State of California Site Map Accessibility Terms & Privacy Register to Vote"
+    },
+    {
+      "rep": "Michelle Rodriguez",
+      "chamber": "Assembly",
+      "district": "53",
+      "party": "Democrat",
+      "sourceUrl": "https://www.assembly.ca.gov/assemblymembers/53",
+      "contentHash": "a43d79293524a0ba1f8a0e5443211af883eac43b73245beddc9824e9c116cbb1",
+      "byteSize": 41278,
+      "fetchedAt": "2026-10-12",
+      "extractedChars": 1005,
+      "why": "Carries BOTH suspicious phrases in its generated bio, and the thinnest extraction of the three Assembly pages.",
+      "fields": {
+        "counties": {
+          "gold": ["los angeles", "san bernardino"],
+          "quote": "Counties: los angeles, san bernardino"
+        },
+        "standingCommittees": {
+          "gold": [
+            {
+              "name": "Banking and Finance",
+              "role": "Member"
+            },
+            {
+              "name": "Economic Development, Growth, and Household Impact",
+              "role": "Member"
+            },
+            {
+              "name": "Governmental Organization",
+              "role": "Member"
+            },
+            {
+              "name": "Insurance",
+              "role": "Member"
+            },
+            {
+              "name": "Public Employment and Retirement",
+              "role": "Member"
+            },
+            {
+              "name": "Revenue and Taxation",
+              "role": "Member"
+            },
+            {
+              "name": "Rules",
+              "role": "Member"
+            }
+          ],
+          "quote": "Standing Committees Member Banking and Finance Member Economic Development, Growth, and Household Impact Member Governmental Organization Member Insurance Member Public Employment and Retirement Member Revenue and Taxation Member Rules"
+        },
+        "selectCommittees": {
+          "gold": [
+            {
+              "name": "Domestic Violence",
+              "role": "Member"
+            }
+          ],
+          "quote": "Select Committees Member Select Committee on Domestic Violence"
+        },
+        "jointCommittees": {
+          "gold": [
+            {
+              "name": "Joint Committee on Rules",
+              "role": "Member"
+            }
+          ],
+          "quote": "Joint Committees Member Joint Committee on Rules"
+        },
+        "biography": {
+          "gold": null,
+          "why": "No biographical prose on the page."
+        }
+      },
+      "extractedTextForAudit": "Assembly Member Rodriguez | California State Assembly Skip to main content Assembly Member Rodriguez Michelle Rodriguez District: 53 Party: Democrat Counties: los angeles, san bernardino Website Contact Authored Bills District Map Capitol Offices Sacramento 1021 O Street, Suite 5640 Sacramento, CA 95814 (916) 319-2053 Sacramento P.O. Box 942849 Sacramento, CA 94249-0053 District Offices Chino 13160 7th Street Chino, CA 91710 (909) 902-9606 Assembly Member Rodriguez Assembly Member Rodriguez Regular Session Standing Committees Member Banking and Finance Member Economic Development, Growth, and Household Impact Member Governmental Organization Member Insurance Member Public Employment and Retirement Member Revenue and Taxation Member Rules Select Committees Member Select Committee on Domestic Violence Joint Committees Member Joint Committee on Rules First Extraordinary Standing Committees Member Rules Copyright © 2026 State of California Site Map Accessibility Terms & Privacy Register to Vote"
+    }
+  ],
+  "blockedBioGold": [
+    {
+      "rep": "Angelique V. Ashby",
+      "sourceUrl": "https://sd08.senate.ca.gov/",
+      "contentHash": "14385905b9722436611a3e19cf0a8a8272eb44caa8b699beb03e4c0a037660f1",
+      "extractedChars": 96,
+      "blockedBy": "#1382",
+      "evidence": "The HTML contains the biography (127 div, 24 p tags). Reading the <p> blocks directly yields 'Senator Ashby was elected in 2022 to represent Sacramento and Elk Grove.' and 'The only woman on the Sacramento City Council for over six years, the first-ever in history to give birth while in office'. htmlToReadableText returns only the <title> and 'Skip to main content'. The generated bio instead claims election in 2020, a term 'which expires in November 2024', and prior service as 'a legislative aide in the California State Assembly' — contradicted by the page."
+    },
+    {
+      "rep": "Sasha Renée Pérez",
+      "sourceUrl": "https://sd25.senate.ca.gov/",
+      "contentHash": "5b0d66e40856f17ddce586be9c02781ecd4b44036f51750f0a3a438c6609696b",
+      "extractedChars": 99,
+      "blockedBy": "#1382",
+      "evidence": "Same shape as sd08: 52,692 bytes of HTML reduced to the <title> and a skip link."
+    },
+    {
+      "rep": "Marie Alvarado-Gil",
+      "sourceUrl": "https://sr04.senate.ca.gov/",
+      "contentHash": "20e64962bb5826777b071e8d48cd3c598f427975fc010a37fbd46e7dad27b89f",
+      "extractedChars": 1217,
+      "blockedBy": "#1383",
+      "evidence": "Extraction works, but the page is a landing page: a Google Translate disclaimer, three news headlines, and social links. No biography and no committee list, so nothing to author gold against."
+    }
+  ],
+  "heldOut": [
+    {
+      "rep": "Matt Haney",
+      "chamber": "Assembly",
+      "district": "17",
+      "why": "Never inspected while tuning (D6). Scored once, at the end."
+    },
+    {
+      "rep": "Megan Dahle",
+      "chamber": "Senate",
+      "district": "01",
+      "why": "Same. Senate Republican, so a different page shape from the Assembly tuning set."
+    }
+  ],
+  "notAuthoredYet": [
+    "Biography for any rep — blocked on #1383 (no archived page contains one) and #1382 (the pages that do, do not extract).",
+    "Capitol and district office addresses and phone numbers. Quotable and present, but no surface consumes them yet, so gold would be unscored.",
+    "The 5 Sonoma County supervisors: a different page shape, no source_versions row, and no model attribution (pre-#1281).",
+    "Senate committee assignments: no sampled Senate page lists them."
+  ],
+  "ownerReviewRequired": [
+    "This file was authored by a model scoring a model. Every entry is quote-backed so it can be audited without trusting me, but it has not been countersigned.",
+    "Committee role fidelity: confirm Vice Chair (Hadwick: Agriculture, Emergency Management) and Co-Chair (Aguiar-Curry: Child Care Costs) are worth scoring separately from Member, or whether a summary may legitimately flatten them.",
+    "Confirm 'the Nonprofit Sector' should keep its leading article, as the page writes it.",
+    "RESOLVED 2026-10-19 (owner): keep generating, and disclose that we created it. The platform already does, in four places — an 'AI-generated' badge, a tooltip naming the exact four input fields, a 'May contain inaccuracies — verify against official sources' footnote, and a per-sentence attribution panel exposing the source/training split. So the eval's job is to reduce the unsourced share, not to gate publication.",
+    "One disclosure wording is itself inaccurate and is NOT covered by the decision above: the footnote says 'Generated from public record data', but the bio is generated from four structured fields — the public record page was never read (#1381/#1383). The tooltip is precise; this line overstates the grounding."
+  ]
+}
