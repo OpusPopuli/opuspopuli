@@ -244,7 +244,135 @@ export class DetailCrawlerService {
       );
     }
 
+    // Deliberately OUTSIDE the try above: a primary fetch that failed does not
+    // imply the secondary will. The base URL may already have come from the
+    // listing page, and a biography we can still fetch is worth having.
+    await this.enrichFromSecondaryDetail(
+      item,
+      source,
+      warnings,
+      failures,
+      archive,
+    );
+
     return extractionPlan;
+  }
+
+  /**
+   * Fetch one secondary page per item and fill fields the primary left empty
+   * (#1383).
+   *
+   * Exists because the page carrying a representative's biography is not the
+   * page carrying their committees: the Assembly roster detail page holds
+   * committees, offices and counties, while the biography lives on the
+   * member's own caucus site. Repointing `detailUrl` would trade a measured
+   * 90% committee recall for an unmeasured bio.
+   *
+   * Three properties this relies on, all deliberate:
+   *
+   * - **Absent-only merge.** `mergeContent` already skips keys the item holds,
+   *   so a looser secondary selector cannot clobber authoritative primary
+   *   data. Reused rather than reimplemented so the two paths cannot drift.
+   * - **Isolated failure.** A 404, a timeout, or a selector matching nothing
+   *   warns and leaves the item exactly as the primary left it. A bio we could
+   *   not fetch must not cost us committees we did.
+   * - **Provenance is NOT repointed.** `fetchDetailContent` archives this page
+   *   and returns its `sourceVersionId`, which is discarded on purpose:
+   *   `item.sourceVersionId` describes the primary page (#1306, stamped per
+   *   item), and committees/offices come from there. One id cannot honestly
+   *   describe two pages, and claiming the biography came from the roster page
+   *   would be worse than claiming nothing. The bytes are archived and
+   *   identifiable by URL; per-field provenance is filed separately.
+   */
+  private async enrichFromSecondaryDetail(
+    item: Record<string, unknown>,
+    source: DataSourceConfig,
+    warnings: string[],
+    failures?: Map<string, SelectorFailure>,
+    archive?: ArchiveContext,
+  ): Promise<void> {
+    const config = source.secondaryDetail;
+    if (!config) return;
+
+    const base = DetailCrawlerService.readPath(item, config.urlFrom);
+    // Absence is normal, not an error: a representative with no website simply
+    // has no secondary page. Warning here would fire for every such row and
+    // train the operator to ignore the channel.
+    if (typeof base !== "string" || base.trim() === "") return;
+
+    const url = DetailCrawlerService.joinUrl(base.trim(), config.urlSuffix);
+
+    // Same politeness budget as the primary loop — a secondary hop must not
+    // double the request rate against someone's site.
+    await this.delay(DETAIL_FETCH_DELAY_MS);
+
+    try {
+      const { content } = await this.fetchDetailContent(url, archive);
+      const isHtml = content.trimStart().startsWith("<");
+      if (!isHtml) {
+        warnings.push(`Secondary detail page was not HTML: ${url}`);
+        return;
+      }
+
+      // Selector-only on purpose — NOT extractWithPlan, which falls back to a
+      // main-content text dump when the plan matches nothing. For
+      // `representatives` the default text field is `bio`, so that fallback
+      // would quietly store a page's nav and footer AS the biography and mark
+      // it `bioSource: 'scraped'`. That is how #658's "junk bios" happened.
+      // Here a selector miss must produce nothing and say so.
+      // Empty values count as a miss, not a hit. Demonstrated on
+      // `a04.asmdc.org/biography`, where the looser `.field--name-body`
+      // selector matches three elements and the FIRST is empty — a
+      // keys-only check would see `{ bio: "" }`, warn about nothing, and
+      // leave the field silently unset.
+      const extracted = Object.fromEntries(
+        Object.entries(
+          this.extractContent(content, config.fields, failures),
+        ).filter(
+          ([, v]) => v !== undefined && v !== null && String(v).trim() !== "",
+        ),
+      );
+      if (Object.keys(extracted).length === 0) {
+        warnings.push(
+          `Secondary detail selectors matched nothing on ${url} ` +
+            `(${Object.keys(config.fields).join(", ")})`,
+        );
+        return;
+      }
+
+      this.mergeContent(item, extracted);
+    } catch (error) {
+      warnings.push(
+        `Secondary detail fetch failed for ${url}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /** Read a dot-notated path off an item, e.g. `contactInfo.website`. */
+  private static readPath(
+    item: Record<string, unknown>,
+    path: string,
+  ): unknown {
+    return path
+      .split(".")
+      .reduce<unknown>(
+        (acc, key) =>
+          acc && typeof acc === "object"
+            ? (acc as Record<string, unknown>)[key]
+            : undefined,
+        item,
+      );
+  }
+
+  /**
+   * Join a base URL and an optional path segment with exactly one `/`.
+   *
+   * Both forms occur in the live data — one rep's stored website lacks the
+   * trailing slash every other one has — so this cannot assume either.
+   */
+  private static joinUrl(base: string, suffix?: string): string {
+    if (!suffix) return base;
+    return `${base.replace(/\/+$/, "")}/${suffix.replace(/^\/+/, "")}`;
   }
 
   /**
