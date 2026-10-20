@@ -83,11 +83,14 @@ export class RegionService {
   /**
    * Fetch representatives from the provider
    */
-  async fetchRepresentatives(): Promise<Representative[]> {
-    this.logger.log("Fetching representatives from provider");
+  async fetchRepresentatives(limit?: number): Promise<Representative[]> {
+    this.logger.log(
+      "Fetching representatives from provider" +
+        (limit ? ` (max ${limit} per source)` : ""),
+    );
     const startTime = Date.now();
 
-    const representatives = await this.provider.fetchRepresentatives();
+    const representatives = await this.provider.fetchRepresentatives(limit);
 
     const duration = Date.now() - startTime;
     this.logger.log(

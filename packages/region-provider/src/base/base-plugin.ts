@@ -35,7 +35,7 @@ export abstract class BaseRegionPlugin implements IRegionPlugin {
   abstract getSupportedDataTypes(): DataType[];
   abstract fetchPropositions(): Promise<Proposition[]>;
   abstract fetchMeetings(): Promise<Meeting[]>;
-  abstract fetchRepresentatives(): Promise<Representative[]>;
+  abstract fetchRepresentatives(limit?: number): Promise<Representative[]>;
 
   /**
    * Initialize the plugin. Override to add custom setup logic.

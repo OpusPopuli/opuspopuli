@@ -38,6 +38,33 @@ export interface ArchiveIngestOptions {
   resetWatermark?: boolean;
 }
 
+/**
+ * Options for one `execute` run (#1387).
+ *
+ * Extends `ArchiveIngestOptions` rather than widening it: that type is
+ * specifically about archive/PDF ingest — how many documents, whether to
+ * ignore the watermark — and a generic item cap does not belong there.
+ */
+export interface PipelineExecuteOptions extends ArchiveIngestOptions {
+  /**
+   * Cap on items carried into the detail-crawl phase, applied PER SOURCE.
+   *
+   * Applied before fetching, not after, because the cost this bounds is
+   * external HTTP requests: a `maxReps: 5` smoke test previously performed
+   * 120 detail fetches plus 80 secondary `/biography` fetches with retries
+   * against two government sites, because the cap only reached bio
+   * generation.
+   *
+   * Per source, not per sync: Assembly and Senate are separate data sources,
+   * so a sync-wide cap would leave one chamber unexercised. 5 means "up to 5
+   * per chamber" — 10 for California, with both source shapes actually
+   * exercised.
+   *
+   * Unset means no cap. This adds a bound; it does not introduce a default.
+   */
+  maxItems?: number;
+}
+
 // ============================================
 // STRUCTURAL MANIFEST
 // ============================================
