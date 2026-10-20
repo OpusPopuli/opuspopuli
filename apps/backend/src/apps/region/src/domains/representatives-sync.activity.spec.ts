@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { Prisma } from '@opuspopuli/relationaldb-provider';
 import { RepresentativesSyncService } from './representatives-sync.service';
 
 /**
@@ -219,5 +220,137 @@ describe('representatives sync — maxReps bounds the fetch (#1387)', () => {
     const fetchRepresentatives = await run(undefined);
 
     expect(fetchRepresentatives).toHaveBeenCalledWith(undefined);
+  });
+});
+
+/**
+ * A scraped bio must carry NO AI attribution (#1391).
+ *
+ * `bioClaims`, `bioPromptHash`, `bioPromptVersion`, `bioLlmModel` and
+ * `bioLlmDigest` are written only by the generation path, and the upsert
+ * passes `undefined` — which Prisma reads as "leave alone" — so a scraped bio
+ * inherited whatever the last generated one claimed: a verbatim government
+ * page attributed to nemotron, with per-sentence claims for sentences no
+ * longer present. #1281 made attribution structural so an output could not be
+ * unattributable; this keeps it from becoming misattributable.
+ */
+describe('representatives sync — AI attribution on a scraped bio (#1391)', () => {
+  /** `String?` columns, where a literal null is the correct clear. */
+  const STRING_FIELDS = [
+    'bioPromptHash',
+    'bioPromptVersion',
+    'bioLlmModel',
+    'bioLlmDigest',
+  ] as const;
+
+  /**
+   * `bio_claims` is JSONB, and Prisma rejects a literal `null` there — it
+   * needs `Prisma.DbNull`. Asserted separately and explicitly, because the
+   * first version of this fix used `null` and would have thrown
+   * PrismaClientValidationError on every scraped-bio upsert. The mocked
+   * `upsert` below cannot catch that, which is why the integration test
+   * beside this file exists.
+   */
+  const JSON_FIELD = 'bioClaims';
+
+  const run = async (rep: Record<string, unknown>) => {
+    const upsert = jest.fn().mockResolvedValue({});
+    const db = {
+      representative: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(1),
+        upsert,
+      },
+    };
+    const service = new RepresentativesSyncService(
+      db as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    await service.sync(
+      {
+        fetchRepresentatives: jest.fn().mockResolvedValue([rep]),
+        getName: jest.fn().mockReturnValue('california'),
+      } as never,
+      undefined,
+      'california',
+      { regionName: 'California', regionId: 'california' } as never,
+      (async (
+        reps: unknown[],
+        _find: unknown,
+        map: (items: unknown[]) => unknown[],
+      ) => {
+        await Promise.all(map(reps) as Promise<unknown>[]);
+        return { processed: reps.length, created: 0, updated: reps.length };
+      }) as never,
+      () => '1',
+    );
+
+    return (upsert.mock.calls[0][0] as { update: Record<string, unknown> })
+      .update;
+  };
+
+  const base = {
+    externalId: 'ca-senate-8',
+    name: 'Angelique V. Ashby',
+    chamber: 'Senate',
+    district: '8',
+    party: 'Democratic',
+  };
+
+  it('nulls every AI attribution field when the bio was scraped', async () => {
+    const update = await run({
+      ...base,
+      // Must clear 100 chars or `isLikelyValidBio` discards it as junk —
+      // which silently made an earlier version of this test pass for the
+      // wrong reason. Real text from sd08.senate.ca.gov.
+      bio:
+        'Senator Ashby was elected in 2022 to represent Sacramento and Elk ' +
+        'Grove. The only woman on the Sacramento City Council for over six ' +
+        'years, the first-ever in history to give birth while in office.',
+      bioSource: 'scraped',
+    });
+
+    expect(update.bioSource).toBe('scraped');
+    // Explicitly cleared, NOT undefined: Prisma reads undefined as "leave
+    // alone", which is the bug.
+    for (const field of STRING_FIELDS) {
+      expect(update[field]).toBeNull();
+    }
+    expect(update[JSON_FIELD]).toBe(Prisma.DbNull);
+  });
+
+  // Clearing unconditionally would wipe attribution off every legitimately
+  // generated bio on the next sync — the opposite failure.
+  it('leaves attribution alone for a generated bio', async () => {
+    const update = await run({
+      ...base,
+      bio:
+        'Angelique V. Ashby represents California State Senate District 8 as ' +
+        'a Democrat. She was first elected to the State Senate in 2020 and ' +
+        'is currently serving her second term.',
+      bioSource: 'ai-generated',
+    });
+
+    for (const field of STRING_FIELDS) {
+      expect(update[field]).not.toBeNull();
+    }
+    expect(update[JSON_FIELD]).not.toBe(Prisma.DbNull);
+  });
+
+  // A sync that scraped nothing must not touch the stored bio or its
+  // attribution — `undefined` = skip is correct here.
+  it('leaves bio and attribution alone when no bio was scraped', async () => {
+    const update = await run({ ...base });
+
+    expect(update.bio).toBeUndefined();
+    for (const field of STRING_FIELDS) {
+      expect(update[field]).not.toBeNull();
+    }
+    expect(update[JSON_FIELD]).not.toBe(Prisma.DbNull);
   });
 });

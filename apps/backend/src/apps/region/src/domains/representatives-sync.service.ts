@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import type { Representative } from '@opuspopuli/common';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
@@ -47,6 +47,54 @@ export interface RepresentativesPluginContext {
  * stays in `region.service.ts` for now — moving it requires a touched
  * surface bigger than this PR; tracked as a follow-up in #828.
  */
+/**
+ * The AI attribution columns, nulled — but only for a bio that came from a
+ * scrape (#1391).
+ *
+ * `bioClaims`, `bioPromptHash`, `bioPromptVersion`, `bioLlmModel` and
+ * `bioLlmDigest` are written exclusively by the generation path
+ * (`BioGeneratorService.persistBio`). Nothing in the scraped path could clear
+ * them, and the upsert passes `undefined` — which Prisma reads as "leave
+ * alone" — so a scraped bio inherited whatever the last generated one claimed:
+ * a verbatim government page attributed to nemotron, with a prompt hash and
+ * per-sentence claims for sentences no longer present.
+ *
+ * Returns an EMPTY object in every other case, so a sync that scraped no bio
+ * leaves the existing bio and its attribution untouched. That distinction is
+ * the whole point: clearing unconditionally would wipe the attribution off
+ * every legitimately generated bio on the next sync.
+ */
+export function clearedAiAttribution(
+  rep: Representative,
+): Partial<Prisma.RepresentativeUpdateInput> {
+  const isScraped = Boolean(rep.bio) && rep.bioSource === 'scraped';
+  if (!isScraped) return {};
+
+  return {
+    // `bio_claims` is JSONB, so Prisma's generated types accept
+    // `NullableJsonNullValueInput | InputJsonValue | undefined` — NOT a
+    // literal `null`. Measured, because the distinction matters: a literal
+    // null here is a compile error (TS2322), while at RUNTIME Prisma accepts
+    // it and clears the column. So the first version of this helper was
+    // type-unsound rather than broken, and relied on undocumented leniency.
+    //
+    // It typechecked only because the return type was `Record<string, null>`
+    // and the value is SPREAD into the update — which erased the field types.
+    // Typing the return as `Partial<Prisma.RepresentativeUpdateInput>` is the
+    // durable fix: the spread is now checked, so a future literal null fails
+    // the build instead of passing silently.
+    //
+    // `Prisma.DbNull` also matches this repo's existing precedent —
+    // `toJsonField` in civics-sync.service.ts exists for exactly this.
+    bioClaims: Prisma.DbNull,
+    // These four are `String?`, where a literal null is correct.
+    bioPromptHash: null,
+    bioPromptVersion: null,
+    bioLlmModel: null,
+    bioLlmDigest: null,
+  };
+}
+
 @Injectable()
 export class RepresentativesSyncService {
   private readonly logger = new Logger(RepresentativesSyncService.name, {
@@ -162,6 +210,18 @@ export class RepresentativesSyncService {
               bio: rep.bio ?? undefined,
               bioSource: rep.bioSource ?? undefined,
               bioClaims: (rep.bioClaims as object[] | null) ?? undefined,
+              // A scraped bio carries NO AI attribution (#1391). Explicit nulls,
+              // because Prisma reads `undefined` as "leave alone" — which is why
+              // the previous attribution survived, leaving a row that claimed
+              // nemotron produced text copied verbatim from a government page.
+              // #1281 made attribution structural so an output could not be
+              // unattributable; this stops it becoming MISattributable, which is
+              // worse.
+              //
+              // Spread, and only when the scrape actually produced a bio: a sync
+              // that found none must leave the existing bio and its attribution
+              // entirely alone.
+              ...clearedAiAttribution(rep),
             },
             create: {
               externalId: rep.externalId,
