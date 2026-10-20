@@ -681,3 +681,219 @@ describe("detail field failure diagnostics (#966 W1)", () => {
     ).toHaveLength(1);
   });
 });
+
+// ─── secondaryDetail (#1383) ──────────────────────────────────────────────────
+
+describe("DetailCrawlerService secondaryDetail", () => {
+  const PRIMARY = "https://www.assembly.ca.gov/assemblymembers/04";
+  const CAUCUS = "https://a04.asmdc.org/";
+  const BIO_PAGE = "https://a04.asmdc.org/biography";
+
+  const primaryHtml =
+    '<html><body><a class="website" href="https://a04.asmdc.org/">Site</a>' +
+    '<div class="committees">Agriculture</div></body></html>';
+  const bioHtml =
+    "<html><body><div class='entry-content'>" +
+    "Elected in 2016, she served as the first female mayor of Winters." +
+    "</div></body></html>";
+
+  /** Routes by URL so a test can tell the primary page from the secondary. */
+  const routingExtraction = (
+    routes: Record<string, string | Error>,
+  ): jest.Mocked<ExtractionProvider> =>
+    ({
+      fetchWithRetry: jest.fn(async (url: string) => {
+        const hit = routes[url];
+        if (hit === undefined) throw new Error(`unrouted url: ${url}`);
+        if (hit instanceof Error) throw hit;
+        return { content: hit, fromCache: false };
+      }),
+    }) as unknown as jest.Mocked<ExtractionProvider>;
+
+  const repSource = (
+    secondary?: DataSourceConfig["secondaryDetail"],
+  ): DataSourceConfig =>
+    createSource({
+      url: "https://www.assembly.ca.gov/assemblymembers",
+      dataType: DataType.REPRESENTATIVES,
+      detailFields: { "contactInfo.website": "a.website|attr:href" },
+      secondaryDetail: secondary,
+    });
+
+  const bioConfig = {
+    urlFrom: "contactInfo.website",
+    urlSuffix: "biography",
+    fields: { bio: ".entry-content" },
+  };
+
+  it("fetches the secondary page and fills the field the primary lacked", async () => {
+    const extraction = routingExtraction({
+      [PRIMARY]: primaryHtml,
+      [BIO_PAGE]: bioHtml,
+    });
+    const crawler = new DetailCrawlerService(extraction as any);
+    const rawResult = createRawResult([
+      { externalId: "ca-assembly-4", detailUrl: PRIMARY },
+    ]);
+
+    const result = await crawler.enrichItems(
+      rawResult,
+      repSource(bioConfig),
+      createMockLlm(),
+    );
+
+    expect(result.items[0].bio).toContain("first female mayor of Winters");
+    expect(extraction.fetchWithRetry).toHaveBeenCalledWith(
+      BIO_PAGE,
+      expect.anything(),
+    );
+  });
+
+  // D2. The primary page is the authoritative roster record. A looser
+  // secondary selector must not be able to clobber it — remove the
+  // absent-only merge and this fails.
+  it("never overwrites a field the primary already produced", async () => {
+    const extraction = routingExtraction({
+      [PRIMARY]: primaryHtml,
+      [BIO_PAGE]:
+        "<html><body><div class='entry-content'>SECONDARY VALUE</div></body></html>",
+    });
+    const crawler = new DetailCrawlerService(extraction as any);
+    const rawResult = createRawResult([
+      { externalId: "ca-assembly-4", detailUrl: PRIMARY, bio: "PRIMARY VALUE" },
+    ]);
+
+    const result = await crawler.enrichItems(
+      rawResult,
+      repSource(bioConfig),
+      createMockLlm(),
+    );
+
+    expect(result.items[0].bio).toBe("PRIMARY VALUE");
+  });
+
+  // D3. A bio we could not fetch must not cost us the committees we did.
+  it("isolates a secondary failure and keeps primary enrichment", async () => {
+    const extraction = routingExtraction({
+      [PRIMARY]: primaryHtml,
+      [BIO_PAGE]: new Error("403 Forbidden"),
+    });
+    const crawler = new DetailCrawlerService(extraction as any);
+    const rawResult = createRawResult([
+      { externalId: "ca-assembly-4", detailUrl: PRIMARY },
+    ]);
+
+    const result = await crawler.enrichItems(
+      rawResult,
+      repSource(bioConfig),
+      createMockLlm(),
+    );
+
+    expect(result.items[0].bio).toBeUndefined();
+    expect(
+      (result.items[0].contactInfo as Record<string, unknown>).website,
+    ).toBe(CAUCUS);
+    expect(result.warnings.some((w) => w.includes("403 Forbidden"))).toBe(true);
+  });
+
+  // Both forms occur live: one rep's stored website has no trailing slash.
+  it("joins the suffix with exactly one slash either way", async () => {
+    for (const base of ["https://a04.asmdc.org/", "https://a04.asmdc.org"]) {
+      const html = `<html><body><a class="website" href="${base}">S</a></body></html>`;
+      const extraction = routingExtraction({
+        [PRIMARY]: html,
+        [BIO_PAGE]: bioHtml,
+      });
+      const crawler = new DetailCrawlerService(extraction as any);
+
+      const result = await crawler.enrichItems(
+        createRawResult([{ externalId: "r", detailUrl: PRIMARY }]),
+        repSource(bioConfig),
+        createMockLlm(),
+      );
+
+      expect(result.items[0].bio).toContain("first female mayor");
+    }
+  });
+
+  // A rep with no website is not an error. Warning on it would fire for every
+  // such row and train the operator to ignore the channel.
+  it("skips silently when the urlFrom field is absent", async () => {
+    const extraction = routingExtraction({
+      [PRIMARY]: "<html><body><div>no website link</div></body></html>",
+    });
+    const crawler = new DetailCrawlerService(extraction as any);
+
+    const result = await crawler.enrichItems(
+      createRawResult([{ externalId: "r", detailUrl: PRIMARY }]),
+      repSource(bioConfig),
+      createMockLlm(),
+    );
+
+    // The primary page's own text-dump fallback may set `bio` (for
+    // representatives the default text field IS bio) — that is existing
+    // behaviour and not what this test is about. What matters is that NO
+    // secondary fetch happened and nothing warned.
+    expect(extraction.fetchWithRetry).toHaveBeenCalledTimes(1);
+    expect(result.warnings).toEqual([]);
+  });
+
+  // The strict counterpart: a secondary page that loads but whose selectors
+  // miss must produce nothing and SAY so, rather than dumping nav and footer
+  // into the biography the way the primary path's fallback would.
+  it("warns and stores nothing when secondary selectors match nothing", async () => {
+    const extraction = routingExtraction({
+      [PRIMARY]: primaryHtml,
+      [BIO_PAGE]: "<html><body><nav>Home About Contact</nav></body></html>",
+    });
+    const crawler = new DetailCrawlerService(extraction as any);
+
+    const result = await crawler.enrichItems(
+      createRawResult([{ externalId: "r", detailUrl: PRIMARY }]),
+      repSource(bioConfig),
+      createMockLlm(),
+    );
+
+    expect(result.items[0].bio).toBeUndefined();
+    expect(result.warnings.some((w) => w.includes("matched nothing"))).toBe(
+      true,
+    );
+  });
+
+  // Found empirically, not by reasoning: on a04.asmdc.org/biography the looser
+  // `.field--name-body` selector matches three elements and the FIRST is
+  // empty. A keys-only check sees `{ bio: "" }`, warns about nothing, and
+  // leaves the field silently unset — the worst of both.
+  it("treats an empty extraction as a miss, not a hit", async () => {
+    const extraction = routingExtraction({
+      [PRIMARY]: primaryHtml,
+      [BIO_PAGE]:
+        "<html><body><div class='entry-content'>   </div></body></html>",
+    });
+    const crawler = new DetailCrawlerService(extraction as any);
+
+    const result = await crawler.enrichItems(
+      createRawResult([{ externalId: "r", detailUrl: PRIMARY }]),
+      repSource(bioConfig),
+      createMockLlm(),
+    );
+
+    expect(result.items[0].bio).toBeUndefined();
+    expect(result.warnings.some((w) => w.includes("matched nothing"))).toBe(
+      true,
+    );
+  });
+
+  it("fetches nothing extra when no secondaryDetail is configured", async () => {
+    const extraction = routingExtraction({ [PRIMARY]: primaryHtml });
+    const crawler = new DetailCrawlerService(extraction as any);
+
+    await crawler.enrichItems(
+      createRawResult([{ externalId: "r", detailUrl: PRIMARY }]),
+      repSource(undefined),
+      createMockLlm(),
+    );
+
+    expect(extraction.fetchWithRetry).toHaveBeenCalledTimes(1);
+  });
+});

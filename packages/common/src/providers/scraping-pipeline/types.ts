@@ -350,6 +350,17 @@ export interface DataSourceConfig {
   detailFields?: Record<string, string | StructuredFieldConfig>;
 
   /**
+   * A second per-item page to fetch, for content the primary detail page does
+   * not carry (#1383).
+   *
+   * Representative biographies are the motivating case: the Assembly roster
+   * detail page holds committees, offices and counties, while the biography
+   * lives on the member's own caucus site. Repointing `detailUrl` at the
+   * biography would lose the roster fields, so this is additive.
+   */
+  secondaryDetail?: SecondaryDetailConfig;
+
+  /**
    * Explicit extraction rules that bypass AI structural analysis entirely.
    * When provided, the pipeline uses these selectors directly — no LLM call,
    * no manifest generation, no self-heal loop.
@@ -567,6 +578,38 @@ export interface PdfArchiveConfig {
  * Configuration for extracting an array of structured objects from repeating HTML sections.
  * Used in detailFields for things like multiple office locations.
  */
+/**
+ * A second detail fetch per item, keyed off a field the PRIMARY detail
+ * extraction already produced (#1383).
+ *
+ * Deliberately not a crawl: no link discovery, no depth, one page per item at
+ * a URL already present in the data. `crawlDepth` exists for link-graph
+ * walking and is scoped to civics; this is a single deterministic hop.
+ */
+export interface SecondaryDetailConfig {
+  /**
+   * Item field holding the base URL, e.g. `"contactInfo.website"`. Dot
+   * notation, resolved against the item AFTER primary enrichment. An item
+   * missing this field is skipped without warning — absence is normal
+   * (a rep with no website is not an error).
+   */
+  urlFrom: string;
+  /**
+   * Path segment appended to that URL, e.g. `"biography"`. Joined with
+   * exactly one `/` regardless of whether the base URL ends in one.
+   */
+  urlSuffix?: string;
+  /**
+   * Selectors applied to the secondary page, same shape as `detailFields`.
+   *
+   * These may only fill fields the primary extraction left empty — a
+   * secondary page can never overwrite primary data, because the primary is
+   * the authoritative roster record and a looser secondary selector
+   * clobbering it would read as "the data changed" rather than "we broke it".
+   */
+  fields: Record<string, string | StructuredFieldConfig>;
+}
+
 export interface StructuredFieldConfig {
   /** CSS selector matching each repeating item (e.g., ".office-card") */
   selector: string;
