@@ -13,6 +13,7 @@ import { Logger } from "@nestjs/common";
 import { BaseRegionPlugin } from "../base/base-plugin.js";
 import type {
   ArchiveIngestOptions,
+  PipelineExecuteOptions,
   DataType,
   RegionInfo,
   Proposition,
@@ -39,7 +40,7 @@ export interface IPipelineService {
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
     pipelineJobId?: string,
-    options?: ArchiveIngestOptions,
+    options?: PipelineExecuteOptions,
   ): Promise<ExtractionResult<T>>;
   invalidateManifest(regionId: string, sourceUrl: string): Promise<number>;
 }
@@ -121,7 +122,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     );
   }
 
-  async fetchRepresentatives(): Promise<Representative[]> {
+  async fetchRepresentatives(limit?: number): Promise<Representative[]> {
     // Multi-source dataType: scraped HTML rosters often don't carry the
     // chamber identifier explicitly (Assembly/Senate). The chamber lives
     // on the data source's `category` field — stamp it onto each rep at
@@ -152,9 +153,15 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     let failedSources = 0;
     for (const source of sources) {
       try {
+        // PER SOURCE, deliberately (#1387). Assembly and Senate are separate
+        // sources, so a sync-wide cap would leave one chamber unexercised on a
+        // smoke test; `limit` of 5 means up to 5 per chamber.
         const { items } = await this.fetchSource<Representative>(
           source,
           "representatives",
+          undefined,
+          undefined,
+          limit ? { maxItems: limit } : undefined,
         );
         if (source.category) {
           for (const rep of items) {
@@ -321,7 +328,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     dataType: string,
     onBatch?: (items: T[]) => Promise<void>,
     pipelineJobId?: string,
-    options?: ArchiveIngestOptions,
+    options?: PipelineExecuteOptions,
   ): Promise<{ items: T[]; batched: number }> {
     try {
       const category = source.category ? " (" + source.category + ")" : "";

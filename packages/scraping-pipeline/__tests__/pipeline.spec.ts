@@ -1283,3 +1283,136 @@ describe("legislative digest fallback (#1261)", () => {
     );
   });
 });
+
+// ─── maxItems: bounding the detail crawl (#1387) ──────────────────────────────
+
+/**
+ * `maxReps: 5` used to cap bio GENERATION only, so a 5-rep smoke test still
+ * performed 120 detail fetches plus 80 secondary `/biography` fetches with
+ * retries against two government sites. The cap now reaches the fetch phase.
+ *
+ * It bounds detail fetches, NOT the roster: rows beyond the cap keep
+ * everything the single list request already gave them and simply lose their
+ * `detailUrl`, so the crawler — which filters on it — never visits them.
+ * Dropping the rows would make a smoke test silently shrink the corpus.
+ */
+describe("ScrapingPipelineService detail-crawl cap (#1387)", () => {
+  const ROSTER = "https://www.assembly.ca.gov/assemblymembers";
+
+  const source = {
+    url: ROSTER,
+    dataType: "representatives",
+    staticManifest: {
+      containerSelector: "ul",
+      itemSelector: "li",
+      fieldMappings: [
+        {
+          fieldName: "externalId",
+          selector: "a",
+          extractionMethod: "text",
+          required: true,
+        },
+      ],
+    },
+  } as never;
+
+  /** Five roster rows, each carrying a detail link — the shape being capped. */
+  const items = () =>
+    Array.from({ length: 5 }, (_, i) => ({
+      externalId: `ca-assembly-${i + 1}`,
+      name: `Member ${i + 1}`,
+      detailUrl: `/assemblymembers/${i + 1}`,
+    }));
+
+  const build = (enrichItems: jest.Mock) => {
+    const extractor = {
+      extract: jest
+        .fn()
+        .mockReturnValue({ items: items(), warnings: [], errors: [] }),
+    };
+    return new ScrapingPipelineService(
+      { generate: jest.fn() } as never,
+      {
+        fetchWithRetry: jest
+          .fn()
+          .mockResolvedValue({ content: "<html><ul></ul></html>" }),
+      } as never,
+      { analyze: jest.fn() } as never,
+      { findActive: jest.fn(), save: jest.fn() } as never,
+      extractor as never,
+      { map: jest.fn().mockImplementation((r: unknown) => r) } as never,
+      { evaluate: jest.fn().mockReturnValue({ shouldHeal: false }) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        enrichItems,
+        enrichSummaries: jest.fn().mockImplementation((r: unknown) => r),
+      } as never,
+      { discover: jest.fn() } as never,
+      null as never,
+    );
+  };
+
+  /** What the crawler would actually go and fetch. */
+  const fetchable = (enrichItems: jest.Mock): number =>
+    (
+      enrichItems.mock.calls[0][0] as { items: { detailUrl?: unknown }[] }
+    ).items.filter((i) => i.detailUrl).length;
+
+  it("caps the items the crawler will fetch", async () => {
+    const enrichItems = jest.fn().mockImplementation((r: unknown) => r);
+    const pipeline = build(enrichItems);
+
+    await pipeline.execute(source, "california", undefined, undefined, {
+      maxItems: 2,
+    });
+
+    expect(fetchable(enrichItems)).toBe(2);
+  });
+
+  // This adds a bound; it must not introduce a default.
+  it("sweeps everything when no cap is given", async () => {
+    const enrichItems = jest.fn().mockImplementation((r: unknown) => r);
+    const pipeline = build(enrichItems);
+
+    await pipeline.execute(source, "california");
+
+    expect(fetchable(enrichItems)).toBe(5);
+  });
+
+  // The roster is the cheap part — one list request already paid for it.
+  // A capped run must not silently shrink the corpus.
+  it("keeps every roster row, only removing their detail links", async () => {
+    const enrichItems = jest.fn().mockImplementation((r: unknown) => r);
+    const pipeline = build(enrichItems);
+
+    await pipeline.execute(source, "california", undefined, undefined, {
+      maxItems: 2,
+    });
+
+    const passed = enrichItems.mock.calls[0][0] as {
+      items: { externalId: string; name: string }[];
+    };
+    expect(passed.items).toHaveLength(5);
+    expect(passed.items.map((i) => i.name)).toEqual([
+      "Member 1",
+      "Member 2",
+      "Member 3",
+      "Member 4",
+      "Member 5",
+    ]);
+  });
+
+  it("treats a cap larger than the roster as no cap", async () => {
+    const enrichItems = jest.fn().mockImplementation((r: unknown) => r);
+    const pipeline = build(enrichItems);
+
+    await pipeline.execute(source, "california", undefined, undefined, {
+      maxItems: 50,
+    });
+
+    expect(fetchable(enrichItems)).toBe(5);
+  });
+});
