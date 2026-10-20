@@ -806,7 +806,13 @@ export interface IRegionProvider {
   /**
    * Fetch representatives from the region's data sources
    */
-  fetchRepresentatives(): Promise<Representative[]>;
+  /**
+   * @param limit - Optional cap on representatives fetched PER data source
+   *   (#1387). Assembly and Senate are separate sources, so 5 means "up to 5
+   *   per chamber" — both shapes get exercised on a smoke test. Unset sweeps
+   *   the roster. Implementations may ignore it.
+   */
+  fetchRepresentatives(limit?: number): Promise<Representative[]>;
 
   /**
    * Fetch campaign finance data from the region's data sources.
