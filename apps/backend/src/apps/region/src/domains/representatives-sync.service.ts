@@ -19,7 +19,7 @@ import type { UpsertByExternalId } from './propositions-sync.service';
  */
 export interface RepresentativesProvider {
   getName?(): string;
-  fetchRepresentatives(): Promise<Representative[]>;
+  fetchRepresentatives(limit?: number): Promise<Representative[]>;
 }
 
 /**
@@ -128,7 +128,11 @@ export class RepresentativesSyncService {
     const discoverTracker = repSyncTracker(this.logger, 'discover', 1, {
       region: resolvedRegionId,
     });
-    const reps = await provider.fetchRepresentatives();
+    // Pass the cap INTO the fetch (#1387). Slicing afterwards would trim
+    // the rows we keep without preventing a single HTTP request, and the
+    // requests are the cost: a 5-rep smoke test used to make 120 detail
+    // plus 80 secondary fetches against two government sites.
+    const reps = await provider.fetchRepresentatives(maxReps);
     discoverTracker.item({
       name: 'representatives provider',
       externalId: null,

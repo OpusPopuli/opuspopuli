@@ -289,7 +289,7 @@ interface BillSkipRecord {
 interface DataFetcher {
   fetchPropositions(pipelineJobId?: string): Promise<Proposition[]>;
   fetchMeetings(pipelineJobId?: string): Promise<Meeting[]>;
-  fetchRepresentatives(): Promise<Representative[]>;
+  fetchRepresentatives(limit?: number): Promise<Representative[]>;
   fetchCampaignFinance?(
     onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
     pipelineJobId?: string,

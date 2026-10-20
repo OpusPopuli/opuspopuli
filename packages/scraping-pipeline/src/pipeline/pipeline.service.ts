@@ -13,6 +13,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type {
   ArchiveIngestOptions,
+  PipelineExecuteOptions,
   DataSourceConfig,
   ExtractionResult,
   ILLMProvider,
@@ -241,7 +242,7 @@ export class ScrapingPipelineService {
     regionId: string,
     onBatch?: (items: T[]) => Promise<void>,
     pipelineJobId?: string,
-    options?: ArchiveIngestOptions,
+    options?: PipelineExecuteOptions,
   ): Promise<ExtractionResult<T>> {
     const sourceType = source.sourceType ?? "html_scrape";
 
@@ -264,7 +265,12 @@ export class ScrapingPipelineService {
       case "html_scrape":
       default:
         return this.trackRun(source, regionId, pipelineJobId, (session) =>
-          this.executeHtmlScrape<T>(source, regionId, session),
+          this.executeHtmlScrape<T>(
+            source,
+            regionId,
+            session,
+            options?.maxItems,
+          ),
         );
     }
   }
@@ -362,6 +368,7 @@ export class ScrapingPipelineService {
     html: string,
     pipelineStart: number,
     session?: ExecutionSession,
+    maxItems?: number,
   ): Promise<ExtractionResult<T>> {
     const sm = source.staticManifest!;
     const syntheticManifest = {
@@ -405,11 +412,16 @@ export class ScrapingPipelineService {
     // No manifestId: this path's manifest is synthetic (`static-<region>-<type>`)
     // and has no structural_manifests row, so linking it would fail the FK and
     // lose the artifact to a warning.
-    const rawResult = await this.enrichWithDetails(extracted, source, {
-      regionId,
-      dataType: source.dataType,
-      ...(session?.executionId && { executionId: session.executionId }),
-    });
+    const rawResult = await this.enrichWithDetails(
+      extracted,
+      source,
+      {
+        regionId,
+        dataType: source.dataType,
+        ...(session?.executionId && { executionId: session.executionId }),
+      },
+      maxItems,
+    );
 
     // Stage 4 runs here too — and for the same reason Stage 3.5 above does.
     //
@@ -459,11 +471,12 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
     session?: ExecutionSession,
+    maxItems?: number,
   ): Promise<ExtractionResult<T>> {
     // Hub-shaped source (#1164): resolve the real extraction targets first,
     // then run this same pipeline once per leaf page.
     if (source.linkDiscovery) {
-      return this.executeLinkDiscovery<T>(source, regionId, session);
+      return this.executeLinkDiscovery<T>(source, regionId, session, maxItems);
     }
 
     const pipelineStart = Date.now();
@@ -485,6 +498,7 @@ export class ScrapingPipelineService {
         html,
         pipelineStart,
         session,
+        maxItems,
       );
     }
 
@@ -550,12 +564,17 @@ export class ScrapingPipelineService {
     }
 
     // Stage 3.5: Enrich items with detail page content (if detailUrl extracted)
-    rawResult = await this.enrichWithDetails(rawResult, source, {
-      regionId,
-      dataType: source.dataType,
-      manifestId: manifest.id,
-      ...(session?.executionId && { executionId: session.executionId }),
-    });
+    rawResult = await this.enrichWithDetails(
+      rawResult,
+      source,
+      {
+        regionId,
+        dataType: source.dataType,
+        manifestId: manifest.id,
+        ...(session?.executionId && { executionId: session.executionId }),
+      },
+      maxItems,
+    );
 
     // Stage 4: Map to domain types
     let result = preserveSourceVersionIds(
@@ -580,12 +599,17 @@ export class ScrapingPipelineService {
       );
       const healed = await this.healManifest(source, regionId, html, manifest);
       healAttempted = true;
-      const healedRaw = await this.enrichWithDetails(healed.rawResult, source, {
-        regionId,
-        dataType: source.dataType,
-        manifestId: manifest.id,
-        ...(session?.executionId && { executionId: session.executionId }),
-      });
+      const healedRaw = await this.enrichWithDetails(
+        healed.rawResult,
+        source,
+        {
+          regionId,
+          dataType: source.dataType,
+          manifestId: manifest.id,
+          ...(session?.executionId && { executionId: session.executionId }),
+        },
+        maxItems,
+      );
       const remapped = preserveSourceVersionIds(
         healedRaw,
         this.mapper.map<T>(healedRaw, source),
@@ -629,6 +653,14 @@ export class ScrapingPipelineService {
     source: DataSourceConfig,
     regionId: string,
     session?: ExecutionSession,
+    /**
+     * Passed to each leaf, so the cap applies PER LEAF here rather than across
+     * the hub — the effective bound for a hub source is leaves x maxItems.
+     * Stated rather than left to be discovered: it still bounds work, which
+     * unbounded leaves did not, and no representatives source uses link
+     * discovery today (#1164 is civics-shaped).
+     */
+    maxItems?: number,
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     this.logger.log(
@@ -672,6 +704,7 @@ export class ScrapingPipelineService {
           leafSource,
           regionId,
           session,
+          maxItems,
         );
       } catch (error) {
         // Soft-fail per leaf, matching the discovery walk and the detail
@@ -727,12 +760,35 @@ export class ScrapingPipelineService {
     rawResult: RawExtractionResult,
     source: DataSourceConfig,
     archive?: ArchiveContext,
+    maxItems?: number,
   ): Promise<RawExtractionResult> {
     for (const item of rawResult.items) {
       if (!item.detailUrl) {
         item.detailUrl =
           item["contactInfo.website"] ??
           (item.contactInfo as Record<string, unknown> | undefined)?.website;
+      }
+    }
+
+    // The cap bounds DETAIL FETCHES, not the roster (#1387). Rows beyond the
+    // cap keep everything the single list request already gave us — name,
+    // district, party — and simply lose their detailUrl, so the crawler (which
+    // filters on it) never visits them. Dropping the rows instead would make a
+    // smoke test silently shrink the corpus, which is a worse trade than a
+    // smoke test that only enriches a few.
+    //
+    // Applied per source: `execute` is called once per data source, so a cap
+    // of 5 on a region with an Assembly and a Senate source exercises both.
+    if (maxItems !== undefined && maxItems > 0) {
+      const withDetail = rawResult.items.filter((i) => i.detailUrl);
+      if (withDetail.length > maxItems) {
+        for (const item of withDetail.slice(maxItems)) {
+          item.detailUrl = undefined;
+        }
+        this.logger.log(
+          `Detail crawl capped at ${maxItems} of ${withDetail.length} ` +
+            `item(s) for ${source.url} — roster rows are unaffected`,
+        );
       }
     }
     let result = rawResult;
