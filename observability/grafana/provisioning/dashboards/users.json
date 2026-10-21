@@ -1,6 +1,6 @@
 {
-  "uid": "opuspopuli-users",
-  "title": "OPUSPOPULI Users",
+  "uid": "op-users",
+  "title": "Users",
   "description": "Signup, activation and retention, read straight from Postgres.\n\nPrometheus carries no auth or user metrics \u2014 MetricsService has no signup or login counters \u2014 so these panels query the database rather than the metrics store. That also means full history from the first account rather than from whenever a counter shipped.\n\nPRIVACY: aggregates only. No panel selects email, name, IP address or street address, and geography stops at state. The datasource is expected to be a READ-ONLY role \u2014 see docs/guides/user-dashboard.md.",
   "tags": ["opuspopuli", "users", "growth"],
   "timezone": "browser",

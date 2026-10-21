@@ -1,7 +1,7 @@
 # User dashboard (Grafana)
 
 Signup, activation and retention for the platform, at
-**http://localhost:3101** → *OPUSPOPULI* folder → **OPUSPOPULI Users**.
+**http://localhost:3101** → *OPUSPOPULI* folder → **Users**.
 
 ## Why it reads Postgres and not Prometheus
 

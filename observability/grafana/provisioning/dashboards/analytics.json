@@ -298,7 +298,7 @@
   "time": { "from": "now-24h", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "OPUSPOPULI Analytics",
-  "uid": "opuspopuli-analytics",
+  "title": "Analytics",
+  "uid": "op-analytics",
   "version": 1
 }
