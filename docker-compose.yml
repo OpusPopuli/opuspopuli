@@ -527,6 +527,14 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=15d'
       - '--web.enable-lifecycle'
+      # Exemplars attach a trace id to a histogram bucket, which is what
+      # makes a slow stage clickable through to its Tempo trace — row 2 of
+      # the Ingestion Pipeline dashboard
+      # (`docs/plans/ingestion-resource-lanes.md` §3). Both halves are
+      # needed: this flag AND prom-client exemplars at the call site.
+      # Without the flag Prometheus accepts the scrape and discards the
+      # exemplars, so the panel loses its links with no error anywhere.
+      - '--enable-feature=exemplar-storage'
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/prometheus-alerts.yml:/etc/prometheus/alerts/prometheus-alerts.yml:ro
