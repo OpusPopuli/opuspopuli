@@ -425,8 +425,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "OPUSPOPULI Services",
-  "uid": "opuspopuli-services",
+  "title": "Services",
+  "uid": "op-services",
   "version": 1,
   "weekStart": ""
 }

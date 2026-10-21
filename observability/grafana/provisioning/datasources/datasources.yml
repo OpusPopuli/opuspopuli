@@ -1,6 +1,19 @@
 # Grafana Datasource Provisioning
 # Auto-configures Prometheus, Loki, and Tempo as datasources
 #
+# EVERY datasource declares an explicit `uid`, and must keep doing so.
+# Dashboards reference a datasource by uid, not by name: provisioned without
+# one, Grafana generates a random uid (dev held `PBFA97CFB590B2093` for
+# Prometheus and `P8E80F9AEF21F6940` for Loki), and every panel pointing at
+# `uid: prometheus` renders "Datasource not found" instead. That had silently
+# broken three of the four dev dashboards — Analytics, Services and Source
+# Store, 35 panel references between them — plus Tempo's `tracesToLogs` and
+# `lokiSearch`, which name `loki` below. Only the Users dashboard worked,
+# because Postgres was the one datasource that declared its uid.
+#
+# The uids match opuspopuli-node's own provisioning, so a dashboard committed
+# in either repo resolves in both.
+#
 # @see https://github.com/OpusPopuli/opuspopuli/issues/213
 # @see https://github.com/OpusPopuli/opuspopuli/issues/466
 
@@ -9,6 +22,7 @@ apiVersion: 1
 datasources:
   # Prometheus - Metrics
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -20,6 +34,7 @@ datasources:
 
   # Loki - Logs (with trace correlation)
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100

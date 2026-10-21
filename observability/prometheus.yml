@@ -31,11 +31,19 @@ alerting:
 # field it does not know — unlike docker-compose, it has no extension-field
 # convention.
 #
-# Every `nodejs_*` and `process_*` metric is queried by ZERO dashboards and ZERO
-# alert rules today, so the whole default set could be dropped. It is not,
-# deliberately: resident memory, CPU, fds and heap-used are what you reach for
-# while diagnosing an incident, and they are a handful of cheap series each.
-# What goes is the high-cardinality, low-value end.
+# What goes is the high-cardinality, low-value end: resident memory, CPU, fds
+# and heap-used are what you reach for while diagnosing an incident, and they
+# are a handful of cheap series each.
+#
+# This list used to open by noting that every `nodejs_*` and `process_*` metric
+# was queried by ZERO dashboards and ZERO alert rules. That is no longer true:
+# the Node Health dashboard, synced from opuspopuli-node, queries
+# `nodejs_eventloop_lag_p99_seconds` and `nodejs_gc_duration_seconds_sum`. Two
+# rules below are narrowed to keep exactly those two and nothing else — a
+# dropped series renders as an empty panel, and a dashboard that cannot work in
+# dev is no rehearsal for the one running in prod, which drops nothing.
+#
+# When adding a dashboard or alert, check it against this list.
 scrape_configs:
   # Ports are 3000-3007, matching what the services actually publish.
   #
@@ -65,14 +73,17 @@ scrape_configs:
     metrics_path: /metrics
     metric_relabel_configs: &drop-default-noise
     # GC duration is a histogram multiplied by GC kind (major/minor/incremental/
-    # weakcb) — the largest single contributor in the prom-client defaults.
+    # weakcb) — the largest single contributor in the prom-client defaults. The
+    # BUCKETS are that cost; `_sum` and `_count` are two series per kind and
+    # are what Node Health's GC panel rates, so only the buckets go.
     - source_labels: [__name__]
-      regex: 'nodejs_gc_duration_seconds.*'
+      regex: 'nodejs_gc_duration_seconds_bucket'
       action: drop
-    # Seven pre-computed percentile gauges for event-loop lag. `nodejs_eventloop_
-    # lag_seconds` is kept, which is the one worth alerting on.
+    # Pre-computed percentile gauges for event-loop lag. `nodejs_eventloop_
+    # lag_seconds` is kept, which is the one worth alerting on, and `p99` is
+    # kept because Node Health plots it. The other five go.
     - source_labels: [__name__]
-      regex: 'nodejs_eventloop_lag_(p50|p90|p99|min|max|mean|stddev)_seconds'
+      regex: 'nodejs_eventloop_lag_(p50|p90|min|max|mean|stddev)_seconds'
       action: drop
     # Per-heap-space breakdown: ~6 V8 spaces x 3 metrics. `nodejs_heap_size_used_
     # bytes` and `_total_bytes` are kept and answer the same question.
