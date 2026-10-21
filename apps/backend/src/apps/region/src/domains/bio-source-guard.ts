@@ -23,6 +23,18 @@ export interface DroppedSentence {
 }
 
 /**
+ * A word-bounded, case-insensitive, global alternation over `options`.
+ *
+ * Built rather than written as one literal: these grew past the complexity a
+ * single regex should carry (SonarJS caps it at 20; the leadership class
+ * reached 43), and one alternative per line is both reviewable and diffable
+ * where a forty-way literal alternation is neither.
+ */
+function alternatives(options: string[]): RegExp {
+  return new RegExp(`\\b(?:${options.join('|')})\\b`, 'gi');
+}
+
+/**
  * Fact classes that are both (a) mechanically detectable in prose and (b)
  * unsupported unless the source data states them.
  *
@@ -50,8 +62,12 @@ const UNSUPPORTED_ASSERTIONS: readonly { label: string; pattern: RegExp }[] = [
   },
   {
     label: 'leadership post',
-    pattern:
-      /\b(?:(?:Senate|Assembly)\s+)?(?:Republican|Democratic|Majority|Minority)\s+Leader\b|\bPresident\s+pro\s+Tem\w*\b|\bSpeaker\s+(?:pro\s+Tem\w*|of\s+the\s+Assembly)\b|\b(?:Majority|Minority)\s+Whip\b/gi,
+    pattern: alternatives([
+      '(?:(?:Senate|Assembly)\\s+)?(?:Republican|Democratic|Majority|Minority)\\s+Leader',
+      'President\\s+pro\\s+Tem\\w*',
+      'Speaker\\s+(?:pro\\s+Tem\\w*|of\\s+the\\s+Assembly)',
+      '(?:Majority|Minority)\\s+Whip',
+    ]),
   },
   {
     // Measured on the Sonoma supervisors. Their party is absent from the
@@ -62,13 +78,47 @@ const UNSUPPORTED_ASSERTIONS: readonly { label: string; pattern: RegExp }[] = [
     // source DOES carry a party, the matched word is found there and the
     // sentence stands.
     label: 'party affiliation',
-    pattern:
-      /\b(?:Republicans?|Democrats?|Democratic|Independents?|Libertarians?|Greens?|Nonpartisan|Non[-\s]?partisan|No Party Preference|Peace and Freedom|American Independent)\b/gi,
+    pattern: alternatives([
+      'Republicans?',
+      'Democrats?',
+      'Democratic',
+      'Independents?',
+      'Libertarians?',
+      'Greens?',
+      'Non[-\\s]?partisan',
+      'No Party Preference',
+      'Peace and Freedom',
+      'American Independent',
+    ]),
   },
   {
     label: 'precedence claim',
-    pattern:
-      /\bfirst\s+(?:woman|women|man|men|female|male|Latina|Latino|Hispanic|Black|African[-\s]American|Asian|Native|Indigenous|Jewish|Muslim|openly\s+\w+|person|Democrat|Republican)\b/gi,
+    pattern: alternatives([
+      'first\\s+(?:' +
+        [
+          'woman',
+          'women',
+          'man',
+          'men',
+          'female',
+          'male',
+          'Latina',
+          'Latino',
+          'Hispanic',
+          'Black',
+          'African[-\\s]American',
+          'Asian',
+          'Native',
+          'Indigenous',
+          'Jewish',
+          'Muslim',
+          'openly\\s+\\w+',
+          'person',
+          'Democrat',
+          'Republican',
+        ].join('|') +
+        ')',
+    ]),
   },
 ];
 

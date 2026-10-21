@@ -44,6 +44,19 @@ async function enrichWith(
   return built.service.enrichBios(reps, regionName, regionId);
 }
 
+/**
+ * Seed the candidate query directly, independent of any `reps` array.
+ *
+ * Module-scoped because two describes need it, and SonarJS rejects the
+ * identical local copies (`no-identical-functions`).
+ */
+function seedCandidates(
+  db: DeepMocked<DbService>,
+  rows: Partial<Representative>[],
+): void {
+  (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(rows);
+}
+
 describe('BioGeneratorService', () => {
   let service: BioGeneratorService;
   let promptClient: jest.Mocked<PromptClientService>;
@@ -715,19 +728,13 @@ describe('BioGeneratorService', () => {
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
     });
 
-    /** Seed the DB candidate query directly, independent of any array. */
-    const seed = (rows: Partial<Representative>[]) =>
-      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
-        rows,
-      );
-
     it('does NOT regenerate a bio the DB already holds', async () => {
       // THE regression. The scraped rep arrives with no bio on every sync —
       // California's rosters carry one for 15 of 120 — so the old array
       // filter regenerated ~102 bios every run: 16m35s of model time, and 57
       // of them came back with different text. The DB is the authority on
       // what already exists.
-      seed([]);
+      seedCandidates(db, []);
 
       const result = await service.enrichBios(
         [baseRep({ externalId: 'sen-5', bio: undefined })],
@@ -744,7 +751,9 @@ describe('BioGeneratorService', () => {
       // The roster returned 119 of 120 on two consecutive runs; Josh Becker
       // was absent both times and so was never a candidate under the old
       // filter. He is in the DB, which is where candidates now come from.
-      seed([baseRep({ externalId: 'ca-senate-13', name: 'Josh Becker' })]);
+      seedCandidates(db, [
+        baseRep({ externalId: 'ca-senate-13', name: 'Josh Becker' }),
+      ]);
 
       await service.enrichBios([], 'California', 'california');
 
@@ -758,7 +767,7 @@ describe('BioGeneratorService', () => {
       // Unscoped, a California sync would generate for another region's reps
       // and `deriveJurisdiction` would stamp them "California State …" —
       // the wrong-jurisdiction confabulation the prompt guards against.
-      seed([]);
+      seedCandidates(db, []);
 
       await service.enrichBios([], 'California', 'california');
 
@@ -774,7 +783,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('queries every region when none is named', async () => {
-      seed([]);
+      seedCandidates(db, []);
 
       await service.enrichBios([], undefined, undefined);
 
@@ -786,7 +795,7 @@ describe('BioGeneratorService', () => {
     it('orders candidates so a capped run is reproducible', async () => {
       // findMany guarantees no ordering, so an unordered cap would cover a
       // different arbitrary slice on every smoke run.
-      seed([]);
+      seedCandidates(db, []);
 
       await service.enrichBios([], 'California', 'california');
 
@@ -796,7 +805,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('applies the cap to the DB candidates', async () => {
-      seed([
+      seedCandidates(db, [
         baseRep({ externalId: 'r1' }),
         baseRep({ externalId: 'r2' }),
         baseRep({ externalId: 'r3' }),
@@ -810,7 +819,7 @@ describe('BioGeneratorService', () => {
     it('copies the generated bio onto the scraped rep it matches', async () => {
       // Downstream phases hold `reps`, so what was generated has to be
       // visible there even though the generator persists it itself.
-      seed([baseRep({ externalId: 'sen-5' })]);
+      seedCandidates(db, [baseRep({ externalId: 'sen-5' })]);
       const reps = [baseRep({ externalId: 'sen-5', bio: undefined })];
 
       await service.enrichBios(reps, 'California', 'california');
@@ -822,7 +831,7 @@ describe('BioGeneratorService', () => {
     it('still generates when the candidate is absent from the array', async () => {
       // Nothing to copy onto, and that must not throw — this is the
       // roster-flake case the change exists to cover.
-      seed([baseRep({ externalId: 'not-in-scrape' })]);
+      seedCandidates(db, [baseRep({ externalId: 'not-in-scrape' })]);
       const reps = [baseRep({ externalId: 'sen-5', bio: 'Scraped bio.' })];
 
       await expect(
@@ -948,11 +957,6 @@ describe('BioGeneratorService', () => {
       db = built.db;
     });
 
-    const seed = (rows: Partial<Representative>[]) =>
-      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
-        rows,
-      );
-
     const generated = (text: string) =>
       llm.generate.mockResolvedValue({ text } as Awaited<
         ReturnType<ILLMProvider['generate']>
@@ -962,7 +966,7 @@ describe('BioGeneratorService', () => {
       // Every other fixture in this file is year-free, so deleting the
       // `enforceSourceYears` call passed all of them. This is the test that
       // fails if the guard stops being called.
-      seed([baseRep({ externalId: 'sen-5' })]);
+      seedCandidates(db, [baseRep({ externalId: 'sen-5' })]);
       generated(
         JSON.stringify({
           bio: 'Smith represents District 5. She was first elected in 2022.',
@@ -990,7 +994,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('stores no bio when every sentence is unsupported', async () => {
-      seed([baseRep({ externalId: 'sen-5' })]);
+      seedCandidates(db, [baseRep({ externalId: 'sen-5' })]);
       generated(
         JSON.stringify({
           bio: 'She was first elected in 2022. She is serving her first term.',
@@ -1008,7 +1012,7 @@ describe('BioGeneratorService', () => {
       // `parseBioFromResponse` validates only that `claims` is an array, so a
       // malformed element reached `normalise(claim.sentence)` and threw —
       // discarding a bio whose other sentence was perfectly good.
-      seed([baseRep({ externalId: 'sen-5' })]);
+      seedCandidates(db, [baseRep({ externalId: 'sen-5' })]);
       generated(
         JSON.stringify({
           bio: 'Smith represents District 5. She was first elected in 2022.',
@@ -1029,7 +1033,9 @@ describe('BioGeneratorService', () => {
     it('keeps a year the source data supports', async () => {
       // The guard must not fire on grounded text. `baseRep` has no year, so
       // the source is widened here the way a scraped bio would widen it.
-      seed([baseRep({ externalId: 'sen-5', party: 'Democrat, elected 2022' })]);
+      seedCandidates(db, [
+        baseRep({ externalId: 'sen-5', party: 'Democrat, elected 2022' }),
+      ]);
       generated(
         JSON.stringify({
           bio: 'Smith represents District 5. She was elected in 2022.',

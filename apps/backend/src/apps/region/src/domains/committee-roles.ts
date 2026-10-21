@@ -44,8 +44,20 @@ const ROLE_ALIASES = new Map<string, string>([
  * a vocabulary entry silently lets that through. Declared apart from the
  * aliases, adding one could quietly blind the guard.
  */
-export const ROLE_CLAIM =
-  /\b(?:vice[-\s]?chairs?|co[-\s]?chairs?|chairs?|chair(?:man|woman|person)|presides|heads|leads)\b/i;
+export const ROLE_CLAIM = new RegExp(
+  '\\b(?:' +
+    [
+      'vice[-\\s]?chairs?',
+      'co[-\\s]?chairs?',
+      'chairs?',
+      'chair(?:man|woman|person)',
+      'presides',
+      'heads',
+      'leads',
+    ].join('|') +
+    ')\\b',
+  'i',
+);
 
 /** Names already carrying the kind of body they are, so needing no noun. */
 const QUALIFIED_BODY =
