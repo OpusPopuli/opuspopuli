@@ -1,14 +1,15 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
-  ILLMProvider,
   ChatMessage,
-  GenerateOptions,
-  GenerateResult,
-  LLMError,
+  CircuitBreakerHealth,
   CircuitBreakerManager,
   createCircuitBreaker,
   DEFAULT_CIRCUIT_CONFIGS,
-  CircuitBreakerHealth,
+  GenerateOptions,
+  GenerateResult,
+  ILLMProvider,
+  LLMError,
+  type LlmPhaseDurations,
 } from "@opuspopuli/common";
 
 /**
@@ -92,6 +93,51 @@ function tokenTelemetry(
     finishReason: mapFinishReason(data.done, data.done_reason),
     ...detectPromptTruncation(promptChars, data.prompt_eval_count),
   };
+}
+
+/** Ollama reports every duration in nanoseconds. */
+const NS_PER_SECOND = 1e9;
+
+/**
+ * Read the per-phase durations Ollama returns and convert them to seconds
+ * (M2, `docs/plans/ingestion-resource-lanes.md` §2).
+ *
+ * These were already on the wire and discarded — `eval_duration` was read
+ * only to compute a tok/s figure for a log line, and the other two not at
+ * all. Total latency cannot distinguish a cold model load from a slow
+ * prompt from a long generation, and the plan's Gate 0 turns on exactly
+ * that distinction: summed, these give GPU busy time, and against wall
+ * clock, the GPU idle fraction.
+ *
+ * In the same place as {@link tokenTelemetry}, for the reason that function
+ * records: the generate and chat paths must return identical telemetry, and
+ * two hand-maintained copies is how the input token count went unread in one
+ * of them for months.
+ *
+ * A missing field stays missing rather than becoming 0 — "not reported" and
+ * "zero" are different claims, and a zero `load_duration` is the useful one
+ * (the model was already resident).
+ */
+function phaseTelemetry(data: {
+  load_duration?: number;
+  prompt_eval_duration?: number;
+  eval_duration?: number;
+}): { phases?: LlmPhaseDurations } {
+  const seconds = (ns: number | undefined): number | undefined =>
+    typeof ns === "number" && Number.isFinite(ns) && ns >= 0
+      ? ns / NS_PER_SECOND
+      : undefined;
+
+  const phases: LlmPhaseDurations = {
+    loadSeconds: seconds(data.load_duration),
+    prefillSeconds: seconds(data.prompt_eval_duration),
+    decodeSeconds: seconds(data.eval_duration),
+  };
+
+  // Omit the field entirely when the provider reported nothing, so a
+  // consumer can tell "this build does not report phases" from "every phase
+  // took zero time".
+  return Object.values(phases).every((v) => v === undefined) ? {} : { phases };
 }
 
 /**
@@ -435,7 +481,12 @@ export class OllamaLLMProvider implements ILLMProvider {
           // Ollama reports prompt tokens separately and always has — this
           // was simply never read, so every stored `tokens_in` is NULL.
           prompt_eval_count?: number;
-          eval_duration?: number; // nanoseconds spent generating tokens
+          // All three are nanoseconds, and all three were on the wire
+          // already — `eval_duration` fed a log line and the other two were
+          // dropped. See `phaseTelemetry`.
+          load_duration?: number; // model load; ~0 when already resident
+          prompt_eval_duration?: number; // prefill
+          eval_duration?: number; // decode
           done?: boolean;
           done_reason?: string; // "stop" | "length" — WHY it stopped (#1085)
         };
@@ -457,6 +508,7 @@ export class OllamaLLMProvider implements ILLMProvider {
         const result = {
           text: data.response || "",
           ...tokenTelemetry(data, prompt.length),
+          ...phaseTelemetry(data),
         };
         this.warnIfPromptTruncated(result, prompt.length);
         return result;
@@ -712,6 +764,9 @@ export class OllamaLLMProvider implements ILLMProvider {
           message?: { content?: string };
           eval_count?: number;
           prompt_eval_count?: number;
+          load_duration?: number; // model load; ~0 when already resident
+          prompt_eval_duration?: number; // prefill
+          eval_duration?: number; // decode
           done?: boolean;
           done_reason?: string; // "stop" | "length" — WHY it stopped (#1085)
         };
@@ -722,6 +777,7 @@ export class OllamaLLMProvider implements ILLMProvider {
         const result = {
           text: data.message?.content || "",
           ...tokenTelemetry(data, chatChars),
+          ...phaseTelemetry(data),
         };
         this.warnIfPromptTruncated(result, chatChars);
         return result;
