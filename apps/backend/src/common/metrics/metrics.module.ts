@@ -16,6 +16,7 @@
  */
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { METRICS_OBSERVER } from '@opuspopuli/common';
 import {
   PrometheusModule,
   makeCounterProvider,
@@ -24,6 +25,7 @@ import {
 } from '@willsoto/nestjs-prometheus';
 
 import { MetricsService } from './metrics.service';
+import { PromMetricsObserver } from './prom-metrics-observer';
 import { MetricsInterceptor } from './metrics.interceptor';
 
 /**
@@ -74,6 +76,19 @@ export class MetricsModule {
       {
         provide: 'METRICS_OPTIONS',
         useValue: options,
+      },
+      /**
+       * The prom-client side of the metrics seam (M2).
+       *
+       * Packages measure through `MetricsObserver` and never touch
+       * prom-client; this binds the one implementation. Auto-exported by the
+       * filter below, and `global: true` makes it resolvable from any module
+       * — which is what lets `LLMModule`'s lane factories pick it up with
+       * `{ optional: true }` without importing anything from here.
+       */
+      {
+        provide: METRICS_OBSERVER,
+        useClass: PromMetricsObserver,
       },
       MetricsService,
       // Register the interceptor globally for automatic HTTP metrics
@@ -144,6 +159,37 @@ export class MetricsModule {
        * measured freshness (#1217); a capacity decision should be read off a
        * graph rather than estimated.
        */
+      /**
+       * LLM phase timings and token counts (M2,
+       * `docs/plans/ingestion-resource-lanes.md` §2).
+       *
+       * Ollama reports `load_duration`, `prompt_eval_duration` and
+       * `eval_duration` on every response and the provider discarded two of
+       * the three. Summed over a run and divided by wall clock, these give
+       * the GPU idle fraction — Gate 0's exit metric — without a host GPU
+       * exporter, root, or a third-party agent to licence-check.
+       *
+       * Buckets span 10ms to ~17min: a resident-model decode is tens of
+       * milliseconds, while civics-glossary extraction is documented as
+       * needing "20+ min where bio gen needs 2". Default buckets top out at
+       * 10s and would put every extraction call in `+Inf`.
+       *
+       * Labels are `lane`, `model`, `phase` per §3. Low cardinality by
+       * construction — two lanes, a handful of models, three phases (#1344).
+       */
+      makeHistogramProvider({
+        name: 'llm_request_duration_seconds',
+        help: 'Inference time by phase: model load, prefill, decode',
+        labelNames: ['lane', 'model', 'phase'],
+        buckets: [
+          0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200,
+        ],
+      }),
+      makeCounterProvider({
+        name: 'llm_tokens_total',
+        help: 'Tokens processed by the LLM, by lane, model and direction',
+        labelNames: ['lane', 'model', 'direction'],
+      }),
       makeGaugeProvider({
         name: 'source_store_bytes',
         help: 'Bytes held by the source store, by tier and storage location',
