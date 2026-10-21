@@ -54,6 +54,18 @@ const UNSUPPORTED_ASSERTIONS: readonly { label: string; pattern: RegExp }[] = [
       /\b(?:(?:Senate|Assembly)\s+)?(?:Republican|Democratic|Majority|Minority)\s+Leader\b|\bPresident\s+pro\s+Tem\w*\b|\bSpeaker\s+(?:pro\s+Tem\w*|of\s+the\s+Assembly)\b|\b(?:Majority|Minority)\s+Whip\b/gi,
   },
   {
+    // Measured on the Sonoma supervisors. Their party is absent from the
+    // source — California county offices are non-partisan — and OMITTING the
+    // field did not stop the model supplying one: 4 of 5 bios asserted a
+    // party affiliation for a named county official. Silence invites
+    // invention, so this is enforced rather than instructed. Where the
+    // source DOES carry a party, the matched word is found there and the
+    // sentence stands.
+    label: 'party affiliation',
+    pattern:
+      /\b(?:Republicans?|Democrats?|Democratic|Independents?|Libertarians?|Greens?|Nonpartisan|Non[-\s]?partisan|No Party Preference|Peace and Freedom|American Independent)\b/gi,
+  },
+  {
     label: 'precedence claim',
     pattern:
       /\bfirst\s+(?:woman|women|man|men|female|male|Latina|Latino|Hispanic|Black|African[-\s]American|Asian|Native|Indigenous|Jewish|Muslim|openly\s+\w+|person|Democrat|Republican)\b/gi,

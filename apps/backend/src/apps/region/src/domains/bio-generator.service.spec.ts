@@ -1066,4 +1066,140 @@ describe('BioGeneratorService', () => {
       expect(built.llm.generate).not.toHaveBeenCalled();
     });
   });
+
+  describe('county jurisdiction and sentinel fields (#1381)', () => {
+    beforeEach(async () => {
+      const built = await buildService(true);
+      service = built.service;
+      promptClient = built.promptClient;
+      llm = built.llm;
+      db = built.db;
+      llm.generate.mockResolvedValue({
+        text: '{"bio": "Hopkins represents District 5 on the Sonoma County Board of Supervisors."}',
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+    });
+
+    const seedRegionsAndRep = (
+      rep: Partial<Representative>,
+      plugins: { name: string; displayName: string }[] = [
+        { name: 'california', displayName: 'California' },
+        { name: 'california-sonoma', displayName: 'Sonoma County' },
+      ],
+    ) => {
+      (db.regionPlugin.findMany as unknown as jest.Mock).mockResolvedValue(
+        plugins,
+      );
+      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
+        rep,
+      ]);
+    };
+
+    const promptText = () =>
+      promptClient.getDocumentAnalysisPrompt.mock.calls[0][0].text;
+
+    it('names the COUNTY, not the parent region, as the jurisdiction', async () => {
+      // `getPluginRegionName()` returns "California" for a county sync, so
+      // the county test failed and five Sonoma supervisors were told they
+      // sit on the "California State Board of Supervisors" — a body that
+      // does not exist. The rep's own region id is the authority.
+      seedRegionsAndRep({
+        externalId: 'sonoma-district-5',
+        name: 'Lynda Hopkins',
+        chamber: 'Board of Supervisors',
+        district: '5',
+        regionId: 'california-sonoma',
+      } as Representative);
+
+      await service.enrichBios([], 'California', 'california-sonoma');
+
+      expect(promptText()).toContain(
+        'Jurisdiction: Sonoma County Board of Supervisors',
+      );
+      expect(promptText()).not.toContain('California State');
+    });
+
+    it('still inserts "State" for a state-level chamber', async () => {
+      seedRegionsAndRep({
+        externalId: 'ca-senate-11',
+        name: 'Scott Wiener',
+        chamber: 'Senate',
+        district: '11',
+        party: 'Democrat',
+        regionId: 'california',
+      } as Representative);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(promptText()).toContain('Jurisdiction: California State Senate');
+    });
+
+    it('omits a party the mapper defaulted to "Unknown"', async () => {
+      // `domain-mapper.service.ts` defaults an unscraped party to the string
+      // "Unknown". Measured on the Sonoma supervisors, who are
+      // non-partisan, the bios came back "She is listed as Unknown party."
+      seedRegionsAndRep({
+        externalId: 'sonoma-district-5',
+        name: 'Lynda Hopkins',
+        chamber: 'Board of Supervisors',
+        district: '5',
+        party: 'Unknown',
+        regionId: 'california-sonoma',
+      } as Representative);
+
+      await service.enrichBios([], 'California', 'california-sonoma');
+
+      expect(promptText()).not.toContain('Party:');
+      expect(promptText()).not.toMatch(/unknown/i);
+    });
+
+    it.each(['n/a', 'None', 'null', 'UNKNOWN', '  unknown  '])(
+      'omits the sentinel party %j',
+      async (party) => {
+        seedRegionsAndRep({
+          externalId: 'r1',
+          name: 'Jane Smith',
+          chamber: 'Senate',
+          district: '5',
+          party,
+          regionId: 'california',
+        } as Representative);
+
+        await service.enrichBios([], 'California', 'california');
+
+        expect(promptText()).not.toContain('Party:');
+      },
+    );
+
+    it('keeps a real party', async () => {
+      seedRegionsAndRep({
+        externalId: 'r1',
+        name: 'Jane Smith',
+        chamber: 'Senate',
+        district: '5',
+        party: 'Republican',
+        regionId: 'california',
+      } as Representative);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(promptText()).toContain('Party: Republican');
+    });
+
+    it('falls back to the active region name when the plugin is unknown', async () => {
+      seedRegionsAndRep(
+        {
+          externalId: 'r1',
+          name: 'Jane Smith',
+          chamber: 'Senate',
+          district: '5',
+          regionId: 'not-in-the-table',
+        } as Representative,
+        [],
+      );
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(promptText()).toContain('Jurisdiction: California State Senate');
+    });
+  });
 });

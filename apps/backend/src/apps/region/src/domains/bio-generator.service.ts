@@ -12,6 +12,22 @@ import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
 
 /**
+ * Sentinels the pipeline writes where a value is simply not known.
+ *
+ * `domain-mapper.service.ts` defaults an unscraped party to "Unknown"; a
+ * region id that could not be resolved becomes "unknown". Neither is a fact,
+ * and a prompt told to state only what the source states will state them.
+ */
+const ABSENT_VALUES = new Set(['unknown', 'n/a', 'none', 'null', 'undefined']);
+
+/** Whether a field carries something a bio may actually assert. */
+function isPresent(value: string | null | undefined): boolean {
+  if (value == null) return false;
+  const trimmed = value.trim();
+  return trimmed !== '' && !ABSENT_VALUES.has(trimmed.toLowerCase());
+}
+
+/**
  * Generates AI bios for representatives that lack a scraped biography.
  *
  * Uses structured public record data (name, chamber, district, party,
@@ -111,9 +127,9 @@ export class BioGeneratorService extends LlmGeneratorBase {
     }
     this.activeRegionName = regionName;
 
-    const candidates = await this.findCandidates(
-      this.resolveScope(regionId, reps),
-    );
+    const scope = this.resolveScope(regionId, reps);
+    await this.loadRegionNames();
+    const candidates = await this.findCandidates(scope);
     const cap = this.resolveCap(maxRepsOverride);
     const needsBio = cap ? candidates.slice(0, cap) : candidates;
 
@@ -135,6 +151,23 @@ export class BioGeneratorService extends LlmGeneratorBase {
     }
 
     return reps;
+  }
+
+  /**
+   * Display name per region id, read once per run from `region_plugins`.
+   *
+   * Empty when no database is bound, in which case {@link deriveJurisdiction}
+   * falls back to the active plugin's name as before.
+   */
+  private readonly regionNames = new Map<string, string>();
+
+  private async loadRegionNames(): Promise<void> {
+    if (!this.db) return;
+    const rows = await this.db.regionPlugin.findMany({
+      select: { name: true, displayName: true },
+    });
+    this.regionNames.clear();
+    for (const row of rows) this.regionNames.set(row.name, row.displayName);
   }
 
   /**
@@ -425,10 +458,13 @@ export class BioGeneratorService extends LlmGeneratorBase {
 
     // A field with no value is OMITTED, never rendered as its own absence.
     // Template interpolation turned a null party into the literal line
-    // "Party: null", and California's county offices are non-partisan — all
-    // five Sonoma supervisors have no party. Handing "null" to a prompt whose
-    // whole design is "state only what the source states" invites it either
-    // to copy the word into the bio or to supply a party of its own.
+    // "Party: null", and the domain mapper defaults a missing party to the
+    // string "Unknown" (`domain-mapper.service.ts`, `.default("Unknown")`).
+    // Both are sentinels, and handing either to a prompt whose whole design
+    // is "state only what the source states" gets them reported as fact:
+    // measured on the Sonoma supervisors, who are non-partisan, the bios
+    // came back "She is listed as Unknown party." A reader cannot tell that
+    // from a party called Unknown.
     const fields: [string, string | null | undefined][] = [
       ['Name', rep.name],
       ['Jurisdiction', jurisdiction],
@@ -437,7 +473,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
     ];
 
     return fields
-      .filter(([, value]) => value != null && String(value).trim() !== '')
+      .filter(([, value]) => isPresent(value))
       .map(([label, value]) => `${label}: ${String(value).trim()}`)
       .join('\n');
   }
@@ -448,6 +484,18 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * refuse or correctly identify a representative.
    */
   private deriveJurisdiction(rep: Representative): string {
+    // The rep's OWN region names its jurisdiction, not the sync's active
+    // plugin. `getPluginRegionName()` returns the parent — "California" —
+    // for a county sync, so the county test below failed and five Sonoma
+    // supervisors were told they sit on the "California State Board of
+    // Supervisors", a body that does not exist.
+    const regionName = this.regionNames.get(rep.regionId ?? '');
+    if (regionName) {
+      return /county/i.test(regionName)
+        ? `${regionName} ${rep.chamber}`
+        : `${regionName} State ${rep.chamber}`;
+    }
+
     if (!this.activeRegionName) {
       // Federal or unknown — fall back to bare chamber so the prompt
       // can still decide whether to trust training knowledge.

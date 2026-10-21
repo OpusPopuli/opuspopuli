@@ -202,17 +202,29 @@ describe('dropUnsupportedSentences', () => {
 
   it('drops a precedence claim', () => {
     // Measured on Cervantes: "the first woman to represent the district".
+    //
+    // The source is Cervantes's own, not `FOUR_FIELDS`: that fixture is
+    // Hadwick, a Republican, so a bio saying "Democrat" was unsupported on
+    // the party class too and BOTH sentences went — the test passed for the
+    // wrong reason once party became enforced.
+    const source = [
+      'Name: Sabrina Cervantes',
+      'Jurisdiction: California State Senate',
+      'District: 31',
+      'Party: Democrat',
+    ].join('\n');
     const bio =
       "Sabrina Cervantes represents California's 31st Senate district as a " +
       'Democrat. She is the first woman to represent the district in the ' +
       'State Senate.';
 
-    const result = dropUnsupportedSentences(bio, FOUR_FIELDS);
+    const result = dropUnsupportedSentences(bio, source);
 
     expect(result.bio).toBe(
       "Sabrina Cervantes represents California's 31st Senate district as a " +
         'Democrat.',
     );
+    expect(result.dropped[0].reasons).toEqual(['precedence claim']);
   });
 
   it('keeps a leadership post the source data states', () => {
@@ -277,6 +289,44 @@ describe('dropUnsupportedSentences', () => {
     );
 
     expect(result.dropped[0].reasons).toEqual(['term count']);
+  });
+
+  it('drops a party the source does not carry', () => {
+    // Measured on the Sonoma supervisors: the party field is absent, and
+    // omitting it did not stop the model supplying one — 4 of 5 bios
+    // asserted a party for a named non-partisan county official.
+    const source = [
+      'Name: Lynda Hopkins',
+      'Jurisdiction: Sonoma County Board of Supervisors',
+      'District: 5',
+    ].join('\n');
+    const bio =
+      'Hopkins represents District 5 on the Sonoma County Board of ' +
+      'Supervisors. She is a member of the Republican Party.';
+
+    const result = dropUnsupportedSentences(bio, source);
+
+    expect(result.bio).toBe(
+      'Hopkins represents District 5 on the Sonoma County Board of ' +
+        'Supervisors.',
+    );
+    expect(result.dropped[0].reasons).toEqual(['party affiliation']);
+  });
+
+  it('keeps the party the source states', () => {
+    const bio = 'Hadwick represents District 1 as a Republican.';
+
+    expect(dropUnsupportedSentences(bio, FOUR_FIELDS).bio).toBe(bio);
+  });
+
+  it('drops a DIFFERENT party than the one the source states', () => {
+    const bio =
+      'Hadwick represents District 1 as a Republican. She caucuses with ' +
+      'the Democrats.';
+
+    expect(dropUnsupportedSentences(bio, FOUR_FIELDS).bio).toBe(
+      'Hadwick represents District 1 as a Republican.',
+    );
   });
 
   it('treats only four-digit years as years', () => {
