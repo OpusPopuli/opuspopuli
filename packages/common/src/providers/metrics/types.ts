@@ -41,7 +41,26 @@ export interface MetricsObserver {
    *   anything named `_seconds`
    * @param labels - Label values; must match the metric's declared label set
    */
-  observe(metric: string, value: number, labels?: Record<string, string>): void;
+  observe(
+    metric: string,
+    value: number,
+    labels?: Record<string, string>,
+    /**
+     * Exemplar labels — in practice `{ traceID }`.
+     *
+     * An exemplar pins one observation in a histogram bucket to the trace
+     * that produced it, which is what makes a slow stage clickable through
+     * to Tempo (row 2 of the plan's dashboard). Carried here rather than
+     * added later because prom-client needs a DIFFERENT `observe` overload
+     * for it — `observe({ labels, value, exemplarLabels })` — so retrofitting
+     * would change every implementation's signature.
+     *
+     * Ignored by an implementation that cannot store exemplars, and by
+     * Prometheus itself unless started with
+     * `--enable-feature=exemplar-storage`.
+     */
+    exemplarLabels?: Record<string, string>,
+  ): void;
 
   /**
    * Add to a counter.
@@ -104,3 +123,55 @@ export const LlmTokenDirection = {
   In: "in",
   Out: "out",
 } as const;
+
+/**
+ * Pipeline metrics (M1). Names and labels per
+ * `docs/plans/ingestion-resource-lanes.md` §3.
+ */
+export const PipelineMetric = {
+  /** Histogram, seconds, with exemplars. Labels: `stage`, `data_type`, `lane`, `model`, `host`. */
+  StageDurationSeconds: "pipeline_stage_duration_seconds",
+  /**
+   * Counter. Labels: `data_type`, `outcome`, `reason`, and ONE of `phase`
+   * (from a sync's `SyncPhaseTracker`) or `stage` (from {@link withStage}).
+   *
+   * **Exactly one writer per item.** The two labels describe different axes —
+   * `phase` is where in a sync's workflow the item was, `stage` is which
+   * resource did the work — and an item that passes through four stages would
+   * be counted four times if both layers counted it. Inside a sync the
+   * tracker is the writer, because it already owns per-item outcome
+   * accounting; `withStage`'s `item` is for paths that have no tracker.
+   */
+  ItemsTotal: "pipeline_items_total",
+  /**
+   * Counter. Labels: `data_type`, `phase`.
+   *
+   * A phase that gave up because every item was failing
+   * (`SyncAbortedError`). Distinct from the failed-item count on purpose: 30
+   * failures that abort a run and 30 spread across 5,000 items are different
+   * events, and only the first one means the sync produced nothing.
+   */
+  PhaseAbortedTotal: "pipeline_phase_aborted_total",
+} as const;
+
+/**
+ * The resource a stage consumes, which is the whole point of the label: the
+ * plan's thesis is that network, CPU, GPU and DB work alternate within one
+ * item, so each resource idles while another is busy. Grouping by stage is
+ * what shows that.
+ *
+ * A closed set on purpose. A free-form stage name would let two call sites
+ * spell the same work differently and split its series in half.
+ */
+export const PipelineStage = {
+  Fetch: "fetch",
+  PdfParse: "pdf_parse",
+  Ocr: "ocr",
+  HtmlParse: "html_parse",
+  Embed: "embed",
+  Llm: "llm",
+  DbWrite: "db_write",
+} as const;
+
+export type PipelineStageName =
+  (typeof PipelineStage)[keyof typeof PipelineStage];

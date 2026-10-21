@@ -31,6 +31,26 @@ datasources:
     jsonData:
       timeInterval: "10s"
       httpMethod: POST
+      # Makes a histogram exemplar clickable through to its trace (M1,
+      # `docs/plans/ingestion-resource-lanes.md` §2). `name` is the LABEL
+      # prom-client attaches at the call site — `withStage` emits `trace_id`,
+      # the OpenTelemetry convention — and it must match exactly or Grafana
+      # draws the exemplar dots with nothing behind them.
+      #
+      # This is the third of FOUR independent switches, all required: the
+      # backend must serve OpenMetrics (prom-client renders exemplars in no
+      # other format), Prometheus must run with
+      # `--enable-feature=exemplar-storage`, the destination below must name
+      # the label, and the PANEL's target must carry `"exemplar": true` or
+      # Grafana never calls /api/v1/query_exemplars at all. Miss any one and
+      # the links are absent with no error anywhere.
+      #
+      # Note the node repo (production) has neither the Prometheus flag nor
+      # this block yet, so exemplars are discarded there — see
+      # `docs/plans/ingestion-resource-lanes.md`.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
 
   # Loki - Logs (with trace correlation)
   - name: Loki
@@ -58,7 +78,7 @@ datasources:
       tracesToLogs:
         datasourceUid: loki
         filterByTraceID: true
-        tags: ['service']
+        tags: ["service"]
       nodeGraph:
         enabled: true
       lokiSearch:

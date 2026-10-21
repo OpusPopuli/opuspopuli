@@ -492,7 +492,7 @@ importers:
         version: 8.1.0(maplibre-gl@5.24.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       serwist:
         specifier: ^9.5.3
-        version: 9.5.7(browserslist@4.29.0)(typescript@5.9.3)
+        version: 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
       supercluster:
         specifier: ^8.0.1
         version: 8.0.1
@@ -520,7 +520,7 @@ importers:
         version: 1.58.2
       '@serwist/build':
         specifier: ^9.5.6
-        version: 9.5.7(browserslist@4.29.0)(typescript@5.9.3)
+        version: 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
       '@tailwindcss/postcss':
         specifier: ^4.1.18
         version: 4.2.2
@@ -651,6 +651,9 @@ importers:
 
   packages/common:
     dependencies:
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.1
       '@supabase/supabase-js':
         specifier: ^2.0.0
         version: 2.100.1(bufferutil@4.1.0)
@@ -15701,19 +15704,6 @@ snapshots:
     transitivePeerDependencies:
       - browserslist
 
-  '@serwist/build@9.5.7(browserslist@4.29.0)(typescript@5.9.3)':
-    dependencies:
-      '@serwist/utils': 9.5.7(browserslist@4.29.0)
-      common-tags: 1.8.2
-      glob: 10.5.0
-      pretty-bytes: 6.1.1
-      source-map: 0.8.0-beta.0
-      zod: 4.3.6
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - browserslist
-
   '@serwist/next@9.5.7(next@16.3.8(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(webpack@5.105.4(postcss@8.5.23))':
     dependencies:
       '@serwist/build': 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
@@ -15736,10 +15726,6 @@ snapshots:
   '@serwist/utils@9.5.7(browserslist@4.28.8)':
     optionalDependencies:
       browserslist: 4.28.8
-
-  '@serwist/utils@9.5.7(browserslist@4.29.0)':
-    optionalDependencies:
-      browserslist: 4.29.0
 
   '@serwist/webpack-plugin@9.5.7(browserslist@4.28.8)(typescript@5.9.3)(webpack@5.105.4(postcss@8.5.23))':
     dependencies:
@@ -21980,15 +21966,6 @@ snapshots:
   serwist@9.5.7(browserslist@4.28.8)(typescript@5.9.3):
     dependencies:
       '@serwist/utils': 9.5.7(browserslist@4.28.8)
-      idb: 8.0.3
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - browserslist
-
-  serwist@9.5.7(browserslist@4.29.0)(typescript@5.9.3):
-    dependencies:
-      '@serwist/utils': 9.5.7(browserslist@4.29.0)
       idb: 8.0.3
     optionalDependencies:
       typescript: 5.9.3

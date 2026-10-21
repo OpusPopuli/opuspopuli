@@ -25,3 +25,10 @@ export type { LocatedQuote } from "./quote-locator.js";
 export { supportRatio, MIN_SUPPORT } from "./claim-support.js";
 
 export { escapeRegExp } from "./escape-regexp.js";
+export { boundedReason, withStage, UNBOUNDED_REASON } from "./with-stage.js";
+export type {
+  StageContext,
+  StageItemOutcome,
+  StageOutcome,
+  WithStageDeps,
+} from "./with-stage.js";
