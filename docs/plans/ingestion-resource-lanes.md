@@ -114,7 +114,29 @@ data types report without touching their loops.
 | `host` | Declared in the label set for §7 and set by nothing. `os.hostname()` is the wrong source: in a container it is the container id, so it would mint a new series set on every recreate. §7 must supply a stable node identity first. Row building should skip the label until then |
 | `pipeline_rows_deleted_total` | Row 1 names it; the prune paths are F2's territory, not M1's |
 | `county_thresholds` emits nothing | `CountyThresholdSyncService` uses no `SyncPhaseTracker` at all, so it has no phase list and no per-item accounting to publish. Pre-existing, outside the mechanical threading, and it needs a phase list designed rather than inferred |
-| A panel for any of it | **Nothing queries `pipeline_*` or `llm_*` yet** — `sync-pipeline.json` is a pure Loki dashboard. §3 rows 1, 2, 4 and 8 are the next step |
+| Rows 3, 5, 6, 7, 9, 10 of §3 | Built: rows 1, 2, 4 and 8 (`ingestion-pipeline.json`). The rest need metrics or grants that do not exist — BullMQ queue metrics (row 3), skip counters (5), the lazy path (6), per-host fetch labels (7), and `grafana_ro` SELECT grants for the Postgres-backed attribution and drill-down rows (9, 10). Absent rather than empty, on purpose |
+
+**The dashboard, as built.** `ingestion-pipeline.json` (uid
+`op-ingestion-pipeline`), 19 panels across the four rows that have data:
+Overview, Stage timing, Inference, CPU lane. `sync-pipeline.json` keeps its
+log panels and loses its multiplied log-count "ingest rate" — an estimate, not
+a measurement — so there are no longer two different answers to "how fast is
+the sync"; the two dashboards link to each other.
+
+Every expression was validated against the running Prometheus (16 of 16 parse)
+and the file was loaded by a throwaway Grafana of the same version to confirm
+it provisions, before being believed. Three panels carry `"exemplar": true`,
+and the dots render — the full chain works in dev.
+
+Two panels are named for what they actually measure rather than what the plan
+asked for, because the honest version is narrower: "Data types reporting
+activity" is not "active syncs" (nothing publishes sync liveness, so it infers
+activity from throughput, and a sync stalled before its first item does not
+appear), and "Model loads per hour" counts load-phase observations slower than
+500ms, because Ollama reports a near-zero `load_duration` on every response and
+counting observations would count requests. `circuit_breaker_state` has zero
+series — declared, never set — so row 4 has no breaker panel rather than a
+permanently empty one.
 
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to
