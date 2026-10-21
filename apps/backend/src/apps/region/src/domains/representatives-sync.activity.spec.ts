@@ -1,6 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { Prisma } from '@opuspopuli/relationaldb-provider';
-import { RepresentativesSyncService } from './representatives-sync.service';
+import { recordClaims } from './claim-recorder';
+import {
+  RepresentativesSyncService,
+  trimBioChrome,
+} from './representatives-sync.service';
+
+jest.mock('./claim-recorder', () => ({
+  recordClaims: jest.fn().mockResolvedValue({ written: 0, byState: {} }),
+}));
 
 /**
  * Activity summaries are reachable from a SYNC (#665 follow-up).
@@ -352,5 +360,260 @@ describe('representatives sync — AI attribution on a scraped bio (#1391)', () 
       expect(update[field]).not.toBeNull();
     }
     expect(update[JSON_FIELD]).not.toBe(Prisma.DbNull);
+  });
+});
+
+// ─── trimBioChrome (#1382 follow-up) ─────────────────────────────────────────
+
+/**
+ * A container selector that captures a biography also captures the heading
+ * above it and the call-to-action below. Measured across all 20 texts the
+ * Senate selector returns: 4 are not biographies at all, and 15 of the
+ * remaining 16 carry chrome. Every fixture here is real text from those pages.
+ *
+ * `trimBioChrome` does NO inference. Two heuristics were tried first and both
+ * were wrong — see the function's docblock — so the wording lives in region
+ * config and this only applies it.
+ */
+describe('trimBioChrome', () => {
+  /** The California Senate set, as it appears in the region config. */
+  const PATTERNS = [
+    /^Body\s+/i,
+    /^Senate District \d+\s+/i,
+    /^Meet Senator\s+/i,
+    /^ABOUT YOUR Senator\s+/i,
+    /^Representing California Senate District \d+ State Senator\s+/i,
+    /^Senate President Pro Tempore Emeritus Senator\s+/i,
+    /\s*(?:Read Bio|Read More|Learn More(?:\s+About\s+[\w'’.-]+)?)\s*$/i,
+  ];
+
+  const PROSE =
+    'was elected in 2022 to represent Sacramento and Elk Grove. The only ' +
+    'woman on the Sacramento City Council for over six years, the first-ever ' +
+    'in history to give birth while in office.';
+
+  it('trims a "Meet Senator" heading', () => {
+    const out = trimBioChrome(
+      `Meet Senator Becker Senator Josh Becker ${PROSE}`,
+      PATTERNS,
+    );
+
+    expect(out.startsWith('Becker Senator Josh Becker')).toBe(true);
+    expect(out).not.toContain('Meet Senator');
+  });
+
+  it('trims a "Senate District NN" heading', () => {
+    const out = trimBioChrome(
+      `Senate District 03 Christopher Cabaldon ${PROSE}`,
+      PATTERNS,
+    );
+
+    expect(out.startsWith('Christopher Cabaldon')).toBe(true);
+    expect(out).not.toContain('Senate District 03');
+  });
+
+  it('trims the "Representing California Senate District N" heading', () => {
+    const out = trimBioChrome(
+      `Representing California Senate District 7 State Senator Jesse Arreguín ${PROSE}`,
+      PATTERNS,
+    );
+
+    expect(out.startsWith('Jesse Arreguín')).toBe(true);
+    expect(out).not.toContain('Representing California');
+  });
+
+  /**
+   * sd18 — the page that exposed a real bug. `^Body\s+` replaced its match
+   * with a space, leaving " Meet Senator Steve Padilla…", and every later
+   * `^`-anchored pattern then missed. One page of 16 kept its chrome. The fix
+   * is collapsing and trimming after EACH pattern, not once at the end.
+   */
+  it('applies a later anchored pattern after an earlier one matched', () => {
+    const out = trimBioChrome(
+      `Body Meet Senator Steve Padilla ${PROSE}`,
+      PATTERNS,
+    );
+
+    expect(out).not.toContain('Body');
+    expect(out).not.toContain('Meet Senator');
+    expect(out.startsWith('Steve Padilla')).toBe(true);
+  });
+
+  it('trims a trailing call-to-action', () => {
+    const out = trimBioChrome(`Senator Ashby ${PROSE} Read Bio`, PATTERNS);
+
+    expect(out.endsWith('while in office.')).toBe(true);
+    expect(out).not.toContain('Read Bio');
+  });
+
+  it('trims "Learn More About <name>"', () => {
+    const out = trimBioChrome(
+      `Senator Ashby ${PROSE} Learn More About Jesse`,
+      PATTERNS,
+    );
+
+    // Asserts what SURVIVES, not just that the CTA is gone. A greedy
+    // `/.*Learn More.*$/i` would empty the whole bio and still satisfy
+    // `not.toContain` — every sibling trim test checks the remainder.
+    expect(out).toBe(`Senator Ashby ${PROSE}`);
+  });
+
+  /**
+   * The case deliberately left alone. sd21 reads "Senate President pro
+   * Tempore Monique Limón was elected to…" — the title and name ARE the
+   * opening of the prose, so any trim damages the bio. Note this is NOT
+   * matched by the Emeritus pattern, which is the point.
+   */
+  it('leaves a heading alone when it is the start of the prose', () => {
+    const bio =
+      'Senate President pro Tempore Monique Limón was elected to the ' +
+      'California State Senate in 2020 after serving in the Assembly, and ' +
+      'represents the central coast.';
+
+    expect(trimBioChrome(bio, PATTERNS)).toBe(bio);
+  });
+
+  it('collapses whitespace and is a no-op without chrome', () => {
+    expect(trimBioChrome(`Senator Ashby   ${PROSE}`, PATTERNS)).toBe(
+      `Senator Ashby ${PROSE}`,
+    );
+  });
+
+  it('returns the bio unchanged when no patterns are configured', () => {
+    const bio = `Meet Senator Becker Senator Josh Becker ${PROSE}`;
+
+    expect(trimBioChrome(bio, [])).toBe(bio);
+  });
+});
+
+describe('representatives sync — a scraped bio supersedes the AI claims (#1391)', () => {
+  const SCRAPED = {
+    externalId: 'ca-senate-7',
+    name: 'Jesse Arreguín',
+    chamber: 'Senate',
+    district: '7',
+    party: 'Democrat',
+    // 100+ chars, so `isLikelyValidBio` admits it — a short fixture would
+    // pass this test for the wrong reason.
+    bio:
+      'Senator Arreguín represents District 7, which covers Berkeley, ' +
+      'Oakland, Richmond and the surrounding communities of the East Bay.',
+    bioSource: 'scraped',
+  };
+
+  const run = async (
+    rep: Record<string, unknown>,
+    currentClaims: number,
+    repRows: { id: string; externalId: string }[] = [
+      { id: 'rep-uuid-7', externalId: 'ca-senate-7' },
+    ],
+  ) => {
+    // One grouped query returns the per-rep count of current claims.
+    const groupBy = jest.fn().mockResolvedValue(
+      currentClaims > 0
+        ? repRows.map((row) => ({
+            subjectId: row.id,
+            _count: { _all: currentClaims },
+          }))
+        : [],
+    );
+    const db = {
+      representative: {
+        findMany: jest.fn().mockResolvedValue(repRows),
+        count: jest.fn().mockResolvedValue(1),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      claim: { groupBy },
+    };
+    const service = new RepresentativesSyncService(
+      db as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    await service.sync(
+      {
+        fetchRepresentatives: jest.fn().mockResolvedValue([rep]),
+        getName: jest.fn().mockReturnValue('california'),
+      } as never,
+      undefined,
+      'california',
+      { regionName: 'California', regionId: 'california' } as never,
+      (async (
+        reps: unknown[],
+        _find: unknown,
+        map: (items: unknown[]) => unknown[],
+      ) => {
+        await Promise.all(map(reps) as Promise<unknown>[]);
+        return { processed: reps.length, created: 0, updated: reps.length };
+      }) as never,
+      () => '1',
+    );
+  };
+
+  beforeEach(() => {
+    (recordClaims as jest.Mock).mockClear();
+  });
+
+  it('supersedes the stored claims when the bio arrives scraped', async () => {
+    // The real failure: 22 claims for the two reps scraped on 2026-10-20 were
+    // still current after their AI bios were replaced, asserting an invented
+    // spouse and a school-board seat that does not exist.
+    await run(SCRAPED, 13);
+
+    expect(recordClaims).toHaveBeenCalledTimes(1);
+    const [, input] = (recordClaims as jest.Mock).mock.calls[0];
+    expect(input).toMatchObject({
+      subjectType: 'representative',
+      subjectId: 'rep-uuid-7',
+      // Empty list IS the supersede: the writer closes the current rows and
+      // skips the insert on rows.length === 0.
+      claims: [],
+      // Representative bios cite structured fields, so there is no text to
+      // locate a quote in — what ClaimRecordInput documents null for.
+      sourceText: null,
+      sourceTextHash: null,
+    });
+  });
+
+  it('does not touch claims when the scrape found no bio', async () => {
+    // The precedence rule: a sync that scraped nothing must leave the
+    // existing generated bio AND its claims entirely alone.
+    //
+    // `bioSource` is deliberately LEFT as 'scraped' and only `bio` cleared.
+    // Clearing both changed both halves of `r.bio && r.bioSource ===
+    // 'scraped'`, so dropping the `r.bio &&` test passed anyway.
+    await run({ ...SCRAPED, bio: undefined }, 13);
+
+    expect(recordClaims).not.toHaveBeenCalled();
+  });
+
+  it('does not supersede when the bio was AI-generated', async () => {
+    await run({ ...SCRAPED, bioSource: 'ai-generated' }, 13);
+
+    expect(recordClaims).not.toHaveBeenCalled();
+  });
+
+  it('skips a rep that has no current claims', async () => {
+    // Avoids taking the writer's per-subject advisory lock, and keeps the log
+    // line honest about how many claims actually moved.
+    await run(SCRAPED, 0);
+
+    expect(recordClaims).not.toHaveBeenCalled();
+  });
+
+  it('supersedes each rep found, not just the first', async () => {
+    await run(SCRAPED, 9, [
+      { id: 'rep-uuid-7', externalId: 'ca-senate-7' },
+      { id: 'rep-uuid-8', externalId: 'ca-senate-8' },
+    ]);
+
+    expect(recordClaims).toHaveBeenCalledTimes(2);
+    expect(
+      (recordClaims as jest.Mock).mock.calls.map(([, i]) => i.subjectId),
+    ).toEqual(['rep-uuid-7', 'rep-uuid-8']);
   });
 });

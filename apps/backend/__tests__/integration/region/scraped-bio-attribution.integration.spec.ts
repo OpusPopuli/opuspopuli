@@ -23,6 +23,7 @@
 
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { clearedAiAttribution } from '../../../src/apps/region/src/domains/representatives-sync.service';
+import { recordClaims } from '../../../src/apps/region/src/domains/claim-recorder';
 import { cleanDatabase, disconnectDatabase, getDbService } from '../utils';
 
 const EXTERNAL_ID = 'ca-senate-1391';
@@ -118,5 +119,69 @@ describe('scraped bio clears AI attribution (#1391)', () => {
     });
     expect(row.bioLlmModel).toBe('nemotron-3.5-lightning:30b-a3b');
     expect(row.bioClaims).not.toBeNull();
+  });
+
+  /**
+   * The SHARED `claims` table, against a real database.
+   *
+   * `clearedAiAttribution` clears the row's own columns; the claims that
+   * attest to the removed text are a separate write and were left current —
+   * 22 of them survived on two reps in UAT, asserting an invented spouse and
+   * a school-board seat that does not exist.
+   *
+   * This cannot be done in the unit spec beside it: that one mocks the DB
+   * *and* `jest.mock`s the writer, so it can only observe that `recordClaims`
+   * was called, never that superseding actually happened. The behaviour under
+   * test is bi-temporal SQL — `recordClaims` with an empty claim list must
+   * close the current rows and insert nothing — and the repo's convention is
+   * that a database behaviour is verified against a database.
+   */
+  it('supersedes the AI bio claims rather than deleting them', async () => {
+    const rep = await seedGenerated();
+
+    await db.claim.createMany({
+      data: [
+        {
+          id: 'claim-1391-a',
+          subjectType: 'representative',
+          subjectId: rep.id,
+          subjectField: 'Name',
+          text: 'Ashby represents California State Senate District 8.',
+          confidence: 'high',
+        },
+        {
+          id: 'claim-1391-b',
+          subjectType: 'representative',
+          subjectId: rep.id,
+          subjectField: null,
+          text: 'She earned a Political Science degree.',
+          confidence: 'high',
+        },
+      ],
+    });
+
+    await recordClaims(db, {
+      subjectType: 'representative',
+      subjectId: rep.id,
+      claims: [],
+      sourceText: null,
+      sourceTextHash: null,
+    });
+
+    const current = await db.claim.count({
+      where: {
+        subjectType: 'representative',
+        subjectId: rep.id,
+        validUntil: null,
+      },
+    });
+    const total = await db.claim.count({
+      where: { subjectType: 'representative', subjectId: rep.id },
+    });
+
+    // Nothing current — and nothing deleted. The record of what the v1
+    // corpus asserted is what a later audit needs.
+    expect(current).toBe(0);
+    expect(total).toBe(2);
   });
 });

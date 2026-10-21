@@ -122,12 +122,12 @@ describe('CommitteeSummaryGeneratorService', () => {
             id: 'rep-with',
             name: 'Has Committees',
             chamber: 'Assembly',
-            committees: [{ name: 'Budget', role: 'Chair' }],
+            committees: [{ name: 'Budget', role: 'Member' }],
           },
         ],
       });
       built.llm.generate.mockResolvedValue({
-        text: '{"summary":"Budget chair."}',
+        text: '{"summary":"Budget and fiscal policy."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
       await built.service.generateMissingSummaries();
@@ -138,7 +138,7 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-with' },
         data: {
-          committeesSummary: 'Budget chair.',
+          committeesSummary: 'Budget and fiscal policy.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
@@ -219,7 +219,7 @@ describe('CommitteeSummaryGeneratorService', () => {
         text: '{"summary":"ok"}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      await built.service.generateMissingSummaries(1);
+      await built.service.generateMissingSummaries(undefined, 1);
 
       expect(built.llm.generate).toHaveBeenCalledTimes(1);
     });
@@ -233,7 +233,7 @@ describe('CommitteeSummaryGeneratorService', () => {
         text: '{"summary":"ok"}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      await built.service.generateMissingSummaries(0);
+      await built.service.generateMissingSummaries(undefined, 0);
 
       expect(built.llm.generate).toHaveBeenCalledTimes(2);
     });
@@ -253,7 +253,7 @@ describe('CommitteeSummaryGeneratorService', () => {
   });
 
   describe('prompt formatting', () => {
-    it('formats committees with role prefix and sends to the prompt service', async () => {
+    it('sends the membership committees and withholds every role (#1393)', async () => {
       const built = await buildService({
         dbRows: [
           {
@@ -278,8 +278,55 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(promptArg.documentType).toBe('representative-committees-summary');
       expect(promptArg.text).toContain('Name: Dawn Addis');
       expect(promptArg.text).toContain('Chamber: Assembly');
-      expect(promptArg.text).toContain('Chair: Select Committee on X');
+      // The Member assignment is offered...
       expect(promptArg.text).toContain('- Budget');
+      // ...and the Chair assignment is withheld entirely, role and committee
+      // both. A role the model is never shown is one it cannot misattribute,
+      // which is what makes the old failure unreachable rather than rarer.
+      expect(promptArg.text).not.toContain('Chair');
+      expect(promptArg.text).not.toContain('Select Committee on X');
+    });
+  });
+
+  describe('region scoping (#1394)', () => {
+    it('scopes candidate selection to the region being synced', async () => {
+      // Unscoped, a California sync summarises another region's reps while
+      // the prompt carries this chamber's context. Latent rather than
+      // observed only because the one other enabled region has no committee
+      // data scraped yet.
+      const built = await buildService({ dbRows: [] });
+
+      await built.service.generateMissingSummaries('california');
+
+      expect(built.db.representative.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deletedAt: null,
+            committeesSummary: null,
+            regionId: 'california',
+          }),
+        }),
+      );
+    });
+
+    it('ignores the unresolved-region sentinel rather than matching nothing', async () => {
+      // `regionId ?? provider.getName?.() ?? 'unknown'` — scoping on the
+      // sentinel matches no row, so this would summarise nothing at all.
+      const built = await buildService({ dbRows: [] });
+
+      await built.service.generateMissingSummaries('unknown');
+
+      const { where } = built.db.representative.findMany.mock.calls[0][0];
+      expect(where).not.toHaveProperty('regionId');
+    });
+
+    it('queries every region when none is named', async () => {
+      const built = await buildService({ dbRows: [] });
+
+      await built.service.generateMissingSummaries();
+
+      const { where } = built.db.representative.findMany.mock.calls[0][0];
+      expect(where).not.toHaveProperty('regionId');
     });
   });
 
@@ -294,7 +341,10 @@ describe('CommitteeSummaryGeneratorService', () => {
     it('tier-1: persists summary from a clean JSON response', async () => {
       const built = await buildService({ dbRows: [baseRep] });
       built.llm.generate.mockResolvedValue({
-        text: '{"summary":"Jane chairs Budget."}',
+        // Deliberately free of role words: the guard discards a policy
+        // sentence that claims one, so a role-bearing fixture would test the
+        // guard rather than the tier-1 parse.
+        text: '{"summary":"Budget and fiscal policy."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
       await built.service.generateMissingSummaries();
@@ -302,7 +352,7 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
         data: {
-          committeesSummary: 'Jane chairs Budget.',
+          committeesSummary: 'Budget and fiscal policy.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
@@ -335,7 +385,7 @@ describe('CommitteeSummaryGeneratorService', () => {
       const built = await buildService({ dbRows: [baseRep] });
       // Closing brace missing, field complete
       built.llm.generate.mockResolvedValue({
-        text: '{"summary":"Budget chair, fiscal oversight lead.",',
+        text: '{"summary":"Budget oversight and fiscal policy.",',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
       await built.service.generateMissingSummaries();
@@ -343,7 +393,7 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
         data: {
-          committeesSummary: 'Budget chair, fiscal oversight lead.',
+          committeesSummary: 'Budget oversight and fiscal policy.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',

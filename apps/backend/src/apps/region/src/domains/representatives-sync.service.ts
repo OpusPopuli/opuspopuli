@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
-import type { Representative } from '@opuspopuli/common';
+import { escapeRegExp, type Representative } from '@opuspopuli/common';
 import { BioGeneratorService } from './bio-generator.service';
 import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
@@ -12,6 +12,7 @@ import {
   isLikelyValidBio,
   extractLastName,
 } from './region.service';
+import { recordClaims } from './claim-recorder';
 import type { UpsertByExternalId } from './propositions-sync.service';
 
 /**
@@ -35,6 +36,7 @@ export interface RepresentativesPluginContext {
   normalizeDistrict: boolean;
   /** Plugin-supplied noise regexes used to discard junk bio scrapes. */
   bioNoisePatterns: RegExp[];
+  bioTrimPatterns: RegExp[];
 }
 
 /**
@@ -93,6 +95,129 @@ export function clearedAiAttribution(
     bioLlmModel: null,
     bioLlmDigest: null,
   };
+}
+
+/**
+ * Strip page chrome from a scraped bio (#1382 follow-up).
+ *
+ * A container selector that captures the biography also captures the heading
+ * above it and the call-to-action below. Measured on the first 20 scraped
+ * Senate bios: 15 carried a leading heading, 8 a trailing CTA.
+ *
+ *   "Meet Senator Angelique Ashby Senator Ashby was elected in 2022…"
+ *   "Representing California Senate District 7 State Senator Jesse Arreguín
+ *    A lifelong advocate for economic and social justice…"
+ *   "…a city that works for more of us. Read Bio"
+ *
+ * Purely pattern-driven, from region config. Two heuristics were tried first
+ * and both were wrong, which is why this does no inference at all:
+ *
+ *  - Matching `Senator\s+<Capitalised words>` produced "Arreguín A lifelong
+ *    advocate…" — it guessed where the name ended and split it in half.
+ *  - Anchoring on the rep's surname then trimming through its first
+ *    occurrence could not tell chrome from prose: it turned the perfectly good
+ *    "Senator Ashby was elected in 2022…" into "was elected in 2022…",
+ *    because a bio may legitimately open by naming its subject.
+ *
+ * The wording of both the heading and the CTA is a property of one caucus
+ * template, not of representatives, so it lives in `bioTrimPatterns` beside
+ * `bioNoisePatterns` rather than being inferred here.
+ */
+export function trimBioChrome(
+  bio: string,
+  trimPatterns: RegExp[] = [],
+): string {
+  let out = bio;
+  for (const pattern of trimPatterns) {
+    // Collapse and trim after EACH pattern, not once at the end. Patterns are
+    // `^`-anchored and applied in order, so a leading space left behind by an
+    // earlier one stops every later pattern from matching: `^Body\s+` on
+    // "Body Meet Senator Steve Padilla…" left " Meet Senator…", and
+    // `^Meet Senator\s+` then missed it. Measured — it was the one page of 16
+    // that kept its chrome.
+    out = out.replace(pattern, ' ').replaceAll(/\s+/g, ' ').trim();
+  }
+  return out;
+}
+
+/**
+ * How many whitespace-separated tokens may precede the surname in a heading.
+ *
+ * Observed forms are "<First> <Last>" and "<First> <Middle> <Last>"; 3 leaves
+ * margin for a two-word surname like "Gómez Reyes" without reaching so far
+ * into prose that an incidental surname mention could anchor a match.
+ */
+const MAX_TOKENS_BEFORE_SURNAME = 3;
+
+/**
+ * Strip a leading name heading left behind by {@link trimBioChrome} (#1381).
+ *
+ * The configured patterns remove the heading's PREFIX — `^Meet Senator\s+`,
+ * `^Representing California Senate District \d+ State Senator\s+` — and the
+ * name itself is what remains, because the name is the variable part the
+ * pattern could not name:
+ *
+ *   "Meet Senator Angelique Ashby Senator Ashby was elected in 2022…"
+ *     → pattern → "Angelique Ashby Senator Ashby was elected in 2022…"
+ *     → here    → "Senator Ashby was elected in 2022…"
+ *
+ * ── Why this is not the heuristic that was rejected ─────────────────────────
+ *
+ * {@link trimBioChrome} records that anchoring on the surname and trimming
+ * through its first occurrence was tried and abandoned, because it turned the
+ * perfectly good "Senator Ashby was elected in 2022…" into "was elected in
+ * 2022…". It could not tell chrome from prose.
+ *
+ * The missing discriminator is what FOLLOWS the name. A heading is followed by
+ * the start of a new sentence — a capital letter. Prose that opens by naming
+ * its subject is followed by that subject's VERB, in lower case:
+ *
+ *   "Jesse Arreguín A lifelong advocate…"    → capital → heading, strip
+ *   "Tim Grayson Elected to represent…"      → capital → heading, strip
+ *   "Senate President pro Tempore Monique Limón was elected…"
+ *                                            → "was"  → prose, keep
+ *
+ * Measured over the 9 Senate pages that yield a bio: 5 carry a bare leading
+ * name, every one of them followed by a capital; the one page whose title IS
+ * its prose (sd21) is followed by a lower-case verb and is left alone. The
+ * same test protects the case that killed the old heuristic — "Senator Ashby
+ * was elected" keeps its subject, because "was" is lower case.
+ *
+ * It anchors on the SURNAME, not the full name, because the roster name and
+ * the page's own name disagree: the roster says "Timothy S. Grayson" and
+ * "Stephen C. Padilla" where the pages say "Tim Grayson" and "Steve Padilla".
+ * Matching the full name would miss exactly those.
+ *
+ * Non-letters between the name and the next sentence are consumed, which also
+ * takes the stray `-->` that leaks into sd18's extracted text.
+ *
+ * Fails safe in both directions: no surname match, or a lower-case word after
+ * it, leaves the bio untouched. A missed heading is cosmetic; a severed
+ * opening clause is published prose about a named person.
+ *
+ * @param bio - Bio text, already through {@link trimBioChrome}
+ * @param name - The representative's name as the roster gives it
+ * @returns The bio without its leading name heading
+ */
+export function trimLeadingName(bio: string, name: string): string {
+  const surname = extractLastName(name);
+  if (!surname) return bio;
+
+  const heading = new RegExp(
+    `^(?:\\S+\\s+){0,${MAX_TOKENS_BEFORE_SURNAME}}?` +
+      escapeRegExp(surname) +
+      // At least one non-letter, then a capital: the start of a new
+      // sentence. `+` rather than `*` is what makes the surname match end on
+      // a word boundary. Zero-width would let a surname that merely PREFIXES
+      // the next word sever it — "LeeAnn Smith Is…" against surname "Lee"
+      // would publish "Ann Smith Is…". A `\\b` cannot do this job: JS word
+      // boundaries are ASCII, so a surname ending in an accented letter has
+      // no boundary before a space and would never match.
+      '[^\\p{L}]+(?=\\p{Lu})',
+    'u',
+  );
+
+  return bio.replace(heading, '').trim();
 }
 
 @Injectable()
@@ -245,6 +370,14 @@ export class RepresentativesSyncService {
     );
     extractTracker.complete();
 
+    // A scraped bio replaces an AI one, so the AI one's claims must stop being
+    // current (#1391). `clearedAiAttribution` above clears the row's own
+    // columns; the shared `claims` table is a separate write and was left
+    // behind, so 22 claims for the two reps scraped on 2026-10-20 still
+    // attested to deleted text — including an invented spouse named for a
+    // private individual and a school-board seat that does not exist.
+    await this.supersedeClaimsForScrapedBios(reps);
+
     // ─── Phase 3/5 — detail_crawl ──────────────────────────────────
     // Detail-page crawling for committees/contact info happens inside
     // the DeclarativeRegionPlugin.fetchRepresentatives call above —
@@ -267,6 +400,9 @@ export class RepresentativesSyncService {
       await this.bioGenerator.enrichBios(
         reps,
         pluginContext.regionName,
+        // Scopes candidate selection to this region (#1394). Omitting it
+        // would hand another region's reps California's jurisdiction.
+        resolvedRegionId,
         maxReps,
       );
       // BioGeneratorService is opaque about per-rep outcomes from out
@@ -277,7 +413,10 @@ export class RepresentativesSyncService {
     bioTracker.complete();
 
     if (this.committeeSummaryGenerator) {
-      await this.committeeSummaryGenerator.generateMissingSummaries(maxReps);
+      await this.committeeSummaryGenerator.generateMissingSummaries(
+        resolvedRegionId,
+        maxReps,
+      );
     }
 
     if (this.legislativeCommitteeLinker) {
@@ -369,6 +508,79 @@ export class RepresentativesSyncService {
     }
   }
 
+  /**
+   * Stop a rep's stored claims being current once its bio is scraped (#1391).
+   *
+   * `recordClaims` with an empty claim list supersedes and writes nothing:
+   * the incoming signature differs from a non-empty stored one, so the
+   * existing rows are closed, and the insert is skipped on `rows.length === 0`.
+   * That is the primitive, so this does not reimplement superseding.
+   *
+   * Superseded rather than deleted, for the reason the writer gives — the
+   * record of what we asserted last run is the point of a bi-temporal table.
+   *
+   * `sourceText`/`sourceTextHash` are null because representative bios cite
+   * structured fields, which is what {@link ClaimRecordInput} documents them
+   * as null for; with no claims to verify, nothing reads them.
+   */
+  private async supersedeClaimsForScrapedBios(
+    reps: Representative[],
+  ): Promise<void> {
+    const scraped = reps.filter((r) => r.bio && r.bioSource === 'scraped');
+    if (scraped.length === 0) return;
+
+    const rows = await this.db.representative.findMany({
+      where: { externalId: { in: scraped.map((r) => r.externalId) } },
+      select: { id: true, externalId: true },
+    });
+
+    // No matching rows means nothing to supersede — and no reason to issue a
+    // grouped query over an empty id list.
+    if (rows.length === 0) return;
+
+    // One grouped query rather than a count per rep. It also makes the log
+    // honest: the previous line reported `rows.length` — every scraped rep
+    // found — as though all of them had been superseded.
+    const counts = await this.db.claim.groupBy({
+      by: ['subjectId'],
+      where: {
+        subjectType: 'representative',
+        subjectId: { in: rows.map((row) => row.id) },
+        validUntil: null,
+      },
+      _count: { _all: true },
+    });
+    const currentByRep = new Map(
+      counts.map((group) => [group.subjectId, group._count._all]),
+    );
+
+    let supersededClaims = 0;
+    let supersededReps = 0;
+    for (const row of rows) {
+      const current = currentByRep.get(row.id) ?? 0;
+      // Nothing stored means nothing to supersede, and `recordClaims` would
+      // no-op anyway — skipping avoids taking its per-subject advisory lock.
+      if (current === 0) continue;
+
+      await recordClaims(this.db, {
+        subjectType: 'representative',
+        subjectId: row.id,
+        claims: [],
+        sourceText: null,
+        sourceTextHash: null,
+      });
+      supersededClaims += current;
+      supersededReps += 1;
+    }
+
+    if (supersededReps > 0) {
+      this.logger.log(
+        `Superseded ${supersededClaims} AI bio claim(s) across ` +
+          `${supersededReps} rep(s) whose bio is now scraped`,
+      );
+    }
+  }
+
   private sanitizeDistrict(
     rep: Representative,
     deriveDistrictFromExternalId: (externalId: string) => string | undefined,
@@ -396,6 +608,15 @@ export class RepresentativesSyncService {
   ): void {
     if (pluginContext.normalizeDistrict) {
       r.externalId = stripLeadingZerosFromExternalId(r.externalId);
+    }
+    // Trim page chrome BEFORE validating, so the junk check judges what we
+    // will actually store. A bio that is only chrome then fails the length
+    // floor below and is discarded, which is the correct outcome.
+    if (r.bio) {
+      r.bio = trimBioChrome(r.bio, pluginContext.bioTrimPatterns);
+      // After the patterns, because the name is what the patterns leave
+      // behind — they strip the heading's fixed prefix, not its variable part.
+      r.bio = trimLeadingName(r.bio, r.name);
     }
     if (r.bio && !isLikelyValidBio(r.bio, pluginContext.bioNoisePatterns)) {
       this.logger.warn(

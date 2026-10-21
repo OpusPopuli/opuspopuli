@@ -662,7 +662,7 @@
       "item": [
         {
           "name": "Sync — Representatives (quick test)",
-          "description": "Light smoke test. Caps at 1 rep so Ollama bio generation is minimal. Saves sync_job_id for use in the poll requests below.",
+          "description": "Bounded representatives sync.\n\n`maxReps` is applied PER DATA SOURCE, not per sync (#1389). Assembly and Senate are separate sources, so maxReps: 1 means one rep per chamber and BOTH chambers get exercised — a sync-wide cap left one chamber untouched, which is the opposite of a smoke test.\n\nIt bounds FETCHES now, not just Ollama bio generation. Before #1389 a maxReps: 5 run still performed 120 detail fetches plus 80 secondary /biography fetches with retries against two government sites, because the cap only reached generation.\n\nWhat to expect with the #1382 extractor fix in place: Senate reps should return bio_source = 'scraped' with verbatim text from their own caucus page, and their AI attribution columns cleared (#1391). Assembly reps will NOT get scraped bios — asmdc.org chains to a distrusted Entrust root and asmrc.org sits behind a Cloudflare challenge (#1383) — so they keep an AI-generated bio.\n\nRaise maxReps to widen the test. Saves sync_job_id for the poll requests below.\n\nVerify with:\n  SELECT bio_source, count(*) FROM representatives GROUP BY 1;\n  SELECT name, bio_source, bio_llm_model, length(bio) FROM representatives WHERE chamber = 'Senate' ORDER BY district::int LIMIT 5;",
           "event": [
             {
               "listen": "test",

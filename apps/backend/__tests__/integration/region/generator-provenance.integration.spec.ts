@@ -83,6 +83,10 @@ describe('generator provenance write-through (#1149)', () => {
         },
       ],
       undefined,
+      // Candidate selection reads the DB as of #1394, so the region has to be
+      // named. This now exercises the real query against `postgres_test`
+      // rather than the in-memory array.
+      'california',
     );
 
     const row = await db.representative.findUnique({

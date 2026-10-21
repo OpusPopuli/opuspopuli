@@ -993,6 +993,7 @@ export class RegionSyncService implements OnModuleDestroy {
         normalizeDistrict:
           this.regionPluginService.getPluginNormalizeDistrict(),
         bioNoisePatterns: this.regionPluginService.getPluginBioNoisePatterns(),
+        bioTrimPatterns: this.regionPluginService.getPluginBioTrimPatterns(),
       },
       this.upsertByExternalId.bind(this),
       deriveDistrictFromExternalId,

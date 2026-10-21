@@ -17,6 +17,33 @@ const recordClaimsMock = recordClaims as jest.MockedFunction<
   typeof recordClaims
 >;
 
+/**
+ * Call `enrichBios` with the DB mock seeded from `reps`.
+ *
+ * Candidate selection moved to the database in #1394, so these tests have to
+ * say what the DB holds. Seeding it from the array reproduces the old
+ * contract exactly — the DB agrees with the scrape — which keeps every
+ * parsing, persistence and attribution test below testing what it was written
+ * to test. The cases where the two DISAGREE are what the change is actually
+ * about, and they have their own describe block.
+ */
+async function enrichWith(
+  built: {
+    service: BioGeneratorService;
+    db: DeepMocked<DbService>;
+  },
+  reps: Representative[],
+  regionName?: string,
+  regionId?: string,
+): Promise<Representative[]> {
+  // `DeepMocked` does not surface the mock type through Prisma's generated
+  // delegate signature, so the cast is needed to set a return value.
+  (built.db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
+    reps.filter((r) => !r.bio || r.bio.trim() === ''),
+  );
+  return built.service.enrichBios(reps, regionName, regionId);
+}
+
 describe('BioGeneratorService', () => {
   let service: BioGeneratorService;
   let promptClient: jest.Mocked<PromptClientService>;
@@ -90,7 +117,7 @@ describe('BioGeneratorService', () => {
       const built = await buildService(false);
       const reps = [baseRep({ bio: undefined })];
 
-      const result = await built.service.enrichBios(reps, undefined);
+      const result = await built.service.enrichBios(reps, undefined, undefined);
 
       expect(result).toBe(reps);
       expect(result[0].bio).toBeUndefined();
@@ -118,7 +145,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'r3' }),
       ];
 
-      const result = await service.enrichBios(reps, undefined);
+      const result = await enrichWith({ service, db }, reps);
 
       expect(llm.generate).toHaveBeenCalledTimes(2);
       expect(result[0].bio).toBe('Existing bio text.');
@@ -140,7 +167,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'sen-6', bio: '' }),
       ];
 
-      await service.enrichBios(reps, undefined);
+      await enrichWith({ service, db }, reps);
 
       // Regression for #828: the mutated bios must be WRITTEN BACK, not just
       // held in memory (the extraction dropped the persist, so a full reps
@@ -165,7 +192,7 @@ describe('BioGeneratorService', () => {
     it('does not write to the DB for reps that already have a bio (#881)', async () => {
       const reps = [baseRep({ externalId: 'has-bio', bio: 'Existing bio.' })];
 
-      await service.enrichBios(reps, undefined);
+      await enrichWith({ service, db }, reps);
 
       expect(llm.generate).not.toHaveBeenCalled();
       expect(db.representative.update).not.toHaveBeenCalled();
@@ -174,7 +201,7 @@ describe('BioGeneratorService', () => {
     it('returns early when no reps need bios', async () => {
       const reps = [baseRep({ bio: 'Already has one.' })];
 
-      const result = await service.enrichBios(reps, undefined);
+      const result = await enrichWith({ service, db }, reps);
 
       expect(llm.generate).not.toHaveBeenCalled();
       expect(result[0].bioSource).toBe('scraped');
@@ -185,7 +212,7 @@ describe('BioGeneratorService', () => {
         text: '```json\n{"bio": "Fenced bio."}\n```',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Fenced bio.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -196,7 +223,7 @@ describe('BioGeneratorService', () => {
         text: '{"bio": ""}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBeUndefined();
       expect(result[0].bioSource).toBeUndefined();
@@ -207,7 +234,7 @@ describe('BioGeneratorService', () => {
         text: 'not json at all',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBeUndefined();
     });
@@ -221,7 +248,7 @@ describe('BioGeneratorService', () => {
         text: truncatedResponse,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe(
         'Dawn Addis represents District 30 in the California State Assembly.',
@@ -236,7 +263,7 @@ describe('BioGeneratorService', () => {
         text: malformedResponse,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Valid bio text.');
     });
@@ -248,7 +275,7 @@ describe('BioGeneratorService', () => {
         text: escapedBio,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Line one.\nLine two with "quoted" text.');
     });
@@ -260,7 +287,7 @@ describe('BioGeneratorService', () => {
         text: tooShort,
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBeUndefined();
     });
@@ -277,7 +304,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'r2' }),
       ];
 
-      const result = await service.enrichBios(reps, undefined);
+      const result = await enrichWith({ service, db }, reps);
 
       expect(result[0].bio).toBeUndefined();
       expect(result[1].bio).toBe('Bio for rep 2.');
@@ -297,7 +324,7 @@ describe('BioGeneratorService', () => {
         committees: [{ name: 'Budget', role: 'Chair' }, { name: 'Education' }],
       });
 
-      await service.enrichBios([rep], 'California');
+      await enrichWith({ service, db }, [rep], 'California');
 
       const firstCall = promptClient.getDocumentAnalysisPrompt.mock.calls[0][0];
       expect(firstCall.documentType).toBe('representative-bio');
@@ -316,7 +343,7 @@ describe('BioGeneratorService', () => {
         externalId: 'california-sonoma-district-1',
       });
 
-      await service.enrichBios([rep], 'Sonoma County');
+      await enrichWith({ service, db }, [rep], 'Sonoma County');
 
       const firstCall = promptClient.getDocumentAnalysisPrompt.mock.calls[0][0];
       expect(firstCall.text).toContain(
@@ -328,7 +355,7 @@ describe('BioGeneratorService', () => {
     it('preserves existing bioSource when already set', async () => {
       const reps = [baseRep({ bio: 'Has bio', bioSource: 'scraped' })];
 
-      const result = await service.enrichBios(reps, undefined);
+      const result = await enrichWith({ service, db }, reps);
 
       expect(result[0].bioSource).toBe('scraped');
     });
@@ -355,7 +382,7 @@ describe('BioGeneratorService', () => {
         }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Paragraph one.\n\nParagraph two.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -366,7 +393,7 @@ describe('BioGeneratorService', () => {
         text: 'Here is the biography JSON:\n\n{"bio": "Prose-wrapped bio."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Prose-wrapped bio.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -377,7 +404,7 @@ describe('BioGeneratorService', () => {
         text: '{"bio": "Bio with trailing text."}\n\nLet me know if you need anything else.',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Bio with trailing text.');
     });
@@ -387,7 +414,7 @@ describe('BioGeneratorService', () => {
         text: '{"bio": "Reference to {SB-42} passed."}',
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Reference to {SB-42} passed.');
     });
@@ -397,7 +424,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Just a bio.' }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      const result = await service.enrichBios([baseRep()], undefined);
+      const result = await enrichWith({ service, db }, [baseRep()]);
 
       expect(result[0].bio).toBe('Just a bio.');
       expect(result[0].bioSource).toBe('ai-generated');
@@ -411,7 +438,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Bio.' }),
       });
 
-      await built.service.enrichBios([baseRep()], undefined);
+      await enrichWith(built, [baseRep()]);
 
       expect(built.llm.generate).toHaveBeenCalledWith(
         expect.any(String),
@@ -427,7 +454,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Bio.' }),
       });
 
-      await built.service.enrichBios([baseRep()], undefined);
+      await enrichWith(built, [baseRep()]);
 
       expect(built.llm.generate).toHaveBeenCalledWith(
         expect.any(String),
@@ -443,7 +470,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Bio.' }),
       });
 
-      await built.service.enrichBios([baseRep()], undefined);
+      await enrichWith(built, [baseRep()]);
 
       expect(built.llm.generate).toHaveBeenCalledWith(
         expect.any(String),
@@ -471,7 +498,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: `r${i}`, name: `Rep ${i}` }),
       );
 
-      await built.service.enrichBios(reps, undefined);
+      await enrichWith(built, reps);
 
       expect(peakInFlight).toBe(3);
       expect(built.llm.generate).toHaveBeenCalledTimes(6);
@@ -489,7 +516,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: `r${i}`, name: `Rep ${i}` }),
       );
 
-      const result = await built.service.enrichBios(reps, undefined);
+      const result = await enrichWith(built, reps);
 
       expect(built.llm.generate).toHaveBeenCalledTimes(2);
       expect(result[0].bioSource).toBe('ai-generated');
@@ -509,7 +536,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: `r${i}` }),
       );
 
-      await built.service.enrichBios(reps, undefined);
+      await enrichWith(built, reps);
 
       expect(built.llm.generate).toHaveBeenCalledTimes(3);
     });
@@ -530,7 +557,7 @@ describe('BioGeneratorService', () => {
         baseRep({ externalId: 'r3', name: 'Rep 3' }),
       ];
 
-      const result = await built.service.enrichBios(reps, undefined);
+      const result = await enrichWith(built, reps);
 
       expect(result[0].bio).toBeUndefined();
       expect(result[1].bio).toBe('OK 2.');
@@ -577,7 +604,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('mirrors bio claims into the evidence graph', async () => {
-      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+      await enrichWith({ service, db }, [baseRep({ externalId: 'sen-5' })]);
 
       // The call itself. Three dual-writes in this milestone typechecked,
       // passed their unit tests and wrote nothing.
@@ -591,7 +618,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('passes no source text, because bios cite fields rather than a document', async () => {
-      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+      await enrichWith({ service, db }, [baseRep({ externalId: 'sen-5' })]);
 
       const input = recordClaimsMock.mock.calls[0][1];
       expect(input.sourceText).toBeNull();
@@ -599,7 +626,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('keeps a training-origin claim uncited so it cannot read as sourced', async () => {
-      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+      await enrichWith({ service, db }, [baseRep({ externalId: 'sen-5' })]);
 
       const input = recordClaimsMock.mock.calls[0][1];
       const [sourced, recalled] = input.claims;
@@ -616,7 +643,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'A short bio.', claims: [] }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+      await enrichWith({ service, db }, [baseRep({ externalId: 'sen-5' })]);
 
       // The blob writes `bioClaims: []`, so the mirror must too — otherwise
       // the relational model keeps asserting claims the blob no longer has.
@@ -633,7 +660,7 @@ describe('BioGeneratorService', () => {
         text: JSON.stringify({ bio: 'Salvaged bio only.' }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
-      await service.enrichBios([baseRep({ externalId: 'sen-5' })], undefined);
+      await enrichWith({ service, db }, [baseRep({ externalId: 'sen-5' })]);
 
       expect(recordClaimsMock).not.toHaveBeenCalled();
     });
@@ -643,10 +670,9 @@ describe('BioGeneratorService', () => {
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
 
-      const [rep] = await service.enrichBios(
-        [baseRep({ externalId: 'sen-5' })],
-        undefined,
-      );
+      const [rep] = await enrichWith({ service, db }, [
+        baseRep({ externalId: 'sen-5' }),
+      ]);
 
       // The bio is what citizens read; the mirror is read by nothing yet.
       expect(db.representative.update).toHaveBeenCalledTimes(1);
@@ -675,6 +701,369 @@ describe('BioGeneratorService', () => {
 
       warn.mockRestore();
       error.mockRestore();
+    });
+  });
+
+  describe('candidates come from the DB, not the scrape (#1394)', () => {
+    beforeEach(async () => {
+      const built = await buildService(true);
+      service = built.service;
+      llm = built.llm;
+      db = built.db;
+      llm.generate.mockResolvedValue({
+        text: '{"bio": "Jane Smith represents District 5."}',
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+    });
+
+    /** Seed the DB candidate query directly, independent of any array. */
+    const seed = (rows: Partial<Representative>[]) =>
+      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
+        rows,
+      );
+
+    it('does NOT regenerate a bio the DB already holds', async () => {
+      // THE regression. The scraped rep arrives with no bio on every sync —
+      // California's rosters carry one for 15 of 120 — so the old array
+      // filter regenerated ~102 bios every run: 16m35s of model time, and 57
+      // of them came back with different text. The DB is the authority on
+      // what already exists.
+      seed([]);
+
+      const result = await service.enrichBios(
+        [baseRep({ externalId: 'sen-5', bio: undefined })],
+        'California',
+        'california',
+      );
+
+      expect(llm.generate).not.toHaveBeenCalled();
+      expect(db.representative.update).not.toHaveBeenCalled();
+      expect(result[0].bio).toBeUndefined();
+    });
+
+    it('generates for a rep the scrape omitted entirely', async () => {
+      // The roster returned 119 of 120 on two consecutive runs; Josh Becker
+      // was absent both times and so was never a candidate under the old
+      // filter. He is in the DB, which is where candidates now come from.
+      seed([baseRep({ externalId: 'ca-senate-13', name: 'Josh Becker' })]);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(llm.generate).toHaveBeenCalledTimes(1);
+      expect(db.representative.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { externalId: 'ca-senate-13' } }),
+      );
+    });
+
+    it('scopes the query to the region being synced', async () => {
+      // Unscoped, a California sync would generate for another region's reps
+      // and `deriveJurisdiction` would stamp them "California State …" —
+      // the wrong-jurisdiction confabulation the prompt guards against.
+      seed([]);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(db.representative.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            deletedAt: null,
+            regionId: 'california',
+            OR: [{ bio: null }, { bio: '' }],
+          }),
+        }),
+      );
+    });
+
+    it('queries every region when none is named', async () => {
+      seed([]);
+
+      await service.enrichBios([], undefined, undefined);
+
+      const where = (db.representative.findMany as unknown as jest.Mock).mock
+        .calls[0][0].where;
+      expect(where).not.toHaveProperty('regionId');
+    });
+
+    it('orders candidates so a capped run is reproducible', async () => {
+      // findMany guarantees no ordering, so an unordered cap would cover a
+      // different arbitrary slice on every smoke run.
+      seed([]);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(db.representative.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { externalId: 'asc' } }),
+      );
+    });
+
+    it('applies the cap to the DB candidates', async () => {
+      seed([
+        baseRep({ externalId: 'r1' }),
+        baseRep({ externalId: 'r2' }),
+        baseRep({ externalId: 'r3' }),
+      ]);
+
+      await service.enrichBios([], 'California', 'california', 2);
+
+      expect(llm.generate).toHaveBeenCalledTimes(2);
+    });
+
+    it('copies the generated bio onto the scraped rep it matches', async () => {
+      // Downstream phases hold `reps`, so what was generated has to be
+      // visible there even though the generator persists it itself.
+      seed([baseRep({ externalId: 'sen-5' })]);
+      const reps = [baseRep({ externalId: 'sen-5', bio: undefined })];
+
+      await service.enrichBios(reps, 'California', 'california');
+
+      expect(reps[0].bio).toBe('Jane Smith represents District 5.');
+      expect(reps[0].bioSource).toBe('ai-generated');
+    });
+
+    it('still generates when the candidate is absent from the array', async () => {
+      // Nothing to copy onto, and that must not throw — this is the
+      // roster-flake case the change exists to cover.
+      seed([baseRep({ externalId: 'not-in-scrape' })]);
+      const reps = [baseRep({ externalId: 'sen-5', bio: 'Scraped bio.' })];
+
+      await expect(
+        service.enrichBios(reps, 'California', 'california'),
+      ).resolves.toBeDefined();
+
+      expect(db.representative.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { externalId: 'not-in-scrape' } }),
+      );
+      expect(reps[0].bio).toBe('Scraped bio.');
+    });
+
+    it('warns and selects nothing when no DB is bound', async () => {
+      // Built directly: `buildService(false)` omits the prompt client and LLM
+      // too, so `enrichBios` returned at its first guard and `findCandidates`
+      // was never reached — the `!this.db` branch this test names was 0%
+      // covered, and deleting it passed. And `expect(result).toBe(reps)` is
+      // true on every path, since `enrichBios` always returns `reps`.
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const mockPromptClient = createMock<PromptClientService>();
+      const mockLlm = {
+        getModelName: jest.fn().mockReturnValue('m'),
+        getModelDigest: jest.fn().mockResolvedValue('d'),
+        generate: jest.fn(),
+      } as unknown as jest.Mocked<ILLMProvider>;
+      const service = new BioGeneratorService(
+        undefined,
+        mockPromptClient,
+        mockLlm,
+        undefined,
+      );
+
+      await service.enrichBios(
+        [baseRep({ bio: undefined })],
+        'California',
+        'california',
+      );
+
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+      expect(
+        warn.mock.calls.map(String).some((m) => m.includes('No DbService')),
+      ).toBe(true);
+      warn.mockRestore();
+    });
+  });
+
+  describe('prompt input omits fields the source does not have (#1381)', () => {
+    beforeEach(async () => {
+      const built = await buildService(true);
+      service = built.service;
+      promptClient = built.promptClient;
+      llm = built.llm;
+      db = built.db;
+      llm.generate.mockResolvedValue({
+        text: '{"bio": "Hermosillo represents District 1 on the Sonoma County Board of Supervisors."}',
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+    });
+
+    const promptText = () =>
+      promptClient.getDocumentAnalysisPrompt.mock.calls[0][0].text;
+
+    it('omits Party entirely for a non-partisan office', async () => {
+      // All five Sonoma supervisors have party = NULL; county offices in
+      // California are non-partisan. Interpolation rendered that as the
+      // literal line "Party: null".
+      const rep = {
+        externalId: 'sonoma-district-1',
+        name: 'Rebecca Hermosillo',
+        chamber: 'Board of Supervisors',
+        district: '1',
+        party: null,
+      } as unknown as Representative;
+      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
+        rep,
+      ]);
+
+      await service.enrichBios([], 'Sonoma County', 'california-sonoma');
+
+      expect(promptText()).not.toContain('null');
+      expect(promptText()).not.toContain('Party:');
+      expect(promptText()).toContain('Name: Rebecca Hermosillo');
+      // A county chamber is not given a "State" infix.
+      expect(promptText()).toContain(
+        'Jurisdiction: Sonoma County Board of Supervisors',
+      );
+      expect(promptText()).toContain('District: 1');
+    });
+
+    it('omits a blank field as well as a missing one', async () => {
+      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
+        baseRep({ externalId: 'r1', party: '   ', district: '' }),
+      ]);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(promptText()).not.toContain('Party:');
+      expect(promptText()).not.toContain('District:');
+    });
+
+    it('keeps every field that does have a value', async () => {
+      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
+        baseRep({ externalId: 'r1' }),
+      ]);
+
+      await service.enrichBios([], 'California', 'california');
+
+      expect(promptText()).toBe(
+        [
+          'Name: Jane Smith',
+          'Jurisdiction: California State Senate',
+          'District: 5',
+          'Party: Democrat',
+        ].join('\n'),
+      );
+    });
+  });
+
+  describe('the source-grounding guard is wired in (#1381)', () => {
+    beforeEach(async () => {
+      const built = await buildService(true);
+      service = built.service;
+      llm = built.llm;
+      db = built.db;
+    });
+
+    const seed = (rows: Partial<Representative>[]) =>
+      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
+        rows,
+      );
+
+    const generated = (text: string) =>
+      llm.generate.mockResolvedValue({ text } as Awaited<
+        ReturnType<ILLMProvider['generate']>
+      >);
+
+    it('strips the unsupported sentence before the bio is persisted', async () => {
+      // Every other fixture in this file is year-free, so deleting the
+      // `enforceSourceYears` call passed all of them. This is the test that
+      // fails if the guard stops being called.
+      seed([baseRep({ externalId: 'sen-5' })]);
+      generated(
+        JSON.stringify({
+          bio: 'Smith represents District 5. She was first elected in 2022.',
+          wordCount: 11,
+          claims: [
+            { sentence: 'Smith represents District 5.', origin: 'source' },
+            { sentence: 'She was first elected in 2022.', origin: 'source' },
+          ],
+        }),
+      );
+
+      await service.enrichBios([], 'California', 'california');
+
+      const { data } = (db.representative.update as unknown as jest.Mock).mock
+        .calls[0][0];
+      expect(data.bio).toBe('Smith represents District 5.');
+      // The claim attesting to the removed sentence goes with it, or
+      // `bio_claims` attests to text that is not in the bio — the #1391
+      // failure class.
+      expect(data.bioClaims).toEqual([
+        { sentence: 'Smith represents District 5.', origin: 'source' },
+      ]);
+      // Recounted, not the model's figure for the text before the guard ran.
+      expect(data.wordCount ?? undefined).toBeUndefined();
+    });
+
+    it('stores no bio when every sentence is unsupported', async () => {
+      seed([baseRep({ externalId: 'sen-5' })]);
+      generated(
+        JSON.stringify({
+          bio: 'She was first elected in 2022. She is serving her first term.',
+          claims: [],
+        }),
+      );
+
+      await service.enrichBios([], 'California', 'california');
+
+      // A bio of nothing is not stored at all; the rep stays a candidate.
+      expect(db.representative.update).not.toHaveBeenCalled();
+    });
+
+    it('survives a claim element that carries no sentence', async () => {
+      // `parseBioFromResponse` validates only that `claims` is an array, so a
+      // malformed element reached `normalise(claim.sentence)` and threw —
+      // discarding a bio whose other sentence was perfectly good.
+      seed([baseRep({ externalId: 'sen-5' })]);
+      generated(
+        JSON.stringify({
+          bio: 'Smith represents District 5. She was first elected in 2022.',
+          claims: [
+            { sentence: 'Smith represents District 5.', origin: 'source' },
+            { origin: 'training', text: 'elected 2022' },
+          ],
+        }),
+      );
+
+      await service.enrichBios([], 'California', 'california');
+
+      const { data } = (db.representative.update as unknown as jest.Mock).mock
+        .calls[0][0];
+      expect(data.bio).toBe('Smith represents District 5.');
+    });
+
+    it('keeps a year the source data supports', async () => {
+      // The guard must not fire on grounded text. `baseRep` has no year, so
+      // the source is widened here the way a scraped bio would widen it.
+      seed([baseRep({ externalId: 'sen-5', party: 'Democrat, elected 2022' })]);
+      generated(
+        JSON.stringify({
+          bio: 'Smith represents District 5. She was elected in 2022.',
+          claims: [],
+        }),
+      );
+
+      await service.enrichBios([], 'California', 'california');
+
+      const { data } = (db.representative.update as unknown as jest.Mock).mock
+        .calls[0][0];
+      expect(data.bio).toBe(
+        'Smith represents District 5. She was elected in 2022.',
+      );
+    });
+  });
+
+  describe("candidate selection is the QUERY's, not the test helper's", () => {
+    it('does not generate for a rep the DB says already has a bio', async () => {
+      // `enrichWith` seeds the DB mock from the array, which reproduces the
+      // old contract and so cannot prove the `where` clause does the
+      // filtering. Seeding the query directly can.
+      const built = await buildService(true);
+      (
+        built.db.representative.findMany as unknown as jest.Mock
+      ).mockResolvedValue([]);
+
+      await built.service.enrichBios(
+        [baseRep({ externalId: 'sen-5', bio: undefined })],
+        'California',
+        'california',
+      );
+
+      expect(built.llm.generate).not.toHaveBeenCalled();
     });
   });
 });

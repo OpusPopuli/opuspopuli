@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { RepPersonalizationInputDto } from './dto/rep-personalization-input.dto';
 import type { RepActivityAxisScoresModel } from './models/rep-activity-axis-scores.model';
+import { escapeRegExp } from '@opuspopuli/common';
 
 /**
  * Role a rep played on a single bill action. Weighted highest → lowest:
@@ -101,10 +102,6 @@ const RECENT_ACTIVITY_CAP = 3;
  * matches (or equivalent weighted total) puts the rep at 1.0.
  */
 const ACTION_ALIGNMENT_SATURATION = 3;
-
-function escapeRegExp(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /**
  * Pure scoring functions for the v1.0 rep-activity ranker (#769).

@@ -955,6 +955,17 @@ export interface DeclarativeRegionConfig {
    */
   bioNoisePatterns?: string[];
   /**
+   * Regex pattern strings (case-insensitive) REMOVED from a scraped
+   * representative bio wherever they match — unlike `bioNoisePatterns`,
+   * which discards the whole bio.
+   *
+   * For trailing call-to-action chrome a container selector cannot
+   * exclude: the California Senate caucus template ends a bio with
+   * "Read Bio" or "Learn More About Jesse". Anchor them with `$`.
+   * Measured on the first 20 scraped Senate bios: 8 carried one.
+   */
+  bioTrimPatterns?: string[];
+  /**
    * Civic-boundary geometry sources (TIGER + ArcGIS FeatureServer). Read
    * by the consumer's BoundaryLoaderService to populate the jurisdictions
    * table. Mirrors the @opuspopuli/regions schema field of the same name —

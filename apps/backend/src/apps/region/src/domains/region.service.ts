@@ -163,17 +163,102 @@ export function isLikelyValidBio(
   return true;
 }
 
+/**
+ * Trailing name tokens that are not the surname, compared with punctuation
+ * and case removed so "Ph.D.", "PhD" and "ph.d." all match.
+ *
+ * Generational suffixes were here from the start; the credentials were added
+ * after a sync stored `last_name = 'M.D.'` for Akilah Weber Pierson and
+ * `'Ph.D.'` for Steven S. Choi. That is not only cosmetic: the committee
+ * summary generator selects `orderBy: { lastName: 'asc' }`, so a credential
+ * in that column sorts the rep under "M", and `trimLeadingName` anchors on
+ * the surname and so could not recognise the name heading on their pages.
+ */
+const NAME_SUFFIXES = new Set([
+  'JR',
+  'SR',
+  'II',
+  'III',
+  'IV',
+  'ESQ',
+  'PHD',
+  'EDD',
+  'PSYD',
+  'DDS',
+  'DVM',
+  'MPH',
+  'MBA',
+  'CPA',
+]);
+
+/**
+ * Suffixes that are also real surnames or words, so only count as suffixes
+ * when punctuated.
+ *
+ * `Do` is a common Vietnamese surname and is live in California civic data —
+ * Orange County has had a Supervisor Andrew Do. Treating a bare `Do` as a
+ * credential stored `last_name = 'Andrew'`, sorted him under A in the
+ * committee generator's `orderBy: { lastName: 'asc' }`, rendered "Andrew is
+ * Chair of …", and left `trimLeadingName` anchoring on his given name. `V`,
+ * `RN`, `MD` and `JD` collide the same way. Requiring the dot keeps
+ * "Pierson M.D." working and leaves "Andrew Do" alone.
+ */
+const PUNCTUATED_ONLY_SUFFIXES = new Set(['V', 'MD', 'JD', 'RN', 'DO']);
+
+function isNameSuffix(token: string): boolean {
+  const bare = token.replaceAll(/[.,]/g, '').toUpperCase();
+  if (NAME_SUFFIXES.has(bare)) return true;
+  return PUNCTUATED_ONLY_SUFFIXES.has(bare) && /[.]/.test(token);
+}
+
+/**
+ * The surname from a full name, ignoring generational and credential
+ * suffixes.
+ *
+ * Suffixes are popped in a loop rather than matched once, because a name can
+ * carry more than one ("Jane Doe M.D. Ph.D."). If every token turns out to be
+ * a suffix the original is returned rather than an empty string — a name made
+ * only of suffixes is bad input, and erasing it would hide that.
+ */
 export function extractLastName(fullName: string): string {
   const trimmed = fullName.trim();
   if (!trimmed) return '';
-  const suffixPattern = /\b(Jr|Sr|II|III|IV|Esq)\.?$/i;
-  if (trimmed.includes(',')) {
-    const beforeComma = trimmed.slice(0, trimmed.indexOf(',')).trim();
-    return beforeComma.replace(suffixPattern, '').trim();
+
+  // A comma means one of two different things, and they need opposite
+  // handling:
+  //
+  //   "Ávila Farías, Anamarie"   surname first — EVERYTHING before the comma
+  //                              is the surname, and a Spanish double
+  //                              surname must not be cut down to its last
+  //                              word.
+  //   "Akilah Weber Pierson, M.D."  normal order, with the credential set off
+  //                              by a comma. Here the pre-comma text is the
+  //                              whole name, not the surname.
+  //
+  // What follows the comma tells them apart: a given name means surname
+  // first, and nothing but suffixes means the comma is punctuation.
+  const commaAt = trimmed.indexOf(',');
+  const afterComma = trimmed
+    .slice(commaAt + 1)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const surnameFirst =
+    commaAt !== -1 &&
+    !(afterComma.length > 0 && afterComma.every(isNameSuffix));
+
+  const surnamePart = surnameFirst
+    ? trimmed.slice(0, commaAt)
+    : trimmed.replaceAll(',', ' ');
+
+  const tokens = surnamePart.trim().split(/\s+/);
+  while (tokens.length > 1 && isNameSuffix(tokens[tokens.length - 1])) {
+    tokens.pop();
   }
-  const withoutSuffix = trimmed.replace(suffixPattern, '').trim();
-  const tokens = withoutSuffix.split(/\s+/);
-  return tokens.at(-1) ?? trimmed;
+
+  const surname = surnameFirst ? tokens.join(' ') : tokens.at(-1);
+  if (!surname || isNameSuffix(surname)) return trimmed;
+  return surname;
 }
 
 export type RepresentativeRecord = {
