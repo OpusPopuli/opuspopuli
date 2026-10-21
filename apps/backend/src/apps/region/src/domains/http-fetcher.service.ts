@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { type DataSourceConfig } from '@opuspopuli/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { htmlToReadableText } from '@opuspopuli/common';
 import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
 
@@ -27,6 +28,17 @@ export class HttpFetcherService {
 
   /** Per-host fetch throttle shared across all syncs in this process. */
   private readonly hostThrottle = new HostThrottle(1000);
+
+  constructor(
+    /**
+     * Where fetch timings go (M1). Optional: this service is constructed in
+     * test modules that register no metrics, and a fetch must not depend on
+     * being measured.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
+  ) {}
 
   /**
    * Apply per-source `rateLimitOverride` values to the relevant hostname
@@ -59,6 +71,9 @@ export class HttpFetcherService {
       timeoutMs: 20_000,
       throttle: this.hostThrottle,
       logger: this.logger,
+      metrics: this.metrics,
+      // No `dataType`: this service is shared between the bills and civics
+      // syncs and cannot tell which one is calling. Absent beats guessed.
     });
   }
 

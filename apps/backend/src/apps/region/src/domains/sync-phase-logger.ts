@@ -35,6 +35,12 @@
  */
 
 import type { Logger } from '@nestjs/common';
+import {
+  boundedReason,
+  type MetricsObserver,
+  PipelineMetric,
+  type StageItemOutcome,
+} from '@opuspopuli/common';
 
 // ─── Phase lists per data type ──────────────────────────────────────
 
@@ -143,6 +149,18 @@ export class SyncAbortedError extends Error {
  * Generic over the phase string-literal type so each data type's
  * factory function provides compile-time-checked phase names.
  */
+/**
+ * The `reason` label, clamped, or no label at all.
+ *
+ * Shared with `withStage` via {@link boundedReason} so both writers of
+ * `pipeline_items_total` clamp identically — a reason that is legal from one
+ * writer and prose from the other would be the worst of both.
+ */
+function reasonLabel(reason: string | undefined): { reason?: string } {
+  const bounded = boundedReason(reason);
+  return bounded ? { reason: bounded } : {};
+}
+
 export class SyncPhaseTracker<Phase extends string> {
   private current = 0;
   private created = 0;
@@ -161,10 +179,33 @@ export class SyncPhaseTracker<Phase extends string> {
   constructor(
     private readonly logger: Logger,
     private readonly tag: string,
+    /**
+     * The `data_type` label — `bills`, `representatives`, `campaign_finance`.
+     *
+     * Required, and carried beside the tag rather than derived from it. A
+     * lookup table keyed on the tag was the first attempt and it was the
+     * wrong shape twice over: `CampaignFinanceSync` does not lowercase to
+     * `campaign_finance`, so it needed a fallback that silently produced a
+     * label no dashboard matches — and an eighth factory could forget the
+     * entry and still compile. A required parameter cannot be forgotten.
+     */
+    private readonly dataType: string,
     private readonly phases: readonly Phase[],
     private readonly phase: Phase,
     private readonly total: number,
     summaryArgs?: Record<string, string | number>,
+    /**
+     * Where to publish item outcomes (M1,
+     * `docs/plans/ingestion-resource-lanes.md` §2). Optional: a tracker with
+     * no observer logs exactly as before.
+     *
+     * The tracker is the right writer for `pipeline_items_total` because it
+     * ALREADY owns per-item outcome accounting — the same reason the counts
+     * were centralised here rather than at each call site. Counting in the
+     * orchestrator instead would reintroduce the drift this class exists to
+     * prevent, except now between the log line and the graph.
+     */
+    private readonly observer?: MetricsObserver,
   ) {
     this.startedAtMs = Date.now();
     this.phaseTotal = phases.length;
@@ -199,6 +240,17 @@ export class SyncPhaseTracker<Phase extends string> {
     outcomeLabel: string;
     outcome: 'created' | 'updated' | 'skipped' | 'error';
     extraCounters?: string[];
+    /**
+     * Bounded `reason` for the metric — `shell-missing`, `hash_unchanged`.
+     *
+     * Separate from `outcomeLabel`, which is operator-facing prose and must
+     * not reach a label. Several call sites already know a bounded reason and
+     * had nowhere to put it: the votes loop carries the nine-value
+     * `VotesOutcome` union, and civics distinguishes a stale skip from an
+     * empty page (#1335) — both collapsed to a bare `outcome="skipped"`.
+     * Anything that is not a short slug is replaced rather than trusted.
+     */
+    reason?: string;
   }): void {
     this.current++;
     const idSlot = this.formatIdSlot(args.name, args.externalId);
@@ -209,6 +261,10 @@ export class SyncPhaseTracker<Phase extends string> {
     else if (args.outcome === 'updated') this.updated++;
     else if (args.outcome === 'skipped') this.skipped++;
     else this.errors++;
+    // `failed`, not `error`: the metric's vocabulary is shared with
+    // `withStage` and the dashboard, and two spellings of one outcome would
+    // split every failure-rate query in half.
+    this.count(args.outcome === 'error' ? 'failed' : args.outcome, args.reason);
     for (const extra of args.extraCounters ?? []) {
       this.extras.set(extra, (this.extras.get(extra) ?? 0) + 1);
     }
@@ -233,6 +289,16 @@ export class SyncPhaseTracker<Phase extends string> {
     this.consecutiveFailures++;
     this.lastFailure = label;
     if (this.consecutiveFailures >= this.failureLimit) {
+      // Published BEFORE the throw. An abort is the one sync outcome that
+      // leaves no trace in the item counts — everything after it was never
+      // attempted — so if this line does not run, nothing records that the
+      // phase stopped.
+      this.publish(() =>
+        this.observer?.increment(PipelineMetric.PhaseAbortedTotal, 1, {
+          data_type: this.dataType,
+          phase: String(this.phase),
+        }),
+      );
       throw new SyncAbortedError(
         this.tag,
         this.consecutiveFailures,
@@ -254,6 +320,12 @@ export class SyncPhaseTracker<Phase extends string> {
       `[${this.tag}] Phase ${this.phaseIdx}/${this.phaseTotal} [${this.current}/${this.total}] ${idSlot}: skipped: ${reason}`,
     );
     this.skipped++;
+    // A bounded `reason`, NOT the free-text one in the log line. Reasons here
+    // are prose written per call site ("could not extract bill ID", "vote
+    // page with no matching shell"), and prose as a label is unbounded
+    // cardinality on a counter — the #1344 failure mode, where an
+    // OOM-killed Prometheus stops delivering alerts (#1343).
+    this.count('skipped', 'unidentified');
     // Same reasoning as a `skipped` item above: this is a handled item, so it
     // clears the consecutive-failure counter rather than sitting neutral.
     this.consecutiveFailures = 0;
@@ -306,6 +378,47 @@ export class SyncPhaseTracker<Phase extends string> {
     };
   }
 
+  /**
+   * One item, one outcome. No-op without an observer.
+   *
+   * `outcome` is the shared union, not `string`: the tracker's own internal
+   * name for a failure is `error` while the metric vocabulary says `failed`,
+   * and two spellings of one outcome would split every failure-rate query in
+   * half. `reason` is clamped — call sites write prose for the log line, and
+   * prose as a label is one series per sentence.
+   */
+  private count(outcome: StageItemOutcome, reason?: string): void {
+    this.publish(() =>
+      this.observer?.increment(PipelineMetric.ItemsTotal, 1, {
+        data_type: this.dataType,
+        phase: String(this.phase),
+        outcome,
+        ...reasonLabel(reason),
+      }),
+    );
+  }
+
+  /**
+   * Run one emission, swallowing anything it throws.
+   *
+   * The {@link MetricsObserver} contract already says measurement must never
+   * take down the thing it measures — but a contract stated in a doc comment
+   * is not enforcement. Without this, an observer that threw would replace
+   * `SyncAbortedError` with a metrics error at the abort site, and would kill
+   * a healthy sync mid-item from `count()`. The one implementation happens to
+   * be safe today; that is a property of the implementation, not of the seam.
+   */
+  private publish(emit: () => void): void {
+    try {
+      emit();
+    } catch (error) {
+      this.logger.warn(
+        `[${this.tag}] metrics emission failed and was ignored: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   private formatIdSlot(name: string | null, externalId: string | null): string {
     if (name && externalId) return `${name} (${externalId})`;
     if (externalId) return `-- (${externalId})`;
@@ -325,14 +438,17 @@ export function billSyncTracker(
   phase: BillSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<BillSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'BillSync',
+    'bills',
     BILL_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 
@@ -341,14 +457,17 @@ export function repSyncTracker(
   phase: RepSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<RepSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'RepSync',
+    'representatives',
     REP_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 
@@ -357,14 +476,17 @@ export function meetingSyncTracker(
   phase: MeetingSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<MeetingSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'MeetingSync',
+    'meetings',
     MEETING_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 
@@ -373,14 +495,17 @@ export function minutesSyncTracker(
   phase: MinutesSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<MinutesSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'MinutesSync',
+    'minutes',
     MINUTES_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 
@@ -389,14 +514,17 @@ export function propositionSyncTracker(
   phase: PropositionSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<PropositionSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'PropositionSync',
+    'propositions',
     PROPOSITION_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 
@@ -405,14 +533,17 @@ export function civicsSyncTracker(
   phase: CivicsSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<CivicsSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'CivicsSync',
+    'civics',
     CIVICS_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 
@@ -421,14 +552,17 @@ export function campaignFinanceSyncTracker(
   phase: CampaignFinanceSyncPhase,
   total: number,
   summaryArgs?: Record<string, string | number>,
+  observer?: MetricsObserver,
 ): SyncPhaseTracker<CampaignFinanceSyncPhase> {
   return new SyncPhaseTracker(
     logger,
     'CampaignFinanceSync',
+    'campaign_finance',
     CAMPAIGN_FINANCE_SYNC_PHASES,
     phase,
     total,
     summaryArgs,
+    observer,
   );
 }
 

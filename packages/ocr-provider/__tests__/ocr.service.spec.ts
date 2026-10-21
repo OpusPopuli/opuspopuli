@@ -1,12 +1,23 @@
 import "reflect-metadata";
 import { OcrService } from "../src/ocr.service";
-import { IOcrProvider, OcrError, OcrResult } from "@opuspopuli/common";
+import {
+  IOcrProvider,
+  type MetricsObserver,
+  OcrError,
+  OcrResult,
+} from "@opuspopuli/common";
 import { ImagePreprocessor } from "../src/preprocessing/image-preprocessor";
 import { PreprocessingResult } from "../src/preprocessing/types";
 
 // Mock NestJS Logger and decorators
 jest.mock("@nestjs/common", () => ({
   Injectable: () => (target: any) => target,
+  // An ALLOWLIST mock: anything the service imports and this omits is
+  // `undefined`, and a decorator call on undefined fails the whole suite at
+  // load — 13 tests vanished silently when `@Inject` was added, while
+  // `Tests: 58 passed` still read green because the suite never ran to
+  // contribute a failure.
+  Inject: () => () => undefined,
   Logger: jest.fn().mockImplementation(() => ({
     log: jest.fn(),
     error: jest.fn(),
@@ -241,6 +252,110 @@ describe("OcrService", () => {
       const info = service.getProviderInfo();
 
       expect(info.preprocessingEnabled).toBe(false);
+    });
+  });
+  describe("pipeline stage timing (M1)", () => {
+    type Observed = [
+      string,
+      number,
+      Record<string, string> | undefined,
+      Record<string, string> | undefined,
+    ];
+    let observed: Observed[];
+    let observer: MetricsObserver;
+
+    const input = {
+      type: "buffer" as const,
+      buffer: Buffer.from("test"),
+      mimeType: "image/png",
+    };
+
+    beforeEach(() => {
+      observed = [];
+      observer = {
+        observe: (m, v, l, e) => observed.push([m, v, l, e]),
+        increment: jest.fn(),
+      };
+    });
+
+    it("times the extraction as the `ocr` stage", async () => {
+      // Row 8 of the plan compares pdf_parse against ocr; OCR is the CPU
+      // lane's dominant cost, which is the whole reason that row exists.
+      const measured = new OcrService(mockProvider, undefined, observer);
+
+      await measured.extractText(input);
+
+      expect(observed).toHaveLength(1);
+      const [metric, value, labels] = observed[0];
+      expect(metric).toBe("pipeline_stage_duration_seconds");
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(labels).toStrictEqual({ stage: "ocr", model: "MockProvider" });
+    });
+
+    it("measures preprocessing too, not just the provider call", async () => {
+      // Deskew, rotate and threshold run on the CPU as well. The question
+      // row 8 asks is how long a page takes to BECOME text, not how long
+      // Tesseract took once someone else had prepared the image.
+      mockPreprocessor = new ImagePreprocessor(
+        {},
+      ) as jest.Mocked<ImagePreprocessor>;
+      mockPreprocessor.shouldPreprocess = jest.fn().mockReturnValue(true);
+      mockPreprocessor.preprocess = jest
+        .fn()
+        .mockImplementation(async (): Promise<PreprocessingResult> => {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return {
+            buffer: Buffer.from("processed"),
+            mimeType: "image/png",
+            metadata: {
+              enabled: true,
+              stepsApplied: ["deskew"],
+              processingTimeMs: 20,
+              originalSizeBytes: 4,
+              processedSizeBytes: 9,
+              rotationDegrees: 0,
+            },
+          };
+        });
+      const measured = new OcrService(mockProvider, mockPreprocessor, observer);
+
+      await measured.extractText(input);
+
+      expect(mockPreprocessor.preprocess).toHaveBeenCalled();
+      expect(observed[0][1]).toBeGreaterThan(0.01);
+    });
+
+    it("still measures a failed extraction, and rethrows", async () => {
+      // A provider that takes 30s to fail is exactly what the panel is for;
+      // dropping it makes a broken stage's p95 look healthy.
+      mockProvider.extractText.mockRejectedValue(new Error("tesseract died"));
+      const measured = new OcrService(mockProvider, undefined, observer);
+
+      await expect(measured.extractText(input)).rejects.toThrow(
+        "tesseract died",
+      );
+
+      expect(observed).toHaveLength(1);
+      expect(observed[0][2]).toStrictEqual({
+        stage: "ocr",
+        model: "MockProvider",
+      });
+    });
+
+    it("extracts identically with no observer bound", async () => {
+      // Instrumentation must never be why OCR fails.
+      const result = await service.extractText(input);
+
+      expect(result).toEqual(mockResult);
+      expect(observed).toHaveLength(0);
+    });
+
+    it("counts no items — a page is not the unit the counter tracks", async () => {
+      const measured = new OcrService(mockProvider, undefined, observer);
+
+      await measured.extractText(input);
+
+      expect(observer.increment).not.toHaveBeenCalled();
     });
   });
 });

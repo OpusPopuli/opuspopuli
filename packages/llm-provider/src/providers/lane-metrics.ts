@@ -3,6 +3,8 @@ import {
   LlmMetric,
   LlmPhase,
   LlmTokenDirection,
+  PipelineStage,
+  withStage,
   type ChatMessage,
   type GenerateOptions,
   type GenerateResult,
@@ -80,23 +82,45 @@ export function withLaneMetrics(
   // leaving `generateStream` and `isAvailable` undefined at runtime while
   // tsc stayed happy, because the spread is TYPED as a complete provider.
   // Written out, a new member is a missing-property compile error.
+  /**
+   * Also count the call as time spent in the `llm` STAGE (M1).
+   *
+   * Not a duplicate of the phase timings above, and the difference is the
+   * point. Ollama's `load`/`prefill`/`decode` are what the GPU did; this is
+   * the caller's wall clock, so it also contains the HTTP round trip and any
+   * time the request sat behind `OLLAMA_NUM_PARALLEL`. Subtracting one from
+   * the other is how §3 row 2 shows queue wait, and a sync whose stages do
+   * not sum to its duration is a sync with time nobody has accounted for.
+   *
+   * Here rather than in each generator for the same reason as the phase
+   * metrics: every consumer of a lane provider is covered by construction.
+   * No item is counted — one LLM call is not one item, and several generators
+   * make more than one call per row.
+   */
+  const measured = <T>(fn: () => Promise<T>): Promise<T> =>
+    withStage(PipelineStage.Llm, { lane, model: provider.getModelName() }, fn, {
+      observer,
+    });
+
   return {
     generate: async (
       prompt: string,
       options?: GenerateOptions,
-    ): Promise<GenerateResult> => {
-      const result = await provider.generate(prompt, options);
-      record(result);
-      return result;
-    },
+    ): Promise<GenerateResult> =>
+      measured(async () => {
+        const result = await provider.generate(prompt, options);
+        record(result);
+        return result;
+      }),
     chat: async (
       messages: ChatMessage[],
       options?: GenerateOptions,
-    ): Promise<GenerateResult> => {
-      const result = await provider.chat(messages, options);
-      record(result);
-      return result;
-    },
+    ): Promise<GenerateResult> =>
+      measured(async () => {
+        const result = await provider.chat(messages, options);
+        record(result);
+        return result;
+      }),
     // Delegated unmeasured. A stream yields tokens and never returns a
     // GenerateResult, so Ollama's phase durations — which arrive in the
     // final non-streaming payload — are not available on this path. Counting

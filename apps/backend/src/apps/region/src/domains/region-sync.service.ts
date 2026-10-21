@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
   Optional,
 } from '@nestjs/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DataType,
@@ -381,6 +382,26 @@ export class RegionSyncService implements OnModuleDestroy {
    *  hostname by sync orchestrators before they start their loops. */
   private readonly hostThrottle = new HostThrottle(1000);
 
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof billSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private billTracker(
+    phase: Parameters<typeof billSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof billSyncTracker> {
+    return billSyncTracker(
+      this.logger,
+      phase,
+      total,
+      summaryArgs,
+      this.metrics,
+    );
+  }
+
   constructor(
     private readonly regionPluginService: RegionPluginService,
     private readonly pluginRegistry: PluginRegistryService,
@@ -428,6 +449,14 @@ export class RegionSyncService implements OnModuleDestroy {
     // ConfigService) resolve `undefined` → readPositiveInt returns the
     // fallback, preserving default behavior with no test-module changes.
     @Optional() private readonly config?: ConfigService,
+    /**
+     * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
+     * §2). Optional and last: several specs construct this service by hand,
+     * and a sync must run identically with no metrics bound.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {
     // Assigned in the constructor body, not as field initializers: `config`
     // is a same-class parameter property, which TS assigns only once the
@@ -1140,12 +1169,9 @@ export class RegionSyncService implements OnModuleDestroy {
     // can announce a real grand-total. Otherwise the per-source
     // interleaving would force the operator to mentally sum partial
     // counts.
-    const discoverTracker = billSyncTracker(
-      this.logger,
-      'discover',
-      dataSources.length,
-      { region: regionId },
-    );
+    const discoverTracker = this.billTracker('discover', dataSources.length, {
+      region: regionId,
+    });
     const allStatusUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
     const allVotesUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
     for (const ds of dataSources) {
@@ -1166,8 +1192,7 @@ export class RegionSyncService implements OnModuleDestroy {
     discoverTracker.complete();
 
     // ─── Phase 2/6 — extract_and_upsert ─────────────────────────────
-    const extractTracker = billSyncTracker(
-      this.logger,
+    const extractTracker = this.billTracker(
       'extract_and_upsert',
       allStatusUrls.length,
       { region: regionId },
@@ -1457,14 +1482,9 @@ export class RegionSyncService implements OnModuleDestroy {
       select: { id: true, status: true, billNumber: true, externalId: true },
     });
 
-    const tracker = billSyncTracker(
-      this.logger,
-      'stage_backfill',
-      unmatched.length,
-      {
-        region: regionId,
-      },
-    );
+    const tracker = this.billTracker('stage_backfill', unmatched.length, {
+      region: regionId,
+    });
     if (unmatched.length === 0) {
       tracker.complete();
       return;
@@ -1511,7 +1531,7 @@ export class RegionSyncService implements OnModuleDestroy {
     if (syncedExternalIds.size === 0 || maxBills != null) {
       // Tracker still useful so the operator sees the no-op outcome
       // rather than wondering whether the phase ran at all.
-      const tracker = billSyncTracker(this.logger, 'prune_stale', 0, {
+      const tracker = this.billTracker('prune_stale', 0, {
         region: regionId,
         reason:
           syncedExternalIds.size === 0
@@ -1530,7 +1550,7 @@ export class RegionSyncService implements OnModuleDestroy {
       select: { id: true, billNumber: true, externalId: true },
     });
 
-    const tracker = billSyncTracker(this.logger, 'prune_stale', stale.length, {
+    const tracker = this.billTracker('prune_stale', stale.length, {
       region: regionId,
     });
     if (stale.length === 0) {
@@ -1612,12 +1632,9 @@ export class RegionSyncService implements OnModuleDestroy {
       take: maxBills,
     });
 
-    const tracker = billSyncTracker(
-      this.logger,
-      'summarize',
-      candidates.length,
-      { region: regionId },
-    );
+    const tracker = this.billTracker('summarize', candidates.length, {
+      region: regionId,
+    });
     if (candidates.length === 0) {
       tracker.complete();
       return { enriched: 0, skipped: 0, failed: 0 };
@@ -1726,12 +1743,9 @@ export class RegionSyncService implements OnModuleDestroy {
     allVotesUrls: Array<{ url: string; ds: DataSourceConfig }>,
     repIndex: Map<string, { id: string; chamber: string }>,
   ): Promise<{ updated: number }> {
-    const votesTracker = billSyncTracker(
-      this.logger,
-      'votes_only',
-      allVotesUrls.length,
-      { region: regionId },
-    );
+    const votesTracker = this.billTracker('votes_only', allVotesUrls.length, {
+      region: regionId,
+    });
     const concurrency = this.billVotesConcurrency;
     if (concurrency > 1) {
       votesTracker.note(`extracting votes with concurrency=${concurrency}`);
@@ -1779,6 +1793,10 @@ export class RegionSyncService implements OnModuleDestroy {
         outcome === 'votes-upserted' ? `votes upserted (${count})` : outcome,
       outcome: mapped.counter,
       extraCounters: [outcome],
+      // `VotesOutcome` is a closed nine-value union, so it is safe as a
+      // label — and it is the distinction that matters: "4998 shell-missing"
+      // and "20 extraction-failed" were visible only in the summary line.
+      reason: outcome,
     });
     if (outcome === 'votes-upserted') updatedRef.total += 1;
   }
@@ -2904,6 +2922,8 @@ export class RegionSyncService implements OnModuleDestroy {
       timeoutMs: 20_000,
       throttle: this.hostThrottle,
       logger: this.logger,
+      metrics: this.metrics,
+      dataType: 'bills',
     });
   }
 

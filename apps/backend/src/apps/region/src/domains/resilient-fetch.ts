@@ -14,6 +14,12 @@
  * BullMQ worker's lock-renewal heartbeat.
  */
 
+import {
+  type MetricsObserver,
+  PipelineStage,
+  withStage,
+} from '@opuspopuli/common';
+
 /** Sleep helper — pulled out so tests can stub setTimeout cleanly. */
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -200,6 +206,19 @@ export interface FetchTextOptions {
   contentTypeWhitelist?: string[];
   /** Jitter ratio for backoff (default 0.1). Set to 0 in tests. */
   jitterRatio?: number;
+  /**
+   * Where to report the time this fetch took (M1,
+   * `docs/plans/ingestion-resource-lanes.md` §2). Absent means span-only.
+   */
+  metrics?: MetricsObserver;
+  /**
+   * Which sync this fetch belongs to, for the `data_type` label.
+   *
+   * Optional because this helper is shared and genuinely does not always
+   * know — and a guessed label is worse than an absent one, being wrong in a
+   * way no query can detect.
+   */
+  dataType?: string;
 }
 
 /**
@@ -214,6 +233,27 @@ export async function fetchTextWithRetry(
   const timeoutMs = opts.timeoutMs ?? 20_000;
   const allowed = opts.contentTypeWhitelist ?? ['text/html', 'xhtml+xml'];
 
+  // Around the WHOLE retry sequence, not each attempt. If leginfo is 503ing
+  // and this sleeps 2s then 4s before succeeding, those six seconds were
+  // spent fetching — they belong in the stage total, or a sync's stages stop
+  // summing to its duration and the missing time looks like it went nowhere.
+  // Per-attempt network latency is a different question, and the span this
+  // emits is where to ask it.
+  return withStage(
+    PipelineStage.Fetch,
+    { dataType: opts.dataType },
+    () => fetchTextOnce(url, timeoutMs, allowed, opts),
+    { observer: opts.metrics },
+  );
+}
+
+/** One throttled, retried, content-type-checked fetch. */
+async function fetchTextOnce(
+  url: string,
+  timeoutMs: number,
+  allowed: string[],
+  opts: FetchTextOptions,
+): Promise<string> {
   return withRetry(
     async () => {
       if (opts.throttle) await opts.throttle.acquire(url);

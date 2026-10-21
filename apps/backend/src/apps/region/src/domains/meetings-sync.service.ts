@@ -1,4 +1,5 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type {
   ArchiveIngestOptions,
@@ -49,6 +50,46 @@ export class MeetingsSyncService {
     timestamp: true,
   });
 
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof meetingSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private meetingTracker(
+    phase: Parameters<typeof meetingSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof meetingSyncTracker> {
+    return meetingSyncTracker(
+      this.logger,
+      phase,
+      total,
+      summaryArgs,
+      this.metrics,
+    );
+  }
+
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof minutesSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private minutesTracker(
+    phase: Parameters<typeof minutesSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof minutesSyncTracker> {
+    return minutesSyncTracker(
+      this.logger,
+      phase,
+      total,
+      summaryArgs,
+      this.metrics,
+    );
+  }
+
   constructor(
     private readonly db: DbService,
     @Optional()
@@ -57,6 +98,14 @@ export class MeetingsSyncService {
     private readonly queueService?: QueueService,
     @Optional()
     private readonly sourceVersions?: SourceVersionService,
+    /**
+     * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
+     * §2). Optional and last: several specs construct this service by hand,
+     * and a sync must run identically with no metrics bound.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {}
 
   async sync(
@@ -68,7 +117,7 @@ export class MeetingsSyncService {
     const regionId = provider.getName?.() ?? 'unknown';
 
     // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = meetingSyncTracker(this.logger, 'discover', 1, {
+    const discoverTracker = this.meetingTracker('discover', 1, {
       region: regionId,
     });
     const meetings = await provider.fetchMeetings(pipelineJobId);
@@ -107,8 +156,7 @@ export class MeetingsSyncService {
             })
           ).map((m: { externalId: string }) => m.externalId),
     );
-    const extractTracker = meetingSyncTracker(
-      this.logger,
+    const extractTracker = this.meetingTracker(
       'extract_and_upsert',
       meetings.length,
       { region: regionId },
@@ -160,7 +208,7 @@ export class MeetingsSyncService {
     // tracker fires as a no-op marker so the operator sees the phase
     // even if it does nothing — and so dashboards / log queries that
     // expect all 3 phases stay correct.
-    const linkTracker = meetingSyncTracker(this.logger, 'minutes_link', 0, {
+    const linkTracker = this.meetingTracker('minutes_link', 0, {
       region: regionId,
       note: 'not-yet-implemented',
     });
@@ -191,19 +239,19 @@ export class MeetingsSyncService {
       // operator can distinguish "phase ran and was empty" from
       // "phase never ran." Matches the pattern other syncs use for
       // not-yet-implemented sub-phases.
-      const noProvider = minutesSyncTracker(this.logger, 'discover', 0, {
+      const noProvider = this.minutesTracker('discover', 0, {
         note: 'provider does not implement fetchMeetingMinutes',
       });
       noProvider.complete();
-      const noIngest = minutesSyncTracker(this.logger, 'ingest', 0);
+      const noIngest = this.minutesTracker('ingest', 0);
       noIngest.complete();
-      const noSummarize = minutesSyncTracker(this.logger, 'summarize', 0);
+      const noSummarize = this.minutesTracker('summarize', 0);
       noSummarize.complete();
       return { processed: 0, created: 0, updated: 0 };
     }
 
     // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = minutesSyncTracker(this.logger, 'discover', 1);
+    const discoverTracker = this.minutesTracker('discover', 1);
     const bundles = await provider.fetchMeetingMinutes(options);
     discoverTracker.item({
       name: 'minutes provider',
@@ -214,9 +262,9 @@ export class MeetingsSyncService {
     discoverTracker.complete();
 
     if (bundles.length === 0) {
-      const ingestEmpty = minutesSyncTracker(this.logger, 'ingest', 0);
+      const ingestEmpty = this.minutesTracker('ingest', 0);
       ingestEmpty.complete();
-      const summarizeEmpty = minutesSyncTracker(this.logger, 'summarize', 0);
+      const summarizeEmpty = this.minutesTracker('summarize', 0);
       summarizeEmpty.complete();
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -231,11 +279,7 @@ export class MeetingsSyncService {
     );
 
     // ─── Phase 2/3 — ingest ────────────────────────────────────────
-    const ingestTracker = minutesSyncTracker(
-      this.logger,
-      'ingest',
-      bundles.length,
-    );
+    const ingestTracker = this.minutesTracker('ingest', bundles.length);
     const upsertedIds: string[] = [];
     for (const bundle of bundles) {
       // Provenance rides on the bundle, not the inner minutes: items are
@@ -316,11 +360,7 @@ export class MeetingsSyncService {
     // unless a job carries `force`. Deduped by minutesId so repeated syncs
     // don't pile up jobs for the same row.
     const enqueued = await this.enqueueSummaries(upsertedIds);
-    const summarizeTracker = minutesSyncTracker(
-      this.logger,
-      'summarize',
-      enqueued,
-    );
+    const summarizeTracker = this.minutesTracker('summarize', enqueued);
     summarizeTracker.complete();
 
     const created = bundles.filter(
