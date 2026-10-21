@@ -73,6 +73,7 @@ export class RegionPluginService implements OnModuleInit {
   private pluginRegionName: string | undefined;
   private pluginNormalizeDistrict = false;
   private pluginBioNoisePatterns: RegExp[] = [];
+  private pluginBioTrimPatterns: RegExp[] = [];
 
   constructor(
     private readonly pluginLoader: PluginLoaderService,
@@ -127,6 +128,11 @@ export class RegionPluginService implements OnModuleInit {
 
   getPluginBioNoisePatterns(): RegExp[] {
     return this.pluginBioNoisePatterns;
+  }
+
+  /** Patterns trimmed OUT of a scraped bio, as opposed to rejecting it. */
+  getPluginBioTrimPatterns(): RegExp[] {
+    return this.pluginBioTrimPatterns;
   }
 
   // ─── Public lifecycle / admin ────────────────────────────────────────────────
@@ -368,6 +374,9 @@ export class RegionPluginService implements OnModuleInit {
     this.pluginNormalizeDistrict =
       pluginCfg?.normalizeExternalIdDistrict ?? false;
     this.pluginBioNoisePatterns = (pluginCfg?.bioNoisePatterns ?? []).map(
+      (p) => new RegExp(p, 'i'),
+    );
+    this.pluginBioTrimPatterns = (pluginCfg?.bioTrimPatterns ?? []).map(
       (p) => new RegExp(p, 'i'),
     );
     this.logger.log(

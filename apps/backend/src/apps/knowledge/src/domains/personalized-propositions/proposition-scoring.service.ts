@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { PropositionPersonalizationInputDto } from './dto/proposition-personalization-input.dto';
 import type { PropositionAxisScoresModel } from './models/proposition-axis-scores.model';
+import { escapeRegExp } from '@opuspopuli/common';
 
 type FlagSet = PropositionPersonalizationInputDto['flags'];
 
@@ -87,16 +88,6 @@ const FLAG_KEYWORDS: Record<keyof FlagSet, readonly string[]> = {
     'tanf',
   ],
 };
-
-/**
- * Escape regex metacharacters in a keyword so the `\b` anchors are
- * the only special tokens in the compiled pattern. The hyphen in
- * "medi-cal" doesn't need escaping (literal in this position) but
- * the function handles all `RegExp` metacharacters uniformly.
- */
-function escapeRegExp(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /**
  * Pre-compile a `\b`-anchored case-insensitive regex per keyword once

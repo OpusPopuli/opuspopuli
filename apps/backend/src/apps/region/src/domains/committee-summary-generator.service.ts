@@ -4,8 +4,23 @@ import {
   extractJsonObjectSlice,
   type CommitteeAssignment,
 } from '@opuspopuli/common';
+import {
+  memberCommitteeNames,
+  namedRoleGroups,
+  renderRoleClause,
+  ROLE_CLAIM,
+} from './committee-roles';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
+import { extractLastName } from './region.service';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
+
+/**
+ * The sync's sentinel for "could not resolve a region id".
+ *
+ * Shared with the bio generator's scope resolution; scoping a query on it
+ * matches nothing at all rather than everything.
+ */
+const UNRESOLVED_REGION = 'unknown';
 
 /** Minimal shape of a representative needed to render a committee summary. */
 interface RepForSummary {
@@ -59,11 +74,15 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
    * result directly to the DB. Idempotent: reruns are no-ops once all
    * candidates are summarized.
    *
+   * @param regionId - Scopes candidate selection to the region being synced.
    * @param maxRepsOverride — per-call cap that takes precedence over the
    *   COMMITTEE_SUMMARY_GENERATOR_MAX_REPS env default. Wired to the
    *   syncRegionData mutation's `maxReps` arg.
    */
-  async generateMissingSummaries(maxRepsOverride?: number): Promise<void> {
+  async generateMissingSummaries(
+    regionId?: string,
+    maxRepsOverride?: number,
+  ): Promise<void> {
     if (!this.promptClient || !this.llm || !this.db) {
       return;
     }
@@ -78,6 +97,17 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
       where: {
         deletedAt: null,
         committeesSummary: null,
+        // Scoped to the region being synced, for the reason #1394 gives for
+        // the bio generator: unscoped, a California sync summarises another
+        // region's reps, and the prompt is handed this chamber's context.
+        // Latent rather than observed only because the one other enabled
+        // region has no committee data scraped yet.
+        //
+        // `'unknown'` is the sync's sentinel for an unresolved region
+        // (`regionId ?? provider.getName?.() ?? 'unknown'`). Scoping on it
+        // matches no row, which would silently summarise nothing — the
+        // failure #1394 documents for bios on the `run-rep-sync` path.
+        ...(regionId && regionId !== UNRESOLVED_REGION ? { regionId } : {}),
       },
       select: { id: true, name: true, chamber: true, committees: true },
       orderBy: { lastName: 'asc' },
@@ -132,14 +162,18 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
     try {
       const generated = await this.generateSummary(rep);
       if (!generated) return false;
+      // Explicit nulls, not omission: Prisma reads `undefined` as "leave
+      // alone", which on a re-summarised rep would keep a previous run's AI
+      // attribution against text that is now wholly deterministic.
+      const { provenance } = generated;
       await this.db!.representative.update({
         where: { id: rep.id },
         data: {
           committeesSummary: generated.summary,
-          committeesSummaryPromptHash: generated.provenance.promptHash,
-          committeesSummaryPromptVersion: generated.provenance.promptVersion,
-          committeesSummaryLlmModel: generated.provenance.llmModel,
-          committeesSummaryLlmDigest: generated.provenance.llmModelDigest,
+          committeesSummaryPromptHash: provenance?.promptHash ?? null,
+          committeesSummaryPromptVersion: provenance?.promptVersion ?? null,
+          committeesSummaryLlmModel: provenance?.llmModel ?? null,
+          committeesSummaryLlmDigest: provenance?.llmModelDigest ?? null,
         },
       });
       return true;
@@ -151,43 +185,96 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
     }
   }
 
-  private async generateSummary(
-    rep: RepForSummary,
-  ): Promise<{ summary: string; provenance: AiOutputProvenance } | undefined> {
-    const structuredText = this.formatRepData(rep);
+  private async generateSummary(rep: RepForSummary): Promise<
+    | {
+        summary: string;
+        /** Null when no model output survived into `summary`. */
+        provenance: AiOutputProvenance | null;
+      }
+    | undefined
+  > {
+    // The split (#1393): roles come from the structured fields, policy areas
+    // from the model, and the model is never shown a role.
+    const roleGroups = namedRoleGroups(rep.committees);
+    const memberNames = memberCommitteeNames(rep.committees);
+    const roleClause = renderRoleClause(extractLastName(rep.name), roleGroups);
 
-    const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
-      documentType: 'representative-committees-summary',
-      text: structuredText,
-    });
-    const { promptText } = prompt;
+    // A rep with nothing but named roles has no policy sentence to write, so
+    // there is no call to make and no prompt to fetch. The role clause alone
+    // is a complete summary.
+    let policySentence = '';
+    let provenance: AiOutputProvenance | null = null;
+    if (memberNames.length > 0) {
+      const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
+        documentType: 'representative-committees-summary',
+        text: this.formatRepData(rep, memberNames),
+      });
+      const result = await this.llm!.generate(prompt.promptText, {
+        maxTokens: this.maxTokens,
+        temperature: 0.2,
+      });
+      policySentence = this.withoutRoleClaims(
+        rep,
+        this.parseSummaryFromResponse(result.text) ?? '',
+      );
+      // Only when the model's sentence actually SURVIVES. If the guard
+      // discarded it, every stored word came from `renderRoleClause`, and
+      // attributing deterministic text to a prompt and a model is the
+      // misattribution `clearedAiAttribution` exists to prevent — pointing
+      // the wrong way. "A model wrote this" must not be recorded of text a
+      // model did not write.
+      if (policySentence) provenance = await this.outputProvenance(prompt);
+    }
 
-    const result = await this.llm!.generate(promptText, {
-      maxTokens: this.maxTokens,
-      temperature: 0.2,
-    });
-
-    const summary = this.parseSummaryFromResponse(result.text);
+    const summary = [policySentence, roleClause]
+      .filter((part) => part.length > 0)
+      .join(' ');
     if (!summary) return undefined;
-    return { summary, provenance: await this.outputProvenance(prompt) };
+
+    return { summary, provenance };
   }
 
   /**
-   * Format the committee data as key-value text for the prompt. Deliberately
-   * narrower than the bio prompt: we want the summary grounded only in
-   * assignments, so we omit bio/party/district context.
+   * Discard a policy sentence that claims a role (#1393).
+   *
+   * The prompt is handed committee names with no roles attached, so any role
+   * word in its output is invented — there was nothing to read it from. The
+   * deterministic clause carries the real roles, so dropping the sentence
+   * loses a summary of policy areas and keeps every true statement; the
+   * alternative is publishing a chairmanship nobody holds.
+   *
+   * Instructing against it is not enough on its own: that was the lesson of
+   * three prior revisions. See `bio-source-guard.ts` for the same reasoning.
    */
-  private formatRepData(rep: RepForSummary): string {
-    const committeeLines = rep.committees
-      .map((c) => {
-        const rolePrefix = c.role ? `${c.role}: ` : '';
-        return `  - ${rolePrefix}${c.name}`;
-      })
-      .join('\n');
+  private withoutRoleClaims(rep: RepForSummary, sentence: string): string {
+    if (!sentence || !ROLE_CLAIM.test(sentence)) return sentence;
+
+    this.logger.warn(
+      `Committee summary for ${rep.name}: discarded the policy sentence, ` +
+        `which claimed a role it was never given — ` +
+        JSON.stringify(sentence),
+    );
+    return '';
+  }
+
+  /**
+   * Format the prompt input: the MEMBERSHIP committee names only.
+   *
+   * Deliberately narrower than the bio prompt — no bio, party or district, so
+   * the sentence is grounded only in assignments — and narrower again than
+   * before #1393: **no roles**. Roles are rendered from the structured fields
+   * by {@link renderRoleClause}, and withholding them here is what makes a
+   * false role claim unreachable rather than merely discouraged.
+   *
+   * The chamber is still passed: it is the one piece of context that stops a
+   * bare committee name being read as some other body's.
+   */
+  private formatRepData(rep: RepForSummary, memberNames: string[]): string {
+    const committeeLines = memberNames.map((name) => `  - ${name}`).join('\n');
     return [
       `Name: ${rep.name}`,
       `Chamber: ${rep.chamber}`,
-      `Committee Assignments:\n${committeeLines}`,
+      `Committee Memberships:\n${committeeLines}`,
     ].join('\n');
   }
 

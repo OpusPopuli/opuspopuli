@@ -244,7 +244,16 @@ export interface Meeting extends RowProvenance {
  */
 export interface CommitteeAssignment {
   name: string;
-  role?: string;
+  /**
+   * "Chair", "Vice Chair", "Co-Chair", "Member" — or absent.
+   *
+   * Explicitly nullable, not merely optional: these arrive in a JSONB column
+   * populated by extraction, and a `{"role": null}` entry is a shape the
+   * database genuinely holds. Typed `role?: string`, the specs covering the
+   * null branch of `normaliseRole` had to cast, which meant they asserted
+   * behaviour the type system said could not happen.
+   */
+  role?: string | null;
   url?: string;
 }
 

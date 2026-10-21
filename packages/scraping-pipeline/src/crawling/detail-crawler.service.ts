@@ -26,6 +26,7 @@ import type {
   SelectorFailure,
   StructuredFieldConfig,
 } from "@opuspopuli/common";
+import { htmlToReadableText } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { extractStructuredArray } from "../extraction/structured-extractor.js";
 import { extractAgSummary } from "./ag-summary.js";
@@ -47,6 +48,35 @@ interface DetailContent {
   content: string;
   /** Absent when archiving was not requested, or the store declined the body */
   sourceVersionId?: string;
+}
+
+/**
+ * Readable text for one element, routed through the shared HTML-to-text
+ * converter rather than cheerio's `.text()`.
+ *
+ * `.text()` concatenates descendant text nodes with NO separator, so block
+ * boundaries vanish and adjacent words fuse: a Senate page's heading and
+ * first paragraph came out as "SenatorJesse", and a surname running into the
+ * next sentence as "Grove.The". Measured on 20 scraped Senate bios, 7 carried
+ * at least one fused pair.
+ *
+ * Exported, and free of `this`, so the fusing is directly testable — it was a
+ * private method and the regression had no guard, which meant reverting to
+ * `.text()` was caught by nothing.
+ *
+ * Falls back to `.text()` when the element has no inner HTML, the ordinary
+ * case for a leaf like `<span>22</span>`.
+ *
+ * @param el - Anything cheerio-shaped enough to yield html and text
+ * @returns Whitespace-collapsed readable text
+ */
+export function elementText(el: {
+  html(): string | null;
+  text(): string;
+}): string {
+  const inner = el.html();
+  const text = inner ? htmlToReadableText(inner) : el.text();
+  return text.replaceAll(/\s+/g, " ").trim();
 }
 
 @Injectable()
@@ -441,9 +471,13 @@ export class DetailCrawlerService {
   ): Record<string, string> {
     const $ = cheerio.load(html);
     $("script, style, noscript, svg, iframe, nav, footer, header").remove();
-    const text = ($("main").text() || $("article").text() || $("body").text())
-      .replaceAll(/\s+/g, " ")
-      .trim();
+    // Same boundary problem as `elementText` — `.text()` glues a heading to
+    // the paragraph after it. The chrome removal above is kept because it
+    // operates on the parsed DOM, which is stricter than the regex pass.
+    const text =
+      elementText($("main").first()) ||
+      elementText($("article").first()) ||
+      elementText($("body").first());
     const fields = this.getDefaultTextFields(dataType);
     if (text && fields.length > 0) {
       return { [fields[0]]: text };
@@ -693,6 +727,27 @@ Respond with ONLY valid JSON, no explanation. Example:
   /**
    * Extract a single text or attribute value from a CSS selector.
    */
+  /**
+   * Text of an element, with whitespace at tag boundaries (#1382 follow-up).
+   *
+   * cheerio's `.text()` concatenates descendant text nodes with NOTHING
+   * between them, so a heading followed by a paragraph comes back as
+   * "SenatorJesse Arreguin" and a sentence boundary as "Elk Grove.The only
+   * woman". Measured on the first scraped Senate bios: 7 of 20 carried glued
+   * words. That corrupts sentence splitting, claim matching and embeddings
+   * silently — nothing downstream can tell "Grove.The" from a typo on the
+   * page.
+   *
+   * Routed through `htmlToReadableText` rather than a local fix, for three
+   * reasons: it already inserts separators at tag boundaries, it already
+   * strips nested script/style/nav/header/footer chrome, and it is the SAME
+   * function the text-dump fallback and the eval harness use — so selector
+   * extraction and full-text extraction can no longer disagree about what the
+   * page says.
+   *
+   * Falls back to `.text()` when the element has no inner HTML, which is the
+   * ordinary case for a leaf like `<span>22</span>`.
+   */
   private extractSimpleField(
     $: cheerio.CheerioAPI,
     field: string,
@@ -706,9 +761,9 @@ Respond with ONLY valid JSON, no explanation. Example:
       return el.first().attr(attrSpec);
     }
     if (field.includes("website") || field.includes("url")) {
-      return el.first().attr("href") ?? el.first().text().trim();
+      return el.first().attr("href") ?? elementText(el.first());
     }
-    return el.first().text().replaceAll(/\s+/g, " ").trim() || undefined;
+    return elementText(el.first()) || undefined;
   }
 
   /**
