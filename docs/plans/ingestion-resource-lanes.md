@@ -572,9 +572,14 @@ lifecycle (F4).
     run.
   - Emit `pipeline_rows_deleted_total` (§3).
 
+  **Design and status: `docs/plans/F2-bill-prune-scope.md`** (guard
+  threshold decided 2026-10-22: max(2%, 10 bills)).
+
   **Before fixing:**
-  - Confirm on prod: Loki for `removed (not seen in this sync)` in
-    region-worker logs shows how many bills mode 1 has already deleted.
+  - ~~Confirm on prod: Loki for `removed (not seen in this sync)` in
+    region-worker logs shows how many bills mode 1 has already deleted.~~
+    **Zero** (2026-10-22): no bills sync has run on prod since 2026-09-16
+    (`REGION_SYNC_CRON_ENABLED=false`), and all 5,019 bills are 2025-2026.
   - **This section is the record for F2; there is no separate issue.** An
     issue search (2026-10-21) for `pruneStaleBills`, `prune_stale`, "prune
     stale bills session" and "bills deleted session" found nothing else

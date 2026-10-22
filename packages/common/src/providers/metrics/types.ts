@@ -152,6 +152,15 @@ export const PipelineMetric = {
    * events, and only the first one means the sync produced nothing.
    */
   PhaseAbortedTotal: "pipeline_phase_aborted_total",
+  /**
+   * Counter. Labels: `data_type`.
+   *
+   * Rows a sync's prune actually deleted. Its own counter because a deletion
+   * is the one outcome a later sync cannot undo, and the "bulk deletion"
+   * alert (§3) reads it. A prune the deletion guard refuses adds nothing —
+   * the refusal shows up as `skipped` items with `reason="deletion-guard"`.
+   */
+  RowsDeletedTotal: "pipeline_rows_deleted_total",
 } as const;
 
 /**

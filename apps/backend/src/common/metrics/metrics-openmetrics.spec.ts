@@ -151,4 +151,17 @@ describe('metrics scrape (M1)', () => {
     );
     expect(body).toMatch(/pipeline_phase_aborted_total\{[^}]*\} 1/);
   });
+
+  // Registered in the module AND injected into the observer — miss either
+  // and the increment is dropped with a warning, which is how a deletion
+  // alert would come to read as "no deletions".
+  it('counts pruned rows (F2)', async () => {
+    observer.increment(PipelineMetric.RowsDeletedTotal, 7, {
+      data_type: 'bills',
+    });
+
+    const body = await scrape();
+
+    expect(body).toMatch(/pipeline_rows_deleted_total\{data_type="bills"\} 7/);
+  });
 });

@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import {
   RegionSyncService,
+  billPruneLimit,
   normalizeCommitteeName,
 } from './region-sync.service';
 import { PropositionsSyncService } from './propositions-sync.service';
@@ -1621,6 +1622,201 @@ describe('RegionSyncService', () => {
   // an id from the supplied list, but a hardened guard is the only thing
   // standing between prompt drift and a bad stage id landing in the DB.
   // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * F2 — the bills prune deleted bills it should have kept
+   * (`docs/plans/F2-bill-prune-scope.md`). Deletion cascades to votes,
+   * co-authors and committee assignments, so every case here is about a row
+   * that must SURVIVE.
+   */
+  describe('pruneStaleBills — scope and guard (F2)', () => {
+    type Prune = (
+      regionId: string,
+      discovered: Set<string>,
+      maxBills?: number,
+    ) => Promise<void>;
+    const prune = (discovered: string[], maxBills?: number) =>
+      (service as unknown as { pruneStaleBills: Prune }).pruneStaleBills(
+        'california',
+        new Set(discovered),
+        maxBills,
+      );
+
+    /**
+     * A stored corpus, answered the way Postgres would answer the two
+     * queries the prune makes: the distinct sessions of the discovered ids,
+     * and the in-scope bills not discovered. Filtering here, rather than
+     * returning canned rows per call, is what lets a test fail when the
+     * prune stops passing the session filter.
+     */
+    const corpus = (bills: { externalId: string; sessionYear: string }[]) => {
+      const rows = bills.map((b) => ({
+        ...b,
+        id: `uuid-${b.externalId}`,
+        billNumber: b.externalId,
+      }));
+      mockDb.bill.findMany.mockImplementation((async (args: {
+        where: {
+          externalId: { in?: string[]; notIn?: string[] };
+          sessionYear?: { in: string[] };
+        };
+        distinct?: string[];
+      }) => {
+        const { externalId, sessionYear } = args.where;
+        const matched = rows.filter(
+          (r) =>
+            (!externalId.in || externalId.in.includes(r.externalId)) &&
+            (!externalId.notIn || !externalId.notIn.includes(r.externalId)) &&
+            (!sessionYear || sessionYear.in.includes(r.sessionYear)),
+        );
+        if (args.distinct) {
+          return [...new Set(matched.map((r) => r.sessionYear))].map(
+            (sessionYear) => ({ sessionYear }),
+          );
+        }
+        return matched;
+      }) as never);
+      mockDb.bill.count.mockImplementation(
+        (async (args: { where: { sessionYear: { in: string[] } } }) =>
+          rows.filter((r) => args.where.sessionYear.in.includes(r.sessionYear))
+            .length) as never,
+      );
+      mockDb.bill.deleteMany.mockResolvedValue({ count: 0 } as never);
+    };
+
+    const deletedIds = (): string[] =>
+      mockDb.bill.deleteMany.mock.calls.flatMap(
+        (c) => (c[0] as { where: { id: { in: string[] } } }).where.id.in,
+      );
+
+    /** `n` bills of one session, ids `<prefix>1..n`. */
+    const session = (prefix: string, sessionYear: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        externalId: `${prefix}${i + 1}`,
+        sessionYear,
+      }));
+
+    it('deletes exactly the undiscovered bills of the session it covered', async () => {
+      corpus(session('2025AB', '2025-2026', 100));
+
+      await prune(session('2025AB', '2025-2026', 98).map((b) => b.externalId));
+
+      expect(deletedIds().sort()).toEqual(['uuid-2025AB100', 'uuid-2025AB99']);
+    });
+
+    it('keeps the previous session after a session flip', async () => {
+      // The December failure: the source moves to 2027-28, the sync
+      // creates the new bills, and every 2025-26 bill — chaptered laws
+      // included — is "not seen in this sync".
+      //
+      // Under the guard's floor of 10, so the guard cannot rescue this test:
+      // with 500 old bills it passed with the session filter removed.
+      corpus([
+        ...session('2025AB', '2025-2026', 8),
+        ...session('2027AB', '2027-2028', 40),
+      ]);
+
+      await prune(session('2027AB', '2027-2028', 40).map((b) => b.externalId));
+
+      expect(mockDb.bill.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses a prune over the guard and deletes nothing', async () => {
+      // A broken discovery pass: one of two sources returned no links.
+      // 2% of 1,000 is 20; this would delete 400.
+      corpus(session('2025AB', '2025-2026', 1000));
+      const error = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
+      try {
+        await prune(
+          session('2025AB', '2025-2026', 600).map((b) => b.externalId),
+        );
+
+        expect(mockDb.bill.deleteMany).not.toHaveBeenCalled();
+        expect(
+          error.mock.calls.some((c) => String(c[0]).includes('REFUSED')),
+        ).toBe(true);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it('prunes nothing when no discovered bill is stored', async () => {
+      // Every new bill failed, so no session is known to be covered.
+      corpus(session('2025AB', '2025-2026', 50));
+
+      await prune(['2027AB1', '2027AB2']);
+
+      expect(mockDb.bill.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('still skips when maxBills is set', async () => {
+      corpus(session('2025AB', '2025-2026', 50));
+
+      await prune(['2025AB1'], 5);
+
+      expect(mockDb.bill.findMany).not.toHaveBeenCalled();
+      expect(mockDb.bill.deleteMany).not.toHaveBeenCalled();
+    });
+
+    describe('billPruneLimit', () => {
+      it('is 2% of a large corpus', () => {
+        expect(billPruneLimit(5019)).toBe(100);
+      });
+
+      it('never falls below 10, so a small region can still prune', () => {
+        expect(billPruneLimit(60)).toBe(10);
+        expect(billPruneLimit(0)).toBe(10);
+      });
+    });
+  });
+
+  describe('processOneBillUrl — discovery is independent of outcome (F2)', () => {
+    type ProcessOne = (
+      url: string,
+      ctx: Record<string, unknown>,
+    ) => Promise<void>;
+
+    const runWith = async (
+      result: 'created' | 'updated' | 'skipped' | 'failed',
+    ): Promise<Set<string>> => {
+      const internals = service as unknown as {
+        processOneBillUrl: ProcessOne;
+        tryStatusOnlyRecheck: () => Promise<string>;
+        extractAndUpsertBillPage: () => Promise<string>;
+      };
+      jest
+        .spyOn(internals, 'tryStatusOnlyRecheck')
+        .mockResolvedValue('fall-through');
+      jest
+        .spyOn(internals, 'extractAndUpsertBillPage')
+        .mockResolvedValue(result);
+
+      const discoveredExternalIds = new Set<string>();
+      await internals.processOneBillUrl(
+        'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=202520260AB42',
+        {
+          regionId: 'california',
+          billsByExternalId: new Map(),
+          forceStatusRecheck: false,
+          discoveredExternalIds,
+          tracker: { item: jest.fn() },
+        },
+      );
+      return discoveredExternalIds;
+    };
+
+    it('records a FAILED bill as discovered, so the prune keeps it', async () => {
+      // The every-sync failure: a 503 or a reply with no JSON on an
+      // existing bill used to delete it.
+      expect(await runWith('failed')).toEqual(new Set(['202520260AB42']));
+    });
+
+    it('records a successful bill as discovered', async () => {
+      expect(await runWith('updated')).toEqual(new Set(['202520260AB42']));
+    });
+  });
 
   describe('bill-status-summary merge (#823)', () => {
     const STAGE_PATTERNS = [

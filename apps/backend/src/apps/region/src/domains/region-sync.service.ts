@@ -5,7 +5,11 @@ import {
   OnModuleDestroy,
   Optional,
 } from '@nestjs/common';
-import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
+import {
+  METRICS_OBSERVER,
+  type MetricsObserver,
+  PipelineMetric,
+} from '@opuspopuli/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DataType,
@@ -224,6 +228,20 @@ function normalizeVotePosition(
  * boilerplate and collapses whitespace. Applied to BOTH sides so the comparison
  * is symmetric; returns '' when a name is only boilerplate (never aliased).
  */
+const BILL_PRUNE_MAX_FRACTION = 0.02;
+
+/**
+ * The most bills one prune may delete: 2% of the bills in scope, never fewer
+ * than 10 (owner decision, 2026-10-22, `docs/plans/F2-bill-prune-scope.md`).
+ *
+ * The fraction catches a broken discovery pass on a large corpus — 100 of
+ * California's 5,019. The floor keeps a small region usable: 2% of 60 bills
+ * is one, which would refuse every ordinary prune.
+ */
+export function billPruneLimit(inScopeCount: number): number {
+  return Math.max(Math.floor(inScopeCount * BILL_PRUNE_MAX_FRACTION), 10);
+}
+
 export function normalizeCommitteeName(name: string): string {
   return name
     .toLowerCase()
@@ -1162,7 +1180,10 @@ export class RegionSyncService implements OnModuleDestroy {
     let created = 0;
     let updated = 0;
     let skippedTotal = 0;
-    const syncedExternalIds = new Set<string>();
+    // Every bill id seen in discovery, WHATEVER its outcome — the prune's
+    // input. It was "successfully processed" ids until F2, so a bill whose
+    // page 503'd was deleted along with its voting record.
+    const discoveredExternalIds = new Set<string>();
 
     // ─── Phase 1/6 — discover ───────────────────────────────────────
     // Walk every data source's discovery index up-front so phase 2/3
@@ -1206,7 +1227,7 @@ export class RegionSyncService implements OnModuleDestroy {
         stagePatterns,
         billsByExternalId,
         forceStatusRecheck,
-        syncedExternalIds,
+        discoveredExternalIds,
         tracker: extractTracker,
       });
     }
@@ -1231,7 +1252,7 @@ export class RegionSyncService implements OnModuleDestroy {
     }
 
     // ─── Phase 5/6 — prune_stale ───────────────────────────────────
-    await this.pruneStaleBills(regionId, syncedExternalIds, maxBills);
+    await this.pruneStaleBills(regionId, discoveredExternalIds, maxBills);
 
     // ─── Phase 6/6 — summarize ─────────────────────────────────────
     // Enrichment is a second pass: extraction (above) is the prerequisite,
@@ -1283,8 +1304,8 @@ export class RegionSyncService implements OnModuleDestroy {
   /**
    * Process a single bill discovery URL: try the cheap status-only
    * re-check first, then fall through to the full LLM extraction.
-   * Emits one per-item log line via the tracker and mutates the shared
-   * `syncedExternalIds` set in place.
+   * Emits one per-item log line via the tracker and records the bill id
+   * in the shared `discoveredExternalIds` set.
    */
   private async processOneBillUrl(
     url: string,
@@ -1296,12 +1317,15 @@ export class RegionSyncService implements OnModuleDestroy {
       stagePatterns: StagePattern[];
       billsByExternalId: Map<string, BillSkipRecord>;
       forceStatusRecheck: boolean;
-      syncedExternalIds: Set<string>;
+      discoveredExternalIds: Set<string>;
       tracker: SyncPhaseTracker<BillSyncPhase>;
     },
   ): Promise<void> {
     const billId = this.safeBillIdFromUrl(url);
     const billNumber = billNumberFromExternalId(billId);
+    // Before any fetch, so no outcome below can leave it out: a bill that
+    // fails this run was still seen, and must not be pruned (F2).
+    if (billId) ctx.discoveredExternalIds.add(billId);
 
     // Status-only re-check path (#819, generalizing #689): fires for every
     // bill with a prior DB row, not just journal-flagged ones. Unchanged →
@@ -1322,7 +1346,6 @@ export class RegionSyncService implements OnModuleDestroy {
           outcome: 'skipped',
           extraCounters: ['status-only matched'],
         });
-        ctx.syncedExternalIds.add(billId);
         return;
       }
     }
@@ -1364,9 +1387,6 @@ export class RegionSyncService implements OnModuleDestroy {
         outcomeLabel: 'failed',
         outcome: 'error',
       });
-    }
-    if (result !== 'failed' && billId) {
-      ctx.syncedExternalIds.add(billId);
     }
   }
 
@@ -1523,36 +1543,74 @@ export class RegionSyncService implements OnModuleDestroy {
     tracker.complete();
   }
 
+  /**
+   * Delete bills the source no longer lists — and only those (F2,
+   * `docs/plans/F2-bill-prune-scope.md`).
+   *
+   * Three limits, each closing a way this used to delete bills it should
+   * have kept:
+   *
+   *  1. The input is every DISCOVERED id, not every successfully processed
+   *     one, so a bill whose page failed this run survives.
+   *  2. Only the sessions this sync covered are in scope, read from the
+   *     stored rows. On the first sync after a session flip the discovered
+   *     bills are the new session's, so the old session — chaptered laws and
+   *     all — is out of scope by construction.
+   *  3. A prune larger than {@link billPruneLimit} is refused outright. A
+   *     broken discovery pass looks exactly like a mass delisting, and the
+   *     two cannot be told apart from inside the sync.
+   *
+   * Deletion cascades to votes, co-authors and committee assignments, which
+   * is why each limit errs toward keeping the row.
+   */
   private async pruneStaleBills(
     regionId: string,
-    syncedExternalIds: Set<string>,
+    discoveredExternalIds: Set<string>,
     maxBills?: number,
   ): Promise<void> {
-    if (syncedExternalIds.size === 0 || maxBills != null) {
+    if (discoveredExternalIds.size === 0 || maxBills != null) {
       // Tracker still useful so the operator sees the no-op outcome
       // rather than wondering whether the phase ran at all.
-      const tracker = this.billTracker('prune_stale', 0, {
-        region: regionId,
-        reason:
-          syncedExternalIds.size === 0
-            ? 'no-synced-ids'
-            : 'maxBills-set-skips-prune',
-      });
-      tracker.complete();
+      this.skipPrune(
+        regionId,
+        discoveredExternalIds.size === 0
+          ? 'no-discovered-ids'
+          : 'maxBills-set-skips-prune',
+      );
       return;
     }
 
-    const stale = await this.db.bill.findMany({
-      where: {
-        regionId,
-        externalId: { notIn: Array.from(syncedExternalIds) },
-      },
-      select: { id: true, billNumber: true, externalId: true },
-    });
+    const discovered = Array.from(discoveredExternalIds);
+    const sessionYears = await this.discoveredSessionYears(
+      regionId,
+      discovered,
+    );
+    if (sessionYears.length === 0) {
+      // Discovered, but nothing stored — every new bill failed. No session
+      // is known to be covered, so nothing is in scope.
+      this.skipPrune(regionId, 'no-stored-sessions');
+      return;
+    }
 
+    const inScope = { regionId, sessionYear: { in: sessionYears } };
+    const [inScopeCount, stale] = await Promise.all([
+      this.db.bill.count({ where: inScope }),
+      this.db.bill.findMany({
+        where: { ...inScope, externalId: { notIn: discovered } },
+        select: { id: true, billNumber: true, externalId: true },
+      }),
+    ]);
+
+    const limit = billPruneLimit(inScopeCount);
     const tracker = this.billTracker('prune_stale', stale.length, {
       region: regionId,
+      sessions: sessionYears.join(','),
+      limit,
     });
+    if (stale.length > limit) {
+      this.refusePrune(tracker, stale, inScopeCount, limit);
+      return;
+    }
     if (stale.length === 0) {
       tracker.complete();
       return;
@@ -1561,6 +1619,7 @@ export class RegionSyncService implements OnModuleDestroy {
     await this.db.bill.deleteMany({
       where: { id: { in: stale.map((b) => b.id) } },
     });
+    this.countDeletedRows(stale.length);
     for (const bill of stale) {
       tracker.item({
         name: bill.billNumber,
@@ -1570,6 +1629,66 @@ export class RegionSyncService implements OnModuleDestroy {
       });
     }
     tracker.complete();
+  }
+
+  /** The distinct sessions of the stored bills this sync discovered. */
+  private async discoveredSessionYears(
+    regionId: string,
+    discovered: string[],
+  ): Promise<string[]> {
+    const rows = await this.db.bill.findMany({
+      where: { regionId, externalId: { in: discovered } },
+      select: { sessionYear: true },
+      distinct: ['sessionYear'],
+    });
+    return rows.map((r) => r.sessionYear);
+  }
+
+  private skipPrune(regionId: string, reason: string): void {
+    this.billTracker('prune_stale', 0, { region: regionId, reason }).complete();
+  }
+
+  /**
+   * Keep every row and say so loudly. Each kept bill is a `skipped` item
+   * with `reason="deletion-guard"`, so the refusal reaches the dashboard and
+   * not only the log.
+   */
+  private refusePrune(
+    tracker: SyncPhaseTracker<BillSyncPhase>,
+    stale: { billNumber: string; externalId: string }[],
+    inScopeCount: number,
+    limit: number,
+  ): void {
+    this.logger.error(
+      `Bills: prune REFUSED — it would delete ${stale.length} of ` +
+        `${inScopeCount} in-scope bills, over the limit of ${limit}. ` +
+        `Nothing was deleted. A discovery pass that lost a source looks ` +
+        `exactly like this; check the discover phase before re-running.`,
+    );
+    for (const bill of stale) {
+      tracker.item({
+        name: bill.billNumber,
+        externalId: bill.externalId,
+        outcomeLabel: 'kept: prune refused by deletion guard',
+        outcome: 'skipped',
+        reason: 'deletion-guard',
+      });
+    }
+    tracker.complete();
+  }
+
+  /** Never throws: a metric is not worth failing a sync that already deleted. */
+  private countDeletedRows(count: number): void {
+    try {
+      this.metrics?.increment(PipelineMetric.RowsDeletedTotal, count, {
+        data_type: 'bills',
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Bills: pipeline_rows_deleted_total emission failed and was ignored: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
