@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { IOcrProvider } from "@opuspopuli/common";
 import { ocrConfig } from "@opuspopuli/config-provider";
 import { OcrService } from "./ocr.service.js";
+import { METRICS_OBSERVER, type MetricsObserver } from "@opuspopuli/common";
 import { TesseractOcrProvider } from "./providers/tesseract.provider.js";
 import { VisionOcrProvider } from "./providers/vision.provider.js";
 import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";
@@ -146,10 +147,21 @@ export type OcrPromptSupplier = () => Promise<{
       useFactory: (
         provider: IOcrProvider,
         preprocessor: ImagePreprocessor | null,
+        metrics?: MetricsObserver,
       ) => {
-        return new OcrService(provider, preprocessor || undefined);
+        // `metrics` is threaded through the FACTORY, not left to the
+        // constructor's `@Optional() @Inject()`. A factory supplies arguments
+        // positionally and ignores parameter decorators entirely, so the
+        // decorator alone compiled, ran, and recorded nothing — the `ocr`
+        // stage sat at zero observations through a live sync that was
+        // visibly preprocessing images.
+        return new OcrService(provider, preprocessor || undefined, metrics);
       },
-      inject: ["OCR_PROVIDER", ImagePreprocessor],
+      inject: [
+        "OCR_PROVIDER",
+        ImagePreprocessor,
+        { token: METRICS_OBSERVER, optional: true },
+      ],
     },
   ],
   exports: [OcrService, "OCR_PROVIDER", ImagePreprocessor],
@@ -243,10 +255,18 @@ export class OcrModule {
           useFactory: (
             provider: IOcrProvider,
             preprocessor: ImagePreprocessor | null,
+            metrics?: MetricsObserver,
           ) => {
-            return new OcrService(provider, preprocessor || undefined);
+            // Same reason as the static provider above: a factory ignores
+            // parameter decorators, so the observer has to come through
+            // `inject`.
+            return new OcrService(provider, preprocessor || undefined, metrics);
           },
-          inject: ["OCR_PROVIDER", ImagePreprocessor],
+          inject: [
+            "OCR_PROVIDER",
+            ImagePreprocessor,
+            { token: METRICS_OBSERVER, optional: true },
+          ],
         },
       ],
       exports: [OcrService, "OCR_PROVIDER", ImagePreprocessor],

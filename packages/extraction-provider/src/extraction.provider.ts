@@ -288,7 +288,19 @@ export class ExtractionProvider {
     url: string,
     options: RetryOptions = {},
   ): Promise<CachedFetchResult> {
-    return this.retryStandard(url, options, () => this.fetchUrl(url, options));
+    // Measured HERE, around the whole retry sequence, and not on `fetchUrl`
+    // below: backoff sleeps are time the pipeline spent fetching, and the
+    // scraping pipeline reaches the network almost exclusively through this
+    // method. Instrumenting only region's own `fetchTextWithRetry` left the
+    // `fetch` stage reading ZERO across a representatives sync that crawled
+    // 120 members and failed ~80 Assembly biography pages — a clean-looking
+    // run that had lost most of its secondary detail.
+    return withStage(
+      PipelineStage.Fetch,
+      {},
+      () => this.retryStandard(url, options, () => this.fetchUrl(url, options)),
+      { observer: this.metrics },
+    );
   }
 
   /**
@@ -355,8 +367,12 @@ export class ExtractionProvider {
     url: string,
     options: RetryOptions = {},
   ): Promise<BytesFetchResult> {
-    return this.retryStandard(url, options, () =>
-      this.fetchBytes(url, options),
+    return withStage(
+      PipelineStage.Fetch,
+      {},
+      () =>
+        this.retryStandard(url, options, () => this.fetchBytes(url, options)),
+      { observer: this.metrics },
     );
   }
 

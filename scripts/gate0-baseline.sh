@@ -8,8 +8,7 @@
 # than the run dilutes the result with idle time. Anchoring to the run is the
 # only way the numbers mean what they say.
 #
-#   scripts/gate0-baseline.sh civics 2032
-#   scripts/gate0-baseline.sh civics 2032 "2026-10-21 21:27:51"
+#   scripts/gate0-baseline.sh civics "2026-10-21 20:53:59" "2026-10-21 21:27:51"
 #
 # The third argument is when the run ENDED. It defaults to now, which is only
 # right if you capture immediately — `increase()` is evaluated at an instant
@@ -26,17 +25,26 @@
 # before any of this is worth recording.
 set -euo pipefail
 
-DATA_TYPE="${1:?usage: gate0-baseline.sh <data_type> <run_seconds> [run_end] [prom_url]}"
-RUN_SECONDS="${2:?usage: gate0-baseline.sh <data_type> <run_seconds> [run_end] [prom_url]}"
-RUN_END="${3:-}"
+DATA_TYPE="${1:?usage: gate0-baseline.sh <data_type> <run_start> <run_end> [prom_url]}"
+RUN_START="${2:?usage: gate0-baseline.sh <data_type> <run_start> <run_end> [prom_url]}"
+RUN_END="${3:?usage: gate0-baseline.sh <data_type> <run_start> <run_end> [prom_url]}"
 PROM="${4:-http://localhost:9090}"
 
-# Evaluate every query AT the end of the run, not at the current instant.
-if [ -n "$RUN_END" ]; then
-  AT=$(date -j -f "%Y-%m-%d %H:%M:%S" "$RUN_END" "+%s" 2>/dev/null \
-       || date -d "$RUN_END" "+%s")
-else
-  AT=$(date "+%s")
+# EXPLICIT bounds, not a duration plus slack. Syncs run back-to-back on one
+# queue, and a window padded around a duration spills into its neighbours —
+# measured: county reps came out at 109% GPU busy, which is impossible at
+# OLLAMA_NUM_PARALLEL=1, because the padding swallowed part of the state-reps
+# run that started 25 seconds later.
+parse_time() {
+  date -j -f "%Y-%m-%d %H:%M:%S" "$1" "+%s" 2>/dev/null || date -d "$1" "+%s"
+}
+
+FROM=$(parse_time "$RUN_START")
+AT=$(parse_time "$RUN_END")
+RUN_SECONDS=$(( AT - FROM ))
+if [ "$RUN_SECONDS" -le 0 ]; then
+  echo "ERROR: run-end is not after run-start." >&2
+  exit 1
 fi
 
 # A future anchor returns empty vectors, which read identically to "the run
@@ -52,7 +60,7 @@ if [ "$(( NOW - AT ))" -gt 1209600 ]; then
 fi
 
 # Prometheus needs a window at least as long as the run; pad for scrape lag.
-WINDOW="$(( RUN_SECONDS + 300 ))s"
+WINDOW="${RUN_SECONDS}s"
 
 q() {
   curl -sG --data-urlencode "query=$1" --data-urlencode "time=$AT" \
@@ -79,13 +87,32 @@ for x in json.load(sys.stdin)["data"]["result"]:
     print(name + "\t" + str(value))' "$2"
 }
 
+# Scalar counter delta, same two-instant method. `increase()` is wrong for
+# every counter here, not just the item counts: on the propositions run it
+# reported 0 seconds and 0 LLM calls where the true deltas were 74.0s and 3.
+delta() {
+  local expr="$1" start="$FROM"
+  for t in "$start" "$AT"; do
+    curl -sG --data-urlencode "query=$expr" --data-urlencode "time=$t" \
+         "$PROM/api/v1/query"
+  done | python3 -c '
+import json, sys
+docs = sys.stdin.read().replace("}{", "}\n{").splitlines()
+vals = []
+for d in docs:
+    res = json.loads(d)["data"]["result"]
+    vals.append(float(res[0]["value"][1]) if res else 0.0)
+before, after = (vals + [0.0, 0.0])[:2]
+print(round(max(after - before, 0.0), 1))'
+}
+
 # Exact counter delta: the value at the end of the run minus the value at the
 # start, per label. NOT `increase()`, which extrapolates and cannot see a
 # series that did not exist when the window opened — precisely the counters a
 # sync brings into being. Measured on the civics run: increase() reported
 # 8 updated / 11 skipped / 1 failed where the log said 12 / 13 / 2.
 delta_by() {
-  local expr="$1" label="$2" start=$(( AT - RUN_SECONDS - 60 ))
+  local expr="$1" label="$2" start="$FROM"
   for t in "$start" "$AT"; do
     curl -sG --data-urlencode "query=$expr" --data-urlencode "time=$t" \
          "$PROM/api/v1/query"
@@ -104,7 +131,7 @@ for k in sorted(set(before) | set(after)):
         print(k + "\t" + str(round(value, 1)))' "$label"
 }
 
-echo "Gate 0 baseline — ${DATA_TYPE}, run ${RUN_SECONDS}s (window ${WINDOW}, evaluated at $(date -r "$AT" "+%Y-%m-%d %H:%M:%S"))"
+echo "Gate 0 baseline — ${DATA_TYPE}, ${RUN_SECONDS}s ($(date -r "$FROM" "+%H:%M:%S") -> $(date -r "$AT" "+%H:%M:%S"))"
 echo
 
 echo "items by outcome"
@@ -119,15 +146,15 @@ while IFS=$'\t' read -r stage secs; do
   pct=$(python3 -c "print(f'{$secs / $RUN_SECONDS * 100:5.1f}')")
   printf '  %-10s %8.1fs  %s%% of run\n' "$stage" "$secs" "$pct"
   STAGE_TOTAL=$(python3 -c "print($STAGE_TOTAL + $secs)")
-done < <(q_by "sum by (stage) (increase(pipeline_stage_duration_seconds_sum[${WINDOW}]))" stage)
+done < <(delta_by "sum by (stage) (pipeline_stage_duration_seconds_sum)" stage)
 printf '  %-10s %8.1fs  %5.1f%% of run   <- remainder is DB, parsing, overhead\n' \
   "TOTAL" "$STAGE_TOTAL" "$(python3 -c "print($STAGE_TOTAL / $RUN_SECONDS * 100)")"
 
 echo
 echo "inference"
-LLM_SECONDS=$(q "sum(increase(llm_request_duration_seconds_sum[${WINDOW}]))")
-CALLS=$(q "sum(increase(llm_request_duration_seconds_count{phase=\"decode\"}[${WINDOW}]))")
-q_by "sum by (phase) (increase(llm_request_duration_seconds_sum[${WINDOW}]))" phase \
+LLM_SECONDS=$(delta "sum(llm_request_duration_seconds_sum)")
+CALLS=$(delta "sum(llm_request_duration_seconds_count{phase=\"decode\"})")
+delta_by "sum by (phase) (llm_request_duration_seconds_sum)" phase \
   | awk -F'\t' '{printf "  %-10s %8.1fs\n", $1, $2}'
 printf '  %-10s %8.0f\n' "calls" "$CALLS"
 delta_by "sum by (direction) (llm_tokens_total)" direction \
@@ -142,16 +169,27 @@ printf '  GPU busy %s%%  (idle %s%%)   <- Gate 0 exit metric\n' \
 # wrong — usually a run length that does not match the window, or an anchor
 # that caught a different sync. Say so rather than let an impossible number be
 # copied into a baseline table.
-if [ "$(python3 -c "print(1 if float('$BUSY') > 105 else 0)")" = "1" ]; then
-  echo "  !! GPU busy exceeds 100%. At OLLAMA_NUM_PARALLEL=1 that cannot happen:" >&2
-  echo "     check <run_seconds> and the run-end anchor — the window is probably" >&2
-  echo "     catching inference from a different run." >&2
+# Slightly over 100% is EXPECTED on a short, inference-bound run and is not an
+# error: Prometheus resolves an instant to the nearest sample at or before it,
+# so each boundary carries up to one scrape interval (~15s) of quantization.
+# On a 392s county-reps run that is ~4%, which is exactly the overshoot seen.
+# Read 100-115% as "saturated". Beyond that the bounds are genuinely wrong.
+if [ "$(python3 -c "print(1 if float('$BUSY') > 115 else 0)")" = "1" ]; then
+  echo "  !! GPU busy far exceeds 100% — the bounds are wrong, not the GPU." >&2
+  echo "     Check run-start/run-end: back-to-back syncs on one queue mean a" >&2
+  echo "     window that overruns either end swallows a neighbouring run." >&2
+elif [ "$(python3 -c "print(1 if float('$BUSY') > 100 else 0)")" = "1" ]; then
+  echo "     (>100% is scrape-boundary quantization on a short run; read as saturated)"
 fi
 
 echo
 FAILED=$(delta_by "sum(pipeline_items_total{data_type=\"${DATA_TYPE}\",outcome=\"failed\"})" outcome \
          | awk -F'\t' '{s+=$2} END {printf "%.0f", s+0}')
-GAP=$(python3 -c "print(f'{$STAGE_TOTAL - $LLM_SECONDS:.1f}')")
+# The meaningful gap is the llm STAGE against the llm PHASES — the caller's
+# wall clock minus what the GPU actually did. Comparing total stage time
+# against inference instead just reports pdf_parse on a CPU-bound run.
+LLM_STAGE=$(delta "sum(pipeline_stage_duration_seconds_sum{stage=\"llm\"})")
+GAP=$(python3 -c "print(f'{$LLM_STAGE - $LLM_SECONDS:.1f}')")
 if [ "${FAILED:-0}" -gt 0 ] 2>/dev/null; then
   cat <<WARN
   !! ${FAILED} item(s) FAILED. If any failure was an LLM runner death, its
@@ -161,4 +199,5 @@ if [ "${FAILED:-0}" -gt 0 ] 2>/dev/null; then
      "unexpected EOF" before recording this run.
 WARN
 fi
-echo "  stage-minus-inference gap: ${GAP}s (queue wait + HTTP + any failed calls)"
+printf '  llm stage %.1fs vs inference %.1fs -> gap %ss (queue wait + HTTP + failed calls)\n' \
+  "$LLM_STAGE" "$LLM_SECONDS" "$GAP"
