@@ -1,7 +1,13 @@
+import { Global, Module } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { ConfigModule } from "@nestjs/config";
 import { OcrModule } from "../src/ocr.module";
-import type { IOcrProvider } from "@opuspopuli/common";
+import {
+  METRICS_OBSERVER,
+  type IOcrProvider,
+  type MetricsObserver,
+} from "@opuspopuli/common";
+import { OcrService } from "../src/ocr.service";
 
 /**
  * #1050. The bug these exist for shipped to production and booted clean.
@@ -84,5 +90,102 @@ describe("OcrModule provider selection", () => {
     );
 
     expect(provider.getName()).toBe("vision:qwen2.5vl:7b");
+  });
+  describe("metrics observer reaches the service through DI", () => {
+    /**
+     * The same shape of bug as #1050, found live on 2026-10-22.
+     *
+     * `OcrService` takes the observer as an `@Optional() @Inject()`
+     * constructor parameter, and BOTH module registrations build it with a
+     * `useFactory`. A factory supplies arguments positionally and ignores
+     * parameter decorators entirely, so the decorator compiled, the module
+     * booted, the class tests passed — and the `ocr` stage recorded nothing
+     * through a live sync that was visibly preprocessing images.
+     *
+     * Constructing `OcrService` directly cannot catch that; only resolving it
+     * from the module can. So this asserts an observation ARRIVES, never that
+     * the module merely started.
+     */
+    const metricsModule = (observer: MetricsObserver) => {
+      @Global()
+      @Module({
+        providers: [{ provide: METRICS_OBSERVER, useValue: observer }],
+        exports: [METRICS_OBSERVER],
+      })
+      class TestMetricsModule {}
+      return TestMetricsModule;
+    };
+
+    const buildWithObserver = async (useAsync: boolean) => {
+      const observed: string[] = [];
+      const observer: MetricsObserver = {
+        observe: (metric) => observed.push(metric),
+        increment: () => undefined,
+      };
+      const prev = { ...process.env };
+      Object.assign(process.env, { OCR_PROVIDER: "tesseract" });
+      try {
+        // OCR_PROVIDER is stubbed: this test is about the module WIRING, and
+        // a real Tesseract would try to load language data and hang.
+        const stub: IOcrProvider = {
+          extractText: () =>
+            Promise.resolve({
+              text: "stub",
+              blocks: [],
+              confidence: 100,
+              provider: "stub",
+              processingTimeMs: 1,
+            }),
+          supports: () => true,
+          supportsMimeType: () => true,
+          getName: () => "stub",
+          getSupportedLanguages: () => ["eng"],
+        } as unknown as IOcrProvider;
+
+        const mod = await Test.createTestingModule({
+          imports: [
+            ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+            // GLOBAL, as MetricsModule is in production. A provider declared
+            // in the testing module's own `providers` is not visible inside
+            // OcrModule's scope, so the optional inject resolves to undefined
+            // and the test passes or fails for the wrong reason.
+            metricsModule(observer),
+            useAsync
+              ? OcrModule.forRootAsync({ useFactory: () => supplier })
+              : OcrModule.forRoot(),
+          ],
+        })
+          .overrideProvider("OCR_PROVIDER")
+          .useValue(stub)
+          .compile();
+        return { service: mod.get(OcrService), observed };
+      } finally {
+        process.env = prev;
+      }
+    };
+
+    it.each([
+      ["forRoot", false],
+      ["forRootAsync", true],
+    ])(
+      "%s times the extraction as the `ocr` stage",
+      async (_name, useAsync) => {
+        const { service, observed } = await buildWithObserver(
+          useAsync as boolean,
+        );
+
+        // Tesseract on a 1x1 buffer: the result does not matter, only that the
+        // stage was measured around whatever happened.
+        await service
+          .extractText({
+            type: "buffer",
+            buffer: Buffer.from("not-an-image"),
+            mimeType: "image/png",
+          })
+          .catch(() => undefined);
+
+        expect(observed).toContain("pipeline_stage_duration_seconds");
+      },
+    );
   });
 });

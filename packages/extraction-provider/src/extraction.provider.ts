@@ -9,6 +9,12 @@
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
+import {
+  METRICS_OBSERVER,
+  type MetricsObserver,
+  PipelineStage,
+  withStage,
+} from "@opuspopuli/common";
 import * as cheerio from "cheerio";
 import type { CheerioAPI, Cheerio } from "cheerio";
 import type { Element } from "domhandler";
@@ -124,6 +130,14 @@ export class ExtractionProvider {
     @Optional()
     @Inject(SOURCE_ARCHIVE)
     private readonly sourceArchive?: ISourceArchive,
+    /**
+     * Optional. Where PDF-parse timings go (M1,
+     * `docs/plans/ingestion-resource-lanes.md` §2, row 8). When absent,
+     * extraction is unmeasured and otherwise unchanged.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {
     this.config = {
       ...DEFAULT_EXTRACTION_CONFIG,
@@ -274,7 +288,19 @@ export class ExtractionProvider {
     url: string,
     options: RetryOptions = {},
   ): Promise<CachedFetchResult> {
-    return this.retryStandard(url, options, () => this.fetchUrl(url, options));
+    // Measured HERE, around the whole retry sequence, and not on `fetchUrl`
+    // below: backoff sleeps are time the pipeline spent fetching, and the
+    // scraping pipeline reaches the network almost exclusively through this
+    // method. Instrumenting only region's own `fetchTextWithRetry` left the
+    // `fetch` stage reading ZERO across a representatives sync that crawled
+    // 120 members and failed ~80 Assembly biography pages — a clean-looking
+    // run that had lost most of its secondary detail.
+    return withStage(
+      PipelineStage.Fetch,
+      {},
+      () => this.retryStandard(url, options, () => this.fetchUrl(url, options)),
+      { observer: this.metrics },
+    );
   }
 
   /**
@@ -288,7 +314,16 @@ export class ExtractionProvider {
    */
   async extractPdfText(buffer: Buffer): Promise<string> {
     this.logger.debug("Extracting text from PDF");
-    const text = await PdfExtractor.extract(buffer, this.ocrService);
+    // The whole cascade, as one `pdf_parse` stage. Tier 3 rasterises and
+    // hands off to OCR, which measures itself as the `ocr` stage — so a
+    // scanned PDF shows up in both, and the difference between them is what
+    // the parse tiers cost before OCR was reached. Row 8 compares the two.
+    const text = await withStage(
+      PipelineStage.PdfParse,
+      {},
+      () => PdfExtractor.extract(buffer, this.ocrService),
+      { observer: this.metrics },
+    );
     // Strip NUL bytes (0x00) that scanned / mixed-encoding PDFs can emit.
     // Postgres text columns reject 0x00 ("invalid byte sequence for encoding
     // UTF8"), which would crash any downstream DB write of the extracted text
@@ -332,8 +367,12 @@ export class ExtractionProvider {
     url: string,
     options: RetryOptions = {},
   ): Promise<BytesFetchResult> {
-    return this.retryStandard(url, options, () =>
-      this.fetchBytes(url, options),
+    return withStage(
+      PipelineStage.Fetch,
+      {},
+      () =>
+        this.retryStandard(url, options, () => this.fetchBytes(url, options)),
+      { observer: this.metrics },
     );
   }
 

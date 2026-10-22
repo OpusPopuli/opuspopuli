@@ -38,6 +38,7 @@ describe('SyncPhaseTracker', () => {
       const _ = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['a', 'b', 'c'] as const,
         'b',
         100,
@@ -52,6 +53,7 @@ describe('SyncPhaseTracker', () => {
       const _ = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['a'] as const,
         'a',
         0,
@@ -69,6 +71,7 @@ describe('SyncPhaseTracker', () => {
           new SyncPhaseTracker(
             logger,
             'TestSync',
+            'test_sync',
             ['a', 'b'] as const,
             'c' as 'a' | 'b',
             0,
@@ -82,6 +85,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         5,
@@ -102,6 +106,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         5,
@@ -122,6 +127,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         5,
@@ -142,6 +148,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         5,
@@ -175,6 +182,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         100,
@@ -197,6 +205,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         100,
@@ -214,6 +223,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['discover'] as const,
         'discover',
         2,
@@ -235,6 +245,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         10,
@@ -286,6 +297,7 @@ describe('SyncPhaseTracker', () => {
       const t = new SyncPhaseTracker(
         logger,
         'TestSync',
+        'test_sync',
         ['p'] as const,
         'p',
         3,

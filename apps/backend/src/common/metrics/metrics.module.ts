@@ -4,26 +4,32 @@
  * Provides Prometheus metrics endpoints and automatic request tracking.
  *
  * ## What Prometheus Does:
- * 1. Your service exposes metrics at /metrics in a simple text format
+ * 1. Your service exposes metrics at /metrics in the OpenMetrics text
+ *    format (switched from Prometheus 0.0.4 text in M1 — exemplars require
+ *    it; see `forRoot` below)
  * 2. Prometheus server scrapes this endpoint periodically (every 15-30s)
  * 3. Prometheus stores the time-series data
  * 4. Grafana visualizes the data with dashboards
  *
  * ## Endpoints:
- * - GET /metrics - Prometheus metrics in text format
+ * - GET /metrics - metrics in OpenMetrics text format
  *
  * @see https://github.com/OpusPopuli/opuspopuli/issues/213
  */
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { METRICS_OBSERVER } from '@opuspopuli/common';
 import {
   PrometheusModule,
   makeCounterProvider,
   makeHistogramProvider,
   makeGaugeProvider,
 } from '@willsoto/nestjs-prometheus';
+import { Registry, register } from 'prom-client';
+import type { OpenMetricsContentType } from 'prom-client';
 
 import { MetricsService } from './metrics.service';
+import { PromMetricsObserver } from './prom-metrics-observer';
 import { MetricsInterceptor } from './metrics.interceptor';
 
 /**
@@ -70,10 +76,67 @@ export class MetricsModule {
     const metricsPath = options.metricsPath || '/metrics';
     const defaultMetrics = options.defaultMetrics ?? true;
 
+    /**
+     * Serve the scrape as OpenMetrics, which exemplars REQUIRE (M1,
+     * `docs/plans/ingestion-resource-lanes.md` §2).
+     *
+     * Not a preference. prom-client renders an exemplar only `if (exemplar &&
+     * isOpenMetrics)`, and refuses to even construct a histogram with
+     * `enableExemplars` on a Prometheus-format registry — `TypeError:
+     * Exemplars are supported only on OpenMetrics registries`. So this call
+     * has to come before the providers below are instantiated, and if it is
+     * ever removed the services fail loudly at boot rather than serving
+     * exemplar-free metrics that look fine.
+     *
+     * Verified before switching, because the blast radius is every metric this
+     * platform has and an unparseable scrape is a monitoring OUTAGE (#1343),
+     * not a missing panel. Precisely what was tested: the document this
+     * module renders was served with this content type to a throwaway
+     * prom/prometheus v2.51.0 carrying the five `metric_relabel_configs` from
+     * `observability/prometheus.yml`. It scraped clean — no partial scrape,
+     * drop rules still matched exactly their targets without over-matching,
+     * and the exemplar was retrievable from `/api/v1/query_exemplars`.
+     *
+     * The specific worry was the `_total` suffix, which OpenMetrics reserves
+     * for counters. SIX families here end in it while not being counters:
+     * `claims_total`, `documents_total`, `documents_embedded_total`, plus
+     * prom-client's own `nodejs_active_handles_total`,
+     * `nodejs_active_requests_total` and `nodejs_active_resources_total`.
+     * Prometheus parsed every one as a gauge — which it must, or prom-client's
+     * OpenMetrics mode would be unusable for everybody.
+     *
+     * Counter SAMPLES keep the suffix and only the family metadata loses it
+     * (`# TYPE http_requests counter`, sample `http_requests_total{…}`), so no
+     * existing alert rule or dashboard expression is renamed — all of them
+     * query sample names. The visible consequence is cosmetic: Grafana's
+     * metric browser and `/api/v1/metadata` now show the un-suffixed family.
+     */
+    // The cast is prom-client's typing, not a shortcut: the exported default
+    // `register` is declared `Registry<PrometheusContentType>`, so its own
+    // `setContentType` accepts only the content type it already has. The
+    // method exists precisely to change it, and the runtime accepts either of
+    // the two valid values.
+    (register as unknown as Registry<OpenMetricsContentType>).setContentType(
+      Registry.OPENMETRICS_CONTENT_TYPE,
+    );
+
     const providers: Provider[] = [
       {
         provide: 'METRICS_OPTIONS',
         useValue: options,
+      },
+      /**
+       * The prom-client side of the metrics seam (M2).
+       *
+       * Packages measure through `MetricsObserver` and never touch
+       * prom-client; this binds the one implementation. Auto-exported by the
+       * filter below, and `global: true` makes it resolvable from any module
+       * — which is what lets `LLMModule`'s lane factories pick it up with
+       * `{ optional: true }` without importing anything from here.
+       */
+      {
+        provide: METRICS_OBSERVER,
+        useClass: PromMetricsObserver,
       },
       MetricsService,
       // Register the interceptor globally for automatic HTTP metrics
@@ -144,6 +207,122 @@ export class MetricsModule {
        * measured freshness (#1217); a capacity decision should be read off a
        * graph rather than estimated.
        */
+      /**
+       * LLM phase timings and token counts (M2,
+       * `docs/plans/ingestion-resource-lanes.md` §2).
+       *
+       * Ollama reports `load_duration`, `prompt_eval_duration` and
+       * `eval_duration` on every response and the provider discarded two of
+       * the three. Summed over a run and divided by wall clock, these give
+       * the GPU idle fraction — Gate 0's exit metric — without a host GPU
+       * exporter, root, or a third-party agent to licence-check.
+       *
+       * Buckets span 10ms to ~17min: a resident-model decode is tens of
+       * milliseconds, while civics-glossary extraction is documented as
+       * needing "20+ min where bio gen needs 2". Default buckets top out at
+       * 10s and would put every extraction call in `+Inf`.
+       *
+       * Labels are `lane`, `model`, `phase` per §3. Low cardinality by
+       * construction — two lanes, a handful of models, three phases (#1344).
+       */
+      makeHistogramProvider({
+        name: 'llm_request_duration_seconds',
+        help: 'Inference time by phase: model load, prefill, decode',
+        labelNames: ['lane', 'model', 'phase'],
+        buckets: [
+          0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200,
+        ],
+      }),
+      makeCounterProvider({
+        name: 'llm_tokens_total',
+        help: 'Tokens processed by the LLM, by lane, model and direction',
+        labelNames: ['lane', 'model', 'direction'],
+      }),
+      /**
+       * Where a sync's wall clock actually goes (M1,
+       * `docs/plans/ingestion-resource-lanes.md` §2).
+       *
+       * One histogram across every stage rather than a metric per stage, so
+       * "which resource is the bottleneck" is one query with a `by (stage)`
+       * rather than a dashboard that has to be edited whenever a stage is
+       * added. `stage` is a closed set (`PipelineStage`), and the remaining
+       * labels are bounded the same way: a handful of data types, two lanes,
+       * a few models, and the hosts we own (#1344).
+       *
+       * Buckets reach 1200s for the same reason the llm histogram does — a
+       * civics glossary extraction is documented at 20+ minutes, and default
+       * buckets topping out at 10s would file nearly every ingestion stage
+       * under `+Inf`, which answers nothing.
+       *
+       * `enableExemplars` is what will make a slow bucket clickable:
+       * `withStage` attaches its OTel span's `trace_id`, so a p95 spike can
+       * lead to the trace that produced it instead of to a guess.
+       *
+       * FOUR switches are required and only two are wired today. Done: this
+       * flag plus the OpenMetrics content type above, and dev Prometheus's
+       * `--enable-feature=exemplar-storage`. Not done: Grafana's
+       * `exemplarTraceIdDestinations` names the label (added for dev in
+       * `observability/.../datasources.yml`), and the PANEL ITSELF must carry
+       * `"exemplar": true` on its target or Grafana never calls
+       * `/api/v1/query_exemplars`. No dashboard queries this histogram yet —
+       * §3 row 2 is the next milestone — so the exemplars are being stored
+       * and nothing reads them. Said plainly here because "the link is
+       * silently absent" is the failure mode of every one of the four.
+       */
+      makeHistogramProvider({
+        name: 'pipeline_stage_duration_seconds',
+        // `data_type` is in the label set but only the bills fetch path sets
+        // it today: `pdf_parse`, `ocr` and `llm` are all reached through
+        // shared code that cannot know its caller's data type, and a guessed
+        // label is worse than an absent one. So the help text promises `stage`
+        // and no more — `sum by (data_type)` currently returns one dominant
+        // empty bucket, which a dashboard must not be built on until the
+        // callers that DO know thread it down.
+        help: 'Time spent in one pipeline stage, by stage',
+        // `host` is declared for §7 and set by NOTHING yet — deliberately.
+        // `os.hostname()` is the obvious source and the wrong one: in a
+        // container it is the container id, which changes on every recreate,
+        // so it would grow a new series set per deploy. §7 has to supply a
+        // stable node identity first. An unset label costs no series, but it
+        // will show as a blank option in a dashboard variable, so row
+        // building should skip it until then.
+        labelNames: ['stage', 'data_type', 'lane', 'model', 'host'],
+        buckets: [
+          0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200,
+        ],
+        enableExemplars: true,
+      }),
+      /**
+       * Item outcomes, for the throughput and failure-rate panels.
+       *
+       * Counted by the CALLER, not automatically per stage — most items pass
+       * through several stages, and counting at each would multiply the item
+       * count by the number of stages. `reason` carries why for `skipped` and
+       * `failed`, which is the difference between "the sync did nothing" and
+       * "the sync correctly skipped 4,000 unchanged rows".
+       */
+      makeCounterProvider({
+        name: 'pipeline_items_total',
+        help: 'Pipeline items by outcome: created, updated, skipped, failed',
+        // `phase` OR `stage`, never both: the tracker sets `phase`, the
+        // `withStage` path sets `stage`, and they are different series on one
+        // counter. Exactly one writer per item — see `PipelineMetric`.
+        labelNames: ['data_type', 'phase', 'stage', 'outcome', 'reason'],
+      }),
+      /**
+       * Phases that gave up mid-run (`SyncAbortedError`), for row 1.
+       *
+       * Worth its own counter rather than a `reason` on the failed-item
+       * count: an abort means the phase stopped, so the items after it were
+       * never attempted and no failure count will ever mention them. A sync
+       * that aborted at item 30 of 5,000 looks almost identical to a healthy
+       * one in `pipeline_items_total` and nothing else distinguishes them.
+       */
+      makeCounterProvider({
+        name: 'pipeline_phase_aborted_total',
+        help: 'Sync phases abandoned after consecutive failures',
+        labelNames: ['data_type', 'phase'],
+      }),
       makeGaugeProvider({
         name: 'source_store_bytes',
         help: 'Bytes held by the source store, by tier and storage location',

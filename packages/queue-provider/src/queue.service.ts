@@ -6,6 +6,7 @@ import {
   QUEUE_MODULE_OPTIONS,
   resolveQueuePrefix,
 } from "./queue.constants";
+import { withPublishSpan, withTraceContext } from "./job-tracing";
 import {
   EnqueueOptions,
   QueueJobInfo,
@@ -33,7 +34,14 @@ export class QueueService implements OnModuleDestroy {
   ): Promise<string> {
     const queue = this.getQueue(queueName);
     const jobOpts = this.buildJobOptions(queueName, opts);
-    const job = await queue.add(queueName, data, jobOpts);
+    // The active trace context rides along in the job data (D7), so the
+    // worker's span becomes a child of whatever asked for this work.
+    const job = await withPublishSpan(
+      queueName,
+      () => queue.add(queueName, withTraceContext(data), jobOpts),
+      (span, added) =>
+        span.setAttribute("messaging.message.id", String(added.id)),
+    );
 
     // A caller-supplied jobId that is already taken makes `add()` a no-op:
     // BullMQ returns the EXISTING job rather than enqueuing, in any state
@@ -72,12 +80,19 @@ export class QueueService implements OnModuleDestroy {
   ): Promise<string[]> {
     if (entries.length === 0) return [];
     const queue = this.getQueue(queueName);
+    // One publish span for the batch, and the same context on every job in
+    // it — a fan-out is one decision, not N unrelated ones.
     const bulkJobs = entries.map((e) => ({
       name: queueName,
-      data: e.data,
+      data: withTraceContext(e.data),
       opts: this.buildJobOptions(queueName, e.opts),
     }));
-    const jobs = await queue.addBulk(bulkJobs);
+    const jobs = await withPublishSpan(
+      queueName,
+      () => queue.addBulk(bulkJobs),
+      (span) =>
+        span.setAttribute("messaging.batch.message_count", bulkJobs.length),
+    );
     this.logger.debug(`Bulk-enqueued ${jobs.length} jobs on ${queueName}`);
     return jobs.map((j) => j.id as string);
   }
@@ -113,10 +128,7 @@ export class QueueService implements OnModuleDestroy {
    *
    * @returns Whether a waiting job was removed
    */
-  async removeJobIfPending(
-    queueName: string,
-    jobId: string,
-  ): Promise<boolean> {
+  async removeJobIfPending(queueName: string, jobId: string): Promise<boolean> {
     const queue = this.getQueue(queueName);
     const job = await queue.getJob(jobId);
     if (!job) return false;
@@ -143,6 +155,12 @@ export class QueueService implements OnModuleDestroy {
     data: unknown,
   ): Promise<void> {
     const queue = this.getQueue(queueName);
+    // NO trace context here, deliberately (D7). BullMQ stores a scheduler's
+    // `data` once and replays it on every firing, so an injected
+    // `traceparent` would make every nightly run for the rest of the
+    // scheduler's life a child of this one upsert — a single trace growing
+    // without bound, parented to a span that ended months ago. A cron firing
+    // is its own trace root.
     await queue.upsertJobScheduler(schedulerId, { pattern: cron }, { data });
     this.logger.log(
       `Upserted scheduler ${schedulerId} on ${queueName} (cron: ${cron})`,

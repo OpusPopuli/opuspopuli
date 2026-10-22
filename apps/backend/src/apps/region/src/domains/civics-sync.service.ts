@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
@@ -198,6 +199,26 @@ export class CivicsSyncService extends LlmGeneratorBase {
     timestamp: true,
   });
 
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof civicsSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private civicsTracker(
+    phase: Parameters<typeof civicsSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof civicsSyncTracker> {
+    return civicsSyncTracker(
+      this.logger,
+      phase,
+      total,
+      summaryArgs,
+      this.metrics,
+    );
+  }
+
   constructor(
     db: DbService,
     @Optional() promptClient?: PromptClientService,
@@ -212,6 +233,14 @@ export class CivicsSyncService extends LlmGeneratorBase {
     // job rather than a synthesis one. It is the other half of the workload
     // measured as job-1, alongside structural analysis.
     @Optional() @Inject('LLM_INGESTION_PROVIDER') llm?: ILLMProvider,
+    /**
+     * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
+     * §2). Optional and last: several specs construct this service by hand,
+     * and a sync must run identically with no metrics bound.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {
     // This class used to only *mirror* LlmGeneratorBase's constructor. It now
     // inherits it (#1281), so civics extraction goes through the same
@@ -268,12 +297,9 @@ export class CivicsSyncService extends LlmGeneratorBase {
     let stale = 0;
 
     // ─── Phase 1/2 — discover ──────────────────────────────────────
-    const discoverTracker = civicsSyncTracker(
-      this.logger,
-      'discover',
-      dataSources.length,
-      { region: regionId },
-    );
+    const discoverTracker = this.civicsTracker('discover', dataSources.length, {
+      region: regionId,
+    });
     const allUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
     for (const ds of dataSources) {
       // Once per source, before any inference is spent: say so if this source's
@@ -296,8 +322,7 @@ export class CivicsSyncService extends LlmGeneratorBase {
     discoverTracker.complete();
 
     // ─── Phase 2/2 — extract_and_upsert ────────────────────────────
-    const extractTracker = civicsSyncTracker(
-      this.logger,
+    const extractTracker = this.civicsTracker(
       'extract_and_upsert',
       allUrls.length,
       { region: regionId },
@@ -346,6 +371,10 @@ export class CivicsSyncService extends LlmGeneratorBase {
           externalId: null,
           outcomeLabel: 'skipped (empty over existing — row kept, now stale)',
           outcome: 'skipped',
+          // The same #1335 distinction on the metric. The prose above is for
+          // the operator; a label gets the slug, or it is one series per
+          // sentence.
+          reason: 'empty_over_existing',
         });
       } else {
         extractTracker.item({

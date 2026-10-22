@@ -1,10 +1,20 @@
-import { Injectable, Logger, OnModuleDestroy, Optional } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  Optional,
+} from "@nestjs/common";
 import {
   IOcrProvider,
+  METRICS_OBSERVER,
+  type MetricsObserver,
   OcrInput,
   OcrResult,
   OcrError,
   OcrPreprocessingMetadata,
+  PipelineStage,
+  withStage,
 } from "@opuspopuli/common";
 import { ImagePreprocessor } from "./preprocessing/image-preprocessor.js";
 
@@ -21,6 +31,14 @@ export class OcrService implements OnModuleDestroy {
   constructor(
     private readonly provider: IOcrProvider,
     @Optional() private readonly preprocessor?: ImagePreprocessor,
+    /**
+     * Optional. Where OCR timings go (M1,
+     * `docs/plans/ingestion-resource-lanes.md` §2, row 8). OCR is the
+     * CPU lane's dominant cost, which is the whole reason that row exists.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {
     this.logger.log(
       `Initialized with ${provider.getName()} provider` +
@@ -32,6 +50,19 @@ export class OcrService implements OnModuleDestroy {
    * Extract text from an image or document
    */
   async extractText(input: OcrInput): Promise<OcrResult> {
+    // Measured here rather than on the provider: preprocessing (deskew,
+    // rotate, threshold) runs on the CPU too, and row 8's question is how
+    // long a page takes to become text — not how long Tesseract took once
+    // someone else had prepared the image.
+    return withStage(
+      PipelineStage.Ocr,
+      { model: this.provider.getName() },
+      () => this.runExtraction(input),
+      { observer: this.metrics },
+    );
+  }
+
+  private async runExtraction(input: OcrInput): Promise<OcrResult> {
     this.logger.log(`Extracting text using ${this.provider.getName()}`);
 
     if (!this.provider.supports(input)) {

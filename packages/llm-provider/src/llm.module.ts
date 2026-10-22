@@ -1,11 +1,17 @@
 import { Logger, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { ILLMProvider, setGlobalHttpPool } from "@opuspopuli/common";
+import {
+  ILLMProvider,
+  METRICS_OBSERVER,
+  setGlobalHttpPool,
+  type MetricsObserver,
+} from "@opuspopuli/common";
 import { llmConfig } from "@opuspopuli/config-provider";
 import {
   resolveContextTokens,
   contextTokensWarning,
 } from "./context-tokens.js";
+import { withLaneMetrics } from "./providers/lane-metrics.js";
 import {
   OllamaLLMProvider,
   OllamaConfig,
@@ -102,7 +108,11 @@ type Lane = "analysis" | "ingestion";
  * @param lane - Which lane to build
  * @returns An Ollama provider pinned to that lane's model and endpoint
  */
-function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
+function buildLane(
+  configService: ConfigService,
+  lane: Lane,
+  observer?: MetricsObserver,
+): ILLMProvider {
   const requestTimeoutMs = Number.parseInt(
     configService.get<string>("OLLAMA_REQUEST_TIMEOUT_MS") ?? "",
     10,
@@ -186,7 +196,11 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
     }
   }
 
-  return new OllamaLLMProvider(ollamaConfig);
+  // Instrumented here rather than at the call sites (M2). `LlmGeneratorBase`
+  // is not the only consumer — RAG and rerank hold a provider too — and a
+  // metric covering some callers is worse than none, because the totals look
+  // complete. Returns the provider untouched when nothing is bound.
+  return withLaneMetrics(new OllamaLLMProvider(ollamaConfig), lane, observer);
 }
 
 @Module({
@@ -194,9 +208,13 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
   providers: [
     {
       provide: "LLM_ANALYSIS_PROVIDER",
-      useFactory: (configService: ConfigService): ILLMProvider =>
-        buildLane(configService, "analysis"),
-      inject: [ConfigService],
+      useFactory: (
+        configService: ConfigService,
+        observer?: MetricsObserver,
+      ): ILLMProvider => buildLane(configService, "analysis", observer),
+      // Optional on purpose: a worker that binds no observer must still
+      // boot. Instrumentation is never load-bearing.
+      inject: [ConfigService, { token: METRICS_OBSERVER, optional: true }],
     },
     /**
      * The ingestion lane (roadmap §6.4).
@@ -215,9 +233,13 @@ function buildLane(configService: ConfigService, lane: Lane): ILLMProvider {
      */
     {
       provide: "LLM_INGESTION_PROVIDER",
-      useFactory: (configService: ConfigService): ILLMProvider =>
-        buildLane(configService, "ingestion"),
-      inject: [ConfigService],
+      useFactory: (
+        configService: ConfigService,
+        observer?: MetricsObserver,
+      ): ILLMProvider => buildLane(configService, "ingestion", observer),
+      // Optional on purpose: a worker that binds no observer must still
+      // boot. Instrumentation is never load-bearing.
+      inject: [ConfigService, { token: METRICS_OBSERVER, optional: true }],
     },
   ],
   exports: ["LLM_ANALYSIS_PROVIDER", "LLM_INGESTION_PROVIDER"],

@@ -807,4 +807,141 @@ describe("OllamaLLMProvider", () => {
       }
     });
   });
+
+  describe("phase durations (M2)", () => {
+    /**
+     * Ollama reports `load_duration`, `prompt_eval_duration` and
+     * `eval_duration` on every non-streaming response. The provider read
+     * only `eval_duration`, and only to format a tok/s log line.
+     *
+     * They matter because total latency cannot tell a cold model load from a
+     * slow prompt from a long generation — and summed over a run, against
+     * wall clock, they ARE the GPU idle fraction, which is the Gate 0 exit
+     * metric in `docs/plans/ingestion-resource-lanes.md`. Measuring it from
+     * the application is what avoids needing a host GPU exporter, root, or a
+     * third-party agent to licence-check.
+     */
+    const respond = (extra: Record<string, unknown>) =>
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            response: "ok",
+            done: true,
+            done_reason: "stop",
+            eval_count: 10,
+            prompt_eval_count: 100,
+            ...extra,
+          }),
+      });
+
+    it("converts all three from nanoseconds to seconds", async () => {
+      respond({
+        load_duration: 1_500_000_000,
+        prompt_eval_duration: 2_250_000_000,
+        eval_duration: 500_000_000,
+      });
+
+      const result = await provider.generate("prompt");
+
+      expect(result.phases).toEqual({
+        loadSeconds: 1.5,
+        prefillSeconds: 2.25,
+        decodeSeconds: 0.5,
+      });
+    });
+
+    it("keeps a zero load distinct from a missing one", async () => {
+      // A zero load is the useful signal — the model was already resident.
+      // Coercing it to undefined would erase exactly the measurement that
+      // tells you whether lane affinity is working.
+      respond({
+        load_duration: 0,
+        prompt_eval_duration: 1_000_000_000,
+        eval_duration: 1_000_000_000,
+      });
+
+      const result = await provider.generate("prompt");
+
+      expect(result.phases?.loadSeconds).toBe(0);
+    });
+
+    it("omits the field entirely when the build reports no phases", async () => {
+      // "This Ollama does not report phases" and "every phase took zero
+      // time" are different claims. Older builds omit the fields.
+      respond({});
+
+      const result = await provider.generate("prompt");
+
+      expect(result.phases).toBeUndefined();
+    });
+
+    it("reports the phases it has when only some are present", async () => {
+      respond({ eval_duration: 3_000_000_000 });
+
+      const result = await provider.generate("prompt");
+
+      expect(result.phases).toEqual({
+        loadSeconds: undefined,
+        prefillSeconds: undefined,
+        decodeSeconds: 3,
+      });
+    });
+
+    it("ignores a negative or non-finite duration", async () => {
+      respond({
+        load_duration: -1,
+        prompt_eval_duration: Number.NaN,
+        eval_duration: 2_000_000_000,
+      });
+
+      const result = await provider.generate("prompt");
+
+      expect(result.phases?.loadSeconds).toBeUndefined();
+      expect(result.phases?.prefillSeconds).toBeUndefined();
+      expect(result.phases?.decodeSeconds).toBe(2);
+    });
+
+    it("reports phases on the chat path too", async () => {
+      // The generate and chat paths must return identical telemetry — the
+      // reason `tokenTelemetry` is one function is that the input token
+      // count went unread in one of them for months.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: { content: "ok" },
+            done: true,
+            done_reason: "stop",
+            eval_count: 10,
+            prompt_eval_count: 100,
+            load_duration: 0,
+            prompt_eval_duration: 4_000_000_000,
+            eval_duration: 1_000_000_000,
+          }),
+      });
+
+      const result = await provider.chat([{ role: "user", content: "hi" }]);
+
+      expect(result.phases).toEqual({
+        loadSeconds: 0,
+        prefillSeconds: 4,
+        decodeSeconds: 1,
+      });
+    });
+
+    it("leaves the existing token telemetry untouched", async () => {
+      respond({
+        load_duration: 0,
+        prompt_eval_duration: 1e9,
+        eval_duration: 1e9,
+      });
+
+      const result = await provider.generate("prompt");
+
+      expect(result.tokensIn).toBe(100);
+      expect(result.tokensOut).toBe(10);
+      expect(result.finishReason).toBe("stop");
+    });
+  });
 });

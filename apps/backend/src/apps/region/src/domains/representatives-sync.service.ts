@@ -1,4 +1,5 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { escapeRegExp, type Representative } from '@opuspopuli/common';
 import { BioGeneratorService } from './bio-generator.service';
@@ -226,6 +227,20 @@ export class RepresentativesSyncService {
     timestamp: true,
   });
 
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof repSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private repTracker(
+    phase: Parameters<typeof repSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof repSyncTracker> {
+    return repSyncTracker(this.logger, phase, total, summaryArgs, this.metrics);
+  }
+
   constructor(
     private readonly db: DbService,
     @Optional() private readonly bioGenerator?: BioGeneratorService,
@@ -237,6 +252,14 @@ export class RepresentativesSyncService {
     private readonly legislativeCommitteeDescriptions?: LegislativeCommitteeDescriptionGeneratorService,
     @Optional()
     private readonly entityActivitySummaries?: EntityActivitySummaryGeneratorService,
+    /**
+     * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
+     * §2). Optional and last: several specs construct this service by hand,
+     * and a sync must run identically with no metrics bound.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {}
 
   async sync(
@@ -250,7 +273,7 @@ export class RepresentativesSyncService {
     const resolvedRegionId = regionId ?? provider.getName?.() ?? 'unknown';
 
     // ─── Phase 1/5 — discover ──────────────────────────────────────
-    const discoverTracker = repSyncTracker(this.logger, 'discover', 1, {
+    const discoverTracker = this.repTracker('discover', 1, {
       region: resolvedRegionId,
     });
     // Pass the cap INTO the fetch (#1387). Slicing afterwards would trim
@@ -292,12 +315,9 @@ export class RepresentativesSyncService {
             })
           ).map((r: { externalId: string }) => r.externalId),
     );
-    const extractTracker = repSyncTracker(
-      this.logger,
-      'extract_and_upsert',
-      reps.length,
-      { region: resolvedRegionId },
-    );
+    const extractTracker = this.repTracker('extract_and_upsert', reps.length, {
+      region: resolvedRegionId,
+    });
     const result = await upsertByExternalId(
       reps,
       (ids) =>
@@ -383,15 +403,14 @@ export class RepresentativesSyncService {
     // the DeclarativeRegionPlugin.fetchRepresentatives call above —
     // it's not a separate orchestrator step in the current pipeline.
     // Phase fires as a marker so the operator sees all 5 phases.
-    const detailCrawlTracker = repSyncTracker(this.logger, 'detail_crawl', 0, {
+    const detailCrawlTracker = this.repTracker('detail_crawl', 0, {
       region: resolvedRegionId,
       note: 'inlined into fetchRepresentatives at plugin layer',
     });
     detailCrawlTracker.complete();
 
     // ─── Phase 4/5 — bio_generation ────────────────────────────────
-    const bioTracker = repSyncTracker(
-      this.logger,
+    const bioTracker = this.repTracker(
       'bio_generation',
       this.bioGenerator ? reps.length : 0,
       { region: resolvedRegionId },
@@ -449,7 +468,7 @@ export class RepresentativesSyncService {
     // discrete elections). Marker for parity with bills' 6-phase
     // shape; tracked for actual implementation under #816 / #770
     // alongside the rep↔committee FK work.
-    const pruneTracker = repSyncTracker(this.logger, 'prune_stale', 0, {
+    const pruneTracker = this.repTracker('prune_stale', 0, {
       region: resolvedRegionId,
       note: 'not-yet-implemented',
     });

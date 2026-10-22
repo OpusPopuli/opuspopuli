@@ -1,4 +1,5 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { Proposition } from '@opuspopuli/common';
 import { PropositionAnalysisService } from './proposition-analysis.service';
@@ -77,6 +78,26 @@ export class PropositionsSyncService {
     timestamp: true,
   });
 
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof propositionSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private propositionTracker(
+    phase: Parameters<typeof propositionSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof propositionSyncTracker> {
+    return propositionSyncTracker(
+      this.logger,
+      phase,
+      total,
+      summaryArgs,
+      this.metrics,
+    );
+  }
+
   constructor(
     private readonly db: DbService,
     @Optional()
@@ -87,6 +108,14 @@ export class PropositionsSyncService {
     private readonly propositionEmbedding?: PropositionEmbeddingService,
     @Optional()
     private readonly sourceVersions?: SourceVersionService,
+    /**
+     * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
+     * §2). Optional and last: several specs construct this service by hand,
+     * and a sync must run identically with no metrics bound.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {}
 
   /**
@@ -120,7 +149,7 @@ export class PropositionsSyncService {
     const regionId = pluginName;
 
     // ─── Phase 1/3 — discover ──────────────────────────────────────
-    const discoverTracker = propositionSyncTracker(this.logger, 'discover', 1, {
+    const discoverTracker = this.propositionTracker('discover', 1, {
       region: regionId,
     });
     const propositions = await provider.fetchPropositions(pipelineJobId);
@@ -152,8 +181,7 @@ export class PropositionsSyncService {
             })
           ).map((p: { externalId: string }) => p.externalId),
     );
-    const extractTracker = propositionSyncTracker(
-      this.logger,
+    const extractTracker = this.propositionTracker(
       'extract_and_upsert',
       propositions.length,
       { region: regionId },
@@ -306,8 +334,7 @@ export class PropositionsSyncService {
     }
 
     // ─── Phase 3/3 — analysis ──────────────────────────────────────
-    const analysisTracker = propositionSyncTracker(
-      this.logger,
+    const analysisTracker = this.propositionTracker(
       'analysis',
       this.propositionAnalysis ? 1 : 0,
       { region: regionId },

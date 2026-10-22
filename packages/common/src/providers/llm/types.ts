@@ -56,6 +56,45 @@ export interface GenerateOptions {
 /**
  * Generation result
  */
+/**
+ * Where an inference request's wall time actually went (M2,
+ * `docs/plans/ingestion-resource-lanes.md` §2).
+ *
+ * Ollama reports these on every non-streaming response and the provider read
+ * none of them, so the only timing anyone had was total latency — which
+ * cannot tell a cold model load from a slow prompt from a long generation.
+ * All three are needed to answer the questions the plan turns on:
+ *
+ *   - **GPU busy time** is the sum of these over a run. Divided by wall
+ *     clock it gives the GPU idle fraction, which is Gate 0's exit metric —
+ *     and it comes from the application, so it needs no host GPU exporter,
+ *     no root and no third-party agent to licence-check.
+ *   - **Prefill versus decode** decides whether overlapping stages is worth
+ *     anything. D12.6 expects prefill to dominate for extraction-shaped
+ *     work, where input outweighs output by an order of magnitude.
+ *   - **Load time** is non-zero only when the model was not resident, so a
+ *     rising count of non-zero loads is models thrashing — the thing lane
+ *     affinity exists to stop (measured 2m17s → 11m46s when two models
+ *     interleave on one host).
+ *
+ * Seconds, because that is Prometheus's convention and the metric derived
+ * from these is `llm_request_duration_seconds`. Ollama's own fields are
+ * nanoseconds.
+ *
+ * Every field is optional: older Ollama builds omit them, and a provider
+ * that is not Ollama has no equivalent. Absent means "not reported", which
+ * is not the same as zero — a zero `load` is the useful signal that the
+ * model was already resident.
+ */
+export interface LlmPhaseDurations {
+  /** Model load. Absent or 0 when the model was already resident. */
+  loadSeconds?: number;
+  /** Prompt evaluation — "prefill". */
+  prefillSeconds?: number;
+  /** Token generation — "decode". */
+  decodeSeconds?: number;
+}
+
 export interface GenerateResult {
   text: string;
   /**
@@ -79,6 +118,13 @@ export interface GenerateResult {
   /** Completion (output) tokens. */
   tokensOut?: number;
   finishReason?: "stop" | "length" | "error";
+  /**
+   * Per-phase timings, where the provider reports them.
+   *
+   * See {@link LlmPhaseDurations} — this is what makes the GPU idle
+   * fraction measurable without a host exporter.
+   */
+  phases?: LlmPhaseDurations;
   /**
    * True when the model appears to have read only part of the prompt (#1319).
    *

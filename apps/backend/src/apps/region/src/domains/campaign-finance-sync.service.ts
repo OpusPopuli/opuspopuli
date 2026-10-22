@@ -1,4 +1,5 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
@@ -88,6 +89,26 @@ export class CampaignFinanceSyncService {
     timestamp: true,
   });
 
+  /**
+   * One place where the metrics observer reaches a tracker, rather than a
+   * fifth argument on each call below. `Parameters<typeof campaignFinanceSyncTracker>`
+   * keeps the compile-time phase check — passing another data type's phase
+   * name is still a type error.
+   */
+  private financeTracker(
+    phase: Parameters<typeof campaignFinanceSyncTracker>[1],
+    total: number,
+    summaryArgs?: Record<string, string | number>,
+  ): ReturnType<typeof campaignFinanceSyncTracker> {
+    return campaignFinanceSyncTracker(
+      this.logger,
+      phase,
+      total,
+      summaryArgs,
+      this.metrics,
+    );
+  }
+
   constructor(
     private readonly db: DbService,
     @Optional()
@@ -102,6 +123,14 @@ export class CampaignFinanceSyncService {
     private readonly amendmentSupersession?: AmendmentSupersessionService,
     @Optional()
     private readonly filingReconciliation?: FilingReconciliationService,
+    /**
+     * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
+     * §2). Optional and last: several specs construct this service by hand,
+     * and a sync must run identically with no metrics bound.
+     */
+    @Optional()
+    @Inject(METRICS_OBSERVER)
+    private readonly metrics?: MetricsObserver,
   ) {}
 
   async sync(
@@ -129,11 +158,7 @@ export class CampaignFinanceSyncService {
     // extract tracker is lazily initialized on the first onBatch
     // callback so the phase-start log line for Phase 2 lands AFTER
     // Phase 1's complete line — operator-readable phase ordering.
-    const discoverTracker = campaignFinanceSyncTracker(
-      this.logger,
-      'discover',
-      0,
-    );
+    const discoverTracker = this.financeTracker('discover', 0);
     discoverTracker.note('preparing CAL-ACCESS bulk download stream');
 
     // Use a single-property ref so TypeScript can't narrow the inner
@@ -148,11 +173,7 @@ export class CampaignFinanceSyncService {
         if (!extractRef.tracker) {
           // First batch arrived → discover phase is functionally done.
           discoverTracker.complete();
-          extractRef.tracker = campaignFinanceSyncTracker(
-            this.logger,
-            'extract_and_upsert',
-            0,
-          );
+          extractRef.tracker = this.financeTracker('extract_and_upsert', 0);
         }
         return extractRef.tracker;
       };
@@ -206,12 +227,9 @@ export class CampaignFinanceSyncService {
       extractRef.tracker.complete();
     } else {
       discoverTracker.complete();
-      const emptyExtractTracker = campaignFinanceSyncTracker(
-        this.logger,
-        'extract_and_upsert',
-        0,
-        { note: 'no data from provider' },
-      );
+      const emptyExtractTracker = this.financeTracker('extract_and_upsert', 0, {
+        note: 'no data from provider',
+      });
       emptyExtractTracker.complete();
     }
 

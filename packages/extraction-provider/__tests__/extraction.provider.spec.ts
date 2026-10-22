@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ExtractionProvider, stripNulBytes } from "../src/extraction.provider";
 import { FetchError } from "../src/types";
+import type { MetricsObserver } from "@opuspopuli/common";
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -830,6 +831,71 @@ describe("ExtractionProvider", () => {
         .catch(() => {});
 
       testProvider.onModuleDestroy();
+    });
+  });
+  describe("pipeline fetch stage (M1)", () => {
+    /**
+     * The scraping pipeline reaches the network almost entirely through
+     * `fetchWithRetry`, NOT through region's own `fetchTextWithRetry`. With
+     * only the latter instrumented, a representatives sync that crawled 120
+     * members and failed ~80 Assembly biography pages reported a `fetch`
+     * stage of exactly ZERO — a clean-looking run that had lost most of its
+     * secondary detail. These assert the stage is emitted from this path.
+     */
+    const withObserver = () => {
+      const observed: [string, Record<string, string> | undefined][] = [];
+      const metrics: MetricsObserver = {
+        observe: (metric, _v, labels) => observed.push([metric, labels]),
+        increment: () => undefined,
+      };
+      return {
+        observed,
+        provider: new ExtractionProvider(
+          undefined,
+          undefined,
+          undefined,
+          metrics,
+        ),
+      };
+    };
+
+    it("times fetchWithRetry as the `fetch` stage", async () => {
+      const { provider: measured, observed } = withObserver();
+      mockFetch.mockResolvedValueOnce(httpResponse("<html>ok</html>"));
+
+      await measured.fetchWithRetry("https://example.gov/page");
+
+      expect(observed).toContainEqual([
+        "pipeline_stage_duration_seconds",
+        { stage: "fetch" },
+      ]);
+      measured.onModuleDestroy();
+    });
+
+    it("still records the stage when every attempt fails", async () => {
+      // The Assembly case: 80 pages lost. A failure that is not measured is
+      // a run that looks faster than it was.
+      const { provider: measured, observed } = withObserver();
+      mockFetch.mockRejectedValue(new Error("fetch failed"));
+
+      await expect(
+        measured.fetchWithRetry("https://a30.asmdc.org/biography", {
+          maxRetries: 0,
+        }),
+      ).rejects.toThrow();
+
+      expect(
+        observed.filter(([m]) => m === "pipeline_stage_duration_seconds"),
+      ).toHaveLength(1);
+      measured.onModuleDestroy();
+    });
+
+    it("fetches identically with no observer bound", async () => {
+      mockFetch.mockResolvedValueOnce(httpResponse("<html>ok</html>"));
+
+      const result = await provider.fetchWithRetry("https://example.gov/x");
+
+      expect(result.content).toContain("ok");
     });
   });
 });

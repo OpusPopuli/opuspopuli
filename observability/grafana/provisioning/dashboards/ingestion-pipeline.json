@@ -1,0 +1,462 @@
+{
+  "uid": "op-ingestion-pipeline",
+  "title": "Ingestion Pipeline",
+  "description": "Where a sync's time and work actually go — Gate 0 of docs/plans/ingestion-resource-lanes.md.\n\nMeasured, not inferred: every panel reads a metric the pipeline emits. The companion Sync Pipeline dashboard answers \"what did this run say\" from log lines; this one answers \"where did it spend itself\".\n\nRows 3 (lanes), 5 (skips), 6 (lazy analysis), 7 (fetch) and 9 (attribution) from the plan are not here yet: they need BullMQ queue metrics, skip counters, per-host fetch labels and Postgres grants that do not exist. Absent rather than empty, on purpose.",
+  "tags": ["opuspopuli", "pipeline", "ingestion"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "links": [
+    {
+      "title": "Sync Pipeline (logs for this run)",
+      "type": "dashboards",
+      "tags": ["sync"],
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Items per second by outcome",
+      "description": "Throughput as the pipeline itself counts it, from `SyncPhaseTracker` — the same accounting that produces the phase-complete log line, so the graph and the log cannot disagree.\n\n`skipped` dominating is healthy, not idle: most rows in a re-sync are unchanged. Compare against `failed`, not against `created`.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(pipeline_items_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Items per second by data type",
+      "description": "Which sync is actually moving. Every tracker sets `data_type`, so unlike the stage histogram this label is complete for all seven data types.\n\n`county_thresholds` is absent by construction — that service uses no `SyncPhaseTracker`, so it has nothing to report (see the plan).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (data_type) (rate(pipeline_items_total[5m]))",
+          "legendFormat": "{{data_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "GPU busy",
+      "description": "**Gate 0's exit metric.** Inference seconds per wall-clock second, summed across every LLM phase Ollama reports (load, prefill, decode).\n\nThis is derived from the timings Ollama already returns — there is no host GPU exporter, which is the point: no root, no agent, nothing to licence-check.\n\nCaveat: with `OLLAMA_NUM_PARALLEL` above 1 concurrent requests can push this past 100%, because it measures busy-seconds, not utilisation of one device.\n\n**Window is 1h on purpose.** This histogram is observed when a call COMPLETES, so a 114-second inference contributes nothing until it lands and then appears as a spike. Measured live during a civics sync: with a 5m window this stat read 0% while the GPU was saturated, because the one in-flight call had not returned yet. The window has to be comfortably longer than the longest single operation, and this pipeline's buckets reach 1200s because civics glossary extraction is documented at 20+ minutes. Read it as \"what fraction of the last hour was inference\", not as an instantaneous gauge.\n\nFor a LIVE \"is the GPU busy right now\" signal this is the wrong instrument in principle, not just in window size — it counts completed inference, so a call in flight contributes nothing until it returns. Observed during a civics sync: one extraction ran nine minutes on a 76k-character prompt while this read 0%. The plan's `llm_inflight_requests` gauge (S7) is what answers that question; this one answers \"what fraction of the window went to inference\", which is what Gate 0 needs.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(llm_request_duration_seconds_sum[1h])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 1 },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "GPU idle",
+      "description": "`1 - busy`. The number Gate 0 exists to drive down, and the reason the lanes work in §6 is judged against it.\n\nReads 100% when no LLM call happened in the window — which is true but means \"nothing asked\", not \"something is stuck\". The `or vector(0)` on the busy term is what makes that render as 100% instead of \"No data\"; read it beside the throughput panels, never alone.\n\n**Window is 1h on purpose.** This histogram is observed when a call COMPLETES, so a 114-second inference contributes nothing until it lands and then appears as a spike. Measured live during a civics sync: with a 5m window this stat read 0% while the GPU was saturated, because the one in-flight call had not returned yet. The window has to be comfortably longer than the longest single operation, and this pipeline's buckets reach 1200s because civics glossary extraction is documented at 20+ minutes. Read it as \"what fraction of the last hour was inference\", not as an instantaneous gauge.\n\nFor a LIVE \"is the GPU busy right now\" signal this is the wrong instrument in principle, not just in window size — it counts completed inference, so a call in flight contributes nothing until it returns. Observed during a civics sync: one extraction ran nine minutes on a 76k-character prompt while this read 0%. The plan's `llm_inflight_requests` gauge (S7) is what answers that question; this one answers \"what fraction of the window went to inference\", which is what Gate 0 needs.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - (sum(rate(llm_request_duration_seconds_sum[1h])) or vector(0))",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 1 },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Phases aborted (24h)",
+      "description": "`SyncAbortedError` — a phase that gave up because items were failing back-to-back.\n\nIts own counter, not a `reason` on the failure count, because an abort means the phase STOPPED: every item after it was never attempted, so no failure count will ever mention them. A sync that aborted at item 30 of 5,000 looks almost identical to a healthy one in `pipeline_items_total`.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(pipeline_phase_aborted_total[24h])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "decimals": 0 },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Data types reporting activity",
+      "description": "How many data types have moved an item in the last five minutes.\n\nDeliberately NOT called \"active syncs\": nothing publishes sync liveness yet, so this infers activity from throughput. A sync that is running but stalled before its first item does not appear here.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(sum by (data_type) (rate(pipeline_items_total[5m])) > 0) or vector(0)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "decimals": 0 },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Stage timing",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Busy time per stage",
+      "description": "**The \"where does a sync's time go\" panel.** Seconds of work per wall-clock second, per resource — stacked, so the height is total busy time and each band is one stage's share.\n\nMeasured around the WHOLE operation including retry backoff: if a fetch sleeps 2s then 4s before succeeding, those seconds were spent fetching. Excluding them would make the missing time look like it went nowhere.\n\nOnly `fetch`, `pdf_parse`, `ocr` and `llm` report. `html_parse`, `embed` and `db_write` are declared but have no call site yet, so their absence here is expected rather than a gap in the data.\n\n15m window, not 5m: a stage is observed when it completes, so a window shorter than the longest call turns a steady workload into a square wave — and with LLM calls around two minutes a 5m window was doing exactly that during a live sync.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (stage) (rate(pipeline_stage_duration_seconds_sum[15m]))",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Stage latency p50 / p95",
+      "description": "Per-call duration, not busy time. A stage can own little total time and still be the one blocking a run.\n\n**Exemplars are on.** Each dot links to the Tempo trace that produced that observation, so a p95 spike leads to the specific call rather than to a guess. Four independent switches have to agree for the dots to appear: an OpenMetrics scrape, Prometheus's `--enable-feature=exemplar-storage`, `exemplarTraceIdDestinations` on the datasource, and the `exemplar` flag on these targets. Every one of them fails silently.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket[15m])))",
+          "legendFormat": "p95 {{stage}}",
+          "exemplar": true
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket[15m])))",
+          "legendFormat": "p50 {{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "heatmap",
+      "title": "Stage duration distribution",
+      "description": "Where the mass actually sits. A p95 hides bimodality — a cache-hit path at 20ms and a cold path at 40s average to a number that describes neither, and this shows both.\n\nBuckets reach 1200s on purpose: civics glossary extraction is documented at 20+ minutes, and prom-client's default buckets top out at 10s, which would file nearly every ingestion stage under `+Inf`.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (rate(pipeline_stage_duration_seconds_bucket[15m]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ],
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": { "mode": "scheme", "scheme": "Oranges", "steps": 64 },
+        "yAxis": { "unit": "s" }
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Inference",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Decode tokens per second by model",
+      "description": "Output throughput — the number that says whether a model swap actually paid.\n\n`direction=\"out\"` is decode; input tokens are counted separately because prefill and decode have different costs and D12.6 expects prefill to dominate.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model) (rate(llm_tokens_total{direction=\"out\"}[15m]))",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Prefill versus decode",
+      "description": "Inference seconds per second, split by phase. **D12.6 expects prefill to be the cost**, and this is the panel that confirms or refutes it.\n\n`load` is shown too: a non-trivial load band means the model is being evicted and re-read between calls, which is what S7's model affinity exists to stop.\n\nThese are Ollama's own `load_duration`, `prompt_eval_duration` and `eval_duration`. The provider previously read the token counts and discarded all three.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (phase) (rate(llm_request_duration_seconds_sum[15m]))",
+          "legendFormat": "{{phase}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Model loads per hour",
+      "description": "Loads that actually read weights, counted as load-phase observations slower than 500ms.\n\nThe threshold is the measurement: Ollama reports a `load_duration` on every response, near-zero when the model is already resident, so counting observations would count requests rather than loads. This is the direct measure of whether S7's affinity work is needed — and later, whether it worked.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model) (increase(llm_request_duration_seconds_count{phase=\"load\"}[1h]) - increase(llm_request_duration_seconds_bucket{phase=\"load\", le=\"0.5\"}[1h]))",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Inference latency p95 by lane",
+      "description": "End-to-end per-call time, by lane, from the `llm` stage rather than the phase timings — so it includes the HTTP round trip and any wait behind `OLLAMA_NUM_PARALLEL`.\n\nThe gap between this and the phase sums in the panel beside it IS the queue wait. That difference is the whole argument for §6's lanes.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (lane, le) (rate(pipeline_stage_duration_seconds_bucket{stage=\"llm\"}[15m])))",
+          "legendFormat": "p95 {{lane}}",
+          "exemplar": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "CPU lane",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "PDF parse and OCR latency p95",
+      "description": "The CPU lane's two real costs. `pdf_parse` covers the whole tiered cascade (pdf-parse → mupdf → rasterise), and `ocr` is measured around preprocessing as well, because deskew and threshold run on the CPU too — the question is how long a page takes to BECOME text.\n\nA scanned PDF therefore appears in both, and the difference between them is what the parse tiers cost before OCR was reached.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket{stage=~\"pdf_parse|ocr\"}[15m])))",
+          "legendFormat": "p95 {{stage}}",
+          "exemplar": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Event loop lag p99 by service",
+      "description": "Whether CPU work is starving the event loop. A worker that is parsing PDFs on the main thread shows up here before it shows up as a timeout anywhere else.\n\np99 only: `observability/prometheus.yml` drops the p50/p90/min/max/mean/stddev variants, which are a series each and queried by nothing.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "nodejs_eventloop_lag_p99_seconds",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      }
+    }
+  ]
+}
