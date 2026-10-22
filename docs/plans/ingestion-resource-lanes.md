@@ -89,7 +89,7 @@ plots. This gate adds the pipeline-specific layer on top.
 | ~~**M1**~~ | ~~**One `withStage()` helper** that, around any existing call, emits an OTel span, observes `pipeline_stage_duration_seconds` (with the span's trace id as exemplar), and counts the item outcome. One helper, so spans and metrics cannot drift apart. `stage` ∈ {`fetch`, `pdf_parse`, `ocr`, `html_parse`, `embed`, `llm`, `db_write`}, plus `data_type`, `lane`, `model`, `host`. No behaviour change~~ | `packages/common` (helper); call sites landed in `resilient-fetch.ts`, `extraction.provider.ts`, `ocr.service.ts` and `lane-metrics.ts` — the last covers every consumer of a lane provider, which `llm-generator.base.ts` would not have. Item counts come from `sync-phase-logger.ts`, so no sync loop was touched |
 | ~~**M2**~~ | ~~**LLM phase timings.** Read `load_duration`, `prompt_eval_duration` and `eval_duration` from Ollama's response — `ollama.provider.ts:74-90` reads only the token counts today — and emit them as `llm_request_duration_seconds{phase}`~~ | `packages/llm-provider` |
 | ~~**M3**~~ | ~~BullMQ trace-context propagation (D7), so a sync and every job it enqueues land in one trace~~ — see the M3 note below | `packages/queue-provider` |
-| **M4** | **Baseline, all six data types**, before any other change lands: per-stage busy time, LLM calls per run, GPU idle fraction, max event-loop lag, and eval-harness quality scores where a leg exists | runbook under `docs/runbooks/` |
+| ~~**M4**~~ | ~~**Baseline, all six data types**, before any other change lands: per-stage busy time, LLM calls per run, GPU idle fraction, max event-loop lag, and eval-harness quality scores where a leg exists~~ — **closed at four of seven rows**, see the M4 note below | runbook under `docs/runbooks/` |
 
 ### M1/M2 as shipped — what is wired, and what is not
 
@@ -311,6 +311,22 @@ all, so no exemplar storage, and its datasource provisioning contains no
 prod regardless (it is safe — verified against a real scrape), so prod takes
 the format change and discards every exemplar until that repo is ported. Node
 sync is a manual port.
+
+**M4 closed at four of seven rows (2026-10-22).** Civics, propositions and
+representatives (county and state) are measured; meetings, campaign finance
+and bills are not. The four rows already answer what Gate 0 was for — they
+show the GPU saturated on reps, idle behind `pdf_parse` on propositions, and
+a fetch cost nobody could see before the fix — and the remaining three cost
+far more than they add here: bills alone is ~48h and weekend-only, and
+campaign finance runs no LLM at all, so it says nothing about GPU lanes.
+
+This **defers** those rows; it does not drop them. Phase B step 4 compares
+against a baseline, so for meetings, campaign finance and bills the baseline
+becomes **step 0 of that type's Phase B**: measure on the image before any of
+its changes land, using `docs/runbooks/gate-0-baseline.md` unchanged. Bills is
+first in §10.2, so the 48h run moves to the start of Phase B rather than
+disappearing. Only the state-reps row was measured after the fetch-path fix;
+the other three understate `fetch` and should be read that way.
 
 **Exit criterion:** a table of busy time per stage per data type, LLM calls
 per run, and the GPU idle fraction during a sync. If GPU idle is under ~15%
