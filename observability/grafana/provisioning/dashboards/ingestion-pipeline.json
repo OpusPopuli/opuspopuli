@@ -89,13 +89,13 @@
       "id": 4,
       "type": "stat",
       "title": "GPU busy",
-      "description": "**Gate 0's exit metric.** Inference seconds per wall-clock second, summed across every LLM phase Ollama reports (load, prefill, decode).\n\nThis is derived from the timings Ollama already returns — there is no host GPU exporter, which is the point: no root, no agent, nothing to licence-check.\n\nCaveat: with `OLLAMA_NUM_PARALLEL` above 1 concurrent requests can push this past 100%, because it measures busy-seconds, not utilisation of one device.",
+      "description": "**Gate 0's exit metric.** Inference seconds per wall-clock second, summed across every LLM phase Ollama reports (load, prefill, decode).\n\nThis is derived from the timings Ollama already returns — there is no host GPU exporter, which is the point: no root, no agent, nothing to licence-check.\n\nCaveat: with `OLLAMA_NUM_PARALLEL` above 1 concurrent requests can push this past 100%, because it measures busy-seconds, not utilisation of one device.\n\n**Window is 1h on purpose.** This histogram is observed when a call COMPLETES, so a 114-second inference contributes nothing until it lands and then appears as a spike. Measured live during a civics sync: with a 5m window this stat read 0% while the GPU was saturated, because the one in-flight call had not returned yet. The window has to be comfortably longer than the longest single operation, and this pipeline's buckets reach 1200s because civics glossary extraction is documented at 20+ minutes. Read it as \"what fraction of the last hour was inference\", not as an instantaneous gauge.\n\nFor a LIVE \"is the GPU busy right now\" signal this is the wrong instrument in principle, not just in window size — it counts completed inference, so a call in flight contributes nothing until it returns. Observed during a civics sync: one extraction ran nine minutes on a 76k-character prompt while this read 0%. The plan's `llm_inflight_requests` gauge (S7) is what answers that question; this one answers \"what fraction of the window went to inference\", which is what Gate 0 needs.",
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(llm_request_duration_seconds_sum[5m])) or vector(0)",
+          "expr": "sum(rate(llm_request_duration_seconds_sum[1h])) or vector(0)",
           "instant": true
         }
       ],
@@ -114,13 +114,13 @@
       "id": 5,
       "type": "stat",
       "title": "GPU idle",
-      "description": "`1 - busy`. The number Gate 0 exists to drive down, and the reason the lanes work in §6 is judged against it.\n\nReads 100% when no LLM call happened in the window — which is true but means \"nothing asked\", not \"something is stuck\". The `or vector(0)` on the busy term is what makes that render as 100% instead of \"No data\"; read it beside the throughput panels, never alone.",
+      "description": "`1 - busy`. The number Gate 0 exists to drive down, and the reason the lanes work in §6 is judged against it.\n\nReads 100% when no LLM call happened in the window — which is true but means \"nothing asked\", not \"something is stuck\". The `or vector(0)` on the busy term is what makes that render as 100% instead of \"No data\"; read it beside the throughput panels, never alone.\n\n**Window is 1h on purpose.** This histogram is observed when a call COMPLETES, so a 114-second inference contributes nothing until it lands and then appears as a spike. Measured live during a civics sync: with a 5m window this stat read 0% while the GPU was saturated, because the one in-flight call had not returned yet. The window has to be comfortably longer than the longest single operation, and this pipeline's buckets reach 1200s because civics glossary extraction is documented at 20+ minutes. Read it as \"what fraction of the last hour was inference\", not as an instantaneous gauge.\n\nFor a LIVE \"is the GPU busy right now\" signal this is the wrong instrument in principle, not just in window size — it counts completed inference, so a call in flight contributes nothing until it returns. Observed during a civics sync: one extraction ran nine minutes on a 76k-character prompt while this read 0%. The plan's `llm_inflight_requests` gauge (S7) is what answers that question; this one answers \"what fraction of the window went to inference\", which is what Gate 0 needs.",
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "1 - (sum(rate(llm_request_duration_seconds_sum[5m])) or vector(0))",
+          "expr": "1 - (sum(rate(llm_request_duration_seconds_sum[1h])) or vector(0))",
           "instant": true
         }
       ],
@@ -197,13 +197,13 @@
       "id": 9,
       "type": "timeseries",
       "title": "Busy time per stage",
-      "description": "**The \"where does a sync's time go\" panel.** Seconds of work per wall-clock second, per resource — stacked, so the height is total busy time and each band is one stage's share.\n\nMeasured around the WHOLE operation including retry backoff: if a fetch sleeps 2s then 4s before succeeding, those seconds were spent fetching. Excluding them would make the missing time look like it went nowhere.\n\nOnly `fetch`, `pdf_parse`, `ocr` and `llm` report. `html_parse`, `embed` and `db_write` are declared but have no call site yet, so their absence here is expected rather than a gap in the data.",
+      "description": "**The \"where does a sync's time go\" panel.** Seconds of work per wall-clock second, per resource — stacked, so the height is total busy time and each band is one stage's share.\n\nMeasured around the WHOLE operation including retry backoff: if a fetch sleeps 2s then 4s before succeeding, those seconds were spent fetching. Excluding them would make the missing time look like it went nowhere.\n\nOnly `fetch`, `pdf_parse`, `ocr` and `llm` report. `html_parse`, `embed` and `db_write` are declared but have no call site yet, so their absence here is expected rather than a gap in the data.\n\n15m window, not 5m: a stage is observed when it completes, so a window shorter than the longest call turns a steady workload into a square wave — and with LLM calls around two minutes a 5m window was doing exactly that during a live sync.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (stage) (rate(pipeline_stage_duration_seconds_sum[5m]))",
+          "expr": "sum by (stage) (rate(pipeline_stage_duration_seconds_sum[15m]))",
           "legendFormat": "{{stage}}"
         }
       ],
@@ -230,13 +230,13 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket[15m])))",
           "legendFormat": "p95 {{stage}}",
           "exemplar": true
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.50, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket[15m])))",
           "legendFormat": "p50 {{stage}}"
         }
       ],
@@ -263,7 +263,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (le) (rate(pipeline_stage_duration_seconds_bucket[5m]))",
+          "expr": "sum by (le) (rate(pipeline_stage_duration_seconds_bucket[15m]))",
           "format": "heatmap",
           "legendFormat": "{{le}}"
         }
@@ -297,7 +297,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (model) (rate(llm_tokens_total{direction=\"out\"}[5m]))",
+          "expr": "sum by (model) (rate(llm_tokens_total{direction=\"out\"}[15m]))",
           "legendFormat": "{{model}}"
         }
       ],
@@ -324,7 +324,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (phase) (rate(llm_request_duration_seconds_sum[5m]))",
+          "expr": "sum by (phase) (rate(llm_request_duration_seconds_sum[15m]))",
           "legendFormat": "{{phase}}"
         }
       ],
@@ -377,7 +377,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (lane, le) (rate(pipeline_stage_duration_seconds_bucket{stage=\"llm\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (lane, le) (rate(pipeline_stage_duration_seconds_bucket{stage=\"llm\"}[15m])))",
           "legendFormat": "p95 {{lane}}",
           "exemplar": true
         }
@@ -413,7 +413,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket{stage=~\"pdf_parse|ocr\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(pipeline_stage_duration_seconds_bucket{stage=~\"pdf_parse|ocr\"}[15m])))",
           "legendFormat": "p95 {{stage}}",
           "exemplar": true
         }

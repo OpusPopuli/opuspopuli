@@ -164,6 +164,36 @@ Still open for M3's value to be realised end to end: **R6 (NTP on every host)**
 from §10, without which cross-host spans order wrongly, and Tempo retention
 long enough to hold a ~48h bills run in one trace.
 
+**Measured on the first live civics sync (2026-10-22), and two things
+changed because of it.**
+
+*The stage and phase metrics reconcile.* The `llm` stage's wall clock and the
+sum of Ollama's own load/prefill/decode agreed to **0.09s** on the same call
+(114.71 vs 114.62) — two independent instruments measuring the same work,
+which is the check that makes either of them trustworthy. The gap is HTTP plus
+queue wait, ~0 at concurrency 1, and it is the number §6's lanes have to move.
+
+*Rate windows must exceed the longest single call.* Every one of these
+histograms is observed when the work COMPLETES, so an in-flight call
+contributes nothing. A civics extraction on a 76,344-character prompt ran
+**nine minutes** while `rate(...[5m])` reported zero inference and the GPU was
+saturated. The dashboard now uses 1h for the GPU stats and 15m for the stage
+panels. The deeper point is that this family of metrics cannot answer "is it
+busy right now" at all — that needs S7's `llm_inflight_requests` gauge. It
+answers "what fraction of the window went to inference", which is what Gate 0
+actually asks.
+
+A related Prometheus property, worth knowing before reading a short run: the
+FIRST observation of a counter is invisible to `rate()`, because the series'
+first sample already contains it and there is no earlier value to subtract.
+
+*Long jobs make an incomplete trace.* A span is exported when it ends, so
+during a run the `<queue> process` span does not exist yet and its children
+appear parentless. Observed here: 82 spans across `region` and `region-worker`
+in one trace, 20 of them waiting on the same unexported parent. It resolves on
+completion — but a ~48h bills sync would hold that parent open for 48h, which
+is worth checking against Tempo's block handling before relying on it.
+
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to
 construct an `enableExemplars` histogram otherwise); Prometheus runs
