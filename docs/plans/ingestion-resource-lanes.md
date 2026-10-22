@@ -21,7 +21,9 @@
 Owner decisions that block work are collected in §11.
 
 **Tracking.** This document is the record of every finding and item in it
-(F*, M*, K*, S*). Findings captured here do not get separate GitHub issues.
+(F*, M*, K*, S*). ~~Struck-through text is delivered and merged~~; where only
+part of an item shipped, only that part is struck, so what remains is
+readable at a glance. Findings captured here do not get separate GitHub issues.
 Per the SDLC rule, items with a design
 choice in them (F2, M1, S2, S3, S7, the §5 lazy path) get their own short
 plan under `docs/plans/` before code; mechanical items (K2, K4, S1, S8)
@@ -84,9 +86,9 @@ plots. This gate adds the pipeline-specific layer on top.
 
 | # | Work | Where |
 |---|---|---|
-| **M1** | **One `withStage()` helper** that, around any existing call, emits an OTel span, observes `pipeline_stage_duration_seconds` (with the span's trace id as exemplar), and counts the item outcome. One helper, so spans and metrics cannot drift apart. `stage` ∈ {`fetch`, `pdf_parse`, `ocr`, `html_parse`, `embed`, `llm`, `db_write`}, plus `data_type`, `lane`, `model`, `host`. No behaviour change | `packages/common` (helper); call sites in `resilient-fetch.ts`, `extraction.provider.ts`, `pdf-extractor.ts`, `llm-generator.base.ts`, the bills/civics loops, `sync-phase-logger.ts` |
-| **M2** | **LLM phase timings.** Read `load_duration`, `prompt_eval_duration` and `eval_duration` from Ollama's response — `ollama.provider.ts:74-90` reads only the token counts today — and emit them as `llm_request_duration_seconds{phase}` | `packages/llm-provider` |
-| **M3** | BullMQ trace-context propagation (D7), so a sync and every job it enqueues land in one trace — **done**, see the M3 note below | `packages/queue-provider` |
+| ~~**M1**~~ | ~~**One `withStage()` helper** that, around any existing call, emits an OTel span, observes `pipeline_stage_duration_seconds` (with the span's trace id as exemplar), and counts the item outcome. One helper, so spans and metrics cannot drift apart. `stage` ∈ {`fetch`, `pdf_parse`, `ocr`, `html_parse`, `embed`, `llm`, `db_write`}, plus `data_type`, `lane`, `model`, `host`. No behaviour change~~ | `packages/common` (helper); call sites landed in `resilient-fetch.ts`, `extraction.provider.ts`, `ocr.service.ts` and `lane-metrics.ts` — the last covers every consumer of a lane provider, which `llm-generator.base.ts` would not have. Item counts come from `sync-phase-logger.ts`, so no sync loop was touched |
+| ~~**M2**~~ | ~~**LLM phase timings.** Read `load_duration`, `prompt_eval_duration` and `eval_duration` from Ollama's response — `ollama.provider.ts:74-90` reads only the token counts today — and emit them as `llm_request_duration_seconds{phase}`~~ | `packages/llm-provider` |
+| ~~**M3**~~ | ~~BullMQ trace-context propagation (D7), so a sync and every job it enqueues land in one trace~~ — see the M3 note below | `packages/queue-provider` |
 | **M4** | **Baseline, all six data types**, before any other change lands: per-stage busy time, LLM calls per run, GPU idle fraction, max event-loop lag, and eval-harness quality scores where a leg exists | runbook under `docs/runbooks/` |
 
 ### M1/M2 as shipped — what is wired, and what is not
@@ -253,14 +255,14 @@ drill-down). `host` is there from the start for §7.
 
 | Row | Panels | Source |
 |---|---|---|
-| **1 · Overview** | Active syncs by data type. Items per second by outcome (created / updated / skipped / failed). **GPU busy % and GPU idle % during an active sync** — the Gate 0 exit metric, shown as a stat. Aborted phases (`SyncAbortedError`). Rows deleted per sync | Prometheus |
-| **2 · Stage timing** | Busy time per stage, stacked, per data type — the "where does a sync's time go" panel. p50/p95 per stage. Duration heatmap. Exemplars link each bucket to its Tempo trace | `pipeline_stage_duration_seconds` |
+| **1 · Overview** | Active syncs by data type — shipped NARROWER as "Data types reporting activity", which infers activity from throughput because nothing publishes sync liveness. ~~Items per second by outcome (created / updated / skipped / failed)~~. ~~**GPU busy % and GPU idle % during an active sync** — the Gate 0 exit metric, shown as a stat~~ (window must exceed the longest call — see the M1/M2 note). ~~Aborted phases (`SyncAbortedError`)~~. Rows deleted per sync | Prometheus |
+| **2 · Stage timing** | ~~Busy time per stage, stacked~~, per data type — the "where does a sync's time go" panel (`data_type` is set only on the bills fetch path, so the per-type split is NOT yet usable). ~~p50/p95 per stage~~. ~~Duration heatmap~~. ~~Exemplars link each bucket to its Tempo trace~~ | `pipeline_stage_duration_seconds` |
 | **3 · Lanes** | Per lane: waiting / active / delayed / failed. Oldest waiting job age. Enqueue → start wait p95. Active versus the `setGlobalConcurrency` limit. Interactive versus batch priority throughput | BullMQ `exportPrometheusMetrics` |
-| **4 · Inference** | Decode tokens/sec per model. **Prefill time versus decode time** (D12.6 expects prefill to be the cost). Model loads per hour — the measure of whether S7's model affinity is working. In-flight requests versus `OLLAMA_NUM_PARALLEL`, **split queued versus interactive** (S7). Timeouts and circuit-breaker state per lane | `llm_*` metrics |
+| **4 · Inference** | ~~Decode tokens/sec per model~~. ~~**Prefill time versus decode time**~~ (D12.6 expects prefill to be the cost — first live measurement says decode, 6.7×; see the M1/M2 note). ~~Model loads per hour — the measure of whether S7's model affinity is working~~. In-flight requests versus `OLLAMA_NUM_PARALLEL`, **split queued versus interactive** (S7). Timeouts and circuit-breaker state per lane — `circuit_breaker_state` has zero series, so no panel rather than an empty one | `llm_*` metrics |
 | **5 · Skips** | Skip ratio by reason per data type (`hash_unchanged`, `status_unchanged`, `frozen`, `prompt_unchanged`). **LLM calls avoided** per run. Frozen-bill count. This row is what proves K1–K6 work | Prometheus; Postgres for counts |
 | **6 · Lazy analysis** | Summary requests, dedupe hits, pending, completed. **Request → ready latency p50/p95**, the first reader's wait. Daily cap used and `UNAVAILABLE` count. Hot/cold bill counts and summary coverage by class | Prometheus; Postgres for coverage |
 | **7 · Fetch** | Requests/sec per target host. Per-host throttle wait. 429 / 503 / timeout rates. Retries | Prometheus |
-| **8 · CPU lane** | PDF parse and OCR duration, pages/sec, pool utilisation, `nodejs_eventloop_lag_p99_seconds` per worker | Prometheus |
+| **8 · CPU lane** | ~~PDF parse and OCR duration~~, pages/sec, pool utilisation, ~~`nodejs_eventloop_lag_p99_seconds` per worker~~ | Prometheus |
 | **9 · Attribution** | Share of rows written in the window that carry prompt hash, prompt version **and** model digest, by data type and model. Rows by producing model — makes the v2.0.0 regeneration visible as it progresses | Postgres (read-only) |
 | **10 · Drill-down** | Logs for the selected `pipeline_job`. Trace search for that job's trace id | Loki, Tempo |
 
@@ -678,7 +680,7 @@ In this order:
 1. **Gate 0** (M1–M4) and the **dashboard** (§3) — the baseline is taken
    before anything else changes.
 2. **Shared helpers**, consumed by every Phase B PR and never forked:
-   - `withStage()` (M1)
+   - ~~`withStage()` (M1)~~
    - the skip-key builder (§4 shared rule)
    - the idempotent, monotonic lane upsert (H6)
    - `writeBillLifecycleFields()` (F4)
