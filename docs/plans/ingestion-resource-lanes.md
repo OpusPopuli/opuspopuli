@@ -289,11 +289,17 @@ built after this fix, and **a low accounted-time percentage is itself a
 finding** — it means a resource is being used that nothing is instrumented to
 see, not that the run was idle.
 
-Still untracked: `generateActivitySummaries()` runs after `bio_generation`
+~~Still untracked: `generateActivitySummaries()` runs after `bio_generation`
 completes and before the job ends, one LLM call per representative, and no
-`SyncPhaseTracker` phase covers it. On this run that is most of the 83 LLM
-calls against 2 bios, so the phase-complete lines understate the job by
-minutes.
+`SyncPhaseTracker` phase covers it.~~ On this run that was most of the 83 LLM
+calls against 2 bios, so the phase-complete lines understated the job by
+minutes. **Fixed:** the gap was four steps wide, not one — committee
+summaries, the committee linker and committee descriptions ran there too. All
+four now sit in a sixth rep phase, `summaries` (5 of 6, before `prune_stale`).
+It carries duration only (`total` 0): none of the generators returns per-item
+outcomes, and counting steps as items would publish them into
+`pipeline_items_total` as representatives. The LLM calls inside were already
+timed per call by the lane providers; what was missing was the phase line.
 
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to

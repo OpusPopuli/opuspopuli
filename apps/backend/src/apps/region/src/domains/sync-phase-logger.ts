@@ -17,7 +17,7 @@
  *   [BillSync] Phase 2/6 (extract_and_upsert) complete: 287 created,
  *                            1942 updated, 521 skipped, 0 errors in 14h23m
  *
- *   [RepSync] Phase 3/5 [12/80] Susan Smith (ca-assembly-12): bio generated
+ *   [RepSync] Phase 3/6 [12/80] Susan Smith (ca-assembly-12): bio generated
  *   [MeetingSync] Phase 2/3 [5/36] Joint Legislative Audit
  *                            (assembly-...-2026-08-11): updated
  *
@@ -59,6 +59,7 @@ export const REP_SYNC_PHASES = [
   'extract_and_upsert',
   'detail_crawl',
   'bio_generation',
+  'summaries',
   'prune_stale',
 ] as const;
 export type RepSyncPhase = (typeof REP_SYNC_PHASES)[number];
