@@ -61,14 +61,18 @@ quietly. So the prune does not run when:
   extraction stores that bill under a page-derived id the discovered set can
   never contain, so it would be pruned on the next run.
 
-Both are skip reasons on the phase line, so a region stuck in either state is
-visible.
+Every skip writes one `skipped` item with its reason, so a region stuck in
+either state reaches the dashboard and the `SyncPruneDisabled` alert, not only
+a log line.
 
 ### 3. Scope the prune to the sessions this sync *covered*
 
 Two grouped counts: discovered stored bills per `sessionYear`, and all stored
 bills in those sessions. A session is in scope only when the discovered ids
-account for **≥50%** of its stored bills.
+account for **≥50%** of its stored bills **and at least 10 of them**. The
+minimum stops two stray links into a four-bill special session counting as
+"half covered" and deleting the other two; a session that small is never
+pruned, and keeping a delisted bill is the recoverable error.
 
 Coverage, not mere presence, because one stray id must not pull a whole
 session into scope:
@@ -115,7 +119,18 @@ the cap every run, a session gone in a month. Two rules in
 `observability/prometheus-alerts.yml` (group `opuspopuli-sync-prune`):
 
 - `SyncBulkDeletion` — more than 100 rows pruned in 7 days, per data type;
-- `SyncPruneRefused` — any `deletion-guard` refusal in the last day.
+- `SyncPruneRefused` — any `deletion-guard` refusal in the last day;
+- `SyncPruneDisabled` — any skip for incomplete discovery or no covered
+  session in the last day.
+
+**Every series these read is created at zero at boot**
+(`RegionSyncService.primePruneSeries`). prom-client exports a labelled counter
+only after its first increment, and `increase()` cannot see a series born
+above zero. Prod syncs bills rarely and by hand, so the first refusal or
+deletion after a restart is usually the only one — and without priming, none
+of the three would fire for it. Found by the third review; reproduced and then
+shown fixed with `promtool test rules` (unprimed: no alert; primed: all three
+fire).
 
 ## Out of scope
 
@@ -145,6 +160,14 @@ the cap every run, a session gone in a month. Two rules in
 | Prunes nothing when discovery was incomplete | the skip reason ignored |
 | Discovery counts votes-URL ids; flags an empty source and an id-less status URL | votes ids dropped; either flag removed |
 | Counter registered and injected (OpenMetrics scrape) | registration or injection missing |
+| A zero increment exports the series at 0 (OpenMetrics scrape) | — (pins the prom-client behaviour priming relies on) |
+| Every alerted prune series is created at zero on construction | the priming call removed |
+| A four-bill session reached by two strays is kept | the 10-sighting minimum removed |
+| A covered session prunes while a half-seen one is left alone, with a warn | the uncovered-session warn removed |
+| A skip writes one `skipped` item with its reason | the skip item removed |
+| `syncBills` hands the prune every discovered id when every bill failed | discovery not passed through |
+| `safeBillIdFromUrl` warns only on a malformed URL | — |
+| `rowsDeleted` counts, ignores zero, survives a throwing observer | the zero guard inverted |
 | Alerts fire on 7-day drift and on a refusal (`promtool test rules`, not committed) | — |
 
 ## Risks
@@ -153,7 +176,8 @@ the cap every run, a session gone in a month. Two rules in
 |---|---|
 | Bills that really left the source survive longer (a failed bill is now kept) | Correct by design — a failed fetch is not evidence the bill is gone. The next successful sync re-tests it |
 | The guard or the coverage rule blocks a legitimate prune | Visible as a skip reason or a refusal alert; the operator acts with the cause understood. The opposite error is unrecoverable |
-| A region with a permanently empty source never prunes | Visible as `source-returned-nothing` on every bills sync; fix or remove the source |
+| A region with a permanently empty source never prunes | `SyncPruneDisabled` fires on every bills sync with `reason=source-returned-nothing`; fix or remove the source |
+| A region past ~30k bills | The `in`/`notIn` lists bind one parameter per id, so the prune would throw (not delete). California is ~5k; not new in this change |
 
 ## Owner decision
 
@@ -162,16 +186,24 @@ The guard threshold — §11 of the parent plan suggests ~2%; this adds the
 
 ## Status — implemented 2026-10-22, branch `fix/bill-prune-scope`
 
-**Review.** Two independent reviewers (correctness/performance/tests and
-security/data/consistency) found no blockers. Their suggestions were fixed in
+**Review.** Three rounds. Rounds 1 and 2 were two independent reviewers
+(correctness/performance/tests and security/data/consistency) on the first
+commit; they found no blockers. Their suggestions were fixed in
 this change rather than filed: coverage-based scoping (§3), the incomplete-
 discovery skip and votes-URL ids (§1–2), one-line refusals (§4), emission
 through the tracker with the true delete count, the alerts (§5), a misplaced
 doc comment, and the six missing tests above. What was not done is in Out of
 scope, each with its reason.
 
-**Every test was verified by putting its defect back** — eight mutations,
-each failing at least one test, plus the earlier four.
+Round 3, a fresh reviewer on the revision, found **one blocker — in the
+alerts this change had just added**: neither could see the first event after
+a restart (§5). Fixed by priming, along with its suggestions: the 10-sighting
+minimum (§3), skip items and `SyncPruneDisabled` (§2, §5), and the tests it
+listed as missing.
+
+**Every test was verified by putting its defect back** — seventeen mutations
+across the three rounds, each failing at least one test. Three mutation scripts
+broke compilation instead and proved nothing; all three were redone.
 
 **One test lied on its first version.** The session-flip test seeded 120
 old bills, so with the session filter removed the guard refused the prune

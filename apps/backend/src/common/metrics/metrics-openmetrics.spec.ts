@@ -164,4 +164,23 @@ describe('metrics scrape (M1)', () => {
 
     expect(body).toMatch(/pipeline_rows_deleted_total\{data_type="bills"\} 7/);
   });
+
+  // What `RegionSyncService.primePruneSeries` relies on: a zero increment
+  // exports the series at 0. Without a sample at 0 before the first real
+  // event, increase() has nothing to rise from and the prune alerts stay
+  // silent for the first refusal after every restart.
+  //
+  // A label no other test here touches: the registry is shared across this
+  // file, and the test above already moved the `bills` series to 7.
+  it('exports a series at 0 after a zero increment', async () => {
+    observer.increment(PipelineMetric.RowsDeletedTotal, 0, {
+      data_type: 'meetings',
+    });
+
+    const body = await scrape();
+
+    expect(body).toMatch(
+      /pipeline_rows_deleted_total\{data_type="meetings"\} 0/,
+    );
+  });
 });

@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { emptyCampaignFinanceResult } from '@opuspopuli/common';
+import {
+  emptyCampaignFinanceResult,
+  METRICS_OBSERVER,
+} from '@opuspopuli/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import {
@@ -1861,6 +1864,53 @@ describe('RegionSyncService', () => {
 
       expect(mockDb.bill.groupBy).not.toHaveBeenCalled();
       expect(mockDb.bill.deleteMany).not.toHaveBeenCalled();
+      // The skip reaches the dashboard and `SyncPruneDisabled`, not only a
+      // log line — a source that always returns nothing must be visible.
+      expect(metrics.increment).toHaveBeenCalledWith(
+        'pipeline_items_total',
+        1,
+        expect.objectContaining({
+          phase: 'prune_stale',
+          outcome: 'skipped',
+          reason: 'source-returned-nothing',
+        }),
+      );
+    });
+
+    it('keeps a small session that strays reach, beside a covered one', async () => {
+      // Half of a four-bill special session discovered: coverage 50%, but
+      // two sightings are not evidence the other two were delisted.
+      const regular = session('2025AB', '2025-2026', 100);
+      const special = session('2025X', '2025-2026-x1', 4);
+      corpus([...regular, ...special]);
+
+      await prune([...ids(regular), ...ids(special.slice(0, 2))]);
+
+      expect(mockDb.bill.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('prunes the covered session and leaves a half-seen one alone', async () => {
+      const a = session('2025AB', '2025-2026', 100);
+      const b = session('2023AB', '2023-2024', 100);
+      corpus([...a, ...b]);
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
+      try {
+        await prune([...ids(a.slice(0, 98)), ...ids(b.slice(0, 49))]);
+
+        expect(deletedIds().sort()).toEqual([
+          'uuid-california-2025AB100',
+          'uuid-california-2025AB99',
+        ]);
+        expect(
+          warn.mock.calls.some((c) =>
+            String(c[0]).includes('session 2023-2024 not pruned'),
+          ),
+        ).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('still skips when maxBills is set', async () => {
@@ -1889,6 +1939,14 @@ describe('RegionSyncService', () => {
         expect(isSessionCovered(5019, 5019)).toBe(true);
       });
 
+      it('never covers a session from fewer than 10 sightings', () => {
+        // Two stray links into a four-bill special session are "half" of
+        // it; without the minimum the other two would be deleted.
+        expect(isSessionCovered(2, 4)).toBe(false);
+        expect(isSessionCovered(9, 9)).toBe(false);
+        expect(isSessionCovered(10, 12)).toBe(true);
+      });
+
       it('does not cover a session reached by a stray id', () => {
         expect(isSessionCovered(1, 5019)).toBe(false);
         expect(isSessionCovered(49, 100)).toBe(false);
@@ -1897,6 +1955,149 @@ describe('RegionSyncService', () => {
       it('does not cover a session with no stored bills', () => {
         expect(isSessionCovered(0, 0)).toBe(false);
       });
+    });
+  });
+
+  describe('prune alert series exist from boot (F2)', () => {
+    it('creates every alerted prune series at zero on construction', async () => {
+      // prom-client exports a labelled counter only after its first
+      // increment, and increase() cannot see a series born above zero — so
+      // the first refusal after a restart would never alert.
+      const metrics = { increment: jest.fn(), observe: jest.fn() };
+      const module = await Test.createTestingModule({
+        providers: [
+          { provide: REGION_CACHE, useValue: mockCache },
+          RegionCacheService,
+          {
+            provide: PluginLoaderService,
+            useValue: { loadPlugin: jest.fn() },
+          },
+          { provide: PluginRegistryService, useValue: mockRegistry },
+          { provide: DbService, useValue: mockDb },
+          { provide: METRICS_OBSERVER, useValue: metrics },
+          RegionSyncService,
+          PropositionsSyncService,
+          MeetingsSyncService,
+          RepresentativesSyncService,
+          CampaignFinanceSyncService,
+          CivicsSyncService,
+          RegionPluginService,
+        ],
+      }).compile();
+      module.get(RegionSyncService);
+
+      const zeroed = metrics.increment.mock.calls.filter((c) => c[1] === 0);
+      expect(zeroed).toContainEqual([
+        'pipeline_rows_deleted_total',
+        0,
+        { data_type: 'bills' },
+      ]);
+      for (const reason of [
+        'deletion-guard',
+        'source-returned-nothing',
+        'unidentified-status-urls',
+        'no-covered-sessions',
+      ]) {
+        expect(zeroed).toContainEqual([
+          'pipeline_items_total',
+          0,
+          {
+            data_type: 'bills',
+            phase: 'prune_stale',
+            outcome: 'skipped',
+            reason,
+          },
+        ]);
+      }
+    });
+  });
+
+  describe('safeBillIdFromUrl', () => {
+    const parse = (url: string) =>
+      (
+        service as unknown as {
+          safeBillIdFromUrl: (u: string) => string | undefined;
+        }
+      ).safeBillIdFromUrl(url);
+
+    it('warns on a malformed URL and stays quiet on one without bill_id', () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
+      try {
+        expect(parse('not a url')).toBeUndefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+
+        expect(
+          parse('https://leginfo.legislature.ca.gov/faces/x.xhtml'),
+        ).toBeUndefined();
+        expect(
+          parse('https://leginfo.legislature.ca.gov/faces/x.xhtml?bill_id=AB1'),
+        ).toBe('AB1');
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
+  describe('syncBills — discovery reaches the prune (F2)', () => {
+    it('hands the prune every discovered id, even when every bill failed', async () => {
+      const STATUS =
+        'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=';
+      const internals = service as unknown as Record<string, unknown> & {
+        syncBills: (
+          maxBills: number | undefined,
+          plugin: unknown,
+        ) => Promise<unknown>;
+      };
+      internals.promptClient = {};
+      internals.llm = {};
+      const stub = (name: string, value: unknown) =>
+        jest
+          .spyOn(internals as never, name as never)
+          .mockResolvedValue(value as never);
+      jest
+        .spyOn(internals as never, 'applyBillsHostThrottle' as never)
+        .mockImplementation((() => undefined) as never);
+      stub('buildRepNameIndex', new Map());
+      stub('buildCommitteeNameIndex', new Map());
+      stub('buildStagePatterns', []);
+      stub('loadBillSkipMetadata', new Map());
+      stub('discoverBillUrls', {
+        statusUrls: [`${STATUS}AB1`, `${STATUS}AB2`],
+        votesUrls: [],
+      });
+      // Every bill's page fails in phase 2 — the old bug's trigger.
+      jest
+        .spyOn(internals as never, 'processOneBillUrl' as never)
+        .mockImplementation((async (
+          _url: string,
+          ctx: { tracker: { item: (a: unknown) => void } },
+        ) =>
+          ctx.tracker.item({
+            name: null,
+            externalId: null,
+            outcomeLabel: 'failed',
+            outcome: 'error',
+          })) as never);
+      stub('runVotesPhase', { updated: 0 });
+      const prune = stub('pruneStaleBills', undefined);
+      stub('buildLifecycleStageInputs', null);
+      stub('enrichBillSummaries', undefined);
+
+      await internals.syncBills(undefined, {
+        getDataSources: () => [
+          { url: 'https://leginfo.legislature.ca.gov/', dataType: 'bills' },
+        ],
+      });
+
+      expect(prune).toHaveBeenCalledTimes(1);
+      const [, discovery] = prune.mock.calls[0] as unknown as [
+        string,
+        { externalIds: Set<string> },
+      ];
+      expect(discovery.externalIds).toEqual(new Set(['AB1', 'AB2']));
     });
   });
 

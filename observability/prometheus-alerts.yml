@@ -97,6 +97,13 @@ groups:
   # max(2%, 10 bills); it cannot see a source that quietly drops 1.9% a day,
   # which stays under the cap every run and removes a session in a month.
   # The 7-day sum is what catches that.
+  #
+  # Every series these rules read is created at zero when the region service
+  # boots (RegionSyncService.primePruneSeries). prom-client exports a labelled
+  # counter only after its first increment, and increase() cannot see a
+  # series born above zero — so without that, the first refusal or deletion
+  # after a restart, usually the only one on a node that syncs by hand, would
+  # never alert.
   - name: opuspopuli-sync-prune
     rules:
       - alert: SyncBulkDeletion
@@ -123,6 +130,21 @@ groups:
             every sync until the cause is found — usually a discovery pass
             that lost a source. The ERROR line in region-worker logs names
             the first 20 rows it kept.
+
+      # A prune that cannot run is not an error in the sync, so nothing else
+      # reports it — and a source that returns nothing every run disables
+      # pruning for good while each sync completes "successfully".
+      - alert: SyncPruneDisabled
+        expr: sum by (data_type, reason) (increase(pipeline_items_total{phase="prune_stale",reason=~"source-returned-nothing|unidentified-status-urls|no-covered-sessions"}[1d])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.data_type }} prune skipped: {{ $labels.reason }}"
+          description: >-
+            A {{ $labels.data_type }} sync could not trust its discovery pass
+            ({{ $labels.reason }}), so it pruned nothing. A source that
+            returns nothing is also a source that ingested nothing; check the
+            discover phase line in region-worker logs.
 
   # Backup freshness — opuspopuli#1217.
   #

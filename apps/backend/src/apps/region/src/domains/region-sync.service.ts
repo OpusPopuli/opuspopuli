@@ -5,7 +5,11 @@ import {
   OnModuleDestroy,
   Optional,
 } from '@nestjs/common';
-import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
+import {
+  METRICS_OBSERVER,
+  type MetricsObserver,
+  PipelineMetric,
+} from '@opuspopuli/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DataType,
@@ -220,6 +224,26 @@ const BILL_PRUNE_MAX_FRACTION = 0.02;
 /** A session is in prune scope only when this sync saw at least this share of it. */
 const BILL_PRUNE_MIN_COVERAGE = 0.5;
 
+/**
+ * …and at least this many of its bills. Without it, two stray links into a
+ * four-bill special session are "half covered", and the other two are
+ * deleted with their votes. A session this small is never pruned; keeping a
+ * delisted bill is the recoverable error.
+ */
+const BILL_PRUNE_MIN_SEEN = 10;
+
+/**
+ * Prune skip and refusal reasons that alerts read, so their series exist at
+ * zero from boot (see `primePruneSeries`). `max-bills-set` and
+ * `no-discovered-ids` are deliberate or empty runs and alert on nothing.
+ */
+const ALERTED_PRUNE_REASONS = [
+  'deletion-guard',
+  'source-returned-nothing',
+  'unidentified-status-urls',
+  'no-covered-sessions',
+] as const;
+
 /** How many kept bills a refused prune names in its ERROR line. */
 const REFUSAL_SAMPLE = 20;
 
@@ -256,7 +280,11 @@ export function billPruneLimit(inScopeCount: number): number {
 
 /** Whether a sync that saw `seen` of a session's `stored` bills covered it. */
 export function isSessionCovered(seen: number, stored: number): boolean {
-  return stored > 0 && seen / stored >= BILL_PRUNE_MIN_COVERAGE;
+  return (
+    seen >= BILL_PRUNE_MIN_SEEN &&
+    stored > 0 &&
+    seen / stored >= BILL_PRUNE_MIN_COVERAGE
+  );
 }
 
 /** Why the prune must not run at all, or undefined when it may. */
@@ -265,7 +293,9 @@ function pruneSkipReason(
   maxBills: number | undefined,
 ): string | undefined {
   if (discovery.externalIds.size === 0) return 'no-discovered-ids';
-  if (maxBills != null) return 'maxBills-set-skips-prune';
+  // A bounded slug, not prose: it reaches the `reason` label, and anything
+  // off `boundedReason`'s shape is replaced there.
+  if (maxBills != null) return 'max-bills-set';
   return discovery.incompleteReason;
 }
 
@@ -543,6 +573,36 @@ export class RegionSyncService implements OnModuleDestroy {
       'BILL_VOTES_REQUEST_TIMEOUT_MS',
       150_000,
     );
+    this.primePruneSeries();
+  }
+
+  /**
+   * Create the prune's alerting series at zero, at boot (F2).
+   *
+   * prom-client exports a labelled counter only after its first increment,
+   * and that first scrape already carries the full value — which
+   * `increase()` cannot see, because a series born above zero has no prior
+   * sample to rise from. Prod runs bills syncs rarely and by hand, so the
+   * first refusal or deletion after a restart is usually the ONLY one, and
+   * without this neither `SyncPruneRefused` nor `SyncBulkDeletion` would ever
+   * fire for it.
+   */
+  private primePruneSeries(): void {
+    try {
+      this.metrics?.increment(PipelineMetric.RowsDeletedTotal, 0, {
+        data_type: 'bills',
+      });
+      for (const reason of ALERTED_PRUNE_REASONS) {
+        this.metrics?.increment(PipelineMetric.ItemsTotal, 0, {
+          data_type: 'bills',
+          phase: 'prune_stale',
+          outcome: 'skipped',
+          reason,
+        });
+      }
+    } catch {
+      // Measurement never takes down what it measures; the observer warns.
+    }
   }
 
   // Bill-enrichment throughput knobs (#889 follow-up). Defaults reproduce
@@ -1677,7 +1737,7 @@ export class RegionSyncService implements OnModuleDestroy {
 
     const limit = billPruneLimit(scope.inScopeCount);
     if (stale.length > limit) {
-      this.refusePrune(regionId, stale, scope.inScopeCount, limit);
+      this.refusePrune(regionId, stale, scope, limit);
       return;
     }
 
@@ -1749,8 +1809,24 @@ export class RegionSyncService implements OnModuleDestroy {
     return { sessionYears, inScopeCount };
   }
 
+  /**
+   * One `skipped` item carrying the reason, so a region whose pruning is
+   * disabled run after run — a source that always returns nothing — shows
+   * on the dashboard and in `SyncPruneDisabled`, not only in a log line.
+   */
   private skipPrune(regionId: string, reason: string): void {
-    this.billTracker('prune_stale', 0, { region: regionId, reason }).complete();
+    const tracker = this.billTracker('prune_stale', 1, {
+      region: regionId,
+      reason,
+    });
+    tracker.item({
+      name: null,
+      externalId: null,
+      outcomeLabel: `prune skipped: ${reason}`,
+      outcome: 'skipped',
+      reason,
+    });
+    tracker.complete();
   }
 
   /**
@@ -1763,9 +1839,10 @@ export class RegionSyncService implements OnModuleDestroy {
   private refusePrune(
     regionId: string,
     stale: { externalId: string }[],
-    inScopeCount: number,
+    scope: { sessionYears: string[]; inScopeCount: number },
     limit: number,
   ): void {
+    const { inScopeCount } = scope;
     const sample = stale
       .slice(0, REFUSAL_SAMPLE)
       .map((b) => b.externalId)
@@ -1779,6 +1856,7 @@ export class RegionSyncService implements OnModuleDestroy {
     );
     const tracker = this.billTracker('prune_stale', 1, {
       region: regionId,
+      sessions: scope.sessionYears.join(','),
       limit,
     });
     tracker.item({

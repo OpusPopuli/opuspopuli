@@ -4,9 +4,9 @@
  *
  * The unit tests in `region-sync.service.spec.ts` answer the prune's queries
  * with a hand-written filter. That proves the prune ASKS for the right scope;
- * it cannot prove Postgres returns it. The scope is built from a `distinct`
- * over `session_year` and a `notIn` over the discovered ids, and a mistake in
- * either deletes real bills — chaptered laws and their voting records — so
+ * it cannot prove Postgres returns it. The scope is built from two
+ * `groupBy`s over `session_year` and a `notIn` over the discovered ids, and a
+ * mistake in any of them deletes real bills — chaptered laws and their voting records — so
  * the queries run for real here.
  */
 
