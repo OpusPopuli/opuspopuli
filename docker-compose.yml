@@ -672,11 +672,25 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          # Raised from 0.5 CPU / 512M, which wedged it (2026-10-21).
+          #
+          # The symptom was not a crash: Tempo stayed "Up" while its querier
+          # timed out dialling its OWN query-frontend on 127.0.0.1:9095, and
+          # pushes failed with "context canceled". A timeout on loopback means
+          # the process cannot get scheduled, not that anything is
+          # misconfigured. `docker stats` showed 49.56% against a 0.5-core
+          # limit — i.e. pegged at 100% of its allowance — and 477M of 512M,
+          # with 12 restarts behind it.
+          #
+          # A single-binary Tempo ingesting OTLP from eight auto-instrumented
+          # services while compacting ~600M of blocks on 7-day retention needs
+          # more than half a core. If it wedges again the next lever is
+          # `block_retention` in observability/tempo.yml (168h), not more CPU.
+          cpus: '1.5'
+          memory: 1G
         reservations:
-          cpus: '0.1'
-          memory: 256M
+          cpus: '0.25'
+          memory: 512M
 
   # Grafana - Metrics, logs, and traces visualization
   grafana:
