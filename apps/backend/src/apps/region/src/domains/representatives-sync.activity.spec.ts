@@ -160,6 +160,33 @@ describe('representatives sync — activity summaries', () => {
     }
   });
 
+  it('runs inside the summaries phase, not between phases', async () => {
+    // The Gate 0 finding: this pass ran after `bio_generation` completed and
+    // before `prune_stale` started, so no phase-complete line counted its
+    // time. Ordering of the log lines is the claim — a phase that merely
+    // exists, opened and closed before the work, would still hide it.
+    const events: string[] = [];
+    const log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation((message: unknown) => {
+        if (typeof message === 'string' && message.includes('(summaries)')) {
+          events.push(message.includes('starting') ? 'start' : 'complete');
+        }
+      });
+    try {
+      await run({
+        generateAll: jest.fn().mockImplementation(async () => {
+          events.push('generateAll');
+          return { repsUpdated: 1, committeesUpdated: 0, skipped: 0 };
+        }),
+      });
+
+      expect(events).toEqual(['start', 'generateAll', 'complete']);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('still syncs when no generator is bound at all', async () => {
     // It is @Optional(); an unwired generator must not break the sync.
     await expect(run(undefined)).resolves.toBeUndefined();

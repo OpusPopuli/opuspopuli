@@ -342,7 +342,7 @@ describe('per-data-type factories', () => {
   it('repSyncTracker tags with [RepSync]', () => {
     repSyncTracker(logger, 'bio_generation', 80);
     expect(log).toHaveBeenCalledWith(
-      '[RepSync] Phase 4/5 (bio_generation) starting: 80 items',
+      '[RepSync] Phase 4/6 (bio_generation) starting: 80 items',
     );
   });
 
@@ -400,6 +400,7 @@ describe('phase ordering invariants', () => {
       'extract_and_upsert',
       'detail_crawl',
       'bio_generation',
+      'summaries',
       'prune_stale',
     ]);
   });

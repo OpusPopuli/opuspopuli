@@ -272,7 +272,7 @@ export class RepresentativesSyncService {
   ): Promise<{ processed: number; created: number; updated: number }> {
     const resolvedRegionId = regionId ?? provider.getName?.() ?? 'unknown';
 
-    // ─── Phase 1/5 — discover ──────────────────────────────────────
+    // ─── Phase 1/6 — discover ──────────────────────────────────────
     const discoverTracker = this.repTracker('discover', 1, {
       region: resolvedRegionId,
     });
@@ -301,7 +301,7 @@ export class RepresentativesSyncService {
       this.normalizeRep(r, pluginContext);
     }
 
-    // ─── Phase 2/5 — extract_and_upsert ────────────────────────────
+    // ─── Phase 2/6 — extract_and_upsert ────────────────────────────
     // Pre-fetch existing externalIds so the per-item line can report
     // accurate created-vs-updated outcomes. Skip when there's nothing
     // to look up.
@@ -398,18 +398,18 @@ export class RepresentativesSyncService {
     // private individual and a school-board seat that does not exist.
     await this.supersedeClaimsForScrapedBios(reps);
 
-    // ─── Phase 3/5 — detail_crawl ──────────────────────────────────
+    // ─── Phase 3/6 — detail_crawl ──────────────────────────────────
     // Detail-page crawling for committees/contact info happens inside
     // the DeclarativeRegionPlugin.fetchRepresentatives call above —
     // it's not a separate orchestrator step in the current pipeline.
-    // Phase fires as a marker so the operator sees all 5 phases.
+    // Phase fires as a marker so the operator sees all 6 phases.
     const detailCrawlTracker = this.repTracker('detail_crawl', 0, {
       region: resolvedRegionId,
       note: 'inlined into fetchRepresentatives at plugin layer',
     });
     detailCrawlTracker.complete();
 
-    // ─── Phase 4/5 — bio_generation ────────────────────────────────
+    // ─── Phase 4/6 — bio_generation ────────────────────────────────
     const bioTracker = this.repTracker(
       'bio_generation',
       this.bioGenerator ? reps.length : 0,
@@ -431,11 +431,52 @@ export class RepresentativesSyncService {
     }
     bioTracker.complete();
 
+    // ─── Phase 5/6 — summaries ─────────────────────────────────────
+    await this.runSummaries(resolvedRegionId, maxReps);
+
+    // ─── Phase 6/6 — prune_stale ───────────────────────────────────
+    // Stale-rep pruning isn't currently wired (reps don't go inactive
+    // by data-source absence the way bills do — they leave office in
+    // discrete elections). Marker for parity with bills' 6-phase
+    // shape; tracked for actual implementation under #816 / #770
+    // alongside the rep↔committee FK work.
+    const pruneTracker = this.repTracker('prune_stale', 0, {
+      region: resolvedRegionId,
+      note: 'not-yet-implemented',
+    });
+    pruneTracker.complete();
+
+    return result;
+  }
+
+  /**
+   * Phase 5/6 — every AI pass that runs after the bios.
+   *
+   * These four steps ran between `bio_generation` and `prune_stale` with no
+   * phase around them, so the phase-complete lines accounted for none of
+   * their time. On the 2026-10-22 state-reps baseline that was most of the
+   * job's 83 LLM calls against 2 bios — minutes of inference attributed to
+   * nothing (`docs/plans/ingestion-resource-lanes.md`, Gate 0).
+   *
+   * One phase rather than four: the generators report their own per-entity
+   * lines and none returns per-item outcomes, so a phase each would be four
+   * markers with no counts. `total` is 0 for the same reason — the phase
+   * carries the duration, and counting each step as an item would publish
+   * steps into `pipeline_items_total` as though they were representatives.
+   * The LLM calls inside are already timed per call by the lane providers.
+   */
+  private async runSummaries(
+    regionId: string,
+    maxReps: number | undefined,
+  ): Promise<void> {
+    const tracker = this.repTracker('summaries', 0, { region: regionId });
+
     if (this.committeeSummaryGenerator) {
       await this.committeeSummaryGenerator.generateMissingSummaries(
-        resolvedRegionId,
+        regionId,
         maxReps,
       );
+      tracker.note('committee summaries pass complete');
     }
 
     if (this.legislativeCommitteeLinker) {
@@ -453,6 +494,7 @@ export class RepresentativesSyncService {
         await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
           maxReps,
         );
+        tracker.note('committee descriptions pass complete');
       } catch (error) {
         this.logger.warn(
           `Legislative committee description generation failed: ${(error as Error).message}`,
@@ -462,28 +504,8 @@ export class RepresentativesSyncService {
 
     await this.generateActivitySummaries();
 
-    // ─── Phase 5/5 — prune_stale ───────────────────────────────────
-    // Stale-rep pruning isn't currently wired (reps don't go inactive
-    // by data-source absence the way bills do — they leave office in
-    // discrete elections). Marker for parity with bills' 6-phase
-    // shape; tracked for actual implementation under #816 / #770
-    // alongside the rep↔committee FK work.
-    const pruneTracker = this.repTracker('prune_stale', 0, {
-      region: resolvedRegionId,
-      note: 'not-yet-implemented',
-    });
-    pruneTracker.complete();
-
-    return result;
+    tracker.complete();
   }
-
-  /**
-   * Pick the best district value for a representative. Prefer the
-   * scraped numeric district, fall back to deriving from the externalId
-   * (e.g. trailing digits in the slug), keep the raw value otherwise.
-   * Plugin-agnostic — the derive function is passed in so this service
-   * doesn't have to import from `region.service.ts` directly.
-   */
 
   /**
    * Activity summaries, which until now ran ONLY from a hand-invoked script
@@ -600,6 +622,13 @@ export class RepresentativesSyncService {
     }
   }
 
+  /**
+   * Pick the best district value for a representative. Prefer the
+   * scraped numeric district, fall back to deriving from the externalId
+   * (e.g. trailing digits in the slug), keep the raw value otherwise.
+   * Plugin-agnostic — the derive function is passed in so this service
+   * doesn't have to import from `region.service.ts` directly.
+   */
   private sanitizeDistrict(
     rep: Representative,
     deriveDistrictFromExternalId: (externalId: string) => string | undefined,
