@@ -90,14 +90,37 @@ docker compose -f docker-compose-uat.yml -f docker-compose-uat.local.yml up -d <
 
 ## Results
 
-| data type        | run   | items (c/u/s/f) | llm stage       | GPU busy | calls | tokens in/out    | notes                                                                                                                                                                                                   |
-| ---------------- | ----- | --------------- | --------------- | -------- | ----- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| civics           | 2032s | 0 / 12 / 13 / 2 | 1924.1s (94.7%) | 47.5%    | 21    | 170,857 / 32,957 | **Not a clean baseline.** Two calls died (`unexpected EOF`, runner killed under memory pressure) burning ~1,120s, which is most of the 968.6s stage-minus-inference gap. Re-run with the desktop quiet. |
-| bills            |       |                 |                 |          |       |                  | ~48h, weekend only                                                                                                                                                                                      |
-| propositions     |       |                 |                 |          |       |                  |                                                                                                                                                                                                         |
-| representatives  |       |                 |                 |          |       |                  |                                                                                                                                                                                                         |
-| meetings         |       |                 |                 |          |       |                  |                                                                                                                                                                                                         |
-| campaign finance |       |                 |                 |          |       |                  |                                                                                                                                                                                                         |
+| data type                | run   | items (c/u/s/f) | dominant stage               | GPU busy | llm calls | gap    | notes                                                                                                                    |
+| ------------------------ | ----- | --------------- | ---------------------------- | -------- | --------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| civics                   | 2032s | 0 / 12 / 13 / 2 | llm 2009.8s (98.9%)          | 52.4%    | 22        | 944.3s | **Not clean.** Two calls died (`unexpected EOF`, runner killed under memory pressure); the gap is almost entirely those. |
+| propositions             | 553s  | 1 / 51 / 0 / 0  | **pdf_parse 404.1s (73.1%)** | 13.4%    | 3         | 0.2s   | The CPU lane dominates, not the GPU. A 0.2s gap is what healthy looks like at concurrency 1.                             |
+| representatives (county) | 392s  | 0 / 6 / 0 / 0   | llm 432.3s (110.3%)          | 104.2%   | 81        | 23.9s  | Saturated. Over 100% is scrape-boundary quantization on a short run, not an error.                                       |
+| representatives (state)  | 786s  | 0 / 121 / 0 / 0 | llm 419.5s (53.4%)           | 50.7%    | 85        | 20.9s  | **Fetch under-counted** — see below.                                                                                     |
+| meetings                 |       |                 |                              |          |           |        |                                                                                                                          |
+| campaign finance         |       |                 |                              |          |           |        |                                                                                                                          |
+| bills                    |       |                 |                              |          |           |        | ~48h, weekend only                                                                                                       |
+
+**All four rows predate the fetch-path fix** and show no `fetch` time worth
+trusting. The stage was wired only into region's own `fetchTextWithRetry`,
+while the scraping pipeline reaches the network through
+`ExtractionProvider.fetchWithRetry`. The state-reps run makes the cost plain:
+it crawled 120 members, failed roughly **80 Assembly biography pages**, and
+reported a `fetch` stage of zero with **0 failed items**. Re-measure after
+rebuilding the images.
+
+Those Assembly failures are #1383, with two distinct causes worth keeping
+apart because only one is ours to fix:
+
+- `a*.asmdc.org` — **incomplete TLS chain**. `openssl s_client` reports
+  "unable to get local issuer certificate"; the server omits the intermediate.
+  curl and browsers recover by fetching it via AIA, Node's undici does not, so
+  it surfaces as `fetch failed` with no HTTP status at all.
+- `ad*.asmrc.org` — **HTTP 403**, a real refusal from bot protection. It
+  reproduces from the host, so it is not a container problem.
+
+Neither is counted as a failed item: the detail crawler collects them into a
+`warnings` array and the phase still reports `0 errors`. A sync can lose 80
+pages and look clean.
 
 ## Reading the result
 
