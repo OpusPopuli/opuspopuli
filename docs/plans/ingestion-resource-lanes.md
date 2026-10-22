@@ -233,6 +233,42 @@ came back missing its first half and Tempo labelled it "root span not yet
 received". Quarantining that one block and restarting returned the full 201-span
 trace. Check for empty `meta.json` before believing a truncated trace.
 
+**The memory envelope, measured 2026-10-22 — and the obvious fix is wrong.**
+Two of the civics run's 21 LLM calls died with `unexpected EOF` (the Ollama
+runner killed), burning ~1,120s of a 2,032s job. The reflex is to lower
+`num_ctx`. Measured on the live host, it buys nothing:
+
+| `num_ctx` | resident |
+|---|---|
+| 32,768 | 24.0 GiB |
+| 65,536 | 24.0 GiB |
+| 131,072 | 24.2 GiB |
+
+The KV cache is near-free here because `nemotron-3.5-lightning` is a hybrid
+`nemotron_h_moe` — most layers are state-space, not attention — on top of
+`OLLAMA_KV_CACHE_TYPE=q8_0` and flash attention already being set. So cutting
+the window would free ~0.2 GiB and cost extraction fidelity, which the
+`ollama.provider.ts` table shows is *doubly* expensive: overflow discards half
+the KV cache, so a too-small window reads `num_ctx / 2` tokens and does it
+SILENTLY.
+
+Containers are not the lever either: all 27 together hold **2.7 GiB**, and
+Docker's VM only 4.4 GiB resident. The envelope is simply the model —
+**24.55 GiB of a 48 GiB host** — beside Docker (4.4), Firefox (2.4) and VS
+Code (1.0), which is why swap sat at 87-91% full.
+
+Two silent multipliers were closed in `~/Library/LaunchAgents/sh.brew.ollama.plist`
+(host config, outside this repo): `OLLAMA_MAX_LOADED_MODELS=1`, because a
+petition OCR would otherwise load `qwen2.5vl:7b` beside nemotron for 29.3 GiB
+resident, and `OLLAMA_NUM_PARALLEL=1`, because unset lets Ollama choose slots
+by free memory. Both are preventive; neither was the proximate cause.
+
+What actually remains, in order of effect: run baselines with the desktop
+quiet (~3.5 GiB), give the ingestion lane a smaller model (§6's whole premise
+— nothing smaller than 23.7 GB is installed today, so that needs a pull and an
+eval leg), or more RAM. **Until then, treat any GPU-idle figure as suspect:**
+this run's 52.8% was mostly two doomed calls, not poor parallelism.
+
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to
 construct an `enableExemplars` histogram otherwise); Prometheus runs
