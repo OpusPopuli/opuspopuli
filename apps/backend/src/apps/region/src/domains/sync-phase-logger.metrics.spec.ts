@@ -305,4 +305,55 @@ describe('SyncPhaseTracker metrics (M1)', () => {
     expect(summary.updated).toBe(1);
     expect(summary.skipped).toBe(2);
   });
+
+  describe('rowsDeleted (F2)', () => {
+    it('counts deleted rows against the data type', () => {
+      billSyncTracker(
+        logger,
+        'prune_stale',
+        2,
+        undefined,
+        observer,
+      ).rowsDeleted(2);
+
+      expect(counted).toContainEqual([
+        'pipeline_rows_deleted_total',
+        2,
+        { data_type: 'bills' },
+      ]);
+    });
+
+    it('emits nothing for zero', () => {
+      billSyncTracker(
+        logger,
+        'prune_stale',
+        0,
+        undefined,
+        observer,
+      ).rowsDeleted(0);
+
+      expect(
+        counted.filter((c) => c[0] === 'pipeline_rows_deleted_total'),
+      ).toEqual([]);
+    });
+
+    it('swallows an observer that throws', () => {
+      const throwing: MetricsObserver = {
+        observe: jest.fn(),
+        increment: () => {
+          throw new Error('registry gone');
+        },
+      };
+      const tracker = billSyncTracker(
+        logger,
+        'prune_stale',
+        1,
+        undefined,
+        throwing,
+      );
+
+      expect(() => tracker.rowsDeleted(3)).not.toThrow();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+  });
 });

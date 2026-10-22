@@ -151,4 +151,36 @@ describe('metrics scrape (M1)', () => {
     );
     expect(body).toMatch(/pipeline_phase_aborted_total\{[^}]*\} 1/);
   });
+
+  // Registered in the module AND injected into the observer — miss either
+  // and the increment is dropped with a warning, which is how a deletion
+  // alert would come to read as "no deletions".
+  it('counts pruned rows (F2)', async () => {
+    observer.increment(PipelineMetric.RowsDeletedTotal, 7, {
+      data_type: 'bills',
+    });
+
+    const body = await scrape();
+
+    expect(body).toMatch(/pipeline_rows_deleted_total\{data_type="bills"\} 7/);
+  });
+
+  // What `RegionSyncService.primePruneSeries` relies on: a zero increment
+  // exports the series at 0. Without a sample at 0 before the first real
+  // event, increase() has nothing to rise from and the prune alerts stay
+  // silent for the first refusal after every restart.
+  //
+  // A label no other test here touches: the registry is shared across this
+  // file, and the test above already moved the `bills` series to 7.
+  it('exports a series at 0 after a zero increment', async () => {
+    observer.increment(PipelineMetric.RowsDeletedTotal, 0, {
+      data_type: 'meetings',
+    });
+
+    const body = await scrape();
+
+    expect(body).toMatch(
+      /pipeline_rows_deleted_total\{data_type="meetings"\} 0/,
+    );
+  });
 });

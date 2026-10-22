@@ -58,6 +58,9 @@ export class PromMetricsObserver implements MetricsObserver {
     @Optional()
     @InjectMetric('pipeline_phase_aborted_total')
     pipelineAborts?: Counter<string>,
+    @Optional()
+    @InjectMetric('pipeline_rows_deleted_total')
+    pipelineRowsDeleted?: Counter<string>,
   ) {
     this.histograms = asMap({
       llm_request_duration_seconds: llmRequestDuration,
@@ -67,6 +70,7 @@ export class PromMetricsObserver implements MetricsObserver {
       llm_tokens_total: llmTokens,
       pipeline_items_total: pipelineItems,
       pipeline_phase_aborted_total: pipelineAborts,
+      pipeline_rows_deleted_total: pipelineRowsDeleted,
     });
   }
 

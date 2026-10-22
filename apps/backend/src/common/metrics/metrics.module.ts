@@ -323,6 +323,19 @@ export class MetricsModule {
         help: 'Sync phases abandoned after consecutive failures',
         labelNames: ['data_type', 'phase'],
       }),
+      /**
+       * Rows a prune deleted (F2), for the bulk-deletion alert in row 1.
+       *
+       * Deletion cascades — a bill takes its votes, co-authors and committee
+       * assignments with it — so this is the one pipeline outcome that a
+       * re-sync does not repair. It deserves a series of its own rather than
+       * a `reason` on the item count.
+       */
+      makeCounterProvider({
+        name: 'pipeline_rows_deleted_total',
+        help: 'Rows deleted by a sync prune',
+        labelNames: ['data_type'],
+      }),
       makeGaugeProvider({
         name: 'source_store_bytes',
         help: 'Bytes held by the source store, by tier and storage location',
