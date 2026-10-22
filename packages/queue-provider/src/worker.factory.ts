@@ -2,6 +2,7 @@ import { Logger } from "@nestjs/common";
 import { Worker, Job, WorkerOptions } from "bullmq";
 import IORedis from "ioredis";
 import { resolveQueuePrefix } from "./queue.constants";
+import { withJobSpan } from "./job-tracing";
 
 export interface WorkerMetrics {
   incrementJobAttempts(
@@ -70,7 +71,10 @@ export function createWorker<T>(
       );
 
       try {
-        const result = await handler(job);
+        // The job's span is a child of the enqueue's (D7), and every
+        // `withStage()` span the handler opens lands under it — so one trace
+        // covers the request, the queue hop and the work itself.
+        const result = await withJobSpan(queueName, job, () => handler(job));
         const durationMs = Date.now() - startMs;
 
         opts.metrics?.incrementJobAttempts(queueName, triggerSource, "success");

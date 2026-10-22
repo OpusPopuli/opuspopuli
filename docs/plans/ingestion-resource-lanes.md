@@ -86,7 +86,7 @@ plots. This gate adds the pipeline-specific layer on top.
 |---|---|---|
 | **M1** | **One `withStage()` helper** that, around any existing call, emits an OTel span, observes `pipeline_stage_duration_seconds` (with the span's trace id as exemplar), and counts the item outcome. One helper, so spans and metrics cannot drift apart. `stage` ∈ {`fetch`, `pdf_parse`, `ocr`, `html_parse`, `embed`, `llm`, `db_write`}, plus `data_type`, `lane`, `model`, `host`. No behaviour change | `packages/common` (helper); call sites in `resilient-fetch.ts`, `extraction.provider.ts`, `pdf-extractor.ts`, `llm-generator.base.ts`, the bills/civics loops, `sync-phase-logger.ts` |
 | **M2** | **LLM phase timings.** Read `load_duration`, `prompt_eval_duration` and `eval_duration` from Ollama's response — `ollama.provider.ts:74-90` reads only the token counts today — and emit them as `llm_request_duration_seconds{phase}` | `packages/llm-provider` |
-| **M3** | BullMQ trace-context propagation (D7), so a sync and every job it enqueues land in one trace | `packages/queue-provider` |
+| **M3** | BullMQ trace-context propagation (D7), so a sync and every job it enqueues land in one trace — **done**, see the M3 note below | `packages/queue-provider` |
 | **M4** | **Baseline, all six data types**, before any other change lands: per-stage busy time, LLM calls per run, GPU idle fraction, max event-loop lag, and eval-harness quality scores where a leg exists | runbook under `docs/runbooks/` |
 
 ### M1/M2 as shipped — what is wired, and what is not
@@ -137,6 +137,32 @@ appear), and "Model loads per hour" counts load-phase observations slower than
 counting observations would count requests. `circuit_breaker_state` has zero
 series — declared, never set — so row 4 has no breaker panel rather than a
 permanently empty one.
+
+**M3 as shipped.** `packages/queue-provider/src/job-tracing.ts`. The active
+trace context is injected into job data at `enqueue` and `enqueueBulk`, and
+`createWorker` runs every handler as a CHILD of the span that enqueued it — so
+one trace now covers the resolver, the queue hop and every `withStage()` span
+the sync opens underneath. A producer span (`<queue> publish`) makes the hop
+itself visible; without it the job attaches straight to the resolver and the
+queue is invisible, which is the thing D7 exists to show.
+
+**`upsertScheduler` deliberately injects nothing.** BullMQ stores a
+scheduler's `data` once and replays it on every firing, so a `traceparent`
+there would make every nightly sync for the life of the scheduler a child of
+one upsert — a single trace growing without bound, parented to a span that
+ended months ago. A cron firing is its own trace root. This is the subtlest
+part of M3 and it has its own test; the mutation that injects there was the
+one that initially survived.
+
+Verified through real Redis rather than mocks: a job enqueued inside a request
+span came back out of BullMQ with its carrier intact and its payload
+untouched, and the request, the job and a nested stage span all shared one
+trace id. Mocked bullmq cannot show that the carrier survives JSON in Redis,
+which is the only thing that has to be true across two processes.
+
+Still open for M3's value to be realised end to end: **R6 (NTP on every host)**
+from §10, without which cross-host spans order wrongly, and Tempo retention
+long enough to hold a ~48h bills run in one trace.
 
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to

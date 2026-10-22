@@ -1,6 +1,8 @@
 export { QueueModule } from "./queue.module";
 export { QueueService } from "./queue.service";
 export { createWorker } from "./worker.factory";
+export { JOB_TRACE_KEY, withTraceContext, traceContextOf } from "./job-tracing";
+export type { TraceCarrier } from "./job-tracing";
 export type { WorkerMetrics, CreateWorkerOptions } from "./worker.factory";
 export {
   REGION_SYNC_QUEUE,
