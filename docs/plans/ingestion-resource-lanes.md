@@ -269,6 +269,32 @@ quiet (~3.5 GiB), give the ingestion lane a smaller model (§6's whole premise
 eval leg), or more RAM. **Until then, treat any GPU-idle figure as suspect:**
 this run's 52.8% was mostly two doomed calls, not poor parallelism.
 
+**The fetch-path fix, measured before and after (2026-10-22).** Same sync,
+same 121 items, seven seconds apart in duration:
+
+| | pre-fix | post-fix |
+|---|---|---|
+| `llm` | 419.5s (53.4%) | 434.8s (54.8%) |
+| `fetch` | **0s** | **268.3s (33.8%)** |
+| accounted for | **53.4%** | **88.7%** |
+
+Nearly half the run had been invisible. It was not overhead or DB time — it
+was the scraping pipeline's own fetches through
+`ExtractionProvider.fetchWithRetry`, most of them the ~80 Assembly biography
+pages that fail (#1383) plus their retry backoff. The pre-fix row looked
+*healthier*: a 20.9s gap and no fetch cost at all.
+
+Two things this changes for M4. The remaining rows must be measured on images
+built after this fix, and **a low accounted-time percentage is itself a
+finding** — it means a resource is being used that nothing is instrumented to
+see, not that the run was idle.
+
+Still untracked: `generateActivitySummaries()` runs after `bio_generation`
+completes and before the job ends, one LLM call per representative, and no
+`SyncPhaseTracker` phase covers it. On this run that is most of the 83 LLM
+calls against 2 bios, so the phase-complete lines understate the job by
+minutes.
+
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to
 construct an `enableExemplars` histogram otherwise); Prometheus runs
