@@ -333,6 +333,23 @@ export class SyncPhaseTracker<Phase extends string> {
   }
 
   /**
+   * Rows this phase deleted, for `pipeline_rows_deleted_total` (F2).
+   *
+   * Here rather than at the call site so it goes through {@link publish}:
+   * the tracker is already the one place a sync's metric emissions are
+   * guarded, and a second hand-rolled try/catch beside it would be the drift
+   * this class exists to prevent.
+   */
+  rowsDeleted(count: number): void {
+    if (count <= 0) return;
+    this.publish(() =>
+      this.observer?.increment(PipelineMetric.RowsDeletedTotal, count, {
+        data_type: this.dataType,
+      }),
+    );
+  }
+
+  /**
    * Mid-phase aggregate line that doesn't itself bump the per-item
    * counter. Useful for per-source announcements inside a phase
    * (e.g., "source 1/2: 1234 bills" before the per-item loop starts).

@@ -32,7 +32,7 @@ const REGION_ID = 'california';
 
 type Prune = (
   regionId: string,
-  discovered: Set<string>,
+  discovery: { externalIds: Set<string> },
   maxBills?: number,
 ) => Promise<void>;
 
@@ -59,13 +59,17 @@ async function seedSession(
   db: DbService,
   sessionYear: string,
   n: number,
+  regionId = REGION_ID,
 ): Promise<string[]> {
-  const prefix = sessionYear.replace('-', '') + '0';
+  const prefix =
+    (regionId === REGION_ID ? '' : regionId) +
+    sessionYear.replace('-', '') +
+    '0';
   const ids = Array.from({ length: n }, (_, i) => `${prefix}AB${i + 1}`);
   await db.bill.createMany({
     data: ids.map((externalId, i) => ({
       externalId,
-      regionId: REGION_ID,
+      regionId,
       billNumber: `AB ${i + 1}`,
       sessionYear,
       measureTypeCode: 'AB',
@@ -76,8 +80,12 @@ async function seedSession(
   return ids;
 }
 
-async function remaining(db: DbService, sessionYear: string): Promise<number> {
-  return db.bill.count({ where: { regionId: REGION_ID, sessionYear } });
+async function remaining(
+  db: DbService,
+  sessionYear: string,
+  regionId = REGION_ID,
+): Promise<number> {
+  return db.bill.count({ where: { regionId, sessionYear } });
 }
 
 describe('bills prune scope — integration (F2)', () => {
@@ -127,7 +135,7 @@ describe('bills prune scope — integration (F2)', () => {
     prune = (discovered) =>
       (service as unknown as { pruneStaleBills: Prune }).pruneStaleBills(
         REGION_ID,
-        new Set(discovered),
+        { externalIds: new Set(discovered) },
       );
   });
 
@@ -143,10 +151,13 @@ describe('bills prune scope — integration (F2)', () => {
     // The old session is kept UNDER the guard's floor of 10 on purpose. With
     // a large one, the guard refuses the prune and this passes with the
     // session filter removed — it did, on the first version of this test.
-    await seedSession(db, '2025-2026', 8);
+    //
+    // One old-session id is discovered too — a cross-session link, or an
+    // LLM-mislabelled row. That stray must not put the old session in scope.
+    const old = await seedSession(db, '2025-2026', 8);
     const next = await seedSession(db, '2027-2028', 30);
 
-    await prune(next);
+    await prune([...next, old[0]]);
 
     expect(await remaining(db, '2025-2026')).toBe(8);
     expect(await remaining(db, '2027-2028')).toBe(30);
@@ -165,6 +176,15 @@ describe('bills prune scope — integration (F2)', () => {
       where: { externalId: { in: ids.slice(595) } },
     });
     expect(gone).toHaveLength(0);
+  });
+
+  it("never deletes another region's bills in the same session", async () => {
+    const ca = await seedSession(db, '2025-2026', 100);
+    await seedSession(db, '2025-2026', 5, 'sonoma');
+
+    await prune(ca);
+
+    expect(await remaining(db, '2025-2026', 'sonoma')).toBe(5);
   });
 
   it('refuses a prune over the guard and deletes nothing', async () => {

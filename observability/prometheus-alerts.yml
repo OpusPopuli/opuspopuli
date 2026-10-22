@@ -89,6 +89,41 @@ groups:
           summary: "High AI analysis failure rate on {{ $labels.service }}"
           description: "AI analysis failure rate >10% for 5 minutes (current: {{ $value | humanizePercentage }})."
 
+  # Sync prunes — F2 (docs/plans/F2-bill-prune-scope.md).
+  #
+  # A prune hard-deletes, and a bill takes its votes, co-authors and
+  # committee assignments with it, so this is the one pipeline outcome a
+  # re-sync does not repair. The deletion guard caps ONE run at
+  # max(2%, 10 bills); it cannot see a source that quietly drops 1.9% a day,
+  # which stays under the cap every run and removes a session in a month.
+  # The 7-day sum is what catches that.
+  - name: opuspopuli-sync-prune
+    rules:
+      - alert: SyncBulkDeletion
+        expr: sum by (data_type) (increase(pipeline_rows_deleted_total[7d])) > 100
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.data_type }} sync pruned {{ $value | humanize }} rows in 7 days"
+          description: >-
+            More than 100 {{ $labels.data_type }} rows were deleted by sync
+            prunes over the last week. Deletions cascade and a re-sync does
+            not restore them. Check the discover phase for a source that is
+            returning fewer links than it should before the next sync runs.
+
+      - alert: SyncPruneRefused
+        expr: sum by (data_type) (increase(pipeline_items_total{reason="deletion-guard"}[1d])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.data_type }} prune refused by the deletion guard"
+          description: >-
+            A {{ $labels.data_type }} prune would have deleted more rows than
+            its guard allows, so it deleted nothing. It will keep refusing on
+            every sync until the cause is found — usually a discovery pass
+            that lost a source. The ERROR line in region-worker logs names
+            the first 20 rows it kept.
+
   # Backup freshness — opuspopuli#1217.
   #
   # Production backups stopped on 2026-07-23 and nobody noticed for 49 days.

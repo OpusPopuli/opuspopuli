@@ -38,35 +38,59 @@ So this is prevention, not recovery — but it has a calendar deadline.
 
 ## Design
 
+Revised after independent review (see Status): the first version scoped by
+"any session a discovered id belongs to", which one stray id could defeat.
+
 ### 1. Prune against *discovered* ids
 
-A bill that failed was still seen. Every id parsed from a status URL in phase
-1 goes into a `discoveredExternalIds` set, whatever its outcome. The prune
-reads that set; `syncedExternalIds` is no longer its input.
+A bill that failed was still seen. Phase 1 (`discoverAllBillUrls`) records
+every bill id parsed from a status **or votes** URL into
+`BillDiscovery.externalIds`, before phase 2 processes anything — so no
+outcome branch can leave one out, and a bill reached only through its votes
+page counts as seen. `syncedExternalIds` is gone.
 
-Built in `processOneBillUrl` from the same `safeBillIdFromUrl` call, before
-any fetch, so no outcome branch can forget to add it.
+### 2. Skip the prune when discovery was incomplete
 
-### 2. Scope the prune to the sessions this sync covered
+`discoverBillUrls` returns `[]` both for a failed seed fetch and for markup
+that stopped matching. A source that yields nothing still owns its stored
+bills, and if it owns fewer than the guard's limit they would be deleted
+quietly. So the prune does not run when:
 
-After phase 2, query the distinct `sessionYear` of stored bills whose
-`externalId` is in the discovered set. Prune only inside those sessions.
+- any source returned no URLs at all (`source-returned-nothing`), or
+- any status URL had no parseable `bill_id` (`unidentified-status-urls`) —
+  extraction stores that bill under a page-derived id the discovered set can
+  never contain, so it would be pruned on the next run.
 
-Read from the DB rather than parsed from the id, for two reasons:
+Both are skip reasons on the phase line, so a region stuck in either state is
+visible.
 
-- the id format (`20252026` + `0` + `AB1`) is California's; the
-  `session_year` column is the region-neutral fact;
-- on the first sync after the flip, the discovered ids are 2027–28 bills that
-  phase 2 has **just created**, so the lookup returns `{2027-2028}` and the
-  2025–26 corpus is outside the scope by construction.
+### 3. Scope the prune to the sessions this sync *covered*
 
-Discovered but never stored (every new bill failed) contributes no session,
-so an all-failed sync prunes nothing.
+Two grouped counts: discovered stored bills per `sessionYear`, and all stored
+bills in those sessions. A session is in scope only when the discovered ids
+account for **≥50%** of its stored bills.
 
-### 3. Deletion guard
+Coverage, not mere presence, because one stray id must not pull a whole
+session into scope:
 
-Refuse the prune, log at `error`, and leave every row in place, when it would
-delete more than **max(2% of the in-scope bills, 10 bills)**.
+- a 2027–28 list page linking one carried-over 2025–26 bill;
+- an LLM-mislabelled `sessionYear` on one new row (the column comes from
+  extraction, `raw.sessionYear ?? sessionYear`);
+- a spoofed page injecting one old `bill_id`.
+
+With presence-only scoping, a large old session then made every later sync
+refuse (safe, but stuck), and a small one — under the guard's floor — was
+simply deleted: F2's own failure, smaller. After the flip the old session is
+barely covered, so it is out of scope by construction. A session left out is
+named in a `warn` line with its seen/stored counts.
+
+Read from the DB rather than parsed from the id because the id format
+(`20252026` + `0` + `AB1`) is California's; `session_year` is region-neutral.
+
+### 4. Deletion guard
+
+Refuse the prune, and leave every row in place, when it would delete more
+than **max(2% of the in-scope bills, 10 bills)**.
 
 - The fraction catches a broken discovery pass on a large corpus: 2% of 5,019
   is 100.
@@ -74,45 +98,62 @@ delete more than **max(2% of the in-scope bills, 10 bills)**.
   refuse every legitimate prune.
 
 Refused, not truncated — deleting "the first 100" of a bad set is still
-deleting the wrong bills. The phase records the refusal with
-`reason=deletion-guard` so it is visible on the dashboard, not only in logs.
+deleting the wrong bills. A refusal writes **one** `error` line naming the
+first 20 kept bills and **one** `skipped` item with `reason=deletion-guard`.
+One line and item per kept bill would bury the error under thousands of lines
+on exactly the run it matters, and skew the bills skip-rate panel.
 
-### 4. `pipeline_rows_deleted_total`
+### 5. `pipeline_rows_deleted_total` and the alerts
 
-Counter, label `data_type` (§3 contract), incremented by the number of rows
-actually deleted. Added to `PipelineMetric`, registered in `metrics.module.ts`
-and the Prometheus observer. A refused prune increments nothing; the alert in
-§3 ("bulk deletion") reads this counter.
+Counter, label `data_type` (§3 contract), incremented by `deleteMany`'s
+returned count — what was deleted, not what was found. Emitted through
+`SyncPhaseTracker.rowsDeleted`, so it shares the tracker's guarded `publish`
+rather than a second try/catch.
+
+The guard is per run, so it cannot see a source that drops 1.9% a day — under
+the cap every run, a session gone in a month. Two rules in
+`observability/prometheus-alerts.yml` (group `opuspopuli-sync-prune`):
+
+- `SyncBulkDeletion` — more than 100 rows pruned in 7 days, per data type;
+- `SyncPruneRefused` — any `deletion-guard` refusal in the last day.
 
 ## Out of scope
 
 - Soft delete for bills. A real design change (every reader would need a
-  `deletedAt` filter), and the three fixes above remove the failure modes
-  without it.
+  `deletedAt` filter), and the fixes above remove the failure modes without
+  it.
+- A rolling-window cap enforced in code. It needs prune history the sync does
+  not keep; the 7-day alert detects the same drift without new state.
+- Wrapping the reads and the delete in one transaction. The `region-sync`
+  worker runs one job at a time unless `BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY`
+  raises it (default 1, `worker.factory.ts`); the residual race is a slightly
+  stale limit, and the counter now reports the true delete count. Revisit if
+  that concurrency is ever raised — and S2 (per-type jobs) will.
 - The K5 freeze, which makes frozen bills count as discovered. It builds on
   this; it does not belong in a patch.
 
 ## Tests
 
-Unit, against the prune with a mocked `db` (the shape the other sync specs
-use), plus one integration test on `postgres_test` because the scoping is a
-query:
-
-| Test | Reintroduce to verify |
+| Test | Defect it catches |
 |---|---|
-| A failed existing bill survives a full sync | add only non-failed ids again |
-| A 2025–26 bill survives a sync that discovered only 2027–28 bills | drop the session filter |
-| A prune over the guard is refused and deletes nothing | remove the guard |
-| A prune under the guard deletes exactly the undiscovered in-scope bills | — (the positive case) |
-| `pipeline_rows_deleted_total` counts deleted rows; a refusal counts zero | emit before the guard |
+| Deletes exactly the undiscovered bills of a covered session | — (the positive case) |
+| Counts the deleted rows, from the prune itself | the emission removed |
+| Never touches another region's bills in the same session (unit + integration) | `regionId` dropped from the stale query |
+| Keeps the previous session after a flip, with one stray old id (unit + integration) | coverage rule removed; session filter removed |
+| Refuses over the guard: nothing deleted, one ERROR, one `deletion-guard` item, no deletion counted | guard removed; per-bill refusal items |
+| Deletes at exactly the limit, refuses one past it | `>` changed to `>=` |
+| Prunes nothing when discovery was incomplete | the skip reason ignored |
+| Discovery counts votes-URL ids; flags an empty source and an id-less status URL | votes ids dropped; either flag removed |
+| Counter registered and injected (OpenMetrics scrape) | registration or injection missing |
+| Alerts fire on 7-day drift and on a refusal (`promtool test rules`, not committed) | — |
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
 | Bills that really left the source survive longer (a failed bill is now kept) | Correct by design — a failed fetch is not evidence the bill is gone. The next successful sync re-tests it |
-| The guard refuses a legitimate large cleanup | Logged at `error` with the count; the operator re-runs with the cause understood. Rare, and the opposite error is unrecoverable |
-| Session lookup is a second query over up to ~5k ids | One `findMany … distinct sessionYear` on an indexed unique column, once per sync |
+| The guard or the coverage rule blocks a legitimate prune | Visible as a skip reason or a refusal alert; the operator acts with the cause understood. The opposite error is unrecoverable |
+| A region with a permanently empty source never prunes | Visible as `source-returned-nothing` on every bills sync; fix or remove the source |
 
 ## Owner decision
 
@@ -121,26 +162,26 @@ The guard threshold — §11 of the parent plan suggests ~2%; this adds the
 
 ## Status — implemented 2026-10-22, branch `fix/bill-prune-scope`
 
-All four parts as designed. Every regression test was verified by putting
-its defect back:
+**Review.** Two independent reviewers (correctness/performance/tests and
+security/data/consistency) found no blockers. Their suggestions were fixed in
+this change rather than filed: coverage-based scoping (§3), the incomplete-
+discovery skip and votes-URL ids (§1–2), one-line refusals (§4), emission
+through the tracker with the true delete count, the alerts (§5), a misplaced
+doc comment, and the six missing tests above. What was not done is in Out of
+scope, each with its reason.
 
-| Defect reintroduced | Caught by |
-|---|---|
-| Session filter removed | 3 unit tests, 2 integration tests |
-| Guard removed | the refusal unit test |
-| Only non-failed ids recorded as discovered | the failed-bill unit test |
-| Counter registered but not injected | the OpenMetrics scrape test |
+**Every test was verified by putting its defect back** — eight mutations,
+each failing at least one test, plus the earlier four.
 
 **One test lied on its first version.** The session-flip test seeded 120
 old bills, so with the session filter removed the guard refused the prune
-and the test still passed. Both versions now seed the old session under the
-guard's floor of 10, so only the session filter can save those rows.
+and the test still passed. It now seeds the old session under the guard's
+floor of 10, so only the scope rules can save those rows.
 
 **Not exercised on UAT, deliberately.** `maxBills` skips the prune, so a
 capped sync cannot reach it, and a full bills sync is ~48h. The real-Postgres
 integration test covers the queries; UAT confirmed the rebuilt
 `region-worker` boots healthy and exposes `pipeline_rows_deleted`.
 
-Not in this change: the §3 "bulk deletion" alert that reads the new counter.
-It belongs with the alert rules, and the guard prevents what it would report.
-
+**Prod carries the alert only once the node repo is ported** — node sync is
+a manual port, like the exemplar settings in §2 of the parent plan.
