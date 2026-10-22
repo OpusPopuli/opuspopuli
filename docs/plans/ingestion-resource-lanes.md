@@ -196,6 +196,43 @@ in one trace, 20 of them waiting on the same unexported parent. It resolves on
 completion — but a ~48h bills sync would hold that parent open for 48h, which
 is worth checking against Tempo's block handling before relying on it.
 
+**First Gate 0 baseline — civics, california, 2026-10-22.** One job, 2032s
+(33m52s). 24 pages: 9 updated, 13 skipped, 2 failed. The metrics reconcile
+EXACTLY with the phase-complete log line on all four outcomes, which is the
+property that justifies counting in `SyncPhaseTracker` rather than at call
+sites.
+
+| | |
+|---|---|
+| `llm` stage | 1911.4s — **94.1%** of the job |
+| `fetch` stage | 9.9s — 0.5% |
+| unaccounted | ~5.5% (DB writes, parsing, overhead) |
+| GPU busy | **47.2%** (idle 52.8%) |
+| LLM calls | 21 — 164,061 tokens in, 28,084 out |
+| prefill / decode | 423.4s / 491.9s — **1.16×**, near parity |
+
+**The headline is the contradiction between rows one and four.** The job spends
+94% of its wall clock inside the `llm` stage while the GPU works 47% of it.
+The 952s gap is not queue wait — it is two calls that ran 797s and ~326s and
+then died, returning no phase timings because the Ollama runner was killed.
+Host was at 48 GiB with 25% free and swap 91% full; the model holds 24 GiB
+because `num_ctx=131072` is allocated up front regardless of prompt size. So
+roughly half of this sync was spent on work that could never finish.
+
+That reframes Gate 0's exit metric: "GPU idle 52.8%" here does NOT mean the
+pipeline is poorly parallelised, which is what §6's lanes address. It means
+memory pressure destroyed half the run. **Fix the memory envelope before
+reading an idle fraction as evidence for anything**, or the lanes work will be
+measured against a corrupted baseline.
+
+A second, unrelated gotcha found the same day: Tempo had a **zero-byte block**
+from 2026-10-18 (`meta.json` 0 bytes) which made its 5-minutely blocklist poll
+fail with `unexpected end of JSON input`. The effect is silent and nasty —
+queries return only the blocks it can still enumerate, so a 34-minute trace
+came back missing its first half and Tempo labelled it "root span not yet
+received". Quarantining that one block and restarting returned the full 201-span
+trace. Check for empty `meta.json` before believing a truncated trace.
+
 **The exemplar chain needs FOUR switches, not three.** Backend serves
 OpenMetrics (prom-client renders exemplars in no other format, and refuses to
 construct an `enableExemplars` histogram otherwise); Prometheus runs
@@ -258,7 +295,7 @@ drill-down). `host` is there from the start for §7.
 | **1 · Overview** | Active syncs by data type — shipped NARROWER as "Data types reporting activity", which infers activity from throughput because nothing publishes sync liveness. ~~Items per second by outcome (created / updated / skipped / failed)~~. ~~**GPU busy % and GPU idle % during an active sync** — the Gate 0 exit metric, shown as a stat~~ (window must exceed the longest call — see the M1/M2 note). ~~Aborted phases (`SyncAbortedError`)~~. Rows deleted per sync | Prometheus |
 | **2 · Stage timing** | ~~Busy time per stage, stacked~~, per data type — the "where does a sync's time go" panel (`data_type` is set only on the bills fetch path, so the per-type split is NOT yet usable). ~~p50/p95 per stage~~. ~~Duration heatmap~~. ~~Exemplars link each bucket to its Tempo trace~~ | `pipeline_stage_duration_seconds` |
 | **3 · Lanes** | Per lane: waiting / active / delayed / failed. Oldest waiting job age. Enqueue → start wait p95. Active versus the `setGlobalConcurrency` limit. Interactive versus batch priority throughput | BullMQ `exportPrometheusMetrics` |
-| **4 · Inference** | ~~Decode tokens/sec per model~~. ~~**Prefill time versus decode time**~~ (D12.6 expects prefill to be the cost — first live measurement says decode, 6.7×; see the M1/M2 note). ~~Model loads per hour — the measure of whether S7's model affinity is working~~. In-flight requests versus `OLLAMA_NUM_PARALLEL`, **split queued versus interactive** (S7). Timeouts and circuit-breaker state per lane — `circuit_breaker_state` has zero series, so no panel rather than an empty one | `llm_*` metrics |
+| **4 · Inference** | ~~Decode tokens/sec per model~~. ~~**Prefill time versus decode time**~~ (D12.6 expects prefill to be the cost; over a full civics run of 21 calls they are near parity — decode 491.9s vs prefill 423.4s, 1.16×. A single early call read 6.7× and was NOT representative). ~~Model loads per hour — the measure of whether S7's model affinity is working~~. In-flight requests versus `OLLAMA_NUM_PARALLEL`, **split queued versus interactive** (S7). Timeouts and circuit-breaker state per lane — `circuit_breaker_state` has zero series, so no panel rather than an empty one | `llm_*` metrics |
 | **5 · Skips** | Skip ratio by reason per data type (`hash_unchanged`, `status_unchanged`, `frozen`, `prompt_unchanged`). **LLM calls avoided** per run. Frozen-bill count. This row is what proves K1–K6 work | Prometheus; Postgres for counts |
 | **6 · Lazy analysis** | Summary requests, dedupe hits, pending, completed. **Request → ready latency p50/p95**, the first reader's wait. Daily cap used and `UNAVAILABLE` count. Hot/cold bill counts and summary coverage by class | Prometheus; Postgres for coverage |
 | **7 · Fetch** | Requests/sec per target host. Per-host throttle wait. 429 / 503 / timeout rates. Retries | Prometheus |
