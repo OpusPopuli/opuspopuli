@@ -61,10 +61,11 @@ import { htmlToReadableText } from '@opuspopuli/common';
 import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
-  isBillDead,
-  isBillActive,
-  computeActiveCaSessionYears,
-} from './bill-lifecycle';
+  BILL_LIFECYCLE_SELECT,
+  lifecycleFlags,
+  refreshBillLifecycleFlags,
+  writeBillLifecycleFields,
+} from './bill-lifecycle-writer';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import { RegionCacheService } from './region-cache.service';
 import { deriveDistrictFromExternalId } from './region.service';
@@ -89,28 +90,6 @@ import { rowProvenance } from './row-provenance';
  * to build per-region taxonomy inputs for the bill-status-summary
  * prompt (#823).
  */
-/**
- * Parse the merged status-summary `status.lastActionDate` (ISO YYYY-MM-DD
- * or null) into the value to write back to `bills.lastActionDate`.
- *
- * Returns:
- *   - a Date when the string parses cleanly
- *   - null when the LLM explicitly returned null (intentional clear)
- *   - undefined when the field was absent OR the string is unparseable —
- *     callers spread this with `...(date !== undefined ? { lastActionDate: date } : {})`
- *     so the existing column value is preserved instead of being clobbered
- *     with null.
- */
-function parseLastActionDate(
-  raw: string | null | undefined,
-): Date | null | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === null) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
-  const d = new Date(`${raw}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-}
-
 function extractPlainLanguage(field: unknown): string {
   if (!field || typeof field !== 'object') return '';
   const plain = (field as Record<string, unknown>)['plainLanguage'];
@@ -447,6 +426,10 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
     fiscalImpact: true;
     fullTextUrl: true;
     currentStageId: true;
+    // The lifecycle inputs the summary write does not touch: it needs them
+    // to recompute isDead/isActive alongside the ones it does (F4).
+    lastAction: true;
+    lastActionDate: true;
   };
 }>;
 
@@ -1323,6 +1306,7 @@ export class RegionSyncService implements OnModuleDestroy {
     if (stagePatterns.length > 0) {
       await this.backfillBillStageIds(regionId, stagePatterns);
     }
+    await this.refreshLifecycleFlags(regionId);
 
     // ─── Phase 5/6 — prune_stale ───────────────────────────────────
     await this.pruneStaleBills(regionId, discovery, maxBills);
@@ -1561,13 +1545,28 @@ export class RegionSyncService implements OnModuleDestroy {
     return stagePatterns.find((p) => p.regex.test(status))?.stageId ?? null;
   }
 
+  /**
+   * Re-derive every bill's isDead/isActive against today (F4). The flags
+   * move with the date — a session closing makes its unfinished bills dead —
+   * and the bills that need it are exactly the ones no longer extracted,
+   * because the source stopped listing them. No LLM, no fetch.
+   */
+  private async refreshLifecycleFlags(regionId: string): Promise<void> {
+    const counts = await refreshBillLifecycleFlags(this.db, { regionId });
+    this.logger.log(
+      `Bills: lifecycle refresh for ${regionId}: ${counts.scanned} scanned, ` +
+        `${counts.flippedDead} isDead and ${counts.flippedActive} isActive ` +
+        `flag(s) changed`,
+    );
+  }
+
   private async backfillBillStageIds(
     regionId: string,
     stagePatterns: StagePattern[],
   ): Promise<void> {
     const unmatched = await this.db.bill.findMany({
       where: { regionId, currentStageId: null, status: { not: null } },
-      select: { id: true, status: true, billNumber: true, externalId: true },
+      select: { ...BILL_LIFECYCLE_SELECT, billNumber: true, externalId: true },
     });
 
     const tracker = this.billTracker('stage_backfill', unmatched.length, {
@@ -1595,11 +1594,12 @@ export class RegionSyncService implements OnModuleDestroy {
     }
 
     for (const [stageId, bills] of byStage) {
-      await this.db.bill.updateMany({
-        where: { id: { in: bills.map((b) => b.id) } },
-        data: { currentStageId: stageId },
-      });
       for (const bill of bills) {
+        // Per bill, not one updateMany per stage: the stage feeds
+        // isDead/isActive, and each bill's other inputs differ (F4).
+        await writeBillLifecycleFields(this.db, bill, {
+          currentStageId: stageId,
+        });
         tracker.item({
           name: bill.billNumber,
           externalId: bill.externalId,
@@ -1925,6 +1925,8 @@ export class RegionSyncService implements OnModuleDestroy {
         fiscalImpact: true,
         fullTextUrl: true,
         currentStageId: true,
+        lastAction: true,
+        lastActionDate: true,
       },
       take: maxBills,
     });
@@ -2215,11 +2217,21 @@ export class RegionSyncService implements OnModuleDestroy {
    *     the bill stops cycling through enrichment on every sync (mirrors
    *     the pre-#823 behavior).
    *   - Otherwise → write the `summary` JSONB (drop-in shape for existing
-   *     consumers), the verbatim `status.raw`, a runtime-validated
-   *     `currentStageId`, and the parsed `lastActionDate`. When the LLM
+   *     consumers) and a runtime-validated `currentStageId`. When the LLM
    *     reports `status.changed === false` we still write because this
    *     bill arrived here via `ai_summary IS NULL` — the changed flag
    *     just disambiguates intent for future re-enrich loops.
+   *
+   * **The LLM's `status.raw`, `lastActionSnippet` and `lastActionDate` are
+   * NOT written** (owner decision, 2026-10-22). Since F4 those columns drive
+   * isDead/isActive — and so whether a bill is in the personalized feed —
+   * and this model reads the full-text page, not the status page. A
+   * hallucinated "Died", or a prompt example copied as an answer (seen on
+   * this project with nemotron), would drop a live bill from the feed; an
+   * invented current-year date would keep a closed session's bill active.
+   * The official status page, read by extraction and the status-only
+   * re-check, stays the only source of those three. `status.raw` still
+   * feeds the stage fallback in `validateStageId`.
    */
   private async writeStatusSummary(
     bill: BillEnrichmentCandidate,
@@ -2260,25 +2272,16 @@ export class RegionSyncService implements OnModuleDestroy {
       stagePatterns,
       stageIdSet,
     );
-    const lastActionDate = parseLastActionDate(status.lastActionDate);
-
-    await this.db.bill.update({
-      where: { id: bill.id },
-      data: {
-        aiSummary: summary as Prisma.InputJsonValue,
-        ...provenance,
-        ...(status.raw ? { status: status.raw } : {}),
-        // status.lastActionSnippet is the LLM's fresh read of the most
-        // recent history entry; writing it keeps bills.lastAction in sync
-        // with the merged-call view rather than letting the bill-extraction
-        // value drift.
-        ...(status.lastActionSnippet
-          ? { lastAction: status.lastActionSnippet }
-          : {}),
-        currentStageId: validatedStage,
-        ...(lastActionDate !== undefined ? { lastActionDate } : {}),
-      },
-    });
+    // Through the lifecycle writer, because the stage it sets feeds
+    // isDead/isActive — until F4 this write moved the stage and left the
+    // flags describing the old one. Only the stage: see the docblock for
+    // why the status-page fields are not the LLM's to write.
+    await writeBillLifecycleFields(
+      this.db,
+      bill,
+      { currentStageId: validatedStage },
+      { aiSummary: summary as Prisma.InputJsonValue, ...provenance },
+    );
   }
 
   /**
@@ -2755,10 +2758,6 @@ export class RegionSyncService implements OnModuleDestroy {
         lastAction: raw.lastAction ?? null,
         lastActionDate: resolvedLastActionDate,
       };
-      const lifecycleCtx = {
-        today: now,
-        activeSessionYears: computeActiveCaSessionYears(now),
-      };
 
       const billData = {
         regionId,
@@ -2787,8 +2786,7 @@ export class RegionSyncService implements OnModuleDestroy {
         // dead); see bill-lifecycle.ts for the rules. Sync re-evaluates on
         // each run — the helpers are deterministic, so re-runs are no-ops
         // until the source status changes.
-        isDead: isBillDead(lifecycleInput, lifecycleCtx),
-        isActive: isBillActive(lifecycleInput, lifecycleCtx),
+        ...lifecycleFlags(lifecycleInput, now),
         extractedAt: now,
         // Which run produced this version of the row (#1280) — applied on
         // update as well as create, because during an incident the question

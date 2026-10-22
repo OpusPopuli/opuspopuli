@@ -126,10 +126,18 @@ function isSessionExpired(
   ctx: BillLifecycleContext,
 ): boolean {
   if (ctx.activeSessionYears.includes(bill.sessionYear)) return false;
-  // Chaptered bills from closed sessions are enacted, not dead.
+  // Chaptered bills from closed sessions are enacted, not dead — whether the
+  // stage says so or only the status does. Stage alone missed 140 bills in
+  // dev whose status reads "Chaptered by Secretary of State" with no stage
+  // resolved; once every bill is refreshed against today (F4), each of them
+  // would have been labelled dead on the first sync of 2027.
   if (bill.currentStageId === 'chaptered') return false;
+  if (CHAPTERED_STATUS_PATTERN.test(bill.status ?? '')) return false;
   return true;
 }
+
+/** "Chaptered", "Inactive Bill - Chaptered", "Chaptered by Secretary of State…". */
+const CHAPTERED_STATUS_PATTERN = /chaptered/i;
 
 /**
  * CA two-year session label for the given date — e.g. 2026-05-31 → "2025-2026".

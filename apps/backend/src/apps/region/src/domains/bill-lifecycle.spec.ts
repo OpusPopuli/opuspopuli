@@ -127,6 +127,24 @@ describe('isBillDead', () => {
         ),
       ).toBe(false);
     });
+
+    it.each([
+      ['Chaptered'],
+      ['Chaptered by Secretary of State - Chapter 472, Statutes of 2025.'],
+      ['Inactive Bill - Chaptered'],
+    ])(
+      'does not flag a closed-session bill whose STATUS is chaptered with no stage (%s)',
+      (status) => {
+        // 140 such bills in dev: enacted law, which every-bill refresh
+        // would otherwise have labelled dead on the first sync of 2027.
+        expect(
+          isBillDead(
+            bill({ sessionYear: '2023-2024', currentStageId: null, status }),
+            ctx,
+          ),
+        ).toBe(false);
+      },
+    );
   });
 
   describe('carryover guard', () => {

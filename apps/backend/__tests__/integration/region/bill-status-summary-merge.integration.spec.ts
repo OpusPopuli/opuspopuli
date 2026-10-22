@@ -10,8 +10,11 @@
  *   - the merged `summary` JSONB round-trips into `bills.aiSummary` with no
  *     shape mutation (drop-in compatibility for the bill-relevance-explanation
  *     #745 consumer)
- *   - `status.raw` lands in `bills.status` and the runtime-validated
- *     stage id lands in `bills.currentStageId`
+ *   - the runtime-validated stage id lands in `bills.currentStageId`, while
+ *     the LLM's `status.raw`, `lastActionSnippet` and `lastActionDate` do
+ *     NOT reach the status-page columns (owner decision 2026-10-22: since F4
+ *     those columns drive isDead/isActive, and the status page is their
+ *     only source)
  *   - the `{ skip: true }` sentinel is persisted intact and bill-state
  *     columns are NOT overwritten
  *   - the taxonomy guard (no civics_blocks → skip the summarize phase)
@@ -339,7 +342,7 @@ describe('bill-status-summary merge — integration (#823)', () => {
   // Tests
   // -----------------------------------------------------------------------
 
-  it('writes the merged response shape — summary JSONB + status + stage + lastActionDate (happy path)', async () => {
+  it('writes the merged response shape — summary JSONB + stage, status-page columns untouched (happy path)', async () => {
     await seedCivicsTaxonomy(db);
     const { id } = await seedBill(db, {
       status: 'Introduced',
@@ -386,15 +389,15 @@ describe('bill-status-summary merge — integration (#823)', () => {
     );
 
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
-    // status.raw lands verbatim in bills.status
-    expect(row.status).toBe('Senate - Held in Committee');
     // status.stage lands in bills.currentStageId after taxonomy validation
     expect(row.currentStageId).toBe('in_committee');
-    // status.lastActionSnippet lands in bills.lastAction (S-2: keeps the
-    // bill-extraction view + the merged-call view in lockstep)
-    expect(row.lastAction).toBe('Referred to Com. on JUD.');
-    // status.lastActionDate is parsed to a Date
-    expect(row.lastActionDate?.toISOString()).toBe('2026-05-30T00:00:00.000Z');
+    // The LLM's status-page fields are not written: the scraped status
+    // stands, and lastAction/lastActionDate keep their seeded (null) values.
+    expect(row.status).toBe('Introduced');
+    expect(row.lastAction).toBeNull();
+    expect(row.lastActionDate).toBeNull();
+    // ...and the flags are computed from what is stored, in the same write.
+    expect(row.isDead).toBe(false);
     // summary block round-trips as JSONB — drop-in shape for #745 consumer
     expect(row.aiSummary).toMatchObject({
       plainEnglishSummary: 'Caps ADU fees at $1000.',
@@ -457,7 +460,9 @@ describe('bill-status-summary merge — integration (#823)', () => {
     await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS);
 
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
-    expect(row.status).toBe('Passed Assembly');
+    // The LLM's status.raw still drives the stage fallback, but is not
+    // written to bills.status — the seeded (scraped) value stands.
+    expect(row.status).toBeNull();
     expect(row.currentStageId).toBe('passed_first_chamber');
   });
 
@@ -485,7 +490,9 @@ describe('bill-status-summary merge — integration (#823)', () => {
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
     expect(row.currentStageId).toBeNull();
     // But the verbatim status is still written — operator can see it.
-    expect(row.status).toBe('Some weird status string no pattern catches');
+    // The LLM's status.raw still drives the stage fallback, but is not
+    // written to bills.status — the seeded (scraped) value stands.
+    expect(row.status).toBeNull();
   });
 
   it('counts a non-object LLM payload as failed without writing aiSummary', async () => {
