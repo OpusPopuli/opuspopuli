@@ -45,8 +45,12 @@ describe('RegionPluginService — host rate policies (S1)', () => {
       getFederal: jest.fn().mockReturnValue(federal),
       hasActive: jest.fn().mockReturnValue(true),
       registerLocal: jest.fn(),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
     };
-    const loader = { loadPlugin: jest.fn().mockResolvedValue(undefined) };
+    const loader = {
+      loadPlugin: jest.fn().mockResolvedValue(undefined),
+      buildPlugin: jest.fn().mockReturnValue(california),
+    };
     const db = {
       regionPlugin: {
         findMany: jest
@@ -65,7 +69,7 @@ describe('RegionPluginService — host rate policies (S1)', () => {
       limiter as never,
     );
     built.push(service);
-    return { service, registry };
+    return { service, registry, db };
   };
 
   const publish = (service: RegionPluginService) =>
@@ -121,9 +125,14 @@ describe('RegionPluginService — host rate policies (S1)', () => {
     jest.useFakeTimers();
     try {
       const limiter = { acquire: jest.fn(), setPolicies: jest.fn() };
-      const { service } = build(limiter);
+      const { service, db } = build(limiter);
       await service.refreshActiveLocalPlugin();
-      await service.refreshActiveLocalPlugin(); // must not add a 2nd timer
+      // A changed row, so the second refresh reloads (an unchanged one is
+      // skipped, S2) — and must not add a 2nd timer.
+      db.regionPlugin.findMany.mockResolvedValue([
+        { name: 'california', config: { v: 2 }, parentRegionId: null },
+      ]);
+      await service.refreshActiveLocalPlugin();
 
       await jest.advanceTimersByTimeAsync(60 * 60 * 1000);
       expect(limiter.setPolicies).toHaveBeenCalledTimes(3);

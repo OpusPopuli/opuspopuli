@@ -468,6 +468,13 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
  * OnModuleInit / OnModuleDestroy so it can perform plugin loading and
  * cache teardown just as the original class did.
  */
+/** The enabled county plugins, optionally just one — shared by sync and S2's type list. */
+function enabledCountiesWhere(scopedRegionId?: string) {
+  return scopedRegionId
+    ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
+    : { parentRegionId: { not: null }, enabled: true };
+}
+
 @Injectable()
 export class RegionSyncService implements OnModuleDestroy {
   private readonly logger = new Logger(RegionSyncService.name, {
@@ -684,8 +691,8 @@ export class RegionSyncService implements OnModuleDestroy {
   }
 
   /** Delegate — see RegionPluginService.refreshActiveLocalPlugin (#828 Step 6). */
-  async refreshActiveLocalPlugin(): Promise<void> {
-    return this.regionPluginService.refreshActiveLocalPlugin();
+  async refreshActiveLocalPlugin(force = false): Promise<void> {
+    return this.regionPluginService.refreshActiveLocalPlugin(force);
   }
 
   // Plugin lifecycle methods moved to RegionPluginService below this point.
@@ -826,6 +833,49 @@ export class RegionSyncService implements OnModuleDestroy {
     return results;
   }
 
+  /**
+   * The data types `syncAll` would sync for this scope — the list a
+   * fanned-out request becomes one job per (S2,
+   * `docs/plans/S2-per-type-sync-jobs.md`). Selects plugins exactly as
+   * `syncAll` does: state plugins (federal included) unless `depth` is
+   * COUNTY, county plugins at COUNTY or ALL. Never includes `boundaries`,
+   * which `syncAll` never runs.
+   */
+  async syncableDataTypes(
+    depth: string = SyncDepth.STATE,
+    scopedRegionId?: string,
+  ): Promise<string[]> {
+    await this.refreshActiveLocalPlugin();
+    const state =
+      depth === SyncDepth.COUNTY ? [] : this.stateDataTypes(scopedRegionId);
+    const county =
+      depth === SyncDepth.COUNTY || depth === SyncDepth.ALL
+        ? await this.countyDataTypes(scopedRegionId)
+        : [];
+    return [...new Set([...state, ...county])];
+  }
+
+  /** Types of the registered state plugins (federal included), scoped. */
+  private stateDataTypes(scopedRegionId?: string): string[] {
+    return this.pluginRegistry
+      .getAll()
+      .filter((p) => !scopedRegionId || p.name === scopedRegionId)
+      .flatMap((p) => p.instance.getSupportedDataTypes());
+  }
+
+  /** Types the enabled county plugins' configs declare, scoped. */
+  private async countyDataTypes(scopedRegionId?: string): Promise<string[]> {
+    const counties = await this.db.regionPlugin.findMany({
+      where: enabledCountiesWhere(scopedRegionId),
+      select: { config: true },
+    });
+    return counties.flatMap(({ config }) =>
+      (
+        (config as unknown as DeclarativeRegionConfig | null)?.dataSources ?? []
+      ).map((source) => source.dataType),
+    );
+  }
+
   private async runPluginSync(
     instance: IRegionPlugin,
     name: string,
@@ -881,9 +931,7 @@ export class RegionSyncService implements OnModuleDestroy {
     forceStatusRecheck?: boolean,
     archiveOptions?: ArchiveIngestOptions,
   ): Promise<SyncResult[]> {
-    const where = scopedRegionId
-      ? { name: scopedRegionId, parentRegionId: { not: null }, enabled: true }
-      : { parentRegionId: { not: null }, enabled: true };
+    const where = enabledCountiesWhere(scopedRegionId);
 
     const countyRows = await this.db.regionPlugin.findMany({
       where,

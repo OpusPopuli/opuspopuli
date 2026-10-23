@@ -2,9 +2,13 @@ import { Logger } from "@nestjs/common";
 import { Worker } from "bullmq";
 import { createWorker } from "../src/worker.factory";
 
-jest.mock("bullmq", () => ({
-  Worker: jest.fn().mockImplementation(() => ({ on: jest.fn() })),
-}));
+jest.mock("bullmq", () => {
+  class DelayedError extends Error {}
+  return {
+    DelayedError,
+    Worker: jest.fn().mockImplementation(() => ({ on: jest.fn() })),
+  };
+});
 jest.mock("../src/job-tracing", () => ({
   withJobSpan: (_q: string, _j: unknown, fn: () => unknown) => fn(),
 }));
@@ -20,6 +24,7 @@ describe("createWorker — caller overrides", () => {
   const processor = () =>
     (Worker as unknown as jest.Mock).mock.calls.at(-1)[1] as (
       job: unknown,
+      token?: string,
     ) => Promise<unknown>;
   const job = { id: "1", attemptsMade: 0, opts: {}, data: {} };
 
@@ -81,5 +86,28 @@ describe("createWorker — caller overrides", () => {
       expect.anything(),
       "Job succeeded",
     );
+  });
+
+  it("hands the handler its lock token, and treats a delay as no failure (S2)", async () => {
+    const { DelayedError } = jest.requireMock("bullmq");
+    const metrics = {
+      incrementJobAttempts: jest.fn(),
+      recordJobDuration: jest.fn(),
+    };
+    const error = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation(() => {});
+    const handler = jest.fn(async () => {
+      throw new DelayedError();
+    });
+    createWorker("waits", connection, handler, { metrics });
+
+    await expect(processor()(job, "lock-token")).rejects.toBeInstanceOf(
+      DelayedError,
+    );
+
+    expect(handler).toHaveBeenCalledWith(job, "lock-token");
+    expect(error).not.toHaveBeenCalled();
+    expect(metrics.incrementJobAttempts).not.toHaveBeenCalled();
   });
 });

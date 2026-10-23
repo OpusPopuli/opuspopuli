@@ -5,6 +5,7 @@ import {
   propagation,
   trace,
 } from "@opentelemetry/api";
+import { DelayedError } from "bullmq";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import {
@@ -181,6 +182,19 @@ describe("BullMQ trace propagation (M3)", () => {
     const process = spanNamed("region-sync process")!;
     expect(process.status.code).toBe(SpanStatusCode.ERROR);
     expect(process.events.map((e) => e.name)).toContain("exception");
+  });
+
+  it("marks a job put back to wait as delayed, not failed (S2)", async () => {
+    await expect(
+      withJobSpan("region-sync", { id: "j" }, async () => {
+        throw new DelayedError();
+      }),
+    ).rejects.toBeInstanceOf(DelayedError);
+
+    const process = spanNamed("region-sync process")!;
+    expect(process.status.code).toBe(SpanStatusCode.OK);
+    expect(process.attributes["messaging.bullmq.delayed"]).toBe(true);
+    expect(process.events.map((e) => e.name)).not.toContain("exception");
   });
 
   it("names the queue and system on both ends", async () => {

@@ -1,4 +1,18 @@
+import { Job } from 'bullmq';
 import { StructuralAnalysisProcessor } from './structural-analysis.processor';
+
+/** BullMQ's own job-option validation, run on just the options. */
+const bullmqAccepts = (jobId: string) =>
+  (
+    Job.prototype as unknown as {
+      validateOptions: (this: unknown, json: { data: string }) => void;
+    }
+  ).validateOptions.call(
+    { opts: { jobId }, name: 'region-sync' },
+    {
+      data: '{}',
+    },
+  );
 
 function buildProcessor(
   overrides: Record<string, unknown> = {},
@@ -41,8 +55,27 @@ describe('StructuralAnalysisProcessor', () => {
           regionId: 'california',
           dataTypes: ['BILLS'],
         }),
-        { jobId: 'manifest-ready:california:BILLS:mf-abc:v1' },
+        { jobId: 'manifest-ready-california-BILLS-mf-abc-v1' },
       );
+    });
+
+    it('builds an id BullMQ accepts — the colon form threw on every enqueue', async () => {
+      // `manifest-ready:<region>:<type>:<manifest>:v<n>` has five `:`
+      // segments; BullMQ allows a `:` only in exactly three, so every
+      // follow-up failed with "Custom Id cannot contain :" — caught as a
+      // warning, so it looked like success.
+      const queueService = { enqueue: jest.fn().mockResolvedValue(undefined) };
+      const svc = buildProcessor({ queueService });
+
+      await (
+        svc as unknown as Record<string, (...args: unknown[]) => Promise<void>>
+      ).enqueueFollowUpSync('california-sonoma', 'BILLS', 'mf-abc', 3);
+
+      const [, , { jobId }] = queueService.enqueue.mock.calls[0];
+      expect(() => bullmqAccepts(jobId)).not.toThrow();
+      expect(() =>
+        bullmqAccepts('manifest-ready:california:BILLS:mf-abc:v1'),
+      ).toThrow('Custom Id cannot contain :');
     });
 
     // #1172. The id used to be `manifest-ready:${regionId}:${dataType}`, so a

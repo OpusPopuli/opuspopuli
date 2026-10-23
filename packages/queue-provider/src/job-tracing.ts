@@ -7,6 +7,7 @@ import {
   type Context,
   type Span,
 } from "@opentelemetry/api";
+import { DelayedError } from "bullmq";
 
 /**
  * Where the W3C trace context rides inside a job's data (D7,
@@ -170,6 +171,16 @@ export async function withJobSpan<T>(
           span.setStatus({ code: SpanStatusCode.OK });
           return result;
         } catch (error) {
+          // Put back to wait (S2's per-type lock), not failed: a job waiting
+          // its turn would otherwise paint an error span every minute.
+          if (
+            error instanceof DelayedError ||
+            (error as { name?: unknown } | null)?.name === "DelayedError"
+          ) {
+            span.setAttribute("messaging.bullmq.delayed", true);
+            span.setStatus({ code: SpanStatusCode.OK });
+            throw error;
+          }
           span.recordException(error as Error);
           span.setStatus({
             code: SpanStatusCode.ERROR,

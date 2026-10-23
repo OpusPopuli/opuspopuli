@@ -2,13 +2,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 import { ConfigService } from '@nestjs/config';
-import { Job } from 'bullmq';
+import { DelayedError, Job } from 'bullmq';
 
 import { RegionSyncProcessor } from './region-sync.processor';
 import { RegionDomainService } from 'src/apps/region/src/domains/region.service';
 import { PipelineJobService } from 'src/apps/region/src/domains/pipeline-job.service';
 import { BoundaryLoaderService } from 'src/apps/region/src/domains/boundary-loader.service';
-import { QUEUE_CONNECTION, createWorker } from '@opuspopuli/queue-provider';
+import {
+  QUEUE_CONNECTION,
+  QueueService,
+  createWorker,
+} from '@opuspopuli/queue-provider';
 import { DataType } from '@opuspopuli/region-provider';
 
 jest.mock('@opuspopuli/queue-provider', () => ({
@@ -24,6 +28,9 @@ describe('RegionSyncProcessor', () => {
   let regionService: jest.Mocked<RegionDomainService>;
   let pipelineJobService: jest.Mocked<PipelineJobService>;
   let boundaryLoader: jest.Mocked<BoundaryLoaderService>;
+  let queueService: jest.Mocked<QueueService>;
+  /** The lock's Redis calls: SET NX answers 'OK' (taken) unless a test says otherwise. */
+  let redis: { quit: jest.Mock; set: jest.Mock; eval: jest.Mock };
 
   const mockSyncResults = [
     {
@@ -45,16 +52,23 @@ describe('RegionSyncProcessor', () => {
         pipelineJobId: 'pipeline-uuid-1',
         triggerSource: 'manual',
         regionId: undefined,
-        dataTypes: undefined,
+        // One type — what every cron is; a job with none or several is a
+        // parent that fans out (S2), tested on its own below.
+        dataTypes: ['propositions'],
       },
       attemptsMade: 0,
       opts: { attempts: 3 },
+      moveToDelayed: jest.fn().mockResolvedValue(undefined),
       ...overrides,
     } as unknown as Job<any>;
   }
 
   beforeEach(async () => {
-    const mockConnection = { quit: jest.fn() };
+    redis = {
+      quit: jest.fn(),
+      set: jest.fn().mockResolvedValue('OK'),
+      eval: jest.fn().mockResolvedValue(1),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,8 +85,9 @@ describe('RegionSyncProcessor', () => {
           provide: BoundaryLoaderService,
           useValue: createMock<BoundaryLoaderService>(),
         },
-        { provide: QUEUE_CONNECTION, useValue: mockConnection },
+        { provide: QUEUE_CONNECTION, useValue: redis },
         { provide: ConfigService, useValue: createMock<ConfigService>() },
+        { provide: QueueService, useValue: createMock<QueueService>() },
       ],
     }).compile();
 
@@ -80,6 +95,7 @@ describe('RegionSyncProcessor', () => {
     regionService = module.get(RegionDomainService);
     pipelineJobService = module.get(PipelineJobService);
     boundaryLoader = module.get(BoundaryLoaderService);
+    queueService = module.get(QueueService);
 
     regionService.syncAll.mockResolvedValue(mockSyncResults);
     boundaryLoader.loadAll.mockResolvedValue({
@@ -153,6 +169,15 @@ describe('RegionSyncProcessor', () => {
 
       expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledTimes(1);
       expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(600000);
+    });
+
+    it('also closes requests whose jobs have all finished (S2)', async () => {
+      // A last child whose own settle failed leaves its request `running`.
+      pipelineJobService.settleFinishedParents.mockResolvedValue(1);
+
+      await processor.onApplicationBootstrap();
+
+      expect(pipelineJobService.settleFinishedParents).toHaveBeenCalledTimes(1);
     });
 
     it('continues starting the worker even if the sweep throws', async () => {
@@ -264,10 +289,15 @@ describe('RegionSyncProcessor', () => {
       expect(regionService.syncAll).not.toHaveBeenCalled();
     });
 
-    it('runs BOTH when a job mixes boundaries with civic types, dropping nothing', async () => {
+    it('fans a job mixing boundaries with civic types out into BOTH, dropping nothing', async () => {
       // Guards the #1122 footgun: boundaries is a valid DataTypeGQL, so a
       // syncRegionData([representatives, boundaries]) call must sync
       // representatives AND load boundaries — not silently drop the former.
+      // Since S2 that is one child job each.
+      pipelineJobService.findChild.mockResolvedValue(null);
+      pipelineJobService.create.mockImplementation(async (input) => ({
+        id: `row-${input.dataTypes![0]}`,
+      }));
       const job = {
         id: 'job-mix',
         data: {
@@ -282,18 +312,13 @@ describe('RegionSyncProcessor', () => {
       await processor.onApplicationBootstrap();
       await getHandler()(job);
 
-      expect(boundaryLoader.loadAll).toHaveBeenCalledTimes(1);
-      // syncAll runs with boundaries stripped out of the civic type list.
-      expect(regionService.syncAll).toHaveBeenCalledWith(
-        ['representatives'],
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        'pipeline-mix',
-        undefined,
-        undefined,
+      const enqueued = queueService.enqueue.mock.calls.map(
+        ([, data]) => (data as { dataTypes: string[] }).dataTypes,
       );
+      expect(enqueued).toEqual([['representatives'], ['boundaries']]);
+      // The parent itself runs neither.
+      expect(boundaryLoader.loadAll).not.toHaveBeenCalled();
+      expect(regionService.syncAll).not.toHaveBeenCalled();
     });
 
     it('maps boundary counts into the succeeded result (upserted→created, missingKey→skipped)', async () => {
@@ -316,6 +341,281 @@ describe('RegionSyncProcessor', () => {
         }),
       );
       expect(results[0].errors).toHaveLength(1);
+    });
+  });
+
+  describe('one job per data type (S2)', () => {
+    function getHandler() {
+      return (createWorker as jest.Mock).mock.calls.at(-1)[2];
+    }
+    const parentJob = (dataTypes?: string[]) =>
+      ({
+        id: 'startup-20261023',
+        data: {
+          pipelineJobId: 'parent-1',
+          triggerSource: 'startup',
+          dataTypes,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 1 },
+      }) as unknown as Job<any>;
+
+    beforeEach(() => {
+      pipelineJobService.findChild.mockResolvedValue(null);
+      pipelineJobService.markParentRunning.mockResolvedValue({
+        enqueuedBy: 'admin-1',
+      });
+      pipelineJobService.create.mockImplementation(async (input) => ({
+        id: `row-${input.dataTypes![0]}`,
+      }));
+      regionService.syncableDataTypes.mockResolvedValue([
+        'propositions',
+        'bills',
+        'meetings',
+      ]);
+    });
+
+    it('fans a request for every type out into one child each, bills first, and syncs nothing itself', async () => {
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      expect(
+        queueService.enqueue.mock.calls.map(([, d, o]) => [
+          (d as { dataTypes: string[] }).dataTypes[0],
+          (d as { parentJobId: string }).parentJobId,
+          o?.jobId,
+        ]),
+      ).toEqual([
+        ['bills', 'parent-1', 'parent-1-bills'],
+        ['propositions', 'parent-1', 'parent-1-propositions'],
+        ['meetings', 'parent-1', 'parent-1-meetings'],
+      ]);
+      expect(regionService.syncAll).not.toHaveBeenCalled();
+      expect(pipelineJobService.markParentRunning).toHaveBeenCalledWith(
+        'parent-1',
+        'startup-20261023',
+      );
+      // Children carry who asked, like the request.
+      expect(pipelineJobService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ enqueuedBy: 'admin-1' }),
+      );
+    });
+
+    it('fans out nothing for a request already closed or cancelled', async () => {
+      // A redelivery after it settled, or a cancel since its own check.
+      pipelineJobService.markParentRunning.mockResolvedValue(null);
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      expect(pipelineJobService.create).not.toHaveBeenCalled();
+      expect(queueService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('re-runs no child that already ran, and settles the parent itself', async () => {
+      pipelineJobService.findChild.mockImplementation(async (_p, type) => ({
+        id: `row-${type}`,
+        bullmqJobId: `parent-1-${type}`,
+        status: type === 'bills' ? 'queued' : 'succeeded',
+      }));
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      expect(
+        queueService.enqueue.mock.calls.map(([, d]) => (d as any).dataTypes[0]),
+      ).toEqual(['bills']);
+      expect(pipelineJobService.settleParent).toHaveBeenCalledWith('parent-1');
+    });
+
+    it('fails the children it never enqueued — only those — when its last attempt fails', async () => {
+      queueService.enqueue
+        .mockResolvedValueOnce('ok' as never)
+        .mockRejectedValueOnce(new Error('redis gone'));
+      await processor.onApplicationBootstrap();
+
+      await expect(getHandler()(parentJob())).rejects.toThrow('redis gone');
+
+      // bills was enqueued and is waiting for a slot: not failed.
+      expect(pipelineJobService.failChildren).toHaveBeenCalledWith(
+        ['row-propositions', 'row-meetings'],
+        expect.stringContaining('redis gone'),
+      );
+      expect(pipelineJobService.markFailed).toHaveBeenCalledWith(
+        'parent-1',
+        expect.stringContaining('redis gone'),
+      );
+    });
+
+    it('leaves a failed fan-out for its retry when attempts remain', async () => {
+      queueService.enqueue.mockRejectedValue(new Error('redis gone'));
+      await processor.onApplicationBootstrap();
+      const job = parentJob();
+      (job as any).opts = { attempts: 3 };
+
+      await expect(getHandler()(job)).rejects.toThrow('redis gone');
+
+      expect(pipelineJobService.failChildren).not.toHaveBeenCalled();
+    });
+
+    it('gives each child a job id BullMQ accepts', async () => {
+      const validate = (
+        Job.prototype as unknown as {
+          validateOptions: (this: unknown, json: { data: string }) => void;
+        }
+      ).validateOptions;
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      for (const [, , opts] of queueService.enqueue.mock.calls) {
+        expect(() =>
+          validate.call(
+            { opts: { jobId: opts?.jobId }, name: 'x' },
+            {
+              data: '{}',
+            },
+          ),
+        ).not.toThrow();
+      }
+    });
+
+    it('creates every child row before enqueuing any child', async () => {
+      // A child that finished while its siblings did not exist yet would
+      // settle the parent early.
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      const lastCreate = Math.max(
+        ...pipelineJobService.create.mock.invocationCallOrder,
+      );
+      const firstEnqueue = Math.min(
+        ...queueService.enqueue.mock.invocationCallOrder,
+      );
+      expect(lastCreate).toBeLessThan(firstEnqueue);
+    });
+
+    it('reuses the children a previous delivery created', async () => {
+      pipelineJobService.findChild.mockImplementation(async (_p, type) => ({
+        id: `row-${type}`,
+        bullmqJobId: `parent-1-${type}`,
+        status: 'queued',
+      }));
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      expect(pipelineJobService.create).not.toHaveBeenCalled();
+      expect(queueService.enqueue).toHaveBeenCalledTimes(3);
+    });
+
+    it('closes a request with nothing to sync at once', async () => {
+      regionService.syncableDataTypes.mockResolvedValue([]);
+      await processor.onApplicationBootstrap();
+
+      await getHandler()(parentJob());
+
+      expect(pipelineJobService.markSucceeded).toHaveBeenCalledWith(
+        'parent-1',
+        [],
+      );
+      expect(queueService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('waits, without running or using an attempt, while another sync of its type runs', async () => {
+      redis.set.mockResolvedValue(null); // SET NX: held
+      await processor.onApplicationBootstrap();
+      const job = buildJob();
+
+      await expect(getHandler()(job, 'token-1')).rejects.toBeInstanceOf(
+        DelayedError,
+      );
+
+      expect(job.moveToDelayed).toHaveBeenCalledWith(
+        expect.any(Number),
+        'token-1',
+      );
+      expect(regionService.syncAll).not.toHaveBeenCalled();
+      expect(pipelineJobService.markRunning).not.toHaveBeenCalled();
+    });
+
+    it('releases its type lock and settles its parent when it finishes', async () => {
+      await processor.onApplicationBootstrap();
+      const job = buildJob();
+      job.data.parentJobId = 'parent-1';
+
+      await getHandler()(job);
+
+      expect(redis.eval).toHaveBeenCalledWith(
+        expect.stringContaining('DEL'),
+        1,
+        expect.stringContaining('locks:region-sync:propositions'),
+        expect.any(String),
+      );
+      expect(pipelineJobService.settleParent).toHaveBeenCalledWith('parent-1');
+    });
+
+    it('settles its parent when it fails, too', async () => {
+      regionService.syncAll.mockRejectedValue(new Error('Scrape failed'));
+      await processor.onApplicationBootstrap();
+      const job = buildJob({ opts: { attempts: 1 } } as any);
+      job.data.parentJobId = 'parent-1';
+
+      await expect(getHandler()(job)).rejects.toThrow('Scrape failed');
+
+      expect(pipelineJobService.markFailed).toHaveBeenCalled();
+      expect(pipelineJobService.settleParent).toHaveBeenCalledWith('parent-1');
+    });
+
+    it('closes its own row and settles its parent when its request was cancelled', async () => {
+      // A child created just after the cancel escaped its fan-out; it must
+      // not wait `queued` for ever.
+      pipelineJobService.isCancelled.mockResolvedValue(true);
+      await processor.onApplicationBootstrap();
+      const job = buildJob();
+      job.data.parentJobId = 'parent-1';
+
+      await getHandler()(job);
+
+      expect(pipelineJobService.cancel).toHaveBeenCalledWith(
+        'pipeline-uuid-1',
+        expect.any(String),
+      );
+      expect(pipelineJobService.settleParent).toHaveBeenCalledWith('parent-1');
+    });
+
+    it('fails its row when the type lock cannot be taken on its last attempt', async () => {
+      redis.set.mockRejectedValue(new Error('redis gone'));
+      await processor.onApplicationBootstrap();
+      const job = buildJob({ opts: { attempts: 1 } } as any);
+      job.data.parentJobId = 'parent-1';
+
+      await expect(getHandler()(job)).rejects.toThrow('redis gone');
+
+      expect(pipelineJobService.markFailed).toHaveBeenCalledWith(
+        'pipeline-uuid-1',
+        expect.stringContaining('redis gone'),
+      );
+      expect(pipelineJobService.settleParent).toHaveBeenCalledWith('parent-1');
+    });
+
+    it('reuses the row a previous delivery of a cron job created', async () => {
+      // A cron job carries no row id; its redelivery must not become a
+      // second request that fans out again.
+      pipelineJobService.findByBullmqJobId.mockResolvedValue({ id: 'row-1' });
+      await processor.onApplicationBootstrap();
+      const job = buildJob();
+      delete job.data.pipelineJobId;
+
+      await getHandler()(job);
+
+      expect(pipelineJobService.create).not.toHaveBeenCalled();
+      expect(pipelineJobService.markRunning).toHaveBeenCalledWith(
+        'row-1',
+        'job-123',
+      );
     });
   });
 });

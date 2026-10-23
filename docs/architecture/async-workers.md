@@ -72,6 +72,23 @@ region-worker (RegionSyncProcessor)
   └─ BullMQ retries on throw (exponential backoff, 3 attempts by default)
 ```
 
+**One job per data type (S2, `docs/plans/S2-per-type-sync-jobs.md`).** A job
+with no `dataTypes`, or several, is a *parent*: the worker creates one child
+`pipeline_jobs` row per type (`parent_job_id`), enqueues one child job per type
+(`<parentId>-<dataType>`), and returns without syncing anything itself. Each
+child runs the flow above for its one type, and the last to finish *settles*
+the parent: its `results` become the children's, its status SUCCEEDED, FAILED
+(naming the failed types) or CANCELLED. `regionSyncJob(parentId)` therefore
+still answers "is it done", and `recentRegionSyncJobs` lists parents only.
+
+**One running sync per type.** A single-type job takes a Redis lock on its
+type (`<prefix>:region-sync:lock:<dataType>`) before `markRunning`; when
+another sync of the type holds it, the job goes back to the delayed set for
+`REGION_SYNC_LOCK_RETRY_MS` without using an attempt. Two syncs of one type
+are unsafe (prunes and linkers race); two of different types run side by side
+at `BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY` ≥ 2. Cancelling a parent cancels its
+children.
+
 ### Structural analysis (on cache miss / stale)
 
 The `MANIFEST_MISSING_CALLBACK` token is registered in `RegionDomainModule`. It fires during the scrape loop whenever the pipeline finds no manifest (cold miss) or a stale one (structure/prompt changed).
@@ -108,6 +125,8 @@ The path above marks `pipeline_jobs` terminal on the worker's `catch` block, but
 2. **Hard crash**: SIGKILL, OOM, container restart — `catch` never runs.
 
 `RegionSyncProcessor.onApplicationBootstrap` calls `PipelineJobService.sweepStaleRunning(maxAgeMs)` before starting the BullMQ worker. Any row in `RUNNING` with `started_at` older than `PIPELINE_JOB_STALE_AGE_MS` (default 600000ms = 10 min) gets flipped to `FAILED` with `error_message = 'Abandoned: worker startup detected stale RUNNING row past lock-renewal window'`. Idempotent + non-fatal — DB blip on startup doesn't block the worker.
+
+Since S2 the sweep never touches a parent, which stays `RUNNING` for as long as its longest child, and a swept child settles its parent. With `WORKER_HOST` set it touches only rows this worker ran (`worker_host` = `WORKER_HOST`, or null for rows written before the column existed); unset, every host's rows, as before. Set it to something stable — a container's hostname changes on every recreate — and unique per worker process: two sharing one sweep each other's live rows.
 
 ## Outbound HTTP resilience (region-sync)
 
@@ -211,6 +230,9 @@ query {
 | `BULLMQ_QUEUE_REGION_SYNC_LOCK_DURATION_MS` | `300000` | BullMQ lock duration for `region-sync` jobs. Heartbeat is half this. Longer values tolerate slower per-bill iterations at the cost of slower stalled-job detection. |
 | `REGION_SYNC_CRON_ENABLED` | enabled | Set to `false` to stop the daily 2 AM repeatable job |
 | `REGION_SYNC_RUN_ON_STARTUP` | disabled | Set to `true` to enqueue a full sync on every worker boot |
+| `BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY` | `1` | Syncs run at once per worker — of different types only (S2). UAT runs 2; prod stays 1 until the LLM lane queue is on |
+| `REGION_SYNC_LOCK_RETRY_MS` | `60000` | How long a job waits before retrying when another sync of its type is running |
+| `WORKER_HOST` | hostname | Recorded on each `pipeline_jobs` row; when set, scopes the startup sweep to this worker. Stable and unique per worker process |
 | `PIPELINE_JOB_STALE_AGE_MS` | `600000` | Age threshold for the startup sweep of stuck `RUNNING` `pipeline_jobs` rows. Set well above the BullMQ lock duration. Malformed or non-positive values fall back to the default with a warn log. See [Recovering stuck `RUNNING` rows](#recovering-stuck-running-rows-on-startup-730). |
 
 In UAT, set `REGION_SYNC_CRON_ENABLED=false` so the cron does not fire during manual testing sessions.

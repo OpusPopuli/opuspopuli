@@ -117,6 +117,74 @@ describe("PluginRegistryService", () => {
     });
   });
 
+  describe("replaceLocal (S2)", () => {
+    it("never shows a reader an empty registry while plugins initialise", async () => {
+      // The refresh this replaces emptied the map, then awaited every
+      // initialise — a concurrent sync reading in between saw no plugin.
+      const old = createMockPlugin();
+      await registry.registerLocal("ca", old);
+      const seen: boolean[] = [];
+      const fresh = createMockPlugin({
+        initialize: jest.fn(async () => {
+          seen.push(registry.hasActive());
+          await new Promise((r) => setTimeout(r, 5));
+          seen.push(registry.hasActive());
+        }),
+      });
+
+      await registry.replaceLocal([{ name: "ca", instance: fresh }]);
+
+      expect(seen).toEqual([true, true]);
+      expect(registry.getLocal("ca")).toBe(fresh);
+    });
+
+    it("destroys the old plugins only after the new ones are in place", async () => {
+      // Captured, then asserted outside: an expect thrown inside destroy()
+      // is swallowed by replaceLocal's own try/catch around it.
+      let registeredWhileDestroying: IRegionPlugin | undefined;
+      const old = createMockPlugin({
+        destroy: jest.fn(async () => {
+          registeredWhileDestroying = registry.getLocal("ca");
+        }),
+      });
+      const fresh = createMockPlugin();
+      await registry.registerLocal("ca", old);
+
+      await registry.replaceLocal([{ name: "ca", instance: fresh }]);
+
+      expect(old.destroy).toHaveBeenCalledTimes(1);
+      expect(registeredWhileDestroying).toBe(fresh);
+      expect(fresh.destroy).not.toHaveBeenCalled();
+    });
+
+    it("drops plugins absent from the new set", async () => {
+      await registry.registerLocal("ca", createMockPlugin());
+      await registry.registerLocal("sonoma", createMockPlugin());
+
+      await registry.replaceLocal([
+        { name: "ca", instance: createMockPlugin() },
+      ]);
+
+      expect(registry.getLocal("sonoma")).toBeUndefined();
+      expect(registry.getAll().map((p) => p.name)).toEqual(["ca"]);
+    });
+
+    it("keeps a plugin that failed to initialise as an error, and falls back when none is active", async () => {
+      const broken = createMockPlugin({
+        initialize: jest.fn().mockRejectedValue(new Error("bad config")),
+      });
+      const example = createMockPlugin();
+
+      await registry.replaceLocal([{ name: "ca", instance: broken }], () => ({
+        name: "example",
+        instance: example,
+      }));
+
+      expect(registry.getStatus().lastError).toBe("bad config");
+      expect(registry.getLocal()).toBe(example);
+    });
+  });
+
   describe("unregister", () => {
     it("should destroy and remove the plugin", async () => {
       const plugin = createMockPlugin();

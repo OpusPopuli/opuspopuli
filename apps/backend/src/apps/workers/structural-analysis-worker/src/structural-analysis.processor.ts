@@ -194,7 +194,11 @@ export class StructuralAnalysisProcessor
     try {
       // Still deterministic — concurrent analyses of the SAME manifest
       // collapse to one follow-up, which was the original intent.
-      const dedupeJobId = `manifest-ready:${regionId}:${dataType}:${manifestId}:v${manifestVersion}`;
+      // Dashes, not colons: BullMQ rejects a custom id containing `:` unless
+      // it has exactly three segments ("Custom Id cannot contain :"), and the
+      // five-segment colon form threw on every enqueue — caught below as a
+      // warning, so no follow-up sync ever ran.
+      const dedupeJobId = `manifest-ready-${regionId}-${dataType}-${manifestId}-v${manifestVersion}`;
 
       await this.queueService.enqueue<RegionSyncJobData>(
         REGION_SYNC_QUEUE,

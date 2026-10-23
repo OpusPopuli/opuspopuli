@@ -19,7 +19,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, type Prisma } from '@opuspopuli/relationaldb-provider';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 
 interface LinkerCaches {
@@ -172,6 +172,22 @@ const ENROLLED_RE = /correctly\s{1,5}enrolled/i;
  */
 const RESOLUTION_LINE_RE =
   /^(ASSEMBLY (?:CONCURRENT |JOINT )?RESOLUTION NO\.\s{0,5}\d{1,6})[—–-]\s{0,5}([^.\n]{1,200})\.\s{0,5}([^\n]{1,500})$/m;
+
+type ActionRecord = Prisma.LegislativeActionCreateManyInput;
+
+/** The action's references to other rows — each `onDelete: SetNull`. */
+const REFERENCE_KEYS = [
+  'billId',
+  'representativeId',
+  'propositionId',
+  'committeeId',
+] as const;
+type ReferenceKey = (typeof REFERENCE_KEYS)[number];
+
+/** Prisma's foreign-key violation (P2003). */
+function isForeignKeyViolation(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === 'P2003';
+}
 
 @Injectable()
 export class LegislativeActionLinkerService {
@@ -1016,12 +1032,86 @@ export class LegislativeActionLinkerService {
       rawSubject: c.rawSubject ?? null,
     }));
 
-    await this.db.$transaction([
-      this.db.legislativeAction.deleteMany({ where: { minutesId: ctx.id } }),
-      this.db.legislativeAction.createMany({ data: records }),
-    ]);
+    return this.writeActions(ctx, records);
+  }
 
-    return records.length;
+  /**
+   * Replace a minutes row's actions, surviving a reference deleted mid-link.
+   *
+   * The caches the candidates were resolved from are a snapshot taken once
+   * per run; a sync of another type running alongside (S2,
+   * `docs/plans/S2-per-type-sync-jobs.md`) — a bills prune — can delete a row
+   * the snapshot still holds, and the write then fails on its foreign key.
+   * Every reference here is `onDelete: SetNull`, so the retry writes what the
+   * database would have made of the action had the delete come a moment
+   * later: the vanished reference nulled, the action kept. A second failure
+   * skips this minutes row only, rather than abandoning every row after it.
+   */
+  private async writeActions(
+    ctx: MinutesContext,
+    records: ActionRecord[],
+  ): Promise<number> {
+    const write = (data: ActionRecord[]) =>
+      this.db.$transaction([
+        this.db.legislativeAction.deleteMany({ where: { minutesId: ctx.id } }),
+        this.db.legislativeAction.createMany({ data }),
+      ]);
+    try {
+      await write(records);
+      return records.length;
+    } catch (error) {
+      if (!isForeignKeyViolation(error)) throw error;
+    }
+    const current = await this.withoutVanishedReferences(records);
+    try {
+      await write(current);
+      return current.length;
+    } catch (error) {
+      if (!isForeignKeyViolation(error)) throw error;
+      this.logger.warn(
+        `Minutes ${ctx.externalId}: actions not linked — a reference kept ` +
+          'disappearing during the write; the next sync links it',
+      );
+      return 0;
+    }
+  }
+
+  /** The records with every reference to a row that no longer exists nulled. */
+  private async withoutVanishedReferences(
+    records: ActionRecord[],
+  ): Promise<ActionRecord[]> {
+    const ids = (key: ReferenceKey) => [
+      ...new Set(records.flatMap((r) => (r[key] ? [r[key]] : []))),
+    ];
+    const select = { id: true } as const;
+    const [bills, reps, props, committees] = await Promise.all([
+      this.db.bill.findMany({ where: { id: { in: ids('billId') } }, select }),
+      this.db.representative.findMany({
+        where: { id: { in: ids('representativeId') } },
+        select,
+      }),
+      this.db.proposition.findMany({
+        where: { id: { in: ids('propositionId') } },
+        select,
+      }),
+      this.db.legislativeCommittee.findMany({
+        where: { id: { in: ids('committeeId') } },
+        select,
+      }),
+    ]);
+    const live: Record<ReferenceKey, Set<string>> = {
+      billId: new Set(bills.map((r) => r.id)),
+      representativeId: new Set(reps.map((r) => r.id)),
+      propositionId: new Set(props.map((r) => r.id)),
+      committeeId: new Set(committees.map((r) => r.id)),
+    };
+    return records.map((record) => {
+      const next = { ...record };
+      for (const key of REFERENCE_KEYS) {
+        if (next[key] && !live[key].has(next[key])) next[key] = null;
+      }
+      return next;
+    });
   }
 
   /**

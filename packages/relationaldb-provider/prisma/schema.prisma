@@ -2844,10 +2844,17 @@ model PipelineJob {
   errorMessage   String?   @map("error_message")
   result         Json?
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// S2: the request this job was fanned out from (one child per data type)
+  parentJobId    String?   @map("parent_job_id")
+  /// S2: host that ran it, so a startup sweep fails only its own rows
+  workerHost     String?   @map("worker_host")
 
   executions PipelineExecution[]
+  parent     PipelineJob?  @relation("PipelineJobChildren", fields: [parentJobId], references: [id], onDelete: Cascade)
+  children   PipelineJob[] @relation("PipelineJobChildren")
 
   @@index([status, enqueuedAt])
+  @@index([parentJobId])
   @@index([regionId, enqueuedAt(sort: Desc)])
   @@index([bullmqJobId])
   @@index([triggerSource, enqueuedAt(sort: Desc)])

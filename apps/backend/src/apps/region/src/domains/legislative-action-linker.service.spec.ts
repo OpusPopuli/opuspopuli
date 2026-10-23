@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Logger } from '@nestjs/common';
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 
@@ -597,6 +598,87 @@ describe('LegislativeActionLinkerService', () => {
         expect(a.billId).toBe('bill-ab1897');
         expect(a.propositionId).toBe('prop-ab1897');
       }
+    });
+  });
+
+  describe('a reference deleted mid-link (S2)', () => {
+    // A bills prune running beside a meetings sync can delete a bill the
+    // linker's snapshot still holds; the write then fails on its foreign key.
+    const minutes = (id: string) => ({
+      id,
+      externalId: `ca-${id}`,
+      body: 'Assembly',
+      date: new Date('2026-04-28T00:00:00Z'),
+      isActive: true,
+      rawText: FIXTURE_RAWTEXT,
+    });
+    const fkError = Object.assign(new Error('Foreign key constraint'), {
+      code: 'P2003',
+    });
+    const linkerWithDeletedBill = () => {
+      const built = buildLinker({
+        minutes: [minutes('m-1'), minutes('m-2')],
+        bills: [
+          {
+            id: 'bill-ab1897',
+            billNumber: 'AB 1897',
+            sessionYear: '2025-2026',
+          },
+        ],
+      });
+      // Re-resolving by id finds the bill gone; the snapshot load had it.
+      const findBills = built.db.bill.findMany as jest.Mock;
+      const loadCaches = findBills.getMockImplementation()!;
+      findBills.mockImplementation(async (args: any) =>
+        args?.where?.id ? [] : loadCaches(args),
+      );
+      return built;
+    };
+
+    it('keeps the actions with the vanished bill nulled, as SetNull would', async () => {
+      const { linker, db, persistedActions } = linkerWithDeletedBill();
+      // The write is what fails, so nothing of the first attempt persists.
+      db.legislativeAction.createMany.mockImplementationOnce(async () => {
+        throw fkError;
+      });
+
+      await linker.linkMinutes(['m-1', 'm-2']);
+
+      const ab1897 = persistedActions.filter((a) => a.rawSubject === 'AB 1897');
+      expect(ab1897.some((a) => a.minutesId === 'm-1')).toBe(true);
+      expect(
+        ab1897.filter((a) => a.minutesId === 'm-1').every((a) => !a.billId),
+      ).toBe(true);
+      // The next minutes row is linked too, not abandoned.
+      expect(persistedActions.some((a) => a.minutesId === 'm-2')).toBe(true);
+    });
+
+    it('skips only that minutes row when the retry fails the same way', async () => {
+      const { linker, db, persistedActions } = linkerWithDeletedBill();
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      db.legislativeAction.createMany
+        .mockImplementationOnce(async () => {
+          throw fkError;
+        })
+        .mockImplementationOnce(async () => {
+          throw fkError;
+        });
+
+      await linker.linkMinutes(['m-1', 'm-2']);
+
+      expect(persistedActions.some((a) => a.minutesId === 'm-1')).toBe(false);
+      expect(persistedActions.some((a) => a.minutesId === 'm-2')).toBe(true);
+    });
+
+    it('still fails on any other error', async () => {
+      const { linker, db } = linkerWithDeletedBill();
+      db.legislativeAction.createMany.mockImplementationOnce(async () => {
+        throw new Error('connection lost');
+      });
+
+      await expect(linker.linkMinutes(['m-1', 'm-2'])).rejects.toThrow(
+        'connection lost',
+      );
     });
   });
 });
