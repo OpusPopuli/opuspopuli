@@ -33,6 +33,7 @@ jest.mock('@opuspopuli/queue-provider', () => ({
   withTraceContext: (d: unknown) => d,
 }));
 
+import { createWorker } from '@opuspopuli/queue-provider';
 import { LlmLaneDispatcher, safeOptions } from './llm-lane.dispatcher';
 
 describe('LlmLaneDispatcher — direct fallback (S7)', () => {
@@ -89,6 +90,27 @@ describe('LlmLaneDispatcher — direct fallback (S7)', () => {
 
     expect(generate).toHaveBeenCalledTimes(3);
     expect(Logger.prototype.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the lane lock long (>= 5 min), and stalls still fail rather than re-run', async () => {
+    // At 30 s, the 2026-10-23 civics baseline lost two live calls: the host
+    // idle-slept while swapping, two jobs lost their lock, and with no stall
+    // retries they failed while Ollama kept generating them. Five minutes —
+    // createWorker's default — survives a pause of at least ~150 s.
+    (createWorker as jest.Mock).mockClear();
+    add.mockResolvedValue({
+      id: '1',
+      waitUntilFinished: () => Promise.resolve({ text: 'q' }),
+      remove: jest.fn(),
+    });
+
+    await dispatcher.generate(job);
+
+    expect(createWorker).toHaveBeenCalledTimes(1);
+    const opts = (createWorker as jest.Mock).mock.calls[0][3];
+    expect(opts.lockDuration).toBeGreaterThanOrEqual(300_000);
+    // Still no second run of a stalled job: its first may be on the GPU.
+    expect(opts.maxStalledCount).toBe(0);
   });
 
   it('starts one heartbeat, however other lanes fail while it publishes', async () => {
