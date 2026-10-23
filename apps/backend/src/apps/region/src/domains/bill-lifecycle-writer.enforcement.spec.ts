@@ -12,11 +12,10 @@ import { join, relative, sep } from 'node:path';
  * pass and `stage_backfill` both did exactly that.
  *
  * Enforced by reading the source rather than by convention, because the
- * failure is silent: a stale flag looks exactly like a correct one. A call
- * whose argument computes the flags inline (`lifecycleFlags(` in it) is
- * allowed, since it writes inputs and flags in one statement. The extraction
- * upsert does that through its `billData` object, which it passes by
- * reference — so the scan never sees its fields at all (see below).
+ * failure is silent: a stale flag looks exactly like a correct one. The
+ * extraction upsert writes inputs and flags together through its `billData`
+ * object, which it passes by reference — so the scan never sees its fields
+ * (see below), and needs no exemption.
  *
  * **What it cannot see:** a field passed through a spread
  * (`data: { ...patch }`). It reads text, so it catches the literal
@@ -29,8 +28,10 @@ import { join, relative, sep } from 'node:path';
  * which call to look at.
  */
 const REGION_SRC = join(__dirname, '..');
+// The inputs, the flags themselves, and sessionYear (it feeds the
+// session-expired rule).
 const LIFECYCLE_FIELD =
-  /\b(status|lastAction|lastActionDate|currentStageId)\s*:/;
+  /\b(status|lastAction|lastActionDate|currentStageId|sessionYear|isDead|isActive)\s*:/;
 const EXEMPT = new Set(['domains/bill-lifecycle-writer.ts']);
 
 function sourceFiles(dir: string): string[] {
@@ -50,7 +51,8 @@ function sourceFiles(dir: string): string[] {
 function billUpdateArguments(source: string): string[] {
   const found: string[] = [];
   // `\s*` lets a call split across lines (`this.db.bill\n  .update(`) match.
-  const call = /\bbill\s*\.(?:update|updateMany|upsert|create|createMany)\(/g;
+  const call =
+    /\bbill\s*\.(?:update|updateMany|upsert|create|createMany|createManyAndReturn)\(/g;
   let m: RegExpExecArray | null;
   while ((m = call.exec(source)) !== null) {
     let depth = 1;
@@ -66,7 +68,7 @@ function billUpdateArguments(source: string): string[] {
 
 /** Raw SQL that writes the bills table, which no Prisma-call scan can see. */
 const RAW_BILL_WRITE =
-  /\$(?:executeRaw|executeRawUnsafe)[\s\S]{0,200}?\b(?:UPDATE|INSERT INTO)\s+"?bills"?\b/i;
+  /\$(?:executeRaw|executeRawUnsafe|queryRaw|queryRawUnsafe)[\s\S]{0,400}?\b(?:UPDATE|INSERT INTO)\s+(?:"?public"?\.)?"?bills"?\b/i;
 
 describe('bill lifecycle writes go through writeBillLifecycleFields (F4)', () => {
   it('no other bill write sets a lifecycle input', () => {
@@ -75,7 +77,6 @@ describe('bill lifecycle writes go through writeBillLifecycleFields (F4)', () =>
       if (EXEMPT.has(rel)) return [];
       return billUpdateArguments(readFileSync(file, 'utf8'))
         .filter((arg) => LIFECYCLE_FIELD.test(arg))
-        .filter((arg) => !arg.includes('lifecycleFlags('))
         .map((arg) => `${rel}: ${arg.replace(/\s+/g, ' ').slice(0, 120)}`);
     });
 
@@ -97,6 +98,14 @@ describe('bill lifecycle writes go through writeBillLifecycleFields (F4)', () =>
 
     expect(args).toHaveLength(1);
     expect(LIFECYCLE_FIELD.test(args[0])).toBe(true);
+  });
+
+  it('finds raw SQL against a schema-qualified bills table', () => {
+    expect(
+      RAW_BILL_WRITE.test(
+        'await db.$queryRaw`UPDATE "public"."bills" SET status = ${s} RETURNING id`',
+      ),
+    ).toBe(true);
   });
 
   it('finds a lifecycle write when one exists', () => {

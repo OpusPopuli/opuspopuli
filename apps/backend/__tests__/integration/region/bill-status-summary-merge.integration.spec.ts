@@ -439,15 +439,16 @@ describe('bill-status-summary merge — integration (#823)', () => {
   it('falls back to the pattern matcher when the LLM returns an out-of-taxonomy stage', async () => {
     // Reproduces the 8% → ~95% stage-coverage win: even if the LLM
     // hallucinates "vetoed" (not in the region's two-stage taxonomy), the
-    // raw status text "Passed Assembly" matches the pattern matcher's
-    // `passed_first_chamber` regex.
+    // OFFICIAL status "Passed Assembly" matches the pattern matcher's
+    // `passed_first_chamber` regex. The LLM's own status.raw says otherwise
+    // and must lose: it is not the LLM's to decide (owner decision).
     await seedCivicsTaxonomy(db);
-    const { id } = await seedBill(db);
+    const { id } = await seedBill(db, { status: 'Passed Assembly' });
     stubFetchUrlText();
     mockLlm.generate.mockResolvedValueOnce({
       text: JSON.stringify({
         status: {
-          raw: 'Passed Assembly',
+          raw: 'Held in Committee',
           stage: 'vetoed', // out of taxonomy
           lastActionDate: null,
           lastActionSnippet: null,
@@ -460,9 +461,8 @@ describe('bill-status-summary merge — integration (#823)', () => {
     await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS);
 
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
-    // The LLM's status.raw still drives the stage fallback, but is not
-    // written to bills.status — the seeded (scraped) value stands.
-    expect(row.status).toBeNull();
+    // The scraped status stands, and it — not the LLM's raw — picked the stage.
+    expect(row.status).toBe('Passed Assembly');
     expect(row.currentStageId).toBe('passed_first_chamber');
   });
 
@@ -490,8 +490,7 @@ describe('bill-status-summary merge — integration (#823)', () => {
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
     expect(row.currentStageId).toBeNull();
     // But the verbatim status is still written — operator can see it.
-    // The LLM's status.raw still drives the stage fallback, but is not
-    // written to bills.status — the seeded (scraped) value stands.
+    // The LLM's status.raw is neither written nor used for the fallback.
     expect(row.status).toBeNull();
   });
 

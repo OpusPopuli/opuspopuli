@@ -46,6 +46,9 @@ async function seedBill(
           : overrides.currentStageId,
       isActive: overrides.isActive ?? true,
       isDead: overrides.isDead ?? false,
+      // A real `@db.Date`, so the conditional update's date equality is
+      // exercised — most real bills have one.
+      lastActionDate: new Date('2026-08-31T00:00:00Z'),
     },
   });
 }
@@ -84,7 +87,7 @@ describe('bill lifecycle writer — integration (F4)', () => {
       row,
       { currentStageId: 'failed-passage' },
       {},
-      IN_SESSION,
+      { today: IN_SESSION },
     );
 
     expect(await flags(db, '202520260AB1')).toEqual({
@@ -111,7 +114,7 @@ describe('bill lifecycle writer — integration (F4)', () => {
       stale,
       { currentStageId: 'in_committee' },
       {},
-      IN_SESSION,
+      { today: IN_SESSION },
     );
 
     expect(await flags(db, '202520260AB2')).toEqual({

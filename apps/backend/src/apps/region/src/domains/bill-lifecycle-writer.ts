@@ -54,13 +54,24 @@ export type BillLifecyclePatch = Partial<
  */
 export type BillNonLifecycleUpdate = Omit<
   Prisma.BillUpdateInput,
+  LifecycleColumn
+> & { [K in LifecycleColumn]?: never };
+
+/**
+ * Every column a lifecycle flag depends on, plus the flags. `sessionYear`
+ * included: it feeds the session-expired rule, so changing it outside the
+ * recompute would leave flags describing a session the row no longer holds.
+ * The `never` mapping (not only the `Omit`) is what rejects a key in a
+ * non-literal object — TypeScript checks excess properties on literals only.
+ */
+type LifecycleColumn =
   | 'status'
   | 'lastAction'
   | 'lastActionDate'
   | 'currentStageId'
+  | 'sessionYear'
   | 'isDead'
-  | 'isActive'
->;
+  | 'isActive';
 
 export interface BillLifecycleFlags {
   isDead: boolean;
@@ -94,17 +105,26 @@ export function lifecycleFlags(
  * `status` or `lastActionDate` meanwhile, and flags computed from the stale
  * read would no longer describe the row — the inconsistency this module
  * exists to prevent. So the update matches on `current`'s inputs too; on a
- * mismatch the row is re-read and the flags recomputed once. The patch itself
- * still wins (last writer wins on the inputs, as before); what is guaranteed
- * is that the flags describe the row as written.
+ * mismatch, what happens depends on where the patch came from:
+ *
+ *  - `onConflict: 'recompute'` (default) re-reads the row and writes the
+ *    patch again with flags from the fresh inputs — for a patch that does not
+ *    depend on the row, like the summary pass's LLM stage.
+ *  - `onConflict: 'skip'` writes nothing — for a patch DERIVED from the row
+ *    read, like `stage_backfill`'s stage from the old status. Re-applying it
+ *    would overwrite a fresher stage with one computed from a stale status.
+ *
+ * Either way the flags describe the row as written. Returns what happened, so
+ * a caller can count it.
  */
 export async function writeBillLifecycleFields(
   db: DbService,
   current: BillLifecycleRow,
   patch: BillLifecyclePatch,
   extra: BillNonLifecycleUpdate = {},
-  today: Date = new Date(),
-): Promise<void> {
+  opts: { today?: Date; onConflict?: 'recompute' | 'skip' } = {},
+): Promise<LifecycleWriteResult> {
+  const today = opts.today ?? new Date();
   const changes = definedOnly(patch);
   const write = (row: BillLifecycleRow) =>
     db.bill.update({
@@ -118,17 +138,23 @@ export async function writeBillLifecycleFields(
 
   try {
     await write(current);
+    return 'written';
   } catch (error) {
     if (!isRowNotMatched(error)) throw error;
+    if (opts.onConflict === 'skip') return 'changed-underneath';
     const fresh = await db.bill.findUnique({
       where: { id: current.id },
       select: BILL_LIFECYCLE_SELECT,
     });
     // Deleted underneath us — nothing left to label.
-    if (!fresh) return;
+    if (!fresh) return 'gone';
+    // One retry only; a second change in that window propagates.
     await write(fresh);
+    return 'written';
   }
 }
+
+export type LifecycleWriteResult = 'written' | 'changed-underneath' | 'gone';
 
 /**
  * `where` for "this bill, still holding the inputs I read". Prisma 5 accepts
@@ -167,6 +193,8 @@ export interface LifecycleRefreshCounts {
   scanned: number;
   flippedDead: number;
   flippedActive: number;
+  /** Rows changed by another writer mid-page, left for the next sync. */
+  changedUnderneath: number;
 }
 
 const DEFAULT_REFRESH_BATCH = 200;
@@ -192,6 +220,7 @@ export async function refreshBillLifecycleFlags(
     scanned: 0,
     flippedDead: 0,
     flippedActive: 0,
+    changedUnderneath: 0,
   };
 
   let cursor: string | undefined;
@@ -245,8 +274,9 @@ async function refreshRow(
         },
       });
     } catch (error) {
-      if (isRowNotMatched(error)) return;
-      throw error;
+      if (!isRowNotMatched(error)) throw error;
+      counts.changedUnderneath += 1;
+      return;
     }
   }
   if (flipDead) counts.flippedDead += 1;

@@ -129,6 +129,48 @@ describe('isBillDead', () => {
     });
 
     it.each([
+      ['Active Bill - Pending chaptered-out amendment'],
+      ['Not chaptered'],
+      ['Unchaptered'],
+      ['Failed to be chaptered'],
+    ])(
+      'still kills a closed-session bill whose status only MENTIONS chaptering (%s)',
+      (status) => {
+        // A status that still reads "Active Bill" would otherwise turn a
+        // closed-session bill active again and back into the feed.
+        expect(
+          isBillDead(
+            bill({ sessionYear: '2023-2024', currentStageId: null, status }),
+            ctx,
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it('lets a dead status beat a chaptered one, whatever the session', () => {
+      // Pins precedence: matchesDeadStatus runs before session-expired.
+      expect(
+        isBillDead(
+          bill({
+            status: 'Chaptered - Vetoed by Governor',
+            sessionYear: '2023-2024',
+          }),
+          ctx,
+        ),
+      ).toBe(true);
+      expect(
+        isBillDead(
+          bill({
+            status: 'Chaptered',
+            currentStageId: 'failed-passage',
+            sessionYear: '2023-2024',
+          }),
+          ctx,
+        ),
+      ).toBe(true);
+    });
+
+    it.each([
       ['Chaptered'],
       ['Chaptered by Secretary of State - Chapter 472, Statutes of 2025.'],
       ['Inactive Bill - Chaptered'],

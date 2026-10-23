@@ -32,7 +32,7 @@ describe('writeBillLifecycleFields (F4)', () => {
       activeBill,
       { currentStageId: 'failed-passage' },
       {},
-      TODAY,
+      { today: TODAY },
     );
 
     expect(updateData(db)).toMatchObject({
@@ -52,7 +52,7 @@ describe('writeBillLifecycleFields (F4)', () => {
       activeBill,
       { currentStageId: 'passed_first_chamber' },
       {},
-      TODAY,
+      { today: TODAY },
     );
 
     expect(updateData(db)).toMatchObject({ isDead: false, isActive: true });
@@ -66,7 +66,7 @@ describe('writeBillLifecycleFields (F4)', () => {
       activeBill,
       { status: undefined, lastActionDate: null },
       {},
-      TODAY,
+      { today: TODAY },
     );
 
     const data = updateData(db);
@@ -82,7 +82,7 @@ describe('writeBillLifecycleFields (F4)', () => {
       activeBill,
       { currentStageId: 'chaptered' },
       {},
-      TODAY,
+      { today: TODAY },
     );
 
     expect(
@@ -113,7 +113,7 @@ describe('writeBillLifecycleFields (F4)', () => {
       activeBill,
       { currentStageId: 'in_committee' },
       {},
-      TODAY,
+      { today: TODAY },
     );
 
     expect(db.bill.update).toHaveBeenCalledTimes(2);
@@ -129,9 +129,44 @@ describe('writeBillLifecycleFields (F4)', () => {
     db.bill.findUnique.mockResolvedValue(null as never);
 
     await expect(
-      writeBillLifecycleFields(db as never, activeBill, {}, {}, TODAY),
-    ).resolves.toBeUndefined();
+      writeBillLifecycleFields(
+        db as never,
+        activeBill,
+        {},
+        {},
+        { today: TODAY },
+      ),
+    ).resolves.toBe('gone');
     expect(db.bill.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips instead of retrying when asked to, for a patch derived from the read', async () => {
+    const db = createMockDbService();
+    db.bill.update.mockRejectedValueOnce({ code: 'P2025' });
+
+    await expect(
+      writeBillLifecycleFields(
+        db as never,
+        activeBill,
+        { currentStageId: 'failed-passage' },
+        {},
+        { today: TODAY, onConflict: 'skip' },
+      ),
+    ).resolves.toBe('changed-underneath');
+    expect(db.bill.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('refuses a lifecycle field in extra, even in a non-literal object', () => {
+    // TypeScript checks excess properties on literals only; the `never`
+    // mapping is what catches a variable. Compile-time, so this test's job
+    // is to fail `tsc` if the type loosens.
+    const extra = { aiSummaryPromptHash: 'h', status: 'Died' };
+    const db = createMockDbService();
+    // @ts-expect-error — `status` is a lifecycle input
+    void writeBillLifecycleFields(db as never, activeBill, {}, extra);
+    const withSession = { sessionYear: '2023-2024' };
+    // @ts-expect-error — `sessionYear` feeds the session-expired rule
+    void writeBillLifecycleFields(db as never, activeBill, {}, withSession);
   });
 
   it('rethrows anything that is not a mismatch', async () => {
@@ -139,7 +174,13 @@ describe('writeBillLifecycleFields (F4)', () => {
     db.bill.update.mockRejectedValueOnce(new Error('connection lost'));
 
     await expect(
-      writeBillLifecycleFields(db as never, activeBill, {}, {}, TODAY),
+      writeBillLifecycleFields(
+        db as never,
+        activeBill,
+        {},
+        {},
+        { today: TODAY },
+      ),
     ).rejects.toThrow('connection lost');
   });
 
@@ -151,7 +192,7 @@ describe('writeBillLifecycleFields (F4)', () => {
       activeBill,
       { currentStageId: 'chaptered', status: 'Chaptered' },
       { aiSummaryPromptHash: 'h1' },
-      TODAY,
+      { today: TODAY },
     );
 
     expect(db.bill.update).toHaveBeenCalledTimes(1);
@@ -192,7 +233,12 @@ describe('refreshBillLifecycleFlags (F4)', () => {
       }),
       data: { isDead: true, isActive: false },
     });
-    expect(counts).toEqual({ scanned: 1, flippedDead: 1, flippedActive: 1 });
+    expect(counts).toEqual({
+      scanned: 1,
+      flippedDead: 1,
+      flippedActive: 1,
+      changedUnderneath: 0,
+    });
   });
 
   it('writes nothing for a row that is already right', async () => {
@@ -216,7 +262,12 @@ describe('refreshBillLifecycleFlags (F4)', () => {
       today: new Date('2027-03-01T12:00:00Z'),
     });
 
-    expect(counts).toEqual({ scanned: 1, flippedDead: 0, flippedActive: 0 });
+    expect(counts).toEqual({
+      scanned: 1,
+      flippedDead: 0,
+      flippedActive: 0,
+      changedUnderneath: 1,
+    });
   });
 
   it('counts but does not write on a dry run', async () => {

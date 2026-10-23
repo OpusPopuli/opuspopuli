@@ -60,11 +60,16 @@ const SKIP_KEY_VERSION = "sk1";
  * the work, not to fail the sync.
  */
 export function buildSkipKey(inputs: SkipKeyInputs): string | null {
-  const { sourceHash, promptHash, configHash } = inputs;
-  const modelDigest = inputs.modelDigest.trim();
+  // Trimmed, and tolerant of a missing value from an untyped caller: a blank
+  // or absent input cannot support a skip, so it means "always run" — the
+  // safe answer — rather than a TypeError mid-sync.
+  const sourceHash = clean(inputs.sourceHash);
+  const promptHash = clean(inputs.promptHash);
+  const modelDigest = clean(inputs.modelDigest);
+  const configHash =
+    inputs.configHash === null ? null : clean(inputs.configHash);
   if (UNRESOLVED_DIGESTS.has(modelDigest)) return null;
-  if (!sourceHash || !promptHash) return null;
-  if (configHash === "") return null;
+  if (!sourceHash || !promptHash || configHash === "") return null;
 
   // A JSON array, not a delimited string: JSON escapes every value, so no
   // input can contain a delimiter and shift into its neighbour's field
@@ -96,7 +101,17 @@ export function buildSkipKey(inputs: SkipKeyInputs): string | null {
  * array members hash as `null`. A cycle overflows the stack.
  */
 export function stableHash(value: unknown): string {
-  return sha256(JSON.stringify(sortKeys(value)));
+  const json = JSON.stringify(sortKeys(value));
+  // `JSON.stringify(undefined)` is undefined, which would surface as an
+  // opaque crypto TypeError; say what actually went wrong.
+  if (json === undefined) {
+    throw new TypeError("stableHash: value is not JSON-serialisable");
+  }
+  return sha256(json);
+}
+
+function clean(value: string | null | undefined): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function sortKeys(value: unknown): unknown {

@@ -668,6 +668,39 @@ lifecycle (F4).
     error, a wrongly-dead bill is not. The stage stays the LLM's, and only
     `failed-passage` among stages can mark a bill dead.
 
+  **Second review, of the final diff (code + security, no blockers)**, closed
+  the gaps the owner decision left:
+  - **An LLM-chosen dead stage needs the official status to agree.**
+    `failed-passage` was the one stage choice that still dropped a live bill
+    from the feed. It is now accepted only with a dead status or a
+    pattern-matched `failed-passage` on the official status; otherwise the
+    stage falls back and `bill_dead_stage_uncorroborated` is logged. Free on
+    current data: all 38 dev `failed-passage` bills already have a dead status.
+  - **The stage fallback reads the official status**, not the LLM's
+    `status.raw` — which would have let the LLM pick the stage through the
+    back door.
+  - **"No stage fits" leaves the stored stage alone.** It used to CLEAR it,
+    so one `unknown` could erase a `failed-passage` stage and put a dead bill
+    back in the feed.
+  - **`stage_backfill` skips a conflict instead of re-applying** a stage
+    derived from the stale status, and one failed write is one failed item,
+    not an aborted sync.
+  - The chaptered rule is word-bounded, negation-aware and never applies to
+    an "Active Bill - …" status; `sessionYear` and the flags are excluded from
+    `extra` by a `never` mapping that also catches non-literal objects.
+
+  **Open, not in this change:**
+  - **The extraction LLM's `currentStageId` is never checked against the
+    taxonomy** (`raw.currentStageId ?? resolveStageFromStatus(...)` in the
+    extraction upsert), so it can write `failed-passage` or any string from
+    the status page. Pre-existing, outside the F4 diff, and the status page
+    is the accepted source — but it is the second channel to a dead stage.
+    Belongs with F3/K3 in the bills Phase B work, which reshapes extraction.
+  - **The prompt-service `bill-status-summary` template still asks for
+    `raw`, `lastActionDate` and `lastActionSnippet`**, now unread. Dropping
+    them is a prompt-service template bump (version + hash), not a change in
+    this repo.
+
 ### 5.2 The lazy path
 
 1. **Trigger.** The bill detail page calls `requestBillSummary(billId)` when

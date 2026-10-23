@@ -65,7 +65,10 @@ import {
   lifecycleFlags,
   refreshBillLifecycleFlags,
   writeBillLifecycleFields,
+  type BillLifecycleRow,
+  type LifecycleWriteResult,
 } from './bill-lifecycle-writer';
+import { isDeadStageId, statusSaysDead } from './bill-lifecycle';
 import { RegionInfoModel, DataTypeGQL } from './models/region-info.model';
 import { RegionCacheService } from './region-cache.service';
 import { deriveDistrictFromExternalId } from './region.service';
@@ -196,6 +199,28 @@ function normalizeVotePosition(
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
   return VALID_VOTE_POSITIONS.has(v) ? (v as BillVotePosition) : null;
+}
+
+/** The stage_backfill phase line for one bill's outcome. */
+function backfillItem(
+  bill: { billNumber: string; externalId: string },
+  stageId: string,
+  outcome: LifecycleWriteResult | 'failed',
+) {
+  const id = { name: bill.billNumber, externalId: bill.externalId };
+  if (outcome === 'written') {
+    return {
+      ...id,
+      outcomeLabel: `stage=${stageId}`,
+      outcome: 'updated' as const,
+    };
+  }
+  return {
+    ...id,
+    outcomeLabel: `skipped: ${outcome}`,
+    outcome: outcome === 'failed' ? ('error' as const) : ('skipped' as const),
+    reason: outcome,
+  };
 }
 
 const BILL_PRUNE_MAX_FRACTION = 0.02;
@@ -390,18 +415,19 @@ interface BillAiSummaryShape {
  * `summary` block is structurally identical to {@link BillAiSummaryShape}
  * so the JSONB written to `bills.aiSummary` stays drop-in compatible with
  * existing consumers. The `status` block carries the LLM-classified stage
- * id (validated at runtime against the region's civics_blocks taxonomy)
- * + verbatim status text + last-action date + a short verbatim snippet.
+ * id (validated at runtime against the region's civics_blocks taxonomy).
  * See opuspopuli#823.
+ *
+ * The template also asks for `raw`, `lastActionDate` and
+ * `lastActionSnippet`; none is read any more (owner decision 2026-10-22 —
+ * the status page is the only source of those columns), so they are not
+ * typed here. Dropping them from the prompt-service template is a
+ * prompt-service change, tracked in the ingestion-lanes plan §5.1.
  */
 interface BillStatusSummaryShape {
   status?: {
-    raw?: string;
     /** A stage id from the region's lifecycleStages, or "unknown". */
     stage?: string;
-    /** ISO YYYY-MM-DD; null when unparseable. */
-    lastActionDate?: string | null;
-    lastActionSnippet?: string | null;
   };
   summary?: BillAiSummaryShape;
   /** LLM sentinel: input was blank / garbled / not a bill. */
@@ -1556,8 +1582,34 @@ export class RegionSyncService implements OnModuleDestroy {
     this.logger.log(
       `Bills: lifecycle refresh for ${regionId}: ${counts.scanned} scanned, ` +
         `${counts.flippedDead} isDead and ${counts.flippedActive} isActive ` +
-        `flag(s) changed`,
+        `flag(s) changed, ${counts.changedUnderneath} left for the next sync`,
     );
+  }
+
+  /**
+   * One bill's stage, derived from the status we read — so on a conflict it
+   * is skipped, not re-applied (a fresher status may imply a different
+   * stage), and a write failure is one failed item rather than an aborted
+   * sync.
+   */
+  private async backfillOneStage(
+    bill: BillLifecycleRow,
+    stageId: string,
+  ): Promise<LifecycleWriteResult | 'failed'> {
+    try {
+      return await writeBillLifecycleFields(
+        this.db,
+        bill,
+        { currentStageId: stageId },
+        {},
+        { onConflict: 'skip' },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Bills stage_backfill: ${bill.id} not written: ${(error as Error).message}`,
+      );
+      return 'failed';
+    }
   }
 
   private async backfillBillStageIds(
@@ -1597,15 +1649,8 @@ export class RegionSyncService implements OnModuleDestroy {
       for (const bill of bills) {
         // Per bill, not one updateMany per stage: the stage feeds
         // isDead/isActive, and each bill's other inputs differ (F4).
-        await writeBillLifecycleFields(this.db, bill, {
-          currentStageId: stageId,
-        });
-        tracker.item({
-          name: bill.billNumber,
-          externalId: bill.externalId,
-          outcomeLabel: `stage=${stageId}`,
-          outcome: 'updated',
-        });
+        const outcome = await this.backfillOneStage(bill, stageId);
+        tracker.item(backfillItem(bill, stageId, outcome));
       }
     }
     tracker.complete();
@@ -2267,7 +2312,6 @@ export class RegionSyncService implements OnModuleDestroy {
     const status = parsed.status ?? {};
     const validatedStage = this.validateStageId(
       status.stage,
-      status.raw,
       bill,
       stagePatterns,
       stageIdSet,
@@ -2279,7 +2323,10 @@ export class RegionSyncService implements OnModuleDestroy {
     await writeBillLifecycleFields(
       this.db,
       bill,
-      { currentStageId: validatedStage },
+      // `?? undefined`: "no stage fits" leaves the stored stage alone. As
+      // null it CLEARED it — one `unknown` could erase a failed-passage or
+      // chaptered stage and, since F4, put a dead bill back in the feed.
+      { currentStageId: validatedStage ?? undefined },
       { aiSummary: summary as Prisma.InputJsonValue, ...provenance },
     );
   }
@@ -2301,19 +2348,34 @@ export class RegionSyncService implements OnModuleDestroy {
    */
   private validateStageId(
     llmStage: string | undefined,
-    statusRaw: string | undefined,
     bill: BillEnrichmentCandidate,
     stagePatterns: StagePattern[],
     stageIdSet: Set<string>,
   ): string | null {
     if (llmStage && llmStage !== 'unknown' && stageIdSet.has(llmStage)) {
-      return llmStage;
+      if (this.officialStatusAllows(llmStage, bill, stagePatterns)) {
+        return llmStage;
+      }
+      this.logger.warn(
+        {
+          event: 'bill_dead_stage_uncorroborated',
+          billId: bill.id,
+          billNumber: bill.billNumber,
+          regionId: bill.regionId,
+          llmStage,
+        },
+        `Bill ${bill.billNumber}: LLM stage ${llmStage} would mark it dead ` +
+          `but the official status does not say so — not accepted`,
+      );
     }
-    const fallback = this.resolveStageFromStatus(
-      statusRaw ?? bill.status,
-      stagePatterns,
-    );
-    const outOfTaxonomy = llmStage !== undefined && llmStage !== 'unknown';
+    // The OFFICIAL status, not the LLM's `status.raw`: the owner decision
+    // that keeps the LLM off the status-page columns would mean little if
+    // its status text could still pick the stage here.
+    const fallback = this.resolveStageFromStatus(bill.status, stagePatterns);
+    const outOfTaxonomy =
+      llmStage !== undefined &&
+      llmStage !== 'unknown' &&
+      !stageIdSet.has(llmStage);
     const logPayload = {
       event: 'bill_stage_resolution_fallback',
       billId: bill.id,
@@ -2333,6 +2395,25 @@ export class RegionSyncService implements OnModuleDestroy {
       this.logger.debug(logPayload, logMessage);
     }
     return fallback;
+  }
+
+  /**
+   * A stage that would mark the bill dead (`failed-passage`) is the one LLM
+   * choice that drops a bill from the feed, so it needs the official status
+   * to agree — a dead status, or the status's own pattern-matched stage.
+   * Any other taxonomy stage is accepted as before. Costs nothing on current
+   * data: every `failed-passage` bill in dev already has a dead status.
+   */
+  private officialStatusAllows(
+    stageId: string,
+    bill: BillEnrichmentCandidate,
+    stagePatterns: StagePattern[],
+  ): boolean {
+    if (!isDeadStageId(stageId)) return true;
+    return (
+      statusSaysDead(bill.status, bill.lastAction) ||
+      this.resolveStageFromStatus(bill.status, stagePatterns) === stageId
+    );
   }
 
   private async discoverBillUrls(

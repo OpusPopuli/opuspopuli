@@ -64,6 +64,15 @@ describe("buildSkipKey", () => {
     },
   );
 
+  it("refuses a whitespace-only input, and treats a missing one as unresolved", () => {
+    expect(buildSkipKey({ ...base, sourceHash: "   " })).toBeNull();
+    expect(buildSkipKey({ ...base, promptHash: "\t" })).toBeNull();
+    // An untyped caller: returns null ("always run"), never throws.
+    expect(
+      buildSkipKey({ ...base, modelDigest: undefined as unknown as string }),
+    ).toBeNull();
+  });
+
   it("refuses to key an empty source or prompt hash", () => {
     expect(buildSkipKey({ ...base, sourceHash: "" })).toBeNull();
     expect(buildSkipKey({ ...base, promptHash: "" })).toBeNull();
@@ -105,6 +114,10 @@ describe("stableHash", () => {
     expect(stableHash(JSON.parse('{"__proto__":{"x":1}}'))).not.toBe(
       stableHash(JSON.parse('{"__proto__":{"x":2}}')),
     );
+  });
+
+  it("says plainly when there is nothing to hash", () => {
+    expect(() => stableHash(undefined)).toThrow(/not JSON-serialisable/);
   });
 
   it("accepts an object with no prototype", () => {
