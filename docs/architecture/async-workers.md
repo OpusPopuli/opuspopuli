@@ -118,11 +118,11 @@ Long-running scrape loops talk to government sites that throttle (`HTTP 503`, `4
 
 `apps/backend/src/apps/region/src/domains/resilient-fetch.ts` provides three composable primitives:
 
-- `HostThrottle` — per-host minimum-gap throttle. Default 500ms (~2 req/sec, conservative for gov sites). Concurrent calls fan out at `+0, +gap, +2gap, …` rather than colliding. `setRequestsPerSecond(host, rps)` translates `DataSourceConfig.rateLimitOverride` (req/sec) to a gap.
+- The per-host rate limit is **not** in this module any more (S1, `docs/plans/S1-per-host-rate-limiter.md`). `fetchTextWithRetry` takes a `throttle` with an `acquire(url)` method, which is the shared `IHostRateLimiter`: one token bucket per host in Redis, with that host's policy stored beside it, so every process and DI scope enforces one budget per government site. The old in-process `HostThrottle` gave each process its own budget.
 - `withRetry(fn, opts)` — generic exponential backoff (default 3 attempts, base 2s → 4s → 8s, max 60s, ±10% jitter). `isRetryable` predicate decides which errors are eligible.
 - `fetchTextWithRetry(url, opts)` — composes the above with a 20s per-attempt timeout (kept well below the BullMQ 5-min lock so a hung fetch can't break renewal) and content-type validation. Retries 5xx, 429, timeouts, transport-level errors (`ECONNRESET`, `socket hang up`, `terminated`, etc.). `RetryableHttpError` is the marker class for retryable 5xx/429.
 
-`RegionSyncService.fetchUrlText` delegates to `fetchTextWithRetry` with a service-instance `HostThrottle` shared across all syncs in the process. The bills sync applies each source's `rateLimitOverride` to the throttle before iterating.
+`RegionSyncService.fetchUrlText` delegates to `fetchTextWithRetry` with the `HOST_RATE_LIMITER` from the region module. Per-host policies — `rateLimitOverride` > the region's `rateLimit` > the default, strictest across regions — are published by `RegionPluginService` whenever plugins load, and hourly.
 
 **Retry semantics — two layers:**
 - *Inner retry (this module)*: handles transient network failures so a 503 burst on a single bill doesn't bubble up at all. The job sees only the final outcome.

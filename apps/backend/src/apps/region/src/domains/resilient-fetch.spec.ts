@@ -1,89 +1,9 @@
 import {
-  HostThrottle,
   withRetry,
   isFetchRetryable,
   fetchTextWithRetry,
   RetryableHttpError,
 } from './resilient-fetch';
-
-describe('HostThrottle', () => {
-  it('does not wait on the first fetch to a host', async () => {
-    const t = new HostThrottle(50);
-    const start = Date.now();
-    await t.acquire('https://example.com/a');
-    expect(Date.now() - start).toBeLessThan(20);
-  });
-
-  it('enforces the gap between consecutive fetches to the same host', async () => {
-    const t = new HostThrottle(80);
-    await t.acquire('https://example.com/a');
-    const start = Date.now();
-    await t.acquire('https://example.com/b');
-    expect(Date.now() - start).toBeGreaterThanOrEqual(70);
-  });
-
-  it('tracks hosts independently', async () => {
-    const t = new HostThrottle(100);
-    await t.acquire('https://a.example/x');
-    const start = Date.now();
-    await t.acquire('https://b.example/y');
-    expect(Date.now() - start).toBeLessThan(20);
-  });
-
-  it('honors per-host setGap override', async () => {
-    const t = new HostThrottle(10);
-    t.setGap('slow.example', 60);
-    await t.acquire('https://slow.example/a');
-    const start = Date.now();
-    await t.acquire('https://slow.example/b');
-    expect(Date.now() - start).toBeGreaterThanOrEqual(50);
-  });
-
-  it('setRequestsPerSecond converts rps → gap correctly', async () => {
-    const t = new HostThrottle(1000);
-    // 10 req/sec ⇒ 100ms gap
-    t.setRequestsPerSecond('fast.example', 10);
-    await t.acquire('https://fast.example/a');
-    const start = Date.now();
-    await t.acquire('https://fast.example/b');
-    const elapsed = Date.now() - start;
-    expect(elapsed).toBeGreaterThanOrEqual(90);
-    // Upper bound is only here to distinguish the configured 100ms gap from
-    // the 1000ms default — i.e. that setRequestsPerSecond took effect. It was
-    // 200ms, which also asserted the machine was not busy, and that is not a
-    // property of the throttle: a 100ms timer overshoots easily on a host
-    // running Docker with a model resident. Widened to keep the
-    // discrimination (100 vs 1000) without testing the scheduler.
-    expect(elapsed).toBeLessThan(500);
-  });
-
-  it('silently no-ops on malformed URLs (does not throw)', async () => {
-    const t = new HostThrottle(100);
-    await expect(t.acquire('not a url')).resolves.toBeUndefined();
-  });
-
-  it('fans out N concurrent acquires at N × gap (race-safe)', async () => {
-    const t = new HostThrottle(80);
-    const start = Date.now();
-    const completions: number[] = [];
-
-    // Fire 3 concurrent acquires. Without the race fix, all three would
-    // read the same lastFetchByHost value (undefined), all skip the sleep,
-    // and all complete at ~start. With the fix, each reserves its own
-    // slot atomically: +0, +80, +160.
-    await Promise.all(
-      [0, 1, 2].map(async () => {
-        await t.acquire('https://racy.example/p');
-        completions.push(Date.now() - start);
-      }),
-    );
-
-    completions.sort((a, b) => a - b);
-    expect(completions[0]).toBeLessThan(30);
-    expect(completions[1]).toBeGreaterThanOrEqual(70);
-    expect(completions[2]).toBeGreaterThanOrEqual(150);
-  });
-});
 
 describe('RetryableHttpError', () => {
   it('carries the status code and message', () => {
@@ -306,14 +226,16 @@ describe('fetchTextWithRetry', () => {
       .fn()
       .mockResolvedValueOnce(makeResponse(503))
       .mockResolvedValueOnce(makeResponse(200));
-    const throttle = new HostThrottle(0); // no-op gap for the test
-    const acquireSpy = jest.spyOn(throttle, 'acquire');
+    // Any per-host limiter fits (S1); a stub that never waits isolates the
+    // ordering claim from timing.
+    const throttle = { acquire: jest.fn().mockResolvedValue(undefined) };
     await fetchTextWithRetry('https://x.test/p', {
       throttle,
       maxAttempts: 2,
       baseDelayMs: 1,
     });
-    expect(acquireSpy).toHaveBeenCalledTimes(2);
+    expect(throttle.acquire).toHaveBeenCalledTimes(2);
+    expect(throttle.acquire).toHaveBeenCalledWith('https://x.test/p');
   });
 
   it('calls logger.warn on each retry', async () => {

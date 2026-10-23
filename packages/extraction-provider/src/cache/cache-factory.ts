@@ -10,11 +10,17 @@
 import { Logger } from "@nestjs/common";
 import type {
   ICache,
+  IHostRateLimiter,
   IRateLimiter,
   CacheOptions,
   RateLimitOptions,
 } from "@opuspopuli/common";
-import { MemoryCache, RateLimiter } from "@opuspopuli/common";
+import {
+  MemoryCache,
+  MemoryHostRateLimiter,
+  RateLimiter,
+} from "@opuspopuli/common";
+import { RedisHostRateLimiter } from "../utils/redis-host-rate-limiter.js";
 import { RedisCache, type RedisCacheOptions } from "./redis-cache.js";
 import {
   RedisRateLimiter,
@@ -85,6 +91,10 @@ export class CacheFactory {
 
   /**
    * Create a rate limiter instance based on configuration
+   *
+   * @deprecated One bucket for every host — the shape S1 replaced. Fetches
+   * use {@link CacheFactory.createHostRateLimiter}; nothing in production
+   * calls this any more.
    */
   static createRateLimiter(config: CacheFactoryConfig): IRateLimiter {
     const limiterUrl = config.rateLimiterRedisUrl ?? config.redisUrl;
@@ -108,6 +118,34 @@ export class CacheFactory {
 
     this.logger.log("Created memory rate limiter instance");
     return new RateLimiter(config.rateLimitOptions);
+  }
+
+  /**
+   * Create the per-host rate limiter (S1). Every instance built from the
+   * same Redis and prefix shares buckets AND policies, so it does not matter
+   * which DI scope or process an instance lives in. Without Redis, the
+   * memory implementation shares them process-wide.
+   *
+   * `rateLimitOptions` is the default for a host with no stored policy.
+   */
+  static createHostRateLimiter(config: CacheFactoryConfig): IHostRateLimiter {
+    const fallback = {
+      requestsPerSecond: config.rateLimitOptions?.requestsPerSecond ?? 2,
+      burstSize: config.rateLimitOptions?.burstSize ?? 5,
+    };
+    const limiterUrl = config.rateLimiterRedisUrl ?? config.redisUrl;
+    if (config.provider === "redis" && limiterUrl) {
+      this.logger.log("Created Redis host rate limiter instance");
+      return new RedisHostRateLimiter({
+        url: limiterUrl,
+        keyPrefix: config.rateLimiterKey
+          ? `${config.rateLimiterKey}:`
+          : undefined,
+        fallback,
+      });
+    }
+    this.logger.log("Created memory host rate limiter instance");
+    return new MemoryHostRateLimiter(fallback);
   }
 
   /**

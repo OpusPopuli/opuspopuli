@@ -5,16 +5,15 @@
  * that left the worker exposed to leginfo 503s and BullMQ stall loops —
  * see opuspopuli#730.
  *
- * The two pieces are decoupled on purpose:
- *   - `HostThrottle` enforces a minimum gap between requests per hostname
- *   - `fetchTextWithRetry` adds exponential backoff + content-type check
- *
- * Either can be used independently; together they protect long-running
- * sync loops from rate-limited or flaky gov sites without burning out a
- * BullMQ worker's lock-renewal heartbeat.
+ * The per-host rate limit is passed in, not owned here: it is the shared
+ * `IHostRateLimiter` (S1), whose buckets and policies live in Redis so every
+ * process and DI scope enforces one budget per government site. This file's
+ * own `HostThrottle` was per process — N processes, N× the rate a site saw —
+ * and is gone.
  */
 
 import {
+  type IHostRateLimiter,
   type MetricsObserver,
   PipelineStage,
   withStage,
@@ -38,81 +37,6 @@ export class RetryableHttpError extends Error {
   ) {
     super(message);
     this.name = 'RetryableHttpError';
-  }
-}
-
-/** Per-host slot — when the next fetch may go out + the configured gap. */
-interface HostSlot {
-  /** Earliest timestamp the next fetch may execute (ms since epoch). */
-  nextSlotMs: number;
-  /** Minimum gap between fetches in ms. */
-  gapMs: number;
-}
-
-/**
- * Per-host minimum-gap throttle. Cheap (single Map keyed by host, no
- * background timers). Bounded de-facto by the number of distinct hosts a
- * process talks to during its lifetime — typically <20 in our setup.
- *
- * Callers `acquire(url)` immediately before issuing the network call.
- * Concurrent calls to the same host are race-safe: each call atomically
- * advances `nextSlotMs` by `gapMs` before sleeping, so N concurrent
- * acquires fan out at N×gap rather than all firing at the first slot.
- *
- * Hosts default to `defaultGapMs` (500ms ≈ 2 req/sec, a balance between
- * gov-site politeness and sync throughput). Callers can override per-host
- * via `setGap` or `setRequestsPerSecond`, typically driven by
- * `DataSourceConfig.rateLimitOverride` (requests-per-second).
- */
-export class HostThrottle {
-  private readonly hostState = new Map<string, HostSlot>();
-  private readonly defaultGapMs: number;
-
-  constructor(defaultGapMs: number = 500) {
-    this.defaultGapMs = defaultGapMs;
-  }
-
-  /** Set a per-host gap in milliseconds. Idempotent; latest call wins. */
-  setGap(host: string, gapMs: number): void {
-    if (gapMs <= 0) return;
-    const existing = this.hostState.get(host);
-    this.hostState.set(host, {
-      nextSlotMs: existing?.nextSlotMs ?? 0,
-      gapMs,
-    });
-  }
-
-  /** Translate `rateLimitOverride` (req/sec) to a gap and apply it. */
-  setRequestsPerSecond(host: string, reqsPerSec: number): void {
-    if (reqsPerSec > 0) {
-      this.setGap(host, Math.max(1, Math.round(1000 / reqsPerSec)));
-    }
-  }
-
-  /**
-   * Block until the next allowed fetch slot for this URL's host, then
-   * advance the slot. The slot advance happens BEFORE the sleep so
-   * concurrent callers each get their own discrete slot — N parallel
-   * acquires complete at +0, +gap, +2gap, ... rather than all at +gap.
-   *
-   * Malformed URLs silently skip throttling — the underlying fetch will
-   * surface the URL error.
-   */
-  async acquire(url: string): Promise<void> {
-    let host: string;
-    try {
-      host = new URL(url).hostname;
-    } catch {
-      return;
-    }
-    const now = Date.now();
-    const existing = this.hostState.get(host);
-    const gapMs = existing?.gapMs ?? this.defaultGapMs;
-    const slotMs = Math.max(now, existing?.nextSlotMs ?? 0);
-    // Reserve the slot atomically before sleeping so concurrent callers
-    // see the advanced timestamp and queue behind us.
-    this.hostState.set(host, { nextSlotMs: slotMs + gapMs, gapMs });
-    if (slotMs > now) await sleep(slotMs - now);
   }
 }
 
@@ -196,9 +120,9 @@ export interface FetchTextOptions {
   maxAttempts?: number;
   /** Base delay for exponential backoff in ms. Default 2000. */
   baseDelayMs?: number;
-  /** Optional per-host throttle. If provided, `acquire` runs before each
+  /** Optional per-host rate limit. If provided, `acquire` runs before each
    *  attempt so retries also honor the rate limit. */
-  throttle?: HostThrottle;
+  throttle?: Pick<IHostRateLimiter, 'acquire'>;
   /** Optional minimal logger; called once per retry with a warn line. */
   logger?: { warn: (msg: string) => void };
   /** Accepted content-type substrings (default: text/html, xhtml+xml).

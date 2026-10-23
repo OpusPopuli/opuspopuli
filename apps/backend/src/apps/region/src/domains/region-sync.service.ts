@@ -6,10 +6,13 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
+  type IHostRateLimiter,
+  MemoryHostRateLimiter,
   METRICS_OBSERVER,
   type MetricsObserver,
   PipelineMetric,
 } from '@opuspopuli/common';
+import { DEFAULT_HOST_RATE, HOST_RATE_LIMITER } from './region.tokens';
 import { ConfigService } from '@nestjs/config';
 import {
   DataType,
@@ -58,7 +61,7 @@ import { LegislativeActionLinkerService } from './legislative-action-linker.serv
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { htmlToReadableText } from '@opuspopuli/common';
-import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
+import { fetchTextWithRetry } from './resilient-fetch';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   BILL_LIFECYCLE_SELECT,
@@ -470,10 +473,6 @@ export class RegionSyncService implements OnModuleDestroy {
   private readonly logger = new Logger(RegionSyncService.name, {
     timestamp: true,
   });
-  /** Per-host fetch throttle shared across all syncs in this process.
-   *  Per-source `rateLimitOverride` values are applied to the relevant
-   *  hostname by sync orchestrators before they start their loops. */
-  private readonly hostThrottle = new HostThrottle(1000);
 
   /**
    * One place where the metrics observer reaches a tracker, rather than a
@@ -550,7 +549,17 @@ export class RegionSyncService implements OnModuleDestroy {
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
+    /**
+     * The shared per-host rate limiter (S1). Optional so a test module need
+     * not bind one; without it the bills path still throttles, through a
+     * process-local limiter at the default rate.
+     */
+    @Optional()
+    @Inject(HOST_RATE_LIMITER)
+    hostRateLimiter?: IHostRateLimiter,
   ) {
+    this.hostRateLimiter =
+      hostRateLimiter ?? new MemoryHostRateLimiter(DEFAULT_HOST_RATE);
     // Assigned in the constructor body, not as field initializers: `config`
     // is a same-class parameter property, which TS assigns only once the
     // body runs — a field initializer reading `this.config` fails with
@@ -622,6 +631,8 @@ export class RegionSyncService implements OnModuleDestroy {
   //  - BILL_ENRICHMENT_REQUEST_TIMEOUT_MS: per-bill LLM timeout. The
   //    provider default is too short for the node's largest full-text
   //    bills (~4.4% aborted); a generous cap converts those to successes.
+  /** Every bills fetch waits here, per host (S1). */
+  private readonly hostRateLimiter: IHostRateLimiter;
   private readonly billEnrichmentConcurrency: number;
   private readonly billEnrichmentTimeoutMs: number;
   // Votes-phase (Phase 3, votes_only) throughput knob (#892). Mirrors
@@ -1273,8 +1284,6 @@ export class RegionSyncService implements OnModuleDestroy {
       }),
     );
 
-    this.applyBillsHostThrottle(dataSources);
-
     const regionId = plugin.getName?.() ?? 'unknown';
     const repIndex = await this.buildRepNameIndex(regionId);
     const committeeIndex = await this.buildCommitteeNameIndex();
@@ -1355,33 +1364,6 @@ export class RegionSyncService implements OnModuleDestroy {
     );
 
     return { processed, created, updated, skipped: skippedTotal };
-  }
-
-  /**
-   * Apply per-source rate limits to the shared host throttle. Each bills
-   * data source may override the default 1 req/sec gap via
-   * DataSourceConfig.rateLimitOverride (requests/sec). The override
-   * applies to the source's hostname, which transitively covers the
-   * status / votes / text page templates (all on the same host).
-   *
-   * Extracted from `syncBills` to keep that function under SonarCloud's
-   * cognitive-complexity gate. Try/catch on URL parsing isolates a
-   * malformed-URL failure from interrupting the throttle setup for
-   * other sources.
-   */
-  private applyBillsHostThrottle(dataSources: DataSourceConfig[]): void {
-    for (const ds of dataSources) {
-      if (!ds.rateLimitOverride || ds.rateLimitOverride <= 0) continue;
-      try {
-        const host = new URL(ds.url).hostname;
-        this.hostThrottle.setRequestsPerSecond(host, ds.rateLimitOverride);
-        this.logger.log(
-          `Bills: host throttle for ${host} set to ${ds.rateLimitOverride} req/sec`,
-        );
-      } catch {
-        /* invalid URL — surfaced elsewhere */
-      }
-    }
   }
 
   /**
@@ -3295,7 +3277,7 @@ export class RegionSyncService implements OnModuleDestroy {
   private async fetchUrlText(url: string): Promise<string> {
     return fetchTextWithRetry(url, {
       timeoutMs: 20_000,
-      throttle: this.hostThrottle,
+      throttle: this.hostRateLimiter,
       logger: this.logger,
       metrics: this.metrics,
       dataType: 'bills',

@@ -7,7 +7,9 @@
  */
 
 import type { ICache } from "@opuspopuli/common";
+import { MemoryHostRateLimiter } from "@opuspopuli/common";
 import { CacheFactory, FallbackCache } from "../src/cache/cache-factory";
+import { RedisHostRateLimiter } from "../src/utils/redis-host-rate-limiter";
 
 describe("CacheFactory env resolution (#725)", () => {
   const original = { ...process.env };
@@ -135,6 +137,29 @@ class ControllableCache implements ICache<string> {
     this.store.clear();
   }
 }
+
+describe("CacheFactory.createHostRateLimiter (S1)", () => {
+  it("builds the Redis limiter under the given key when Redis is configured", () => {
+    const limiter = CacheFactory.createHostRateLimiter({
+      provider: "redis",
+      redisUrl: "redis://cache:6379",
+      rateLimiterRedisUrl: "redis://queue:6379",
+      rateLimiterKey: "extraction:ratelimit",
+    });
+
+    expect(limiter).toBeInstanceOf(RedisHostRateLimiter);
+    expect((limiter as unknown as { prefix: string }).prefix).toBe(
+      "extraction:ratelimit:",
+    );
+    void (limiter as RedisHostRateLimiter).destroy();
+  });
+
+  it("falls back to the in-process limiter without Redis", () => {
+    expect(
+      CacheFactory.createHostRateLimiter({ provider: "memory" }),
+    ).toBeInstanceOf(MemoryHostRateLimiter);
+  });
+});
 
 describe("FallbackCache auto-recovery (#725)", () => {
   beforeEach(() => jest.useFakeTimers());
