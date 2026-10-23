@@ -88,12 +88,29 @@ const PRODUCER_REFRESH_MS = 20_000;
 /** At most one "calling directly" warning per this interval, with a count. */
 const DIRECT_WARN_INTERVAL_MS = 60_000;
 /**
- * A lane job's lock. Renewed every half-period while the event loop lives, so
- * a long call keeps it; a KILLED consumer's job is failed within about this
- * long plus BullMQ's 30 s stall check, instead of holding the only GPU slot
- * for the 5-minute default.
+ * A lane job's lock: 5 minutes, `createWorker`'s default.
+ *
+ * BullMQ checks for renewals every quarter of it and renews a lock older than
+ * that, so a lock is renewed every ¼–½ of its duration: a pause of the
+ * consumer — a blocked event loop, a swapping or sleeping host — survives at
+ * least ~150 s here, where the previous 30 s survived as little as ~15 s.
+ * Redis expires locks by wall clock, so a pause of the whole host counts.
+ *
+ * Measured at 30 s, on the 2026-10-23 civics baseline: the host idle-slept
+ * (one sleep of 282 s, `pmset -g log`) while swapping hard, two jobs lost
+ * their lock, and with `maxStalledCount: 0` both were failed while Ollama went
+ * on generating them — 181 s of inference nobody waited for, two pages lost.
+ * Five minutes would probably NOT have saved a 282 s sleep; keeping the host
+ * awake does (the baseline runbook says so). It does cover stalls of a minute
+ * or two, which a loaded host has routinely.
+ *
+ * The cost: a consumer killed mid-call — every restart or redeploy of a worker
+ * during a running LLM call, since its 10 s stop grace is shorter than a call
+ * — holds the global slot until its lock lapses and another consumer's stall
+ * check fails the job, up to ~5½ min. If it was the only consumer, until one
+ * starts.
  */
-const LANE_LOCK_MS = 30_000;
+const LANE_LOCK_MS = 300_000;
 /** A missing liveness key is re-checked once after this — see `isAlive`. */
 const LIVENESS_GRACE_MS = 5_000;
 /** Ceilings on what a job read from Redis may ask of the GPU. */

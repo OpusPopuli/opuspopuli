@@ -122,14 +122,23 @@ below keeps BullMQ and removes all three:
      already running when its waiter gives up still finishes on the GPU.
    - **Stalls fail, they do not re-run** (`maxStalledCount: 0`): the first
      run may still be on the GPU, and a redelivery would be a duplicate call.
-     The lane lock is 30 s (renewed while the process lives), so a killed
-     consumer's job releases the global slot within about a minute, not
-     the 5½ minutes `createWorker`'s 5-minute default lock would take. It is
-     set in code, so it overrides `BULLMQ_QUEUE_<NAME>_LOCK_DURATION_MS`
-     (unexportable for a dotted queue name anyway). The cost: an event loop
-     blocked for over 30 s — or a host asleep — loses the lock, and with
-     stalls failing rather than re-running, that job fails while Ollama
-     may still be computing it.
+     The lane lock is 5 minutes — `createWorker`'s default, set in code
+     (the env override is unexportable for a dotted queue name). BullMQ
+     renews a lock every ¼–½ of its duration, so it survives a consumer
+     pause of at least ~150 s; at the 30 s it had at merge, as little as
+     ~15 s. **The 30 s was wrong, measured:** on the 2026-10-23 civics
+     baseline the host idle-slept (one sleep of 282 s, `pmset -g log`)
+     while swapping, two jobs lost their lock, and both were failed while
+     Ollama went on generating them — 181 s of inference nobody waited
+     for, two pages lost. Redis expires locks by wall clock, so a pause of
+     the whole host counts. Five minutes would probably not have survived
+     that 282 s sleep — keeping the host awake fixes that incident — but
+     it covers the minute-or-two stalls a loaded host has routinely. The
+     cost: a consumer killed mid-call (any restart or redeploy during a
+     running call — the 10 s stop grace is shorter than a call) holds the
+     global slot until its lock lapses and another consumer's stall check
+     fails the job, up to ~5½ min, or until a consumer starts if it was the
+     only one.
    - **Shutdown** rejects every caller still waiting, at once. The wait
      timeout is the dispatcher's own timer, not `waitUntilFinished`'s ttl —
      BullMQ's ttl timer survives an abandoned wait and held the integration
@@ -243,7 +252,8 @@ is unaffected — it covers Postgres; this is short-lived queue state.
 - Queue naming: one queue per host:port; two lanes on one host share it.
 - Both cron rerank enqueue sites carry a priority; manual jobs do not.
 - Each verified by reintroducing its defect. `maxStalledCount: 0` and the
-  30 s lock are not (their pass-through to BullMQ is unit-tested):
+  lane lock are not (their values are unit-tested; the lock's against a
+  reversion to 30 s):
   a stall cannot be caused deterministically in a test.
 
 ## Risks
