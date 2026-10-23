@@ -21,6 +21,7 @@ import { regionValidationSchema } from 'src/config/env.validation';
 import { RegionSyncProcessor } from './region-sync.processor';
 import { RegionSyncScheduler } from './region-sync.scheduler';
 import { MinutesSummaryProcessor } from './minutes-summary.processor';
+import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
 
 @Module({
   imports: [
@@ -35,6 +36,9 @@ import { MinutesSummaryProcessor } from './minutes-summary.processor';
     SecretsModule,
     RegionDomainModule,
     MetricsModule.forRoot({ serviceName: 'region-worker' }),
+    // Batch inference waits its turn for the GPU on the endpoint's lane queue
+    // (S7). Worker modules only: an API process must not bind it.
+    LlmLaneModule.forRoot(),
     // Bulk-workload RSS threshold, not the 1 GB default.
     //
     // #642 raised this on `region-service` because the CalAccess bulk download

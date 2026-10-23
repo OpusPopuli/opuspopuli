@@ -336,6 +336,17 @@ export class MetricsModule {
         help: 'Rows deleted by a sync prune',
         labelNames: ['data_type'],
       }),
+      /**
+       * Batch inference's wait for the GPU (S7): enqueue to start on an
+       * endpoint's lane queue. Buckets span a slot freed at once to a backlog
+       * of large extractions.
+       */
+      makeHistogramProvider({
+        name: 'lane_wait_seconds',
+        help: 'Time a batch LLM call waited on its lane queue',
+        labelNames: ['lane', 'endpoint'],
+        buckets: [0.1, 1, 5, 15, 60, 300, 900, 1800, 3600],
+      }),
       makeGaugeProvider({
         name: 'source_store_bytes',
         help: 'Bytes held by the source store, by tier and storage location',

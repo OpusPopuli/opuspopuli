@@ -20,6 +20,22 @@ export interface WorkerMetrics {
 export interface CreateWorkerOptions {
   prefix?: string;
   metrics?: WorkerMetrics;
+  /**
+   * Overrides for a caller that knows better than the env defaults — the
+   * env knobs remain for every other queue. Needed because a queue name with
+   * dots (the S7 lane queues, named from a host) makes the env names
+   * `BULLMQ_QUEUE_<NAME>_*` unexportable from a shell.
+   */
+  concurrency?: number;
+  lockDuration?: number;
+  /** 0 = a stalled job fails rather than re-running on another consumer. */
+  maxStalledCount?: number;
+  /**
+   * Log success at debug, not log — for a queue whose jobs are sub-steps of
+   * another job (one lane job per LLM call: thousands per bills sync).
+   * Failures are still logged as errors.
+   */
+  quiet?: boolean;
 }
 
 export function createWorker<T>(
@@ -53,9 +69,12 @@ export function createWorker<T>(
   const workerOpts: WorkerOptions = {
     connection,
     prefix: resolveQueuePrefix(opts.prefix),
-    concurrency,
+    concurrency: opts.concurrency ?? concurrency,
     autorun: enabled,
-    lockDuration: lockDurationMs,
+    lockDuration: opts.lockDuration ?? lockDurationMs,
+    ...(opts.maxStalledCount !== undefined
+      ? { maxStalledCount: opts.maxStalledCount }
+      : {}),
   };
 
   const worker = new Worker<T>(
@@ -80,16 +99,15 @@ export function createWorker<T>(
         opts.metrics?.incrementJobAttempts(queueName, triggerSource, "success");
         opts.metrics?.recordJobDuration(queueName, triggerSource, durationMs);
 
-        logger.log(
-          {
-            queue: queueName,
-            jobId: job.id,
-            attempt: job.attemptsMade + 1,
-            trigger_source: triggerSource,
-            durationMs,
-          },
-          "Job succeeded",
-        );
+        const succeeded = {
+          queue: queueName,
+          jobId: job.id,
+          attempt: job.attemptsMade + 1,
+          trigger_source: triggerSource,
+          durationMs,
+        };
+        if (opts.quiet) logger.debug(succeeded, "Job succeeded");
+        else logger.log(succeeded, "Job succeeded");
         return result;
       } catch (err) {
         const durationMs = Date.now() - startMs;

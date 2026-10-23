@@ -9,7 +9,10 @@ import {
   type LlmRerankJobData,
 } from '@opuspopuli/queue-provider';
 
-import { LlmRerankScheduler } from './llm-rerank.scheduler';
+import {
+  CRON_RERANK_PRIORITY,
+  LlmRerankScheduler,
+} from './llm-rerank.scheduler';
 import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized-feed/llm-rerank-job.service';
 import { RerankCandidatesService } from './rerank-candidates.service';
 
@@ -129,6 +132,53 @@ describe('LlmRerankScheduler', () => {
 
       expect(jobs.create).toHaveBeenCalledTimes(1);
       expect(queueService.enqueueBulk).toHaveBeenCalledTimes(1);
+    });
+
+    it('prioritises the nightly fan-out, so a manual refresh runs ahead of it (S7)', async () => {
+      // BullMQ serves its plain wait list before its prioritised set. A
+      // manual job carries no priority; every cron job must, or a person's
+      // "refresh my feed" waits behind the whole 03:00 run at concurrency 1.
+      db.signalProfile.findMany.mockResolvedValue([baseProfile]);
+      jobs.create.mockResolvedValue({ id: 'row-1' });
+
+      await scheduler.runNightlyFanout();
+
+      const entries = queueService.enqueueBulk.mock.calls.flatMap(
+        (c) => c[1] as Array<{ opts?: { priority?: number } }>,
+      );
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(entry.opts?.priority).toBe(CRON_RERANK_PRIORITY);
+      }
+    });
+
+    it('prioritises the per-entity fan-outs too — the second enqueue site (S7)', async () => {
+      // Propositions, representatives and committees enqueue through their
+      // own helper; a priority on the bill path alone would leave three of
+      // the four nightly batches ahead of a manual refresh.
+      jobs.create.mockResolvedValue({ id: 'row-1' });
+
+      await (
+        scheduler as unknown as {
+          enqueueEntityFanOut: (...args: unknown[]) => Promise<number>;
+        }
+      ).enqueueEntityFanOut(
+        [
+          {
+            profile: { userId: 'u1', interestTags: ['housing'] },
+            rankingFlags: [],
+          },
+        ],
+        '20261023',
+        'proposition',
+        { candidateIds: ['p1'] },
+      );
+
+      const entries = queueService.enqueueBulk.mock.calls.flatMap(
+        (c) => c[1] as Array<{ opts?: { priority?: number } }>,
+      );
+      expect(entries).toHaveLength(1);
+      expect(entries[0].opts?.priority).toBe(CRON_RERANK_PRIORITY);
     });
 
     it('swallows errors in the fanout — a single bad user doesn’t crash the cron', async () => {
