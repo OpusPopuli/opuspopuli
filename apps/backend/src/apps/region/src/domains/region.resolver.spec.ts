@@ -1398,4 +1398,72 @@ describe('RegionResolver', () => {
       );
     });
   });
+
+  describe('cancelRegionSync — fanned-out requests (S2)', () => {
+    it("cancels a request's children with it and drops those still waiting", async () => {
+      pipelineJobService.cancel.mockResolvedValue(true);
+      pipelineJobService.cancelChildren.mockResolvedValue([
+        'parent-1-bills',
+        'parent-1-meetings',
+      ]);
+      pipelineJobService.findQueueLink.mockResolvedValue({
+        bullmqJobId: 'parent-1',
+        parentJobId: null,
+      });
+
+      await expect(resolver.cancelRegionSync('parent-1')).resolves.toBe(true);
+
+      expect(pipelineJobService.cancelChildren).toHaveBeenCalledWith(
+        'parent-1',
+        'cancelled by an administrator',
+      );
+      expect(
+        queueService.removeJobIfPending.mock.calls.map(([, id]) => id),
+      ).toEqual(['parent-1', 'parent-1-bills', 'parent-1-meetings']);
+    });
+
+    it('settles the parent when one child is cancelled on its own', async () => {
+      pipelineJobService.cancel.mockResolvedValue(true);
+      pipelineJobService.cancelChildren.mockResolvedValue([]);
+      pipelineJobService.findQueueLink.mockResolvedValue({
+        bullmqJobId: 'parent-1-bills',
+        parentJobId: 'parent-1',
+      });
+
+      // By row id: a child's row id is a uuid, its queue id is not.
+      await resolver.cancelRegionSync('child-row-uuid');
+
+      expect(pipelineJobService.settleParent).toHaveBeenCalledWith('parent-1');
+      expect(queueService.removeJobIfPending).toHaveBeenCalledWith(
+        expect.any(String),
+        'parent-1-bills',
+      );
+    });
+
+    it('touches nothing else when the job had already finished', async () => {
+      pipelineJobService.cancel.mockResolvedValue(false);
+      pipelineJobService.cancelChildren.mockResolvedValue([]);
+
+      await expect(resolver.cancelRegionSync('done')).resolves.toBe(false);
+
+      expect(queueService.removeJobIfPending).not.toHaveBeenCalled();
+    });
+
+    it('still cancels the open children of a request that closed early', async () => {
+      // A fan-out that failed part-way closes the request FAILED while the
+      // children it did enqueue still run.
+      pipelineJobService.cancel.mockResolvedValue(false);
+      pipelineJobService.cancelChildren.mockResolvedValue(['parent-1-bills']);
+      pipelineJobService.findQueueLink.mockResolvedValue({
+        bullmqJobId: 'parent-1',
+        parentJobId: null,
+      });
+
+      await expect(resolver.cancelRegionSync('parent-1')).resolves.toBe(true);
+
+      expect(
+        queueService.removeJobIfPending.mock.calls.map(([, id]) => id),
+      ).toEqual(['parent-1-bills']);
+    });
+  });
 });

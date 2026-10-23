@@ -377,6 +377,14 @@ export class RegionDomainService {
 
   // ─── Sync / admin delegation ──────────────────────────────────────────────
 
+  /** Delegate — see RegionSyncService.syncableDataTypes (S2). */
+  syncableDataTypes(
+    depth?: string,
+    scopedRegionId?: string,
+  ): Promise<string[]> {
+    return this.syncService.syncableDataTypes(depth, scopedRegionId);
+  }
+
   syncAll(
     dataTypes?: string[],
     maxReps?: number,
@@ -520,8 +528,8 @@ export class RegionDomainService {
    * of band (manual SQL, integration tests cleaning up, etc.) the in-
    * memory active region drifts. This forces a re-sync.
    */
-  refreshActiveLocalPlugin(): Promise<void> {
-    return this.syncService.refreshActiveLocalPlugin();
+  refreshActiveLocalPlugin(force = false): Promise<void> {
+    return this.syncService.refreshActiveLocalPlugin(force);
   }
 
   listRegionPlugins(): Promise<RegionPluginRow[]> {

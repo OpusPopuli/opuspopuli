@@ -84,6 +84,85 @@ export class PluginRegistryService implements OnModuleDestroy {
   }
 
   /**
+   * Replace every local plugin at once (S2, `docs/plans/S2-per-type-sync-jobs.md`).
+   *
+   * The new plugins are initialised BEFORE anything is removed, then swapped
+   * into the map in one synchronous step, and only then are the old ones
+   * destroyed. `unregister()` followed by re-registration — what a refresh
+   * did before — leaves the map empty across every await in between, and a
+   * sync reading the registry in that window syncs no local plugin at all
+   * while reporting success. With syncs now running concurrently in one
+   * process, that window is reachable; here there is none.
+   *
+   * A plugin whose `initialize` throws is kept with status `error`, as
+   * `registerLocal` keeps it. When none initialises, `fallback` is used
+   * instead — inside the same swap, so readers never see zero active.
+   */
+  async replaceLocal(
+    entries: {
+      name: string;
+      instance: IRegionPlugin;
+      config?: Record<string, unknown>;
+    }[],
+    fallback?: () => { name: string; instance: IRegionPlugin },
+  ): Promise<void> {
+    const next = new Map<string, RegisteredPlugin>();
+    for (const entry of entries) {
+      next.set(entry.name, await this.initialised(entry));
+    }
+    if (fallback && ![...next.values()].some((p) => p.status === "active")) {
+      const { name, instance } = fallback();
+      this.logger.warn(`No local plugin initialised; falling back to ${name}`);
+      next.set(name, await this.initialised({ name, instance }));
+    }
+
+    // The swap: no await between clear and refill.
+    const previous = [...this.localPlugins.values()];
+    this.localPlugins.clear();
+    for (const [name, plugin] of next) this.localPlugins.set(name, plugin);
+
+    for (const old of previous) {
+      if (next.get(old.name)?.instance === old.instance) continue;
+      try {
+        await old.instance.destroy();
+      } catch (error) {
+        this.logger.error(`Error destroying local plugin ${old.name}:`, error);
+      }
+    }
+    this.logger.log(
+      `Local plugins replaced: ${[...next.keys()].join(", ") || "(none)"}`,
+    );
+  }
+
+  private async initialised(entry: {
+    name: string;
+    instance: IRegionPlugin;
+    config?: Record<string, unknown>;
+  }): Promise<RegisteredPlugin> {
+    try {
+      await entry.instance.initialize(entry.config);
+      return {
+        name: entry.name,
+        instance: entry.instance,
+        status: "active",
+        loadedAt: new Date(),
+      };
+    } catch (error) {
+      const lastError = (error as Error).message;
+      this.logger.error(
+        `Failed to initialize local plugin ${entry.name}: ${lastError}`,
+      );
+      return {
+        name: entry.name,
+        instance: entry.instance,
+        status: "error",
+        lastError,
+        loadedAt: new Date(),
+      };
+    }
+  }
+
+  /**
    * Register the federal plugin (loaded unconditionally at startup).
    */
   async registerFederal(

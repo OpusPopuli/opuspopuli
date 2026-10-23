@@ -2,6 +2,11 @@ import { AnalysisRequestSource, TriggerSource } from "./queue.constants";
 
 export interface RegionSyncJobData {
   pipelineJobId?: string;
+  /**
+   * Set on a child of a fanned-out request (S2): the parent's
+   * `pipeline_jobs` id, which the child settles when it finishes.
+   */
+  parentJobId?: string;
   triggerSource: TriggerSource;
   regionId?: string;
   dataTypes?: string[];

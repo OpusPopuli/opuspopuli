@@ -6,6 +6,7 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   resolveConfigPlaceholders,
@@ -41,6 +42,21 @@ function comparePluginRows(
   if (!a.parentRegionId && b.parentRegionId) return -1;
   if (a.parentRegionId && !b.parentRegionId) return 1;
   return a.name.localeCompare(b.name);
+}
+
+/**
+ * What the loaded local plugins were built from. Rows arrive sorted
+ * (`comparePluginRows`) and `config` is jsonb, whose key order Postgres
+ * normalises, so equal rows always hash equal.
+ */
+function fingerprint(
+  rows: { name: string; config: unknown; parentRegionId: string | null }[],
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify(rows.map((r) => [r.name, r.parentRegionId, r.config])),
+    )
+    .digest('hex');
 }
 
 /**
@@ -82,6 +98,8 @@ export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
   private pluginNormalizeDistrict = false;
   private pluginBioNoisePatterns: RegExp[] = [];
   private pluginBioTrimPatterns: RegExp[] = [];
+  /** `fingerprint` of the rows the registry was last built from. */
+  private loadedFingerprint?: string;
 
   constructor(
     private readonly pluginLoader: PluginLoaderService,
@@ -165,9 +183,22 @@ export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
    * boot-time value. That's a known limitation; restart the service if
    * federal needs to re-resolve.
    */
-  async refreshActiveLocalPlugin(): Promise<void> {
+  /**
+   * @param force - Rebuild even when the rows are unchanged: the recovery
+   *   mutation and admin toggles, which ask for exactly that.
+   */
+  async refreshActiveLocalPlugin(force = false): Promise<void> {
     const { localConfigRow, allLocalConfigRows } =
       await this.fetchLocalPluginConfigs();
+    // Every sync calls this (S2): rebuild only when the enabled plugin rows
+    // actually changed — an admin toggle — not on every job.
+    if (
+      !force &&
+      this.loadedFingerprint === fingerprint(allLocalConfigRows) &&
+      this.pluginRegistry.hasActive()
+    ) {
+      return;
+    }
     await this.reloadActiveLocalPlugin(allLocalConfigRows, localConfigRow);
   }
 
@@ -286,7 +317,8 @@ export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
     // boot and `regionInfo` keeps returning the stale active region. See
     // #796 for the failure mode this fixes. Runs after the (committed)
     // cascade so the refresh sees the newly-toggled children.
-    await this.refreshActiveLocalPlugin();
+    // An admin toggle asks for a rebuild — forced, whatever the rows compare.
+    await this.refreshActiveLocalPlugin(true);
     return { ...toRegionPluginRow(row), cascadedCount };
   }
 
@@ -358,19 +390,13 @@ export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
     }[],
     localConfigRow: { config: unknown } | undefined,
   ): Promise<void> {
-    // Tear down the existing local registry before re-init so we never
-    // re-register the same plugin name twice (registerLocal would internally
-    // destroy and replace, but draining first keeps the logs honest).
-    //
-    // Concurrency: between this unregister() and the initLocalPlugins()
-    // below, the local plugin slot is empty. Any reader of
-    // `regionService.getRegionInfo()` (or any sync job started in that
-    // window) will see no active plugin and throw. Probability is low —
-    // refresh fires only on admin toggles or the recovery mutation, neither
-    // of which is in a hot path. If concurrent admin toggles ever become a
-    // real concern, swap to a build-then-atomic-swap pattern.
-    await this.pluginRegistry.unregister();
-
+    // Build-then-swap (S2): the new plugins are initialised before the old
+    // ones leave the registry, so a sync running beside this one never sees
+    // an empty registry. The old unregister-then-reinit emptied it across
+    // every await in between, and `syncAll` calls this at the start of every
+    // job. A running sync's instance IS still destroyed after the swap —
+    // harmless only while `destroy()` is a flag reset, as it is for every
+    // declarative plugin today.
     await this.initLocalPlugins(allLocalConfigRows);
 
     const localPlugin = this.pluginRegistry.getLocal();
@@ -380,6 +406,15 @@ export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Remembered only when every row loaded: a plugin that failed, or the
+    // fallback standing in for none, is retried on the next sync, as it was
+    // when every sync rebuilt.
+    const allLoaded =
+      allLocalConfigRows.length > 0 &&
+      allLocalConfigRows.every((row) => this.pluginRegistry.getLocal(row.name));
+    this.loadedFingerprint = allLoaded
+      ? fingerprint(allLocalConfigRows)
+      : undefined;
     this.regionService = new RegionProviderService(localPlugin);
     const info = this.regionService.getRegionInfo();
     this.pluginRegionName = info.name;
@@ -512,41 +547,33 @@ export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         'No enabled local region plugins found in database, falling back to ExampleRegionProvider',
       );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-      return;
     }
 
-    for (const row of rows) {
+    const built = rows.flatMap((row) => {
+      const config = row.config as Record<string, unknown> | undefined;
       try {
         this.logger.log(
           `Loading local declarative region plugin "${row.name}"`,
         );
-        await this.pluginLoader.loadPlugin(
-          {
-            name: row.name,
-            config: row.config as Record<string, unknown> | undefined,
-          },
+        const instance = this.pluginLoader.buildPlugin(
+          { name: row.name, config },
           this.pipeline,
         );
+        return [{ name: row.name, instance, config }];
       } catch (error) {
         this.logger.error(
           `Failed to load plugin "${row.name}": ${(error as Error).message}`,
         );
+        return [];
       }
-    }
+    });
 
-    if (!this.pluginRegistry.hasActive()) {
-      this.logger.warn(
-        'All local plugins failed to load, falling back to ExampleRegionProvider',
-      );
-      await this.pluginRegistry.registerLocal(
-        'example',
-        this.createFallbackPlugin(),
-      );
-    }
+    // One atomic replacement, fallback included, so no reader ever sees an
+    // empty local slot (see `reloadActiveLocalPlugin`).
+    await this.pluginRegistry.replaceLocal(built, () => ({
+      name: 'example',
+      instance: this.createFallbackPlugin(),
+    }));
   }
 
   private createFallbackPlugin(): IRegionPlugin {

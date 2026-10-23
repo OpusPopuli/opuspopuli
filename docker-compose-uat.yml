@@ -462,6 +462,13 @@ services:
       REGION_SYNC_RUN_ON_STARTUP: "false"
       # 1-hour lock for region-sync — representatives bio generation takes ~70 min
       BULLMQ_QUEUE_REGION_SYNC_LOCK_DURATION_MS: "3600000"
+      # S2: two syncs of different types at once (one per type, enforced by
+      # a lock; docs/plans/S2-per-type-sync-jobs.md). Prod stays at 1 until
+      # Phase C turns the lane queue on with it.
+      BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY: ${BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY:-2}
+      # S2: stable across container recreates, so a restarted worker sweeps
+      # the rows its predecessor abandoned — the hostname is the container id.
+      WORKER_HOST: ${WORKER_HOST:-uat-local}
       # S7: batch inference waits its turn for the GPU on the endpoint's
       # lane queue (docs/plans/S7-gpu-lane-queue.md). Worker services only.
       LLM_LANE_QUEUE_ENABLED: ${LLM_LANE_QUEUE_ENABLED:-true}

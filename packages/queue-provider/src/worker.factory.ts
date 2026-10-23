@@ -1,5 +1,5 @@
 import { Logger } from "@nestjs/common";
-import { Worker, Job, WorkerOptions } from "bullmq";
+import { DelayedError, Worker, Job, WorkerOptions } from "bullmq";
 import IORedis from "ioredis";
 import { resolveQueuePrefix } from "./queue.constants";
 import { withJobSpan } from "./job-tracing";
@@ -38,10 +38,25 @@ export interface CreateWorkerOptions {
   quiet?: boolean;
 }
 
+/**
+ * BullMQ's own test: by class, or by name — a second copy of bullmq in the
+ * tree makes `instanceof` fail for an error its worker still honours.
+ */
+export function isDelayed(error: unknown): boolean {
+  return (
+    error instanceof DelayedError ||
+    (error as { name?: unknown } | null)?.name === "DelayedError"
+  );
+}
+
 export function createWorker<T>(
   queueName: string,
   connection: IORedis,
-  handler: (job: Job<T>) => Promise<unknown>,
+  /**
+   * `token` is the worker's lock token for the job — what `job.moveToDelayed`
+   * needs to put a job back without failing it (S2's per-type lock).
+   */
+  handler: (job: Job<T>, token?: string) => Promise<unknown>,
   opts: CreateWorkerOptions = {},
 ): Worker<T> {
   const logger = new Logger(`Worker:${queueName}`);
@@ -79,7 +94,7 @@ export function createWorker<T>(
 
   const worker = new Worker<T>(
     queueName,
-    async (job: Job<T>) => {
+    async (job: Job<T>, token?: string) => {
       const triggerSource =
         ((job.data as Record<string, unknown>)?.triggerSource as string) ??
         "unknown";
@@ -93,7 +108,9 @@ export function createWorker<T>(
         // The job's span is a child of the enqueue's (D7), and every
         // `withStage()` span the handler opens lands under it — so one trace
         // covers the request, the queue hop and the work itself.
-        const result = await withJobSpan(queueName, job, () => handler(job));
+        const result = await withJobSpan(queueName, job, () =>
+          handler(job, token),
+        );
         const durationMs = Date.now() - startMs;
 
         opts.metrics?.incrementJobAttempts(queueName, triggerSource, "success");
@@ -110,6 +127,12 @@ export function createWorker<T>(
         else logger.log(succeeded, "Job succeeded");
         return result;
       } catch (err) {
+        // A job the handler moved back to the delayed set: not a failure, and
+        // it costs no attempt — BullMQ just needs the error to know.
+        if (isDelayed(err)) {
+          logger.debug(`Job ${job.id} moved back to delayed`);
+          throw err;
+        }
         const durationMs = Date.now() - startMs;
         const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
 

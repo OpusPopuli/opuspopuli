@@ -35,6 +35,29 @@ export class PluginLoaderService {
     definition: PluginDefinition,
     pipeline?: IPipelineService,
   ): Promise<IRegionPlugin> {
+    const plugin = this.buildPlugin(definition, pipeline);
+    await this.registry.registerLocal(
+      definition.name,
+      plugin,
+      definition.config,
+    );
+
+    this.logger.log(
+      `Declarative plugin "${definition.name}" loaded (v${plugin.getVersion()}, ` +
+        `${(definition.config as unknown as DeclarativeRegionConfig).dataSources.length} data sources)`,
+    );
+    return plugin;
+  }
+
+  /**
+   * Build a declarative plugin without registering or initialising it, for
+   * `PluginRegistryService.replaceLocal` (S2). Validates exactly as
+   * `loadPlugin` does.
+   */
+  buildPlugin(
+    definition: PluginDefinition,
+    pipeline?: IPipelineService,
+  ): IRegionPlugin {
     const { name, config } = definition;
 
     if (!pipeline) {
@@ -54,13 +77,7 @@ export class PluginLoaderService {
       );
     }
 
-    const plugin = new DeclarativeRegionPlugin(regionConfig, pipeline);
-    await this.registry.registerLocal(name, plugin, config);
-
-    this.logger.log(
-      `Declarative plugin "${name}" loaded (v${plugin.getVersion()}, ${regionConfig.dataSources.length} data sources)`,
-    );
-    return plugin;
+    return new DeclarativeRegionPlugin(regionConfig, pipeline);
   }
 
   /**

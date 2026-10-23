@@ -42,6 +42,7 @@ interface MockPluginRegistry {
   unregister: jest.Mock;
   getActive: jest.Mock;
   registerLocal: jest.Mock;
+  replaceLocal: jest.Mock;
   registerFederal: jest.Mock;
   getLocal: jest.Mock;
   getFederal: jest.Mock;
@@ -56,6 +57,7 @@ interface MockPluginRegistry {
 /** Minimal mock for PluginLoaderService used across test suites. */
 interface MockPluginLoader {
   loadPlugin: jest.Mock;
+  buildPlugin: jest.Mock;
   loadFederalPlugin: jest.Mock;
   unloadPlugin: jest.Mock;
 }
@@ -168,6 +170,7 @@ describe('RegionSyncService', () => {
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
       registerLocal: jest.fn().mockResolvedValue(undefined),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       registerFederal: jest.fn().mockResolvedValue(undefined),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
       getFederal: jest.fn().mockReturnValue(undefined),
@@ -181,6 +184,7 @@ describe('RegionSyncService', () => {
 
     const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
@@ -263,6 +267,9 @@ describe('RegionSyncService', () => {
     it('re-queries region_plugins and swaps the active local plugin on refresh', async () => {
       mockDb.regionPlugin.findMany.mockClear();
       mockRegistry.unregister.mockClear();
+      mockDb.regionPlugin.findMany.mockResolvedValueOnce([
+        { name: 'california', config: { v: 'changed' }, parentRegionId: null },
+      ] as never);
 
       await service.refreshActiveLocalPlugin();
 
@@ -272,8 +279,10 @@ describe('RegionSyncService', () => {
           where: { enabled: true, name: { not: 'federal' } },
         }),
       );
-      // Tears the slot down before re-init
-      expect(mockRegistry.unregister).toHaveBeenCalled();
+      // Swapped in one step (S2) — never torn down first, which left the
+      // registry empty under any sync running beside the refresh.
+      expect(mockRegistry.replaceLocal).toHaveBeenCalled();
+      expect(mockRegistry.unregister).not.toHaveBeenCalled();
     });
 
     it('setRegionPluginEnabled triggers a hot-swap after the DB update', async () => {
@@ -301,6 +310,9 @@ describe('RegionSyncService', () => {
 
     it('throws when no local plugin is available after refresh', async () => {
       mockRegistry.getLocal.mockReturnValueOnce(undefined);
+      mockDb.regionPlugin.findMany.mockResolvedValueOnce([
+        { name: 'california', config: { v: 'changed' }, parentRegionId: null },
+      ] as never);
 
       await expect(service.refreshActiveLocalPlugin()).rejects.toThrow(
         /No local region plugin available/,
@@ -320,11 +332,15 @@ describe('RegionSyncService', () => {
         fipsCode: '06',
       } as never);
       mockDb.regionPlugin.findMany.mockClear();
-      mockRegistry.unregister.mockClear();
+      mockRegistry.replaceLocal.mockClear();
+      // Disabling it changes the enabled set the refresh reads.
+      mockDb.regionPlugin.findMany.mockResolvedValueOnce([
+        { name: 'sonoma', config: {}, parentRegionId: 'california' },
+      ] as never);
 
       await service.setRegionPluginEnabled('california', false);
 
-      expect(mockRegistry.unregister).toHaveBeenCalled();
+      expect(mockRegistry.replaceLocal).toHaveBeenCalled();
       expect(mockDb.regionPlugin.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { enabled: true, name: { not: 'federal' } },
@@ -364,14 +380,22 @@ describe('RegionSyncService', () => {
         fipsCode: '06',
       } as never);
       // Clear the boot-time refresh that beforeEach() already triggered.
-      mockRegistry.unregister.mockClear();
+      mockRegistry.replaceLocal.mockClear();
       mockDb.regionPlugin.findMany.mockClear();
+      // Each toggle changes the enabled set the refresh reads.
+      mockDb.regionPlugin.findMany
+        .mockResolvedValueOnce([
+          { name: 'sonoma', config: {}, parentRegionId: 'california' },
+        ] as never)
+        .mockResolvedValueOnce([
+          { name: 'california', config: {}, parentRegionId: null },
+        ] as never);
 
       await service.setRegionPluginEnabled('california', false);
       await service.setRegionPluginEnabled('california', true);
 
-      // Two toggles → two unregister + two findMany cycles.
-      expect(mockRegistry.unregister).toHaveBeenCalledTimes(2);
+      // Two toggles → two swaps + two findMany cycles.
+      expect(mockRegistry.replaceLocal).toHaveBeenCalledTimes(2);
       expect(mockDb.regionPlugin.findMany).toHaveBeenCalledTimes(2);
     });
   });
@@ -1982,7 +2006,7 @@ describe('RegionSyncService', () => {
             RegionCacheService,
             {
               provide: PluginLoaderService,
-              useValue: { loadPlugin: jest.fn() },
+              useValue: { loadPlugin: jest.fn(), buildPlugin: jest.fn() },
             },
             { provide: PluginRegistryService, useValue: mockRegistry },
             { provide: DbService, useValue: mockDb },
@@ -2023,7 +2047,7 @@ describe('RegionSyncService', () => {
           RegionCacheService,
           {
             provide: PluginLoaderService,
-            useValue: { loadPlugin: jest.fn() },
+            useValue: { loadPlugin: jest.fn(), buildPlugin: jest.fn() },
           },
           { provide: PluginRegistryService, useValue: mockRegistry },
           { provide: DbService, useValue: mockDb },
@@ -3020,6 +3044,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
       registerLocal: jest.fn().mockResolvedValue(undefined),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       registerFederal: jest.fn().mockResolvedValue(undefined),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
       getFederal: jest.fn().mockReturnValue(mockPlugin),
@@ -3033,6 +3058,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
 
     const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
@@ -3134,6 +3160,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
       registerLocal: jest.fn().mockResolvedValue(undefined),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       registerFederal: jest.fn().mockResolvedValue(undefined),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
       getFederal: jest.fn().mockReturnValue(mockPlugin),
@@ -3147,6 +3174,7 @@ describe('RegionSyncService — federal placeholder resolution', () => {
 
     const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
@@ -3293,6 +3321,7 @@ describe('RegionSyncService — campaign finance sync', () => {
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
       registerLocal: jest.fn().mockResolvedValue(undefined),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       registerFederal: jest.fn().mockResolvedValue(undefined),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
       getFederal: jest.fn().mockReturnValue(undefined),
@@ -3306,6 +3335,7 @@ describe('RegionSyncService — campaign finance sync', () => {
 
     const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
@@ -3490,6 +3520,7 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
       unregister: jest.fn().mockResolvedValue(undefined),
       getActive: jest.fn().mockReturnValue(mockPlugin),
       registerLocal: jest.fn().mockResolvedValue(undefined),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       registerFederal: jest.fn().mockResolvedValue(undefined),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
       getFederal: jest.fn().mockReturnValue(undefined),
@@ -3503,6 +3534,7 @@ describe('RegionSyncService — cache invalidation and batch transactions', () =
 
     const mockLoader: MockPluginLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn().mockResolvedValue(undefined),
     };
@@ -3659,6 +3691,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
       registerLocal: jest.fn(),
       registerFederal: jest.fn(),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       getFederal: jest.fn().mockReturnValue(undefined),
       getAll: jest.fn().mockReturnValue([localRegistered]),
       getActiveName: jest.fn().mockReturnValue('test-provider'),
@@ -3669,6 +3702,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
     };
     const mockLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn(),
     };
@@ -3765,6 +3799,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
         registerLocal: jest.fn(),
         registerFederal: jest.fn(),
         getLocal: jest.fn().mockReturnValue(mockPlugin),
+        replaceLocal: jest.fn().mockResolvedValue(undefined),
         getFederal: jest.fn().mockReturnValue(undefined),
         getAll: jest.fn().mockReturnValue([]),
         getActiveName: jest.fn().mockReturnValue('test-provider'),
@@ -3775,6 +3810,7 @@ describe('RegionSyncService — proposition analysis wiring', () => {
       };
       const mockLoader = {
         loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+        buildPlugin: jest.fn().mockReturnValue(mockPlugin),
         loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
         unloadPlugin: jest.fn(),
       };
@@ -3912,6 +3948,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
       registerLocal: jest.fn(),
       registerFederal: jest.fn(),
       getLocal: jest.fn().mockReturnValue(mockPlugin),
+      replaceLocal: jest.fn().mockResolvedValue(undefined),
       getFederal: jest.fn().mockReturnValue(undefined),
       getAll: jest.fn().mockReturnValue([localRegistered]),
       getActiveName: jest.fn().mockReturnValue('test'),
@@ -3922,6 +3959,7 @@ describe('RegionSyncService — proposition finance wiring', () => {
     };
     const mockLoader = {
       loadPlugin: jest.fn().mockResolvedValue(mockPlugin),
+      buildPlugin: jest.fn().mockReturnValue(mockPlugin),
       loadFederalPlugin: jest.fn().mockResolvedValue(mockPlugin),
       unloadPlugin: jest.fn(),
     };

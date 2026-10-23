@@ -1208,7 +1208,9 @@ export class RegionResolver {
   @UseGuards(AuthGuard)
   @Roles(Role.Admin)
   async refreshActiveRegion(): Promise<boolean> {
-    await this.regionService.refreshActiveLocalPlugin();
+    // Forced: the plugin rows may compare equal while the in-memory state
+    // they built has drifted, which is what this recovery is for (S2).
+    await this.regionService.refreshActiveLocalPlugin(true);
     return true;
   }
 
@@ -1305,16 +1307,29 @@ export class RegionResolver {
     @Args('jobId', { type: () => ID }) jobId: string,
     @Args('reason', { nullable: true }) reason?: string,
   ): Promise<boolean> {
-    const cancelled = await this.pipelineJobService.cancel(
-      jobId,
-      reason?.trim() || 'cancelled by an administrator',
-    );
-    if (!cancelled) return false;
+    const why = reason?.trim() || 'cancelled by an administrator';
+    const cancelled = await this.pipelineJobService.cancel(jobId, why);
+    // A fanned-out request (S2) cancels its children with it — even when the
+    // request itself had already closed: a fan-out that failed part-way
+    // closes it FAILED while the children it did enqueue still run, and they
+    // are not listed anywhere an admin could find them to cancel one by one.
+    const children = await this.pipelineJobService.cancelChildren(jobId, why);
+    if (!cancelled && children.length === 0) return false;
+    // A child's own cancel may be the one that closes its parent.
+    const link = await this.pipelineJobService.findQueueLink(jobId);
+    if (link?.parentJobId) {
+      await this.pipelineJobService.settleParent(link.parentJobId);
+    }
 
-    // Best-effort: drops it if it has not started. A running job is left to
-    // the boundary check — see removeJobIfPending, which deliberately refuses
-    // to remove an ACTIVE job rather than orphan a worker holding its lock.
-    await this.queueService.removeJobIfPending(REGION_SYNC_QUEUE, jobId);
+    // Best-effort: drops each if it has not started. A running job is left
+    // to the boundary check — see removeJobIfPending, which deliberately
+    // refuses to remove an ACTIVE job rather than orphan a worker holding its
+    // lock. By the row's queue id, which is not always its row id (a child's
+    // is `<parent>-<type>`, a startup job's `startup-<date>`).
+    const own = cancelled ? [link?.bullmqJobId ?? jobId] : [];
+    for (const queued of [...own, ...children]) {
+      await this.queueService.removeJobIfPending(REGION_SYNC_QUEUE, queued);
+    }
     return true;
   }
 
