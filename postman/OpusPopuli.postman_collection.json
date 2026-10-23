@@ -941,7 +941,7 @@
         },
         {
           "name": "Sync — CIVICS (Admin)",
-          "description": "Trigger a CIVICS data sync. Returns a job ID immediately; the worker processes it async. Saves sync_job_id.",
+          "description": "Trigger a CIVICS data sync. Returns a job ID immediately; the worker processes it async. Saves sync_job_id.\n\nA civics sync skips every page whose text, prompt, model and source config are unchanged since its last extraction (K1). Set `resetWatermark` to `true` to resync from scratch: every page goes back through the LLM, ignoring the skip records. Leave it `false` for a normal sync.",
           "event": [
             {
               "listen": "test",
@@ -964,8 +964,8 @@
             "body": {
               "mode": "graphql",
               "graphql": {
-                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
-                "variables": "{\n  \"dataTypes\": [\"CIVICS\"],\n  \"regionId\": \"california\"\n}"
+                "query": "mutation SyncRegionData($dataTypes: [DataType!], $regionId: String, $resetWatermark: Boolean) {\n  syncRegionData(dataTypes: $dataTypes, regionId: $regionId, resetWatermark: $resetWatermark) {\n    jobId\n    status\n    triggerSource\n    regionId\n    dataTypes\n    enqueuedAt\n  }\n}",
+                "variables": "{\n  \"dataTypes\": [\"CIVICS\"],\n  \"regionId\": \"california\",\n  \"resetWatermark\": false\n}"
               }
             },
             "url": {

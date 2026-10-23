@@ -1,9 +1,12 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
+  buildSkipKey,
   extractJsonObjectSlice,
+  stableHash,
   type DataSourceConfig,
   type ILLMProvider,
   type JsonRepairClass,
@@ -103,6 +106,10 @@ export const CIVICS_MAX_OUTPUT_TOKENS = 64000;
  *
  * Attestation does not need this either — the output row already carries
  * `promptHash`, `promptVersion`, `llmModel` and `llmDigest`.
+ *
+ * Not in K1's skip key: an unchanged page is skipped whatever the seed. To
+ * reproduce a run with a pinned seed, sync with `resetWatermark`, which
+ * extracts every page.
  */
 function civicsSeed(): number | undefined {
   const raw = process.env.CIVICS_EXTRACTION_SEED?.trim();
@@ -169,6 +176,76 @@ export interface CivicsProvider {
    *  when this is absent. */
   getDataSources?(filter?: DataType): DataSourceConfig[];
 }
+
+/**
+ * The version of the code that turns the model's answer into stored rows —
+ * JSON repair, `groundTypes`, the empty check, the normalisers, and the
+ * generation constants (`temperature`, `topK`). It is in the skip key
+ * (K1) because a skipped page skips that code too: **bump this whenever
+ * any of it changes what an extraction stores**, or the fix never reaches
+ * an unchanged page. (The prompt TEMPLATE is versioned by its own hash.)
+ */
+export const CIVICS_EXTRACTOR_VERSION = 'civics-extractor-1';
+
+/**
+ * The data-source config that changes a civics page's extraction — the
+ * fields that reach the prompt (`contentGoal`, `category`, `hints`) or bound
+ * its output (`llmMaxTokens`) — hashed for the skip key (K1,
+ * `docs/plans/civics-phase-b.md`). Region config moves this output more than
+ * the prompt does (the civics iteration measured it), so a skip that ignored
+ * it would serve stale extractions after a hint edit. `crawlDepth`, `url`
+ * and the like change WHICH pages run, not what one page extracts to.
+ *
+ * A new input to `getCivicsExtractionPrompt` must be added here; a test
+ * pins the list against the prompt's inputs. The token budget is the
+ * EFFECTIVE one, so changing the code default re-extracts too.
+ */
+export function civicsConfigHash(ds: DataSourceConfig): string {
+  return stableHash({
+    extractor: CIVICS_EXTRACTOR_VERSION,
+    contentGoal: ds.contentGoal,
+    category: ds.category,
+    hints: ds.hints,
+    llmMaxTokens: ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS,
+  });
+}
+
+/** What a completed extraction yielded, recorded with its skip key. */
+type PageExtractionOutcome = 'block' | 'empty';
+
+/**
+ * How each page outcome is counted: the operator-facing label, the tracker's
+ * fixed outcome union, and a bounded metric reason where one exists.
+ */
+const PAGE_OUTCOME: Record<
+  'created' | 'updated' | 'failed' | 'skipped' | 'stale' | 'unchanged',
+  {
+    outcomeLabel: string;
+    outcome: 'created' | 'updated' | 'skipped' | 'error';
+    reason?: string;
+  }
+> = {
+  created: { outcomeLabel: 'created', outcome: 'created' },
+  updated: { outcomeLabel: 'updated', outcome: 'updated' },
+  failed: { outcomeLabel: 'failed', outcome: 'error' },
+  skipped: { outcomeLabel: 'skipped', outcome: 'skipped' },
+  // Counted as `skipped` structurally — nothing was written — but with a
+  // label that says WHY, so the phase log distinguishes a page with no civic
+  // content from one whose existing extraction just failed to refresh
+  // (#1335), and a slug so the metric does too.
+  stale: {
+    outcomeLabel: 'skipped (empty over existing — row kept, now stale)',
+    outcome: 'skipped',
+    reason: 'empty_over_existing',
+  },
+  // K1: the same text, prompt, model, config and extractor as the last
+  // completed extraction — no LLM call.
+  unchanged: {
+    outcomeLabel: 'skipped (unchanged since its last extraction)',
+    outcome: 'skipped',
+    reason: 'unchanged',
+  },
+};
 
 /**
  * Shared HTTP / HTML helpers passed in by the orchestrator (#828 follow-up
@@ -250,10 +327,21 @@ export class CivicsSyncService extends LlmGeneratorBase {
     super(undefined, promptClient, llm, db);
   }
 
+  /**
+   * @param options.reextract - Ignore K1's skip records and extract every
+   *   page — the operator's way to force a fresh run (the sync's
+   *   `resetWatermark`), rather than deleting rows by hand.
+   */
   async sync(
     plugin: CivicsProvider,
     helpers: CivicsCrawlHelpers,
-  ): Promise<{ processed: number; created: number; updated: number }> {
+    options: { reextract?: boolean } = {},
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped?: number;
+  }> {
     // `db` joins this guard because LlmGeneratorBase declares it optional —
     // a generator can legitimately be constructed without one. Civics sync
     // cannot, so it refuses here rather than asserting its way through.
@@ -288,13 +376,18 @@ export class CivicsSyncService extends LlmGeneratorBase {
     );
 
     const regionId = plugin.getName?.() ?? 'unknown';
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-    // Pages that extracted empty over an existing row, so the row was kept and
-    // is now staler than its siblings (#1335). Counted separately from
-    // `skipped`, which is the benign "this page has no civic content" case.
-    let stale = 0;
+    // Pages by outcome. `stale` — extracted empty over an existing row, kept
+    // and now staler than its siblings (#1335) — is counted apart from
+    // `skipped`, the benign "this page has no civic content" case, and from
+    // `unchanged`, the K1 skip.
+    const counts: Record<keyof typeof PAGE_OUTCOME, number> = {
+      created: 0,
+      updated: 0,
+      failed: 0,
+      skipped: 0,
+      stale: 0,
+      unchanged: 0,
+    };
 
     // ─── Phase 1/2 — discover ──────────────────────────────────────
     const discoverTracker = this.civicsTracker('discover', dataSources.length, {
@@ -333,59 +426,17 @@ export class CivicsSyncService extends LlmGeneratorBase {
         url,
         ds,
         helpers,
+        options.reextract,
       );
-      if (result === 'created') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'created',
-          outcome: 'created',
-        });
-        created++;
-        processed++;
-      } else if (result === 'updated') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'updated',
-          outcome: 'updated',
-        });
-        updated++;
-        processed++;
-      } else if (result === 'failed') {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'failed',
-          outcome: 'error',
-        });
-      } else if (result === 'stale') {
-        // Counted as `skipped` structurally — nothing was written — but with a
-        // label that says WHY, so the phase log distinguishes a page with no
-        // civic content from a page whose existing extraction just failed to
-        // refresh (#1335). The tracker's `outcome` union is fixed; its
-        // `outcomeLabel` is free text for exactly this.
-        stale++;
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'skipped (empty over existing — row kept, now stale)',
-          outcome: 'skipped',
-          // The same #1335 distinction on the metric. The prose above is for
-          // the operator; a label gets the slug, or it is one series per
-          // sentence.
-          reason: 'empty_over_existing',
-        });
-      } else {
-        extractTracker.item({
-          name: url,
-          externalId: null,
-          outcomeLabel: 'skipped',
-          outcome: 'skipped',
-        });
-      }
+      extractTracker.item({
+        name: url,
+        externalId: null,
+        ...PAGE_OUTCOME[result],
+      });
+      counts[result]++;
     }
     extractTracker.complete();
+    const { created, updated, stale } = counts;
 
     // Surfaced once per run at `warn`, because the per-page warnings are easy
     // to lose in a long sync and the aggregate is the thing worth noticing: a
@@ -407,7 +458,15 @@ export class CivicsSyncService extends LlmGeneratorBase {
     // same sync is about to re-source.
     await this.pruneUnsourcedGlossaryEntries(regionId);
 
-    return { processed, created, updated };
+    // `skipped` reaches the job's result (`itemsSkipped`): with K1 a normal
+    // run skips most pages, and "0 items" alone reads as a sync that did
+    // nothing rather than one that found nothing new.
+    return {
+      processed: created + updated,
+      created,
+      updated,
+      skipped: counts.skipped + counts.stale + counts.unchanged,
+    };
   }
 
   /**
@@ -653,7 +712,10 @@ export class CivicsSyncService extends LlmGeneratorBase {
     sourceUrl: string,
     ds: DataSourceConfig,
     helpers: CivicsCrawlHelpers,
-  ): Promise<'created' | 'updated' | 'failed' | 'skipped' | 'stale'> {
+    reextract = false,
+  ): Promise<
+    'created' | 'updated' | 'failed' | 'skipped' | 'stale' | 'unchanged'
+  > {
     if (!this.promptClient || !this.llm) return 'failed';
     try {
       const html = await helpers.fetchUrlText(sourceUrl);
@@ -667,6 +729,24 @@ export class CivicsSyncService extends LlmGeneratorBase {
           hints: ds.hints,
           html: content,
         });
+
+      // K1: skip a page whose every input is unchanged since its last
+      // completed extraction. Checked before the LLM call — which is the
+      // whole cost: the 2026-10-23 baseline spent 97% of its run there.
+      const sourceTextHash = sha256(content);
+      const configHash = civicsConfigHash(ds);
+      const skipKey = buildSkipKey({
+        sourceHash: sourceTextHash,
+        promptHash,
+        modelDigest: (await this.llm.getModelDigest()) ?? '',
+        configHash,
+      });
+      if (
+        !reextract &&
+        (await this.isUnchanged(regionId, sourceUrl, skipKey))
+      ) {
+        return 'unchanged';
+      }
 
       const maxTokens = ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS;
       const result = await this.llm.generate(promptText, {
@@ -702,6 +782,11 @@ export class CivicsSyncService extends LlmGeneratorBase {
         ...(civicsSeed() !== undefined ? { seed: civicsSeed() } : {}),
         requestTimeoutMs: ds.llmRequestTimeoutMs,
       });
+
+      // A prompt cut short on input (num_ctx) is not pinned: its answer came
+      // from part of the page, and the context window is not in the key —
+      // raising it must reach this page, so it runs again next time.
+      const pinKey = result.promptTruncated ? null : skipKey;
 
       const candidate = extractJsonObjectSlice(result.text);
       if (!candidate) {
@@ -805,6 +890,10 @@ export class CivicsSyncService extends LlmGeneratorBase {
           this.logger.log(
             `Civics extraction: no civic content on ${sourceUrl} — skipping empty block`,
           );
+          // Recorded, so an unchanged empty page is not re-extracted every
+          // run — 13 of 24 pages in the baseline. The empty-over-existing
+          // case below records nothing: that page must retry.
+          await this.recordExtraction(regionId, sourceUrl, pinKey, 'empty');
           return 'skipped';
         }
 
@@ -833,6 +922,11 @@ export class CivicsSyncService extends LlmGeneratorBase {
             `prompt is ${promptVersion ?? 'unknown'} — this row is now ` +
             `staler than its siblings and its provenance no longer matches.`,
         );
+        // Cleared, so the page retries next run even when this was a forced
+        // run (`reextract`) whose old record still matches the key.
+        await this.db!.civicsPageExtraction.deleteMany({
+          where: { regionId, sourceUrl },
+        });
         return 'stale';
       }
 
@@ -844,43 +938,40 @@ export class CivicsSyncService extends LlmGeneratorBase {
         glossary: toJsonField(block.glossary),
       };
 
-      // Built by the base class, not assembled here (#1281). `llm` is
-      // non-null past the guard above; the digest identifies WHICH weights
-      // produced the block, because `ollama pull` can move a tag.
-      const provenance = await this.outputProvenance({
-        promptHash,
-        promptVersion,
-      });
+      // Through the shared write path (#1281): the attribution columns are
+      // assembled in one place. The digest identifies WHICH weights produced
+      // the block, because `ollama pull` can move a tag; the two input
+      // hashes say what it was produced FROM (K1).
+      const data = await this.withProvenance(
+        { ...fields, sourceTextHash, configHash, extractedAt: new Date() },
+        { promptHash, promptVersion },
+        (p) => ({
+          promptHash: p.promptHash,
+          promptVersion: p.promptVersion,
+          llmModel: p.llmModel,
+          llmDigest: p.llmModelDigest,
+        }),
+      );
 
       await this.db!.civicsBlock.upsert({
         where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        create: {
-          regionId,
-          sourceUrl,
-          ...fields,
-          promptHash: provenance.promptHash,
-          promptVersion: provenance.promptVersion,
-          llmModel: provenance.llmModel,
-          llmDigest: provenance.llmModelDigest,
-          extractedAt: new Date(),
-        },
-        update: {
-          ...fields,
-          promptHash: provenance.promptHash,
-          promptVersion: provenance.promptVersion,
-          llmModel: provenance.llmModel,
-          llmDigest: provenance.llmModelDigest,
-          extractedAt: new Date(),
-        },
+        create: { regionId, sourceUrl, ...data },
+        update: data,
       });
 
       const glossaryUpserted = await this.upsertGlossaryEntries(
         regionId,
         sourceUrl,
         block.glossary,
-        promptHash,
-        promptVersion,
+        {
+          promptHash: data.promptHash,
+          promptVersion: data.promptVersion,
+          llmModel: data.llmModel,
+          llmDigest: data.llmDigest,
+        },
       );
+      // Last: a key is recorded only once everything it stands for is written.
+      await this.recordExtraction(regionId, sourceUrl, pinKey, 'block');
 
       const outcome = existing ? 'updated' : 'created';
       this.logger.log(
@@ -905,8 +996,12 @@ export class CivicsSyncService extends LlmGeneratorBase {
     regionId: string,
     sourceUrl: string,
     glossary: unknown,
-    promptHash: string | undefined,
-    promptVersion: string | undefined,
+    attribution: {
+      promptHash: string | undefined;
+      promptVersion: string | undefined;
+      llmModel: string | null;
+      llmDigest: string;
+    },
   ): Promise<number> {
     if (!Array.isArray(glossary) || glossary.length === 0) return 0;
     const valid = glossary.filter(
@@ -943,8 +1038,9 @@ export class CivicsSyncService extends LlmGeneratorBase {
               )
             : [],
           sourceUrl,
-          promptHash,
-          promptVersion,
+          // The block's attribution, model included: a definition could not
+          // say which model wrote it (K1 attribution step).
+          ...attribution,
           extractedAt: now,
         };
         return this.db!.glossaryEntry.upsert({
@@ -978,6 +1074,62 @@ export class CivicsSyncService extends LlmGeneratorBase {
     );
 
     return valid.length;
+  }
+
+  /**
+   * Whether this page can be skipped (K1): its last completed extraction had
+   * this exact key, and what that extraction produced is still there.
+   *
+   * An `empty` record needs nothing to exist. A `block` record needs the
+   * block: one deleted to force a fresh run, or lost to a restore, must be
+   * re-extracted — a skip would leave it gone, and the glossary prune would
+   * then retire its terms. The check is stamped on the record, so
+   * `checked_at` says when the page was last looked at.
+   */
+  private async isUnchanged(
+    regionId: string,
+    sourceUrl: string,
+    skipKey: string | null,
+  ): Promise<boolean> {
+    if (!skipKey) return false;
+    const where = { regionId_sourceUrl: { regionId, sourceUrl } };
+    const record = await this.db!.civicsPageExtraction.findUnique({
+      where,
+      select: { skipKey: true, outcome: true },
+    });
+    if (record?.skipKey !== skipKey) return false;
+    if (record.outcome === 'block') {
+      const block = await this.db!.civicsBlock.findUnique({
+        where,
+        select: { id: true },
+      });
+      if (!block) return false;
+    }
+    await this.db!.civicsPageExtraction.update({
+      where,
+      data: { checkedAt: new Date() },
+    });
+    return true;
+  }
+
+  /**
+   * Record a completed extraction's skip key (K1). Nothing to record when the
+   * key is null — an unresolved model digest — because a null key never
+   * skips: that page simply runs every time, as before K1.
+   */
+  private async recordExtraction(
+    regionId: string,
+    sourceUrl: string,
+    skipKey: string | null,
+    outcome: PageExtractionOutcome,
+  ): Promise<void> {
+    if (!skipKey) return;
+    await this.db!.civicsPageExtraction.upsert({
+      where: { regionId_sourceUrl: { regionId, sourceUrl } },
+      // One clock for every `checked_at`: the skip path stamps it too.
+      create: { regionId, sourceUrl, skipKey, outcome, checkedAt: new Date() },
+      update: { skipKey, outcome, checkedAt: new Date() },
+    });
   }
 
   /**
@@ -1080,4 +1232,8 @@ function isEmptyCivicsExtraction(block: {
     isEmptyList(block.glossary) &&
     isEmptyScheme
   );
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
 }

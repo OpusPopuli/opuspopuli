@@ -145,6 +145,13 @@ describe('crawlCivicsUrls', () => {
     expect(urls).toContain(glossaryUrl);
   });
 
+  it('labels its fetches civics, not bills', async () => {
+    // The fetch metric's data_type: every civics fetch was booked to bills.
+    const svc = makeSvc(async () => '');
+    await svc.crawlCivicsUrls({ url: SEED, crawlDepth: 1 }, HOSTS);
+    expect(svc.fetchUrlText).toHaveBeenCalledWith(SEED, 'civics');
+  });
+
   it('excludes out-of-scope links (different host)', async () => {
     const svc = makeSvc(
       async () => `<a href="https://senate.ca.gov/page">Senate</a>`,

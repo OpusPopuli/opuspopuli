@@ -339,6 +339,13 @@ per run, and the GPU idle fraction during a sync. If GPU idle is under ~15%
 for a data type, §6 lanes for that type are deprioritised — the skip fixes
 and fairness still stand.
 
+**Owner decision (2026-10-23): the threshold ranks work, it does not exempt
+a type.** Every data type gets the same staged pipeline — skip fixes,
+attribution, lanes — for consistency: one behaviour to remember, no
+refactor when a type's content or shape changes, and a threshold measured
+on one region (California) does not hold for every region. A type under
+15% idle is ordered later, not left on a different shape.
+
 Quality is part of the baseline because S7 (batched/parallel decode) and the
 §10.3 cutover can move output. A throughput gain that costs accuracy must
 not read as success.
@@ -946,6 +953,11 @@ Each data type goes through the same steps:
 | 6 | **Campaign finance** | K4, S8 | No LLM. Verify against the raw archive, not `items_extracted` |
 
 Bills goes first because it has the most findings and the longest run.
+
+**Owner decision (2026-10-23): bills moves to last.** The order is civics,
+propositions, representatives, meetings, campaign finance, then bills —
+the shorter types first, so each lane change is proven on a run measured
+in minutes before it meets the ~48h one.
 
 ### 10.3 Phase C1 — lane model cutover
 
