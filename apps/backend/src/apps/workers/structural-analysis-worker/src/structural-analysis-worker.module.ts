@@ -15,6 +15,7 @@ import relationaldbConfig from 'src/config/relationaldb.config';
 import { regionValidationSchema } from 'src/config/env.validation';
 
 import { StructuralAnalysisProcessor } from './structural-analysis.processor';
+import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
 
 @Module({
   imports: [
@@ -31,6 +32,9 @@ import { StructuralAnalysisProcessor } from './structural-analysis.processor';
     SecretsModule,
     RegionDomainModule,
     MetricsModule.forRoot({ serviceName: 'structural-analysis-worker' }),
+    // Batch inference waits its turn for the GPU on the endpoint's lane queue
+    // (S7). Worker modules only: an API process must not bind it.
+    LlmLaneModule.forRoot(),
     HealthModule.forRoot({
       serviceName: 'structural-analysis-worker',
       hasDatabase: true,

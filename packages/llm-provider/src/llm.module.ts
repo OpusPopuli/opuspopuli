@@ -2,8 +2,10 @@ import { Logger, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import {
   ILLMProvider,
+  LLM_LANE_DISPATCHER,
   METRICS_OBSERVER,
   setGlobalHttpPool,
+  type ILlmLaneDispatcher,
   type MetricsObserver,
 } from "@opuspopuli/common";
 import { llmConfig } from "@opuspopuli/config-provider";
@@ -12,6 +14,7 @@ import {
   contextTokensWarning,
 } from "./context-tokens.js";
 import { withLaneMetrics } from "./providers/lane-metrics.js";
+import { withLaneQueue } from "./providers/lane-queue.js";
 import {
   OllamaLLMProvider,
   OllamaConfig,
@@ -112,6 +115,7 @@ function buildLane(
   configService: ConfigService,
   lane: Lane,
   observer?: MetricsObserver,
+  dispatcher?: ILlmLaneDispatcher | null,
 ): ILLMProvider {
   const requestTimeoutMs = Number.parseInt(
     configService.get<string>("OLLAMA_REQUEST_TIMEOUT_MS") ?? "",
@@ -200,7 +204,22 @@ function buildLane(
   // is not the only consumer — RAG and rerank hold a provider too — and a
   // metric covering some callers is worse than none, because the totals look
   // complete. Returns the provider untouched when nothing is bound.
-  return withLaneMetrics(new OllamaLLMProvider(ollamaConfig), lane, observer);
+  //
+  // Inside it, the lane queue (S7): in a worker process, batch generations
+  // wait their turn for the GPU on the endpoint's queue; elsewhere it returns
+  // the provider unchanged. Metrics wrap the queue, not the other way round,
+  // so the `llm` stage covers the wait as well as the inference — the time
+  // the caller actually spent, which Gate 0's accounted time depends on.
+  return withLaneMetrics(
+    withLaneQueue(
+      new OllamaLLMProvider(ollamaConfig),
+      dispatcher,
+      lane,
+      ollamaConfig,
+    ),
+    lane,
+    observer,
+  );
 }
 
 @Module({
@@ -211,10 +230,17 @@ function buildLane(
       useFactory: (
         configService: ConfigService,
         observer?: MetricsObserver,
-      ): ILLMProvider => buildLane(configService, "analysis", observer),
-      // Optional on purpose: a worker that binds no observer must still
-      // boot. Instrumentation is never load-bearing.
-      inject: [ConfigService, { token: METRICS_OBSERVER, optional: true }],
+        dispatcher?: ILlmLaneDispatcher | null,
+      ): ILLMProvider =>
+        buildLane(configService, "analysis", observer, dispatcher),
+      // Both optional on purpose: a service that binds no observer must
+      // still boot, and one that binds no lane dispatcher (every API
+      // process) keeps its inference direct.
+      inject: [
+        ConfigService,
+        { token: METRICS_OBSERVER, optional: true },
+        { token: LLM_LANE_DISPATCHER, optional: true },
+      ],
     },
     /**
      * The ingestion lane (roadmap §6.4).
@@ -236,10 +262,17 @@ function buildLane(
       useFactory: (
         configService: ConfigService,
         observer?: MetricsObserver,
-      ): ILLMProvider => buildLane(configService, "ingestion", observer),
-      // Optional on purpose: a worker that binds no observer must still
-      // boot. Instrumentation is never load-bearing.
-      inject: [ConfigService, { token: METRICS_OBSERVER, optional: true }],
+        dispatcher?: ILlmLaneDispatcher | null,
+      ): ILLMProvider =>
+        buildLane(configService, "ingestion", observer, dispatcher),
+      // Both optional on purpose: a service that binds no observer must
+      // still boot, and one that binds no lane dispatcher (every API
+      // process) keeps its inference direct.
+      inject: [
+        ConfigService,
+        { token: METRICS_OBSERVER, optional: true },
+        { token: LLM_LANE_DISPATCHER, optional: true },
+      ],
     },
   ],
   exports: ["LLM_ANALYSIS_PROVIDER", "LLM_INGESTION_PROVIDER"],

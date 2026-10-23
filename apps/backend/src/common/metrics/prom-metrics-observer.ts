@@ -61,10 +61,14 @@ export class PromMetricsObserver implements MetricsObserver {
     @Optional()
     @InjectMetric('pipeline_rows_deleted_total')
     pipelineRowsDeleted?: Counter<string>,
+    @Optional()
+    @InjectMetric('lane_wait_seconds')
+    laneWait?: Histogram<string>,
   ) {
     this.histograms = asMap({
       llm_request_duration_seconds: llmRequestDuration,
       pipeline_stage_duration_seconds: pipelineStageDuration,
+      lane_wait_seconds: laneWait,
     });
     this.counters = asMap({
       llm_tokens_total: llmTokens,

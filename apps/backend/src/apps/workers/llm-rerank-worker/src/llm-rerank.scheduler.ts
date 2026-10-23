@@ -13,6 +13,14 @@ import { LlmRerankJobService } from 'src/apps/knowledge/src/domains/personalized
 import { RerankCandidatesService } from './rerank-candidates.service';
 
 /**
+ * The nightly fan-out is prioritised so a person's "refresh my feed" is not
+ * (S7). BullMQ serves its plain wait list before its prioritised set, so a
+ * manual job — enqueued with no priority — runs ahead of the whole 03:00 run
+ * on the same queue, instead of waiting behind it at concurrency 1.
+ */
+export const CRON_RERANK_PRIORITY = 10;
+
+/**
  * Nightly LLM re-rank scheduler (#745).
  *
  * Fires at 3 AM UTC by default. Enumerates active users (anyone with at
@@ -185,7 +193,7 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
         interestTags: [...entry.profile.interestTags],
         // entityType omitted → processor defaults to 'bill' (backward-compat).
       } satisfies LlmRerankJobData,
-      opts: { jobId: entry.bullmqJobId },
+      opts: { jobId: entry.bullmqJobId, priority: CRON_RERANK_PRIORITY },
     }));
     await this.queueService.enqueueBulk<LlmRerankJobData>(
       LLM_RERANK_QUEUE,
@@ -294,7 +302,7 @@ export class LlmRerankScheduler implements OnApplicationBootstrap {
         entityType,
         ...payload,
       } satisfies LlmRerankJobData,
-      opts: { jobId: bullmqJobIds[i] },
+      opts: { jobId: bullmqJobIds[i], priority: CRON_RERANK_PRIORITY },
     }));
     await this.queueService.enqueueBulk<LlmRerankJobData>(
       LLM_RERANK_QUEUE,

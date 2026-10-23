@@ -35,3 +35,6 @@ export {
 
 // NestJS module
 export { LLMModule } from "./llm.module.js";
+
+// Lane queue (S7): the consumer side builds a job's provider with this.
+export { createLaneProvider, withLaneQueue } from "./providers/lane-queue.js";

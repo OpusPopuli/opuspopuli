@@ -462,6 +462,9 @@ services:
       REGION_SYNC_RUN_ON_STARTUP: "false"
       # 1-hour lock for region-sync — representatives bio generation takes ~70 min
       BULLMQ_QUEUE_REGION_SYNC_LOCK_DURATION_MS: "3600000"
+      # S7: batch inference waits its turn for the GPU on the endpoint's
+      # lane queue (docs/plans/S7-gpu-lane-queue.md). Worker services only.
+      LLM_LANE_QUEUE_ENABLED: ${LLM_LANE_QUEUE_ENABLED:-true}
       BIO_GENERATOR_MAX_TOKENS: "1500"
       BIO_GENERATOR_CONCURRENCY: "1"
       BIO_GENERATOR_MAX_REPS: "5"
@@ -508,6 +511,9 @@ services:
       STRUCTURAL_ANALYSIS_WORKER_PORT: 8080
       # 10-min lock for structural analysis — LLM manifest analysis can be slow
       BULLMQ_QUEUE_PIPELINE_STRUCTURAL_ANALYSIS_LOCK_DURATION_MS: "600000"
+      # S7: batch inference waits its turn for the GPU on the endpoint's
+      # lane queue (docs/plans/S7-gpu-lane-queue.md). Worker services only.
+      LLM_LANE_QUEUE_ENABLED: ${LLM_LANE_QUEUE_ENABLED:-true}
       LLM_URL: http://host.docker.internal:11434
       LLM_MODEL: qwen3.5:9b
       # Ingestion lane (roadmap §6.4). Empty = this service's ingestion work
@@ -603,6 +609,9 @@ services:
       # Daily token budget per user. UAT keeps the prod default; raise
       # to validate near-cap behaviour without waiting a day.
       LLM_RERANK_PER_USER_DAILY_TOKEN_CAP: ${LLM_RERANK_PER_USER_DAILY_TOKEN_CAP:-10000}
+      # S7: batch inference waits its turn for the GPU on the endpoint's
+      # lane queue (docs/plans/S7-gpu-lane-queue.md). Worker services only.
+      LLM_LANE_QUEUE_ENABLED: ${LLM_LANE_QUEUE_ENABLED:-true}
       # Stale RUNNING-row sweep threshold on worker startup.
       LLM_RERANK_JOB_STALE_AGE_MS: ${LLM_RERANK_JOB_STALE_AGE_MS:-600000}
     ports:

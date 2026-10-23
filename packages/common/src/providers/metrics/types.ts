@@ -164,6 +164,21 @@ export const PipelineMetric = {
 } as const;
 
 /**
+ * Lane queue metrics (S7). Names and labels per
+ * `docs/plans/ingestion-resource-lanes.md` §3.
+ */
+export const LaneMetric = {
+  /**
+   * Histogram, seconds. Labels: `lane`, `endpoint`.
+   *
+   * Enqueue to start — time a batch generation waited for the GPU. The `llm`
+   * stage measures inference alone; this is the queue in front of it, so a
+   * slow sync can be told apart from a busy GPU.
+   */
+  WaitSeconds: "lane_wait_seconds",
+} as const;
+
+/**
  * The resource a stage consumes, which is the whole point of the label: the
  * plan's thesis is that network, CPU, GPU and DB work alternate within one
  * item, so each resource idles while another is busy. Grouping by stage is
