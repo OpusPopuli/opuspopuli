@@ -395,9 +395,11 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
   });
 
   it('rejects callers still waiting when the process shuts down', async () => {
-    const timers = () =>
-      process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
-    const before = timers();
+    // Every timer armed for the wait timeout, and every timer cleared. Not a
+    // count of the process's Timeout handles: CI runs every integration suite
+    // in one worker, and someone else's stray timer failed that version.
+    const set = jest.spyOn(global, 'setTimeout');
+    const cleared = jest.spyOn(global, 'clearTimeout');
     const a = make(1, slowFactory(1_500), 'shutdown');
     const pending = a
       .generate(job('shutdown', 'slow'))
@@ -414,8 +416,15 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
     expect(Date.now() - startedAt).toBeLessThan(1_000);
     await destroyed;
     // Nothing left counting down the wait timeout: a leftover timer would
-    // hold a stopping worker open for hours.
-    expect(timers()).toBeLessThanOrEqual(before);
+    // hold a stopping worker open until its container is killed.
+    const waitTimers = set.mock.calls.flatMap((call, i) =>
+      call[1] === 30_000 ? [set.mock.results[i].value] : [],
+    );
+    expect(waitTimers.length).toBeGreaterThan(0);
+    const clearedHandles = new Set(cleared.mock.calls.map((c) => c[0]));
+    for (const handle of waitTimers) expect(clearedHandles).toContain(handle);
+    set.mockRestore();
+    cleared.mockRestore();
   });
 
   it('records how long each call waited for the GPU', async () => {
