@@ -106,10 +106,28 @@ function isCarryoverLive(
 }
 
 function matchesDeadStage(bill: BillLifecycleInput): boolean {
-  return !!bill.currentStageId && DEAD_STAGE_IDS.has(bill.currentStageId);
+  return !!bill.currentStageId && isDeadStageId(bill.currentStageId);
 }
 
-function matchesDeadStatus(bill: BillLifecycleInput): boolean {
+/** Whether a stage id, by itself, marks a bill dead. */
+export function isDeadStageId(stageId: string): boolean {
+  return DEAD_STAGE_IDS.has(stageId);
+}
+
+/**
+ * Whether an official status (and last action, for the veto-override rule)
+ * says the bill is dead — the corroboration an LLM-chosen dead stage needs.
+ */
+export function statusSaysDead(
+  status: string | null,
+  lastAction: string | null,
+): boolean {
+  return matchesDeadStatus({ status, lastAction });
+}
+
+function matchesDeadStatus(
+  bill: Pick<BillLifecycleInput, 'status' | 'lastAction'>,
+): boolean {
   if (!bill.status) return false;
   if (DEAD_STATUS_PATTERNS.some((re) => re.test(bill.status!))) return true;
   if (VETOED_PATTERN.test(bill.status)) {
@@ -126,9 +144,34 @@ function isSessionExpired(
   ctx: BillLifecycleContext,
 ): boolean {
   if (ctx.activeSessionYears.includes(bill.sessionYear)) return false;
-  // Chaptered bills from closed sessions are enacted, not dead.
+  // Chaptered bills from closed sessions are enacted, not dead — whether the
+  // stage says so or only the status does. Stage alone missed 140 bills in
+  // dev whose status reads "Chaptered by Secretary of State" with no stage
+  // resolved; once every bill is refreshed against today (F4), each of them
+  // would have been labelled dead on the first sync of 2027.
   if (bill.currentStageId === 'chaptered') return false;
+  if (saysChaptered(bill.status)) return false;
   return true;
+}
+
+/** "Chaptered", "Inactive Bill - Chaptered", "Chaptered by Secretary of State…". */
+const CHAPTERED_STATUS_PATTERN = /\bchaptered\b/i;
+/** "not chaptered", "unchaptered" (the `\b` already refuses), "to be chaptered". */
+const NEGATED_CHAPTERED_PATTERN =
+  /\b(?:not|never|to be|failed to be)\s+chaptered\b/i;
+
+/**
+ * Whether a status says the bill was ENACTED. Word-bounded and negation-aware,
+ * and never for a status that still reads "Active Bill - …": that one would
+ * otherwise turn a closed-session bill active again (isActive defers only to
+ * isDead), putting it back in the feed.
+ */
+function saysChaptered(status: string | null): boolean {
+  if (!status || ACTIVE_STATUS_PATTERN.test(status)) return false;
+  return (
+    CHAPTERED_STATUS_PATTERN.test(status) &&
+    !NEGATED_CHAPTERED_PATTERN.test(status)
+  );
 }
 
 /**

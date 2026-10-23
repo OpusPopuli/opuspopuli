@@ -468,7 +468,7 @@ output**:
 
 - the source content hash;
 - the prompt hash;
-- the model digest (#1281, still open);
+- the model digest (#1281 — shipped in #1284; the issue was left open);
 - **the region config hash** where config feeds the prompt. Measured during
   the civics work: region config moves the output *more* than the prompt
   does, so a skip that ignores config serves stale output after a config
@@ -611,6 +611,96 @@ lifecycle (F4).
   `currentStageId` goes through, recomputing both booleans in the same
   update. Then a one-off backfill to repair existing rows.
 
+  ~~F4~~ **Done (2026-10-22)**, `domains/bill-lifecycle-writer.ts`.
+  `writeBillLifecycleFields` now carries the summary write and
+  `stage_backfill` (per bill — the old `updateMany` per stage could not
+  recompute flags that depend on each bill's other inputs), and the
+  extraction upsert uses the same `lifecycleFlags`.
+  `bill-lifecycle-writer.enforcement.spec.ts` fails if any other
+  `bill.update`/`updateMany` sets a lifecycle input; it reads source, so it
+  cannot see a spread — the per-writer tests are the real guard, and a
+  spread-shaped bypass was verified to be caught by them.
+
+  **Found while doing it: the flags go stale with the DATE, not only with
+  writes.** The session-expired rule makes every unfinished bill of a closed
+  session dead — but those are exactly the bills the source stops listing,
+  so nothing ever rewrites them. After the December 2026 flip, every
+  unfinished 2025–26 bill would have stayed `isActive=true` for good, and
+  with K5 that also mislabels them hot. **Fixed:** `refreshBillLifecycleFlags`
+  (the backfill script's logic, moved into the writer module; the script
+  now calls it) runs in every bills sync's `stage_backfill` phase — no LLM,
+  no fetch, writes only rows whose answer changed. The "one-off backfill"
+  is that same function, by hand, for a node that has not synced bills
+  since deploy. The rule turns on the calendar year
+  (`computeActiveCaSessionYears`: 2027 → `2027-2028`), so the flags flip on
+  **2027-01-01**, not when the session convenes in December. On prod, where
+  bills sync by hand, that still needs one bills sync (or the script) after
+  that date to land.
+
+  **Review (two independent reviewers, no blockers) changed four things:**
+  - **Enacted law would have been killed on 2027-01-01.** The session-expired
+    rule spared only `currentStageId = 'chaptered'`; 140 dev bills read
+    "Chaptered by Secretary of State" with no stage resolved. Refreshing every
+    bill (above) would have labelled all of them dead on the first sync of
+    2027. The rule now also spares a chaptered **status**.
+  - **Writes are conditional on the inputs they read.** The summary pass
+    loads bills, then spends minutes in the LLM; a concurrent sync could
+    change `status` meanwhile, and flags from the stale read would describe
+    a row that no longer exists. Updates now match on the inputs read (Prisma
+    5 extended `where`, P2025 on mismatch); the writer re-reads once, the
+    refresh leaves the row for the next sync. Verified on Postgres.
+  - **`extra` cannot carry a lifecycle field**, by type
+    (`BillNonLifecycleUpdate`), which closes the spread hole the source scan
+    cannot see on this path.
+  - **The LLM no longer writes the status-page columns** (owner decision,
+    2026-10-22). Since F4, `status` / `lastAction` / `lastActionDate` drive
+    the flags — so whether a bill is in the personalized feed — and the
+    summary pass's model reads the full-text page, not the status page. A
+    hallucinated "Died", or a prompt example copied as the answer (the
+    nemotron failure this project has already measured), would have dropped
+    a live bill from the feed; an invented current-year date would have kept
+    a closed session's bill active through the carryover guard. The summary
+    pass now writes only the summary and the taxonomy-validated stage;
+    extraction and the status-only re-check, which read the status page,
+    are the only writers of those three columns. This reverses #823's "S-2"
+    choice to keep `lastAction` in lockstep with the LLM's read — accepted
+    deliberately: a slightly older scraped `lastAction` is the recoverable
+    error, a wrongly-dead bill is not. The stage stays the LLM's, and only
+    `failed-passage` among stages can mark a bill dead.
+
+  **Second review, of the final diff (code + security, no blockers)**, closed
+  the gaps the owner decision left:
+  - **An LLM-chosen dead stage needs the official status to agree.**
+    `failed-passage` was the one stage choice that still dropped a live bill
+    from the feed. It is now accepted only with a dead status or a
+    pattern-matched `failed-passage` on the official status; otherwise the
+    stage falls back and `bill_dead_stage_uncorroborated` is logged. Free on
+    current data: all 38 dev `failed-passage` bills already have a dead status.
+  - **The stage fallback reads the official status**, not the LLM's
+    `status.raw` — which would have let the LLM pick the stage through the
+    back door.
+  - **"No stage fits" leaves the stored stage alone.** It used to CLEAR it,
+    so one `unknown` could erase a `failed-passage` stage and put a dead bill
+    back in the feed.
+  - **`stage_backfill` skips a conflict instead of re-applying** a stage
+    derived from the stale status, and one failed write is one failed item,
+    not an aborted sync.
+  - The chaptered rule is word-bounded, negation-aware and never applies to
+    an "Active Bill - …" status; `sessionYear` and the flags are excluded from
+    `extra` by a `never` mapping that also catches non-literal objects.
+
+  **Open, not in this change:**
+  - **The extraction LLM's `currentStageId` is never checked against the
+    taxonomy** (`raw.currentStageId ?? resolveStageFromStatus(...)` in the
+    extraction upsert), so it can write `failed-passage` or any string from
+    the status page. Pre-existing, outside the F4 diff, and the status page
+    is the accepted source — but it is the second channel to a dead stage.
+    Belongs with F3/K3 in the bills Phase B work, which reshapes extraction.
+  - **The prompt-service `bill-status-summary` template still asks for
+    `raw`, `lastActionDate` and `lastActionSnippet`**, now unread. Dropping
+    them is a prompt-service template bump (version + hash), not a change in
+    this repo.
+
 ### 5.2 The lazy path
 
 1. **Trigger.** The bill detail page calls `requestBillSummary(billId)` when
@@ -691,8 +781,12 @@ lane comes from the node's `.env` (`LLM_ANALYSIS_MODEL` /
 `LLM_INGESTION_MODEL`, written by `create-op-node`) and is chosen by
 `model-selection-and-deployment-split.md`.
 
-**Job identity is the attestation key.** `jobId = <entity>:<stage>:<skipKey>`,
-with the skip key from §4's shared rule. One key gives dedupe (BullMQ refuses
+**Job identity is the attestation key.** `jobId = <entity>__<stage>__<skipKey>`
+(`laneJobId` in `@opuspopuli/common`), with the skip key from §4's shared
+rule. **Not `:`** — BullMQ 5.76.10 accepts a colon in a custom id only when
+the id splits into exactly three parts (a compatibility path for old
+repeatable jobs, marked in its source for removal), so the colon form would
+have worked by accident and broken on the first entity id containing one. One key gives dedupe (BullMQ refuses
 a duplicate id), idempotent retries, and the same provenance the output row
 must persist.
 
@@ -807,15 +901,28 @@ In this order:
    before anything else changes.
 2. **Shared helpers**, consumed by every Phase B PR and never forked:
    - ~~`withStage()` (M1)~~
-   - the skip-key builder (§4 shared rule)
-   - the idempotent, monotonic lane upsert (H6)
-   - `writeBillLifecycleFields()` (F4)
+   - ~~the skip-key builder (§4 shared rule)~~ — `buildSkipKey`,
+     `stableHash`, `laneJobId` in `packages/common/src/utils/skip-key.ts`.
+     All four inputs are required (`configHash: null` must be said, not
+     omitted), and an unresolved model digest returns `null` — "always run"
+     — because two runs on different unresolved weights would otherwise
+     share a key
+   - the idempotent, monotonic lane upsert (H6) — **deferred to the first
+     Phase B lane PR**, which builds it as the shared module. No lane write
+     exists yet, and "never overwrite a newer result" depends on what
+     "newer" means for the table (a run timestamp, a source version, the
+     skip key's inputs); a generic Prisma helper written with no consumer
+     would guess that and be reshaped by its first user. S3's first lane
+     copies `minutes-summary`, which is already lane-shaped, so that is the
+     consumer to design it against
+   - ~~`writeBillLifecycleFields()` (F4)~~ — see §5.1
 3. **S1** per-host rate limiter.
 4. **S7** queue part: per-endpoint queues, global bound, interactive
    reserve, priority. Parallelism stays at 1.
 5. **S2** per-type jobs, `worker_host`.
-6. **#1281** model digest pinned in `LlmGeneratorBase` — still open, and
-   every skip key and attribution column needs it.
+6. ~~**#1281** model digest pinned in `LlmGeneratorBase`~~ — shipped in
+   #1284 (`9a6c9c1d`); the issue itself was never closed. `buildSkipKey`
+   refuses the `unknown` digest that `outputProvenance` falls back to.
 
 ### 10.2 Phase B — per data type, in this order
 

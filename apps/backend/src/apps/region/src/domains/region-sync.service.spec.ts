@@ -2041,7 +2041,7 @@ describe('RegionSyncService', () => {
     });
   });
 
-  describe('syncBills — discovery reaches the prune (F2)', () => {
+  describe('syncBills — discovery reaches the prune (F2), flags are refreshed (F4)', () => {
     it('hands the prune every discovered id, even when every bill failed', async () => {
       const STATUS =
         'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=';
@@ -2083,6 +2083,7 @@ describe('RegionSyncService', () => {
           })) as never);
       stub('runVotesPhase', { updated: 0 });
       const prune = stub('pruneStaleBills', undefined);
+      const refresh = stub('refreshLifecycleFlags', undefined);
       stub('buildLifecycleStageInputs', null);
       stub('enrichBillSummaries', undefined);
 
@@ -2098,6 +2099,9 @@ describe('RegionSyncService', () => {
         { externalIds: Set<string> },
       ];
       expect(discovery.externalIds).toEqual(new Set(['AB1', 'AB2']));
+      // F4: every bills sync re-derives lifecycle flags against today, so a
+      // closed session's bills die even though nothing re-extracts them.
+      expect(refresh).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -2163,6 +2167,102 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('backfillBillStageIds — conflicts and failures (F4)', () => {
+    const run = () =>
+      (
+        service as unknown as {
+          backfillBillStageIds: (
+            regionId: string,
+            patterns: { stageId: string; regex: RegExp }[],
+          ) => Promise<void>;
+        }
+      ).backfillBillStageIds('california', [
+        { stageId: 'failed-passage', regex: /failed passage/i },
+      ]);
+    const row = (id: string) => ({
+      id,
+      billNumber: id,
+      externalId: id,
+      status: 'Active Bill - Failed Passage',
+      currentStageId: null,
+      sessionYear: '2025-2026',
+      lastAction: null,
+      lastActionDate: null,
+    });
+
+    it('skips a bill that changed after the read instead of re-applying a stale stage', async () => {
+      // Its stage came from the status we read; a fresher status may imply
+      // another, so the retry must not overwrite it.
+      mockDb.bill.findMany.mockResolvedValue([row('b1')] as never);
+      mockDb.bill.update.mockRejectedValueOnce({ code: 'P2025' });
+
+      await run();
+
+      expect(mockDb.bill.update).toHaveBeenCalledTimes(1);
+      expect(mockDb.bill.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('carries on past a bill whose write fails, rather than aborting the sync', async () => {
+      mockDb.bill.findMany.mockResolvedValue([row('b1'), row('b2')] as never);
+      mockDb.bill.update
+        .mockRejectedValueOnce(new Error('connection reset'))
+        .mockResolvedValueOnce({} as never);
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => {});
+      try {
+        await expect(run()).resolves.toBeUndefined();
+        expect(mockDb.bill.update).toHaveBeenCalledTimes(2);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
+  describe('backfillBillStageIds — flags follow the stage (F4)', () => {
+    it('recomputes isDead / isActive for each bill it stages', async () => {
+      // One updateMany per stage used to set currentStageId and nothing
+      // else, so a bill backfilled to a dead stage stayed isActive.
+      mockDb.bill.findMany.mockResolvedValue([
+        {
+          id: 'bill-uuid',
+          billNumber: 'AB 7',
+          externalId: '202520260AB7',
+          status: 'Active Bill - Failed Passage',
+          currentStageId: null,
+          sessionYear: '2025-2026',
+          lastAction: null,
+          lastActionDate: null,
+        },
+      ] as never);
+      mockDb.bill.update.mockResolvedValue({} as never);
+
+      await (
+        service as unknown as {
+          backfillBillStageIds: (
+            regionId: string,
+            patterns: { stageId: string; regex: RegExp }[],
+          ) => Promise<void>;
+        }
+      ).backfillBillStageIds('california', [
+        { stageId: 'failed-passage', regex: /failed passage/i },
+      ]);
+
+      expect(mockDb.bill.updateMany).not.toHaveBeenCalled();
+      expect(mockDb.bill.update).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          id: 'bill-uuid',
+          currentStageId: null,
+        }),
+        data: {
+          currentStageId: 'failed-passage',
+          isDead: true,
+          isActive: false,
+        },
+      });
+    });
+  });
+
   describe('bill-status-summary merge (#823)', () => {
     const STAGE_PATTERNS = [
       { stageId: 'in_committee', regex: /Held in Committee/i },
@@ -2197,12 +2297,13 @@ describe('RegionSyncService', () => {
       fiscalImpact: null,
       fullTextUrl: 'https://example/text',
       currentStageId: null,
+      lastAction: null,
+      lastActionDate: null,
       ...overrides,
     });
 
     type ValidateStageId = (
       llmStage: string | undefined,
-      statusRaw: string | undefined,
       bill: ReturnType<typeof mkBill>,
       stagePatterns: typeof STAGE_PATTERNS,
       stageIdSet: Set<string>,
@@ -2224,8 +2325,7 @@ describe('RegionSyncService', () => {
 
         const result = validateStageId(service)(
           'in_committee',
-          'Senate - Held in Committee',
-          mkBill(),
+          mkBill({ status: 'Senate - Held in Committee' }),
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -2255,8 +2355,7 @@ describe('RegionSyncService', () => {
 
         const result = validateStageId(service)(
           'unknown',
-          'Senate - Held in Committee',
-          mkBill(),
+          mkBill({ status: 'Senate - Held in Committee' }),
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -2289,8 +2388,7 @@ describe('RegionSyncService', () => {
 
         const result = validateStageId(service)(
           'vetoed',
-          'Passed Assembly',
-          mkBill(),
+          mkBill({ status: 'Passed Assembly' }),
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -2303,6 +2401,46 @@ describe('RegionSyncService', () => {
           llmStage: 'vetoed',
           outOfTaxonomy: true,
           fallback: 'passed_first_chamber',
+        });
+      });
+
+      describe('a stage that would mark the bill dead needs the official status to agree', () => {
+        const WITH_DEAD = new Set([...STAGE_ID_SET, 'failed-passage']);
+        const quiet = () =>
+          jest
+            .spyOn(
+              (service as unknown as { logger: { warn: jest.Mock } }).logger,
+              'warn',
+            )
+            .mockImplementation(() => undefined);
+
+        it('refuses an uncorroborated failed-passage and falls back', () => {
+          // The one LLM stage choice that drops a live bill from the feed.
+          const warn = quiet();
+
+          const result = validateStageId(service)(
+            'failed-passage',
+            mkBill({ status: 'Senate - Held in Committee' }),
+            STAGE_PATTERNS,
+            WITH_DEAD,
+          );
+
+          expect(result).toBe('in_committee');
+          expect(warn.mock.calls[0][0]).toMatchObject({
+            event: 'bill_dead_stage_uncorroborated',
+            llmStage: 'failed-passage',
+          });
+        });
+
+        it('accepts failed-passage when the official status says the bill is dead', () => {
+          const result = validateStageId(service)(
+            'failed-passage',
+            mkBill({ status: 'Inactive Bill - Failed Passage' }),
+            STAGE_PATTERNS,
+            WITH_DEAD,
+          );
+
+          expect(result).toBe('failed-passage');
         });
       });
 
@@ -2324,8 +2462,7 @@ describe('RegionSyncService', () => {
 
         const result = validateStageId(service)(
           undefined,
-          'Some weird status string no pattern catches',
-          mkBill(),
+          mkBill({ status: 'Some weird status string no pattern catches' }),
           STAGE_PATTERNS,
           STAGE_ID_SET,
         );
@@ -2383,7 +2520,90 @@ describe('RegionSyncService', () => {
         expect(args[0].data).not.toHaveProperty('lastActionDate');
       });
 
-      it('writes summary + status + validated stage + parsed lastActionDate on the happy path', async () => {
+      it("cannot kill a bill whose official status is active with an LLM 'Died'", async () => {
+        // Owner decision, 2026-10-22: since F4 the status-page columns drive
+        // isDead/isActive — feed inclusion — and this model reads the
+        // full-text page, not the status page. Its status is not written,
+        // and the flags are recomputed from the scraped one.
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill({ status: 'Active Bill - In Committee Process' }),
+          {
+            status: { raw: 'Inactive Bill - Died', stage: 'unknown' },
+            summary: { plainEnglishSummary: 'Died in committee.' },
+          },
+          { promptVersion: 'v4', promptHash: 'sha-v4' },
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(updateMock).toHaveBeenCalledTimes(1);
+        const { data } = updateMock.mock.calls[0][0];
+        expect(data).not.toHaveProperty('status');
+        expect(data).toMatchObject({ isDead: false, isActive: true });
+      });
+
+      it('recomputes isDead / isActive from the stage it does write (F4)', async () => {
+        // The stage is still the LLM's (validated against the taxonomy),
+        // and it moves the flags in the same update.
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill({ status: 'Active Bill - In Committee Process' }),
+          {
+            status: {
+              raw: 'Senate - Held in Committee',
+              stage: 'in_committee',
+            },
+            summary: { plainEnglishSummary: '...' },
+          },
+          { promptVersion: 'v4', promptHash: 'sha-v4' },
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        expect(updateMock.mock.calls[0][0].data).toMatchObject({
+          currentStageId: 'in_committee',
+          isDead: false,
+          isActive: true,
+        });
+      });
+
+      it('leaves the stored stage alone when no stage resolves', async () => {
+        // As null it CLEARED the stage: one `unknown` could erase a
+        // failed-passage stage and, since F4, put a dead bill in the feed.
+        const updateMock = jest.fn().mockResolvedValue({});
+        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+          bill: { update: updateMock },
+        };
+
+        await writeStatusSummary(service)(
+          mkBill({
+            status: 'Some weird status string no pattern catches',
+            currentStageId: 'failed-passage',
+          }),
+          {
+            status: { stage: 'unknown' },
+            summary: { plainEnglishSummary: '...' },
+          },
+          { promptVersion: 'v1', promptHash: 'sha-v1' },
+          STAGE_PATTERNS,
+          STAGE_ID_SET,
+        );
+
+        const { data } = updateMock.mock.calls[0][0];
+        expect(data).not.toHaveProperty('currentStageId');
+        expect(data).toMatchObject({ isDead: true, isActive: false });
+      });
+
+      it('writes summary + validated stage on the happy path, and no status-page field', async () => {
         const updateMock = jest.fn().mockResolvedValue({});
         (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
           bill: { update: updateMock },
@@ -2424,15 +2644,13 @@ describe('RegionSyncService', () => {
           aiSummaryVersion: 'v4',
           aiSummaryPromptVersion: 'v4',
           aiSummaryPromptHash: 'sha-v4',
-          status: 'Senate - Held in Committee',
-          // S-2: lastActionSnippet flows into bills.lastAction so the
-          // bill-extraction view and the merged-call view stay in sync.
-          lastAction: 'Referred to Com. on JUD.',
           currentStageId: 'in_committee',
         });
-        const lastActionDate = args[0].data.lastActionDate as Date;
-        expect(lastActionDate).toBeInstanceOf(Date);
-        expect(lastActionDate.toISOString()).toBe('2026-05-30T00:00:00.000Z');
+        // The LLM returned all three; none is its to write (owner decision,
+        // 2026-10-22 — the status page is their only source).
+        for (const field of ['status', 'lastAction', 'lastActionDate']) {
+          expect(args[0].data).not.toHaveProperty(field);
+        }
       });
 
       it('falls through to pattern matcher when LLM stage is out-of-taxonomy', async () => {
@@ -2450,7 +2668,8 @@ describe('RegionSyncService', () => {
           .mockImplementation(() => undefined);
 
         await writeStatusSummary(service)(
-          mkBill(),
+          // The fallback reads the OFFICIAL status now, not the LLM's raw.
+          mkBill({ status: 'Passed Assembly' }),
           {
             status: {
               raw: 'Passed Assembly',
@@ -2469,62 +2688,40 @@ describe('RegionSyncService', () => {
         expect(args[0].data.currentStageId).toBe('passed_first_chamber');
       });
 
-      it('preserves the existing lastActionDate column when the LLM returns an unparseable date', async () => {
-        // undefined return from parseLastActionDate spreads to nothing, so
-        // the existing column value isn't clobbered with null.
-        const updateMock = jest.fn().mockResolvedValue({});
-        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
-          bill: { update: updateMock },
-        };
+      it.each([
+        ['a valid date', '2026-05-30'],
+        ['a future date', '2099-01-01'],
+        ['an explicit null', null],
+        ['an unparseable string', 'not-a-date'],
+      ])(
+        'never writes lastActionDate from the LLM, given %s',
+        async (_name, lastActionDate) => {
+          const updateMock = jest.fn().mockResolvedValue({});
+          (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
+            bill: { update: updateMock },
+          };
 
-        await writeStatusSummary(service)(
-          mkBill(),
-          {
-            status: {
-              raw: 'Status text',
-              stage: 'in_committee',
-              lastActionDate: 'not-a-date', // unparseable
-              lastActionSnippet: null,
+          await writeStatusSummary(service)(
+            mkBill(),
+            {
+              status: {
+                raw: 'Status text',
+                stage: 'in_committee',
+                lastActionDate,
+                lastActionSnippet: 'Referred to Com. on JUD.',
+              },
+              summary: { plainEnglishSummary: '...' },
             },
-            summary: { plainEnglishSummary: '...' },
-          },
-          { promptVersion: 'v1', promptHash: 'sha-v1' },
-          STAGE_PATTERNS,
-          STAGE_ID_SET,
-        );
+            { promptVersion: 'v1', promptHash: 'sha-v1' },
+            STAGE_PATTERNS,
+            STAGE_ID_SET,
+          );
 
-        const [args] = updateMock.mock.calls;
-        expect(args[0].data).not.toHaveProperty('lastActionDate');
-      });
-
-      it('writes lastActionDate: null when the LLM explicitly returned null (intentional clear)', async () => {
-        // Distinct from the "unparseable" path: an explicit null is the
-        // LLM telling us the bill has no last-action date. Honor it by
-        // clearing the column rather than preserving stale data.
-        const updateMock = jest.fn().mockResolvedValue({});
-        (service as unknown as { db: { bill: { update: jest.Mock } } }).db = {
-          bill: { update: updateMock },
-        };
-
-        await writeStatusSummary(service)(
-          mkBill(),
-          {
-            status: {
-              raw: 'Status text',
-              stage: 'in_committee',
-              lastActionDate: null, // explicit null from LLM
-              lastActionSnippet: null,
-            },
-            summary: { plainEnglishSummary: '...' },
-          },
-          { promptVersion: 'v1', promptHash: 'sha-v1' },
-          STAGE_PATTERNS,
-          STAGE_ID_SET,
-        );
-
-        const [args] = updateMock.mock.calls;
-        expect(args[0].data.lastActionDate).toBeNull();
-      });
+          const { data } = updateMock.mock.calls[0][0];
+          expect(data).not.toHaveProperty('lastActionDate');
+          expect(data).not.toHaveProperty('lastAction');
+        },
+      );
     });
 
     describe('parseStatusSummaryResponse — runtime payload guards', () => {
