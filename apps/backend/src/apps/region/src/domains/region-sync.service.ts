@@ -1032,7 +1032,7 @@ export class RegionSyncService implements OnModuleDestroy {
         this.syncRepresentatives(provider, maxReps, regionId),
       [DataType.CAMPAIGN_FINANCE]: () =>
         this.syncCampaignFinance(provider, pipelineJobId),
-      [DataType.CIVICS]: () => this.syncCivics(provider),
+      [DataType.CIVICS]: () => this.syncCivics(provider, archiveOptions),
       [DataType.BILLS]: () =>
         this.syncBills(maxBills, provider, forceStatusRecheck),
       [DataType.COUNTY_THRESHOLDS]: () => this.syncCountyThresholds(provider),
@@ -1227,7 +1227,10 @@ export class RegionSyncService implements OnModuleDestroy {
    *  are passed in as callbacks because bills sync also uses them; the
    *  consolidation lands as a follow-up after #828 Step 7 (bills) lifts
    *  them into a shared module. */
-  private async syncCivics(plugin: DataFetcher): Promise<{
+  private async syncCivics(
+    plugin: DataFetcher,
+    archiveOptions?: ArchiveIngestOptions,
+  ): Promise<{
     processed: number;
     created: number;
     updated: number;
@@ -1235,11 +1238,17 @@ export class RegionSyncService implements OnModuleDestroy {
     if (!this.civicsSyncService) {
       return { processed: 0, created: 0, updated: 0 };
     }
-    return this.civicsSyncService.sync(plugin, {
-      fetchUrlText: this.fetchUrlText.bind(this),
-      htmlToReadableText: this.htmlToReadableText.bind(this),
-      crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
-    });
+    return this.civicsSyncService.sync(
+      plugin,
+      {
+        fetchUrlText: (url) => this.fetchUrlText(url, DataType.CIVICS),
+        htmlToReadableText: this.htmlToReadableText.bind(this),
+        crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
+      },
+      // `resetWatermark` — "ignore the stored ingestion state for this run" —
+      // forces civics re-extraction past its skip records (K1).
+      { reextract: archiveOptions?.resetWatermark === true },
+    );
   }
 
   // ─── County thresholds sync ───────────────────────────────────────────────────
@@ -3260,7 +3269,7 @@ export class RegionSyncService implements OnModuleDestroy {
       if (d >= depth) continue;
       let html: string;
       try {
-        html = await this.fetchUrlText(url);
+        html = await this.fetchUrlText(url, DataType.CIVICS);
       } catch (e) {
         this.logger.warn(
           `Civics crawl: fetch failed for ${url}: ${(e as Error).message}`,
@@ -3321,14 +3330,21 @@ export class RegionSyncService implements OnModuleDestroy {
    * `./resilient-fetch` so all per-bill / per-page fetches honor the
    * shared per-host gap and back off on 5xx / 429 / timeouts before
    * giving up. See opuspopuli#730.
+   *
+   * @param dataType - The metric label for the fetch. Bills is the default
+   *   because every other caller is a bills path; civics passes its own, or
+   *   its fetch time is booked to bills (K1 attribution step).
    */
-  private async fetchUrlText(url: string): Promise<string> {
+  private async fetchUrlText(
+    url: string,
+    dataType: DataType = DataType.BILLS,
+  ): Promise<string> {
     return fetchTextWithRetry(url, {
       timeoutMs: 20_000,
       throttle: this.hostRateLimiter,
       logger: this.logger,
       metrics: this.metrics,
-      dataType: 'bills',
+      dataType,
     });
   }
 

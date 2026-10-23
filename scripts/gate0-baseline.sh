@@ -47,6 +47,21 @@ if [ "$RUN_SECONDS" -le 0 ]; then
   exit 1
 fi
 
+# Counters are READ one scrape interval after the run's end. Prometheus only
+# knows a counter as of its last scrape (30s), so a read AT the end misses
+# whatever the last half-minute of the run counted — measured 2026-10-23: the
+# civics run's last two skips landed after the last scrape, and the script
+# reported 11 skipped where the log said 13. The bounds stay explicit; only
+# the read moves. The same lag applies at the start: begin a measured sync at
+# least one pad after the previous one ends, and do not start the next within
+# the pad, or a neighbour's counts land in this one.
+SCRAPE_PAD_S="${SCRAPE_PAD_S:-35}"
+if ! [[ "$SCRAPE_PAD_S" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: SCRAPE_PAD_S must be a whole number of seconds." >&2
+  exit 1
+fi
+READ_AT=$(( AT + SCRAPE_PAD_S ))
+
 # A future anchor returns empty vectors, which read identically to "the run
 # produced no metrics". Refuse rather than report zeros.
 NOW=$(date "+%s")
@@ -55,44 +70,20 @@ if [ "$AT" -gt "$NOW" ]; then
   echo "       Container logs are UTC; give the time in the host's local zone." >&2
   exit 1
 fi
+if [ "$READ_AT" -gt "$NOW" ]; then
+  echo "ERROR: wait $(( READ_AT - NOW ))s — counters are read ${SCRAPE_PAD_S}s after the run ends, so its last scrape is in." >&2
+  exit 1
+fi
 if [ "$(( NOW - AT ))" -gt 1209600 ]; then
   echo "WARNING: run-end is over 14 days ago; Prometheus retention is 15d." >&2
 fi
-
-# Prometheus needs a window at least as long as the run; pad for scrape lag.
-WINDOW="${RUN_SECONDS}s"
-
-q() {
-  curl -sG --data-urlencode "query=$1" --data-urlencode "time=$AT" \
-       "$PROM/api/v1/query" \
-    | python3 -c '
-import json, sys
-r = json.load(sys.stdin)
-if r.get("status") != "success":
-    sys.stderr.write("QUERY FAILED: " + str(r.get("error")) + "\n")
-    sys.exit(1)
-res = r["data"]["result"]
-print(res[0]["value"][1] if res else "0")'
-}
-
-q_by() {
-  curl -sG --data-urlencode "query=$1" --data-urlencode "time=$AT" \
-       "$PROM/api/v1/query" \
-    | python3 -c '
-import json, sys
-label = sys.argv[1]
-for x in json.load(sys.stdin)["data"]["result"]:
-    name = x["metric"].get(label, "?")
-    value = round(float(x["value"][1]), 1)
-    print(name + "\t" + str(value))' "$2"
-}
 
 # Scalar counter delta, same two-instant method. `increase()` is wrong for
 # every counter here, not just the item counts: on the propositions run it
 # reported 0 seconds and 0 LLM calls where the true deltas were 74.0s and 3.
 delta() {
   local expr="$1" start="$FROM"
-  for t in "$start" "$AT"; do
+  for t in "$start" "$READ_AT"; do
     curl -sG --data-urlencode "query=$expr" --data-urlencode "time=$t" \
          "$PROM/api/v1/query"
   done | python3 -c '
@@ -113,7 +104,7 @@ print(round(max(after - before, 0.0), 1))'
 # 8 updated / 11 skipped / 1 failed where the log said 12 / 13 / 2.
 delta_by() {
   local expr="$1" label="$2" start="$FROM"
-  for t in "$start" "$AT"; do
+  for t in "$start" "$READ_AT"; do
     curl -sG --data-urlencode "query=$expr" --data-urlencode "time=$t" \
          "$PROM/api/v1/query"
   done | python3 -c '

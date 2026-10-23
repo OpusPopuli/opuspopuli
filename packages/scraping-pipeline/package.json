@@ -31,7 +31,7 @@
     "adm-zip": "^0.6.1",
     "cheerio": "^1.1.2",
     "yauzl": "^3.3.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@nestjs/common": "^11.0.0",

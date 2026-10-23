@@ -10,10 +10,9 @@ import { DataType, type DeclarativeRegionConfig } from "@opuspopuli/common";
 
 const DataSourceConfigSchema = z.object({
   url: z.string().url("Invalid URL format"),
-  dataType: z.nativeEnum(DataType, {
-    errorMap: () => ({
-      message: `Must be one of: ${Object.values(DataType).join(", ")}`,
-    }),
+  dataType: z.enum(DataType, {
+    // zod 4 renamed `errorMap` to `error`.
+    error: `Must be one of: ${Object.values(DataType).join(", ")}`,
   }),
   contentGoal: z
     .string()

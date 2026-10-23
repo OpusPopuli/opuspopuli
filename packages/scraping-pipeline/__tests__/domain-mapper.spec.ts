@@ -1704,6 +1704,33 @@ describe("DomainMapperService", () => {
       });
     });
 
+    it("rejects an unrecognised IE support/oppose code rather than claiming support", () => {
+      const ie = (supportOrOppose?: string) =>
+        mapper.map(
+          createRawResult({
+            items: [
+              {
+                externalId: "IE-X",
+                committeeId: "C001",
+                amount: "100",
+                date: "2026-10-01",
+                sourceSystem: "cal_access",
+                ...(supportOrOppose === undefined ? {} : { supportOrOppose }),
+              },
+            ],
+          }),
+          createSource({
+            dataType: DataType.CAMPAIGN_FINANCE,
+            category: "cal-access-s496",
+          }),
+        ).items as { supportOrOppose?: string }[];
+
+      expect(ie("zz")).toHaveLength(0);
+      expect(ie()[0].supportOrOppose).toBe("support");
+      expect(ie("")[0].supportOrOppose).toBe("support");
+      expect(ie("o")[0].supportOrOppose).toBe("oppose");
+    });
+
     it("routes 'IE Cover Pages' (Form 496) to cvr filings with filer + target (#955)", () => {
       const result = mapper.map(
         createRawResult({

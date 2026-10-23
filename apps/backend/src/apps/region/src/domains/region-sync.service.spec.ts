@@ -147,6 +147,7 @@ function createMockCache() {
 // ─── Core RegionSyncService tests ─────────────────────────────────────────────
 
 describe('RegionSyncService', () => {
+  let civicsSync: CivicsSyncService;
   let service: RegionSyncService;
   let mockDb: MockDbClient;
   let mockPlugin: jest.Mocked<IRegionPlugin>;
@@ -244,11 +245,35 @@ describe('RegionSyncService', () => {
     }).compile();
 
     service = module.get<RegionSyncService>(RegionSyncService);
+    civicsSync = module.get(CivicsSyncService);
     await service.onModuleInit();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('civics re-extraction (K1)', () => {
+    const syncCivics = (archiveOptions?: { resetWatermark?: boolean }) =>
+      (
+        service as unknown as {
+          syncCivics: (p: unknown, a?: unknown) => Promise<unknown>;
+        }
+      ).syncCivics({}, archiveOptions);
+
+    it("forces civics past its skip records on the sync's resetWatermark", async () => {
+      const sync = jest
+        .spyOn(civicsSync, 'sync')
+        .mockResolvedValue({ processed: 0, created: 0, updated: 0 });
+
+      await syncCivics({ resetWatermark: true });
+      await syncCivics();
+
+      expect(sync.mock.calls.map((c) => c[2])).toEqual([
+        { reextract: true },
+        { reextract: false },
+      ]);
+    });
   });
 
   describe('getRegionInfo', () => {

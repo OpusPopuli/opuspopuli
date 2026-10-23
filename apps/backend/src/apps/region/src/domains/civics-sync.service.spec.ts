@@ -5,13 +5,18 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
-import { PromptClientService } from '@opuspopuli/prompt-client';
-import type { ILLMProvider } from '@opuspopuli/common';
+import {
+  PromptClientService,
+  type CivicsExtractionParams,
+} from '@opuspopuli/prompt-client';
+import { stableHash, type ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import {
   CIVICS_MAX_OUTPUT_TOKENS,
+  CIVICS_EXTRACTOR_VERSION,
   CivicsSyncService,
+  civicsConfigHash,
   type CivicsCrawlHelpers,
   type CivicsProvider,
 } from './civics-sync.service';
@@ -141,7 +146,12 @@ describe('CivicsSyncService', () => {
 
     expect(mockDb.civicsBlock.upsert).not.toHaveBeenCalled();
     // A skipped page counts as neither processed nor created/updated.
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+    expect(result).toEqual({
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 1,
+    });
   });
 
   // ── #1335: an empty extraction over an EXISTING block ──────────────────
@@ -240,7 +250,12 @@ describe('CivicsSyncService', () => {
       jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       const { result } = await driveOverExisting(EMPTY_BLOCK);
 
-      expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+      expect(result).toEqual({
+        processed: 0,
+        created: 0,
+        updated: 0,
+        skipped: 1,
+      });
     });
 
     /**
@@ -278,7 +293,12 @@ describe('CivicsSyncService', () => {
       );
 
       expect(mockDb.civicsBlock.upsert).toHaveBeenCalled();
-      expect(result).toEqual({ processed: 1, created: 0, updated: 1 });
+      expect(result).toEqual({
+        processed: 1,
+        created: 0,
+        updated: 1,
+        skipped: 0,
+      });
     });
   });
 
@@ -301,7 +321,12 @@ describe('CivicsSyncService', () => {
         update: expect.objectContaining({ llmModel: 'qwen-test' }),
       }),
     );
-    expect(result).toEqual({ processed: 1, created: 1, updated: 0 });
+    expect(result).toEqual({
+      processed: 1,
+      created: 1,
+      updated: 0,
+      skipped: 0,
+    });
   });
 
   it('stamps the full attribution set from the base class (#1281)', async () => {
@@ -349,7 +374,12 @@ describe('CivicsSyncService', () => {
     );
 
     expect(mockDb.civicsBlock.upsert).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ processed: 1, created: 1, updated: 0 });
+    expect(result).toEqual({
+      processed: 1,
+      created: 1,
+      updated: 0,
+      skipped: 0,
+    });
   });
 
   it('receives the LLM provider via the LLM_INGESTION_PROVIDER token and gets past the guard (#869)', async () => {
@@ -368,7 +398,11 @@ describe('CivicsSyncService', () => {
     // Under the injection bug, llm was undefined → guard short-circuited and
     // getDataSources was NEVER called. Passing the guard proves the fix.
     expect(getDataSources).toHaveBeenCalledWith(expect.anything());
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+    expect(result).toEqual({
+      processed: 0,
+      created: 0,
+      updated: 0,
+    });
   });
 
   it('no-ops when the LLM provider is absent (guard still protects a mis-wired node)', async () => {
@@ -382,7 +416,11 @@ describe('CivicsSyncService', () => {
     const result = await service.sync(plugin, makeHelpers());
 
     expect(getDataSources).not.toHaveBeenCalled();
-    expect(result).toEqual({ processed: 0, created: 0, updated: 0 });
+    expect(result).toEqual({
+      processed: 0,
+      created: 0,
+      updated: 0,
+    });
   });
 
   describe('CivicsSyncService — output budget and determinism', () => {
@@ -587,5 +625,84 @@ describe('CivicsSyncService — failure diagnostics (#1319)', () => {
     // proponent contact details. Logs are shipped, indexed and retained; a
     // file written only on request is not. Default must be off.
     expect(process.env.CIVICS_CAPTURE_DIR).toBeUndefined();
+  });
+});
+
+describe('civicsConfigHash — what a page skip must notice (K1)', () => {
+  /**
+   * Every input of the civics prompt, and how a skip covers it. Typed as a
+   * Record over the prompt's own params, so adding an input to
+   * `CivicsExtractionParams` fails to COMPILE here until someone decides how
+   * the skip key covers it — an unhashed prompt input is a stale skip.
+   */
+  const COVERED: Record<
+    keyof CivicsExtractionParams,
+    'row' | 'text' | 'config'
+  > = {
+    regionId: 'row', // the skip record is per (region, page)
+    sourceUrl: 'row',
+    html: 'text', // sourceHash
+    contentGoal: 'config',
+    category: 'config',
+    hints: 'config',
+  };
+
+  const base = {
+    url: 'https://www.senate.ca.gov/citizens-guide',
+    contentGoal: 'how a bill becomes law',
+    category: 'Senate',
+    hints: ['Senate rules'],
+    llmMaxTokens: 64000,
+  };
+  const changed: Record<string, unknown> = {
+    contentGoal: 'something else',
+    category: 'Assembly',
+    hints: ['Assembly rules'],
+  };
+
+  it.each(
+    Object.entries(COVERED)
+      .filter(([, how]) => how === 'config')
+      .map(([field]) => field),
+  )('changes when the prompt input %s changes', (field) => {
+    expect(
+      civicsConfigHash({ ...base, [field]: changed[field] } as never),
+    ).not.toBe(civicsConfigHash(base as never));
+  });
+
+  it('changes when the output budget changes', () => {
+    expect(civicsConfigHash({ ...base, llmMaxTokens: 8000 } as never)).not.toBe(
+      civicsConfigHash(base as never),
+    );
+  });
+
+  it('hashes the EFFECTIVE budget — unset equals the code default', () => {
+    const unset: Record<string, unknown> = { ...base };
+    delete unset.llmMaxTokens;
+    expect(civicsConfigHash(unset as never)).toBe(
+      civicsConfigHash({
+        ...base,
+        llmMaxTokens: CIVICS_MAX_OUTPUT_TOKENS,
+      } as never),
+    );
+  });
+
+  it('includes the extractor version, so a post-processing fix reaches unchanged pages', () => {
+    // Bumping CIVICS_EXTRACTOR_VERSION must change every page's key.
+    expect(civicsConfigHash(base as never)).toBe(
+      stableHash({
+        extractor: CIVICS_EXTRACTOR_VERSION,
+        contentGoal: base.contentGoal,
+        category: base.category,
+        hints: base.hints,
+        llmMaxTokens: base.llmMaxTokens,
+      }),
+    );
+  });
+
+  it('ignores config that only changes which pages are crawled', () => {
+    expect(
+      civicsConfigHash({ ...base, crawlDepth: 3, crawlMaxPages: 50 } as never),
+    ).toBe(civicsConfigHash(base as never));
   });
 });

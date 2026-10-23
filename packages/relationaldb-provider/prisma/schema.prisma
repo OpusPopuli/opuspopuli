@@ -1614,6 +1614,10 @@ model CivicsBlock {
   /// LLM model + provider used (e.g. "ollama/qwen3.5:9b"). Audit trail.
   llmModel        String?  @map("llm_model") @db.VarChar(80)
   llmDigest       String?  @map("llm_digest") @db.VarChar(80)
+  /// K1: sha256 of the readable text the block was extracted from
+  sourceTextHash  String?  @map("source_text_hash") @db.VarChar(64)
+  /// K1: stableHash of the data-source config fields that feed the prompt
+  configHash      String?  @map("config_hash") @db.VarChar(64)
   extractedAt     DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -1664,6 +1668,9 @@ model GlossaryEntry {
   /// the prompt is revised in the prompt-service.
   promptHash     String?  @map("prompt_hash") @db.VarChar(64)
   promptVersion  String?  @map("prompt_version") @db.VarChar(20)
+  /// K1 attribution: the model and weights that wrote this definition
+  llmModel       String?  @map("llm_model") @db.VarChar(80)
+  llmDigest      String?  @map("llm_digest") @db.VarChar(80)
   extractedAt    DateTime @default(now()) @map("extracted_at") @db.Timestamptz
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -1677,6 +1684,22 @@ model GlossaryEntry {
   @@unique([regionId, slug])
   @@index([regionId, term])
   @@map("glossary_entries")
+}
+
+/// Civics K1: the skip key of each page's last completed extraction, and
+/// whether it yielded a block or nothing. Kept apart from CivicsBlock
+/// because an empty page writes no block (#874). The CHECK on `outcome`
+/// ('block' | 'empty') lives in the migration SQL.
+model CivicsPageExtraction {
+  id        String   @id @default(uuid())
+  regionId  String   @map("region_id")
+  sourceUrl String   @map("source_url")
+  skipKey   String   @map("skip_key") @db.VarChar(80)
+  outcome   String   @db.VarChar(10)
+  checkedAt DateTime @default(now()) @map("checked_at") @db.Timestamptz
+
+  @@unique([regionId, sourceUrl])
+  @@map("civics_page_extractions")
 }
 
 /// Which pages defined which glossary term — the provenance that

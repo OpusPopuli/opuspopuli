@@ -584,14 +584,17 @@ const coerceBlankableDate = z
       // Same message as the required path, so the #991 reject tally keeps
       // grouping these together.
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Invalid date format",
       });
       return z.NEVER;
     }
     return parsed;
   })
-  .pipe(z.date().optional());
+  .pipe(z.date().optional())
+  // zod 4: a pipe is optional only on its OUTSIDE — without this an absent
+  // key is "expected nonoptional", where zod 3 let it through.
+  .optional();
 // `.pipe` closes a hole the required path got from `z.date()` for free:
 // `parseFlexibleDate` returns a `Date` unchanged when handed one, including
 // `new Date("garbage")` — an Invalid Date instance, whose `getTime()` is NaN
@@ -602,7 +605,10 @@ const coerceBlankableDate = z
 const coerceFlexibleDateOptional = z
   .unknown()
   .transform(parseFlexibleDate)
-  .pipe(z.date().optional());
+  .pipe(z.date().optional())
+  // zod 4: optional on the outside, or an absent key (a blank cell from the
+  // bulk handler) is rejected.
+  .optional();
 
 /**
  * Clean a CA SOS qualified-ballot-measures anchor text down to the bare
@@ -1305,8 +1311,19 @@ const IndependentExpenditureSchema = z.object({
     .string()
     .nullable()
     .optional()
-    .transform((val) => (val ? supportOpposeTransform(val) : "support"))
-    .default("support"),
+    // Absent/blank is "support"; an unrecognised code rejects the row. No
+    // .default(): zod 4 also applies one when the transform's output is
+    // undefined, which would turn an unknown code into a support claim.
+    .transform((val, ctx) => {
+      if (!val) return "support" as const;
+      const position = supportOpposeTransform(val);
+      if (position) return position;
+      ctx.addIssue({
+        code: "custom",
+        message: "Unrecognised support/oppose code",
+      });
+      return z.NEVER;
+    }),
   amount: z.coerce.number(),
   date: coerceFlexibleDate,
   electionDate: coerceFlexibleDateOptional,
