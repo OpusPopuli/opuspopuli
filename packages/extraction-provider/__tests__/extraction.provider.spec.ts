@@ -89,6 +89,49 @@ describe("ExtractionProvider", () => {
     });
   });
 
+  describe("per-host rate limit (S1)", () => {
+    /** The provider's own limiter, spied. */
+    const limiterOf = (p: ExtractionProvider) =>
+      (p as unknown as { hostRateLimiter: { acquire: jest.Mock } })
+        .hostRateLimiter;
+
+    it("waits on the limiter with the normalized URL before fetching text", async () => {
+      // Replacing the acquire with a no-op used to pass every test here.
+      const acquire = jest
+        .spyOn(limiterOf(provider), "acquire")
+        .mockResolvedValue(undefined);
+      mockFetch.mockResolvedValueOnce(httpResponse("<html></html>"));
+
+      await provider.fetchUrl("https://Example.com/a#frag", {
+        bypassCache: true,
+      });
+
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(acquire.mock.calls[0][0]).toMatch(/^https:\/\/example\.com\/a/);
+    });
+
+    it("waits on the limiter before fetching bytes", async () => {
+      const acquire = jest
+        .spyOn(limiterOf(provider), "acquire")
+        .mockResolvedValue(undefined);
+      mockFetch.mockResolvedValueOnce(httpResponse("%PDF-1.4"));
+
+      await provider.fetchBytes("https://example.com/doc.pdf");
+
+      expect(acquire).toHaveBeenCalledWith("https://example.com/doc.pdf");
+    });
+
+    it("lends the same limiter to handlers that fetch on their own", async () => {
+      const acquire = jest
+        .spyOn(limiterOf(provider), "acquire")
+        .mockResolvedValue(undefined);
+
+      await provider.acquireHostSlot("https://api.open.fec.gov/v1/x");
+
+      expect(acquire).toHaveBeenCalledWith("https://api.open.fec.gov/v1/x");
+    });
+  });
+
   describe("fetchUrl", () => {
     it("should fetch URL and return content", async () => {
       mockFetch.mockResolvedValueOnce(httpResponse("<html>content</html>"));
@@ -751,12 +794,6 @@ describe("ExtractionProvider", () => {
 
       const stats = await provider.getCacheStats();
       expect(stats.size).toBe(0);
-    });
-  });
-
-  describe("rate limiter management", () => {
-    it("should reset rate limiter", async () => {
-      await expect(provider.resetRateLimiter()).resolves.not.toThrow();
     });
   });
 

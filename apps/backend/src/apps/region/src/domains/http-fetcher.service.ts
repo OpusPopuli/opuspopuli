@@ -2,15 +2,21 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { type DataSourceConfig } from '@opuspopuli/common';
 import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { htmlToReadableText } from '@opuspopuli/common';
-import { HostThrottle, fetchTextWithRetry } from './resilient-fetch';
+import {
+  type IHostRateLimiter,
+  MemoryHostRateLimiter,
+} from '@opuspopuli/common';
+import { fetchTextWithRetry } from './resilient-fetch';
+import { DEFAULT_HOST_RATE, HOST_RATE_LIMITER } from './region.tokens';
 
 /**
  * Shared HTTP / HTML helpers extracted from RegionSyncService as part of
  * #828 Step 7 (bills extraction). Owned by Nest DI so all bounded-context
  * sync services (bills, civics, anything else that scrapes a third-party
- * page) inject the same instance and therefore share the per-host
- * throttle — the alternative would be per-service throttles that defeat
- * the politeness gate when multiple syncs run in parallel.
+ * page) inject the same instance. The per-host rate limit itself is the
+ * shared `HOST_RATE_LIMITER` (S1), held in Redis, so it is one budget per
+ * site across services AND processes — a per-process throttle multiplied the
+ * rate a site saw by the number of processes.
  *
  * Methods kept here are the ones civics and bills both depend on:
  *   - `fetchUrlText` — throttled + retried HTML fetch
@@ -26,8 +32,7 @@ export class HttpFetcherService {
     timestamp: true,
   });
 
-  /** Per-host fetch throttle shared across all syncs in this process. */
-  private readonly hostThrottle = new HostThrottle(1000);
+  private readonly hostRateLimiter: IHostRateLimiter;
 
   constructor(
     /**
@@ -38,26 +43,13 @@ export class HttpFetcherService {
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
-  ) {}
-
-  /**
-   * Apply per-source `rateLimitOverride` values to the relevant hostname
-   * before a sync's inner loop starts. Bills sync calls this from its
-   * own setup; civics never overrides today.
-   */
-  applyHostThrottleOverrides(dataSources: DataSourceConfig[]): void {
-    for (const ds of dataSources) {
-      const override = ds.rateLimitOverride;
-      if (!override) continue;
-      try {
-        const hostname = new URL(ds.url).hostname;
-        this.hostThrottle.setRequestsPerSecond(hostname, override);
-      } catch {
-        this.logger.warn(
-          `Could not apply rateLimitOverride for malformed URL: ${ds.url}`,
-        );
-      }
-    }
+    /** Optional for the same reason as `metrics`; see RegionSyncService. */
+    @Optional()
+    @Inject(HOST_RATE_LIMITER)
+    hostRateLimiter?: IHostRateLimiter,
+  ) {
+    this.hostRateLimiter =
+      hostRateLimiter ?? new MemoryHostRateLimiter(DEFAULT_HOST_RATE);
   }
 
   /**
@@ -69,7 +61,7 @@ export class HttpFetcherService {
   async fetchUrlText(url: string): Promise<string> {
     return fetchTextWithRetry(url, {
       timeoutMs: 20_000,
-      throttle: this.hostThrottle,
+      throttle: this.hostRateLimiter,
       logger: this.logger,
       metrics: this.metrics,
       // No `dataType`: this service is shared between the bills and civics

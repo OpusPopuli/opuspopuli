@@ -18,7 +18,7 @@ import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
 import { RegionPluginService } from './region-plugin.service';
 import { RegionCacheService } from './region-cache.service';
-import { REGION_CACHE } from './region.tokens';
+import { HOST_RATE_LIMITER, REGION_CACHE } from './region.tokens';
 import { PropositionAnalysisService } from './proposition-analysis.service';
 import { PropositionFinanceLinkerService } from './proposition-finance-linker.service';
 import { DbService } from '@opuspopuli/relationaldb-provider';
@@ -1958,6 +1958,59 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('bills fetches go through the per-host rate limiter (S1)', () => {
+    const okHtml = () =>
+      ({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'text/html' },
+        text: async () => '<html></html>',
+      }) as unknown as Response;
+
+    it('waits on the injected limiter for the URL it fetches', async () => {
+      // Was a per-process HostThrottle: N processes, N× the rate leginfo saw.
+      const realFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue(okHtml());
+      const limiter = {
+        acquire: jest.fn().mockResolvedValue(undefined),
+        setPolicies: jest.fn(),
+      };
+      try {
+        const module = await Test.createTestingModule({
+          providers: [
+            { provide: REGION_CACHE, useValue: mockCache },
+            RegionCacheService,
+            {
+              provide: PluginLoaderService,
+              useValue: { loadPlugin: jest.fn() },
+            },
+            { provide: PluginRegistryService, useValue: mockRegistry },
+            { provide: DbService, useValue: mockDb },
+            { provide: HOST_RATE_LIMITER, useValue: limiter },
+            RegionSyncService,
+            PropositionsSyncService,
+            MeetingsSyncService,
+            RepresentativesSyncService,
+            CampaignFinanceSyncService,
+            CivicsSyncService,
+            RegionPluginService,
+          ],
+        }).compile();
+        const svc = module.get(RegionSyncService);
+        const url =
+          'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=X';
+
+        await (
+          svc as unknown as { fetchUrlText: (u: string) => Promise<string> }
+        ).fetchUrlText(url);
+
+        expect(limiter.acquire).toHaveBeenCalledWith(url);
+      } finally {
+        global.fetch = realFetch;
+      }
+    });
+  });
+
   describe('prune alert series exist from boot (F2)', () => {
     it('creates every alerted prune series at zero on construction', async () => {
       // prom-client exports a labelled counter only after its first
@@ -2057,9 +2110,6 @@ describe('RegionSyncService', () => {
         jest
           .spyOn(internals as never, name as never)
           .mockResolvedValue(value as never);
-      jest
-        .spyOn(internals as never, 'applyBillsHostThrottle' as never)
-        .mockImplementation((() => undefined) as never);
       stub('buildRepNameIndex', new Map());
       stub('buildCommitteeNameIndex', new Map());
       stub('buildStagePatterns', []);

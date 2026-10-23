@@ -34,7 +34,6 @@ describe("URLExtractor", () => {
       parseHtml: jest.fn(),
       getCacheStats: jest.fn(),
       clearCache: jest.fn(),
-      resetRateLimiter: jest.fn(),
       onModuleDestroy: jest.fn(),
     } as unknown as jest.Mocked<ExtractionProvider>;
 

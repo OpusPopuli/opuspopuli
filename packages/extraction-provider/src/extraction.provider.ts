@@ -31,7 +31,7 @@ import {
 export const OCR_SERVICE = "OCR_SERVICE";
 import {
   type ICache,
-  type IRateLimiter,
+  type IHostRateLimiter,
   type CircuitBreakerHealth,
   CircuitBreakerManager,
   createCircuitBreaker,
@@ -39,6 +39,7 @@ import {
   withRetry,
   RetryPredicates,
 } from "@opuspopuli/common";
+import { HOST_RATE_LIMITER_KEY } from "./utils/redis-host-rate-limiter.js";
 import { CacheFactory } from "./cache/cache-factory.js";
 import {
   ExtractionConfig,
@@ -96,7 +97,11 @@ export class ExtractionProvider {
   private readonly logger = new Logger(ExtractionProvider.name);
   private readonly config: ExtractionConfig;
   private readonly cache: ICache<CachedFetchResult>;
-  private readonly rateLimiter: IRateLimiter;
+  /**
+   * One bucket per target host (S1). It was one bucket for every host, so
+   * each site waited behind every other and fetch concurrency could not help.
+   */
+  private readonly hostRateLimiter: IHostRateLimiter;
   private readonly circuitBreaker: CircuitBreakerManager;
   private readonly fetchFn: FetchFunction;
   private readonly cacheProvider: string;
@@ -168,11 +173,11 @@ export class ExtractionProvider {
       // type claims both are present. Bump this whenever the cached shape
       // changes — old keys are then simply never read and expire on TTL.
       keyPrefix: "extraction:cache:v2:",
-      rateLimiterKey: "extraction:ratelimit",
+      rateLimiterKey: HOST_RATE_LIMITER_KEY,
     });
 
     this.cache = CacheFactory.createCache<CachedFetchResult>(cacheConfig);
-    this.rateLimiter = CacheFactory.createRateLimiter(cacheConfig);
+    this.hostRateLimiter = CacheFactory.createHostRateLimiter(cacheConfig);
     this.cacheProvider = cacheConfig.provider;
 
     // Initialize circuit breaker for external URL fetching
@@ -267,7 +272,7 @@ export class ExtractionProvider {
       }
     }
 
-    await this.rateLimiter.acquire();
+    await this.hostRateLimiter.acquire(url);
     this.logger.debug(`Fetching ${url}`);
 
     const fetched = await this.fetchAndDecode(url, options, decodeUtf8);
@@ -352,7 +357,7 @@ export class ExtractionProvider {
     options: FetchOptions = {},
   ): Promise<BytesFetchResult> {
     url = normalizeUrl(url);
-    await this.rateLimiter.acquire();
+    await this.hostRateLimiter.acquire(url);
     this.logger.debug(`Fetching bytes from ${url}`);
 
     return this.fetchAndDecode(url, options, (bytes) => bytes);
@@ -444,11 +449,16 @@ export class ExtractionProvider {
   }
 
   /**
-   * Reset rate limiter
+   * Wait for this URL's host under the shared per-host rate limit (S1).
+   *
+   * For a fetch that does not go through this provider — the API and bulk
+   * download handlers stream with their own `fetch` — so it still waits in
+   * the same bucket, under the same policy, as everything else hitting that
+   * host. Without this the FEC API, whose config asks 0.25 rps against its
+   * quota, was paced only by a fixed 250ms gap between pages.
    */
-  async resetRateLimiter(): Promise<void> {
-    await this.rateLimiter.reset();
-    this.logger.debug("Rate limiter reset");
+  async acquireHostSlot(url: string): Promise<void> {
+    await this.hostRateLimiter.acquire(url);
   }
 
   /**
@@ -456,6 +466,8 @@ export class ExtractionProvider {
    */
   async onModuleDestroy(): Promise<void> {
     await this.cache.destroy();
+    // Its Redis client, left open, can hold a graceful shutdown until SIGKILL.
+    await this.hostRateLimiter.destroy?.();
     this.logger.debug("ExtractionProvider destroyed");
   }
 

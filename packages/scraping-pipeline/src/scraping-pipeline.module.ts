@@ -6,6 +6,7 @@
  */
 
 import { Module, type DynamicModule } from "@nestjs/common";
+import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { ScrapingPipelineService } from "./pipeline/pipeline.service.js";
 import {
   ExecutionTrackerService,
@@ -59,6 +60,19 @@ export interface ScrapingPipelineModuleOptions {
    * LLM-analysis behaviour.
    */
   providers?: any[];
+}
+
+/**
+ * The shared per-host rate limit, for handlers that fetch outside
+ * `ExtractionProvider` (S1). The provider is a REQUIRED inject: optional, a
+ * module refactor that lost it would hand the handlers null and the FEC API
+ * would run unthrottled with every test green. The pipeline's other services
+ * already require it, so requiring it here costs nothing.
+ */
+function hostSlotOf(
+  extraction: ExtractionProvider,
+): (url: string) => Promise<void> {
+  return (url) => extraction.acquireHostSlot(url);
 }
 
 @Module({})
@@ -116,31 +130,41 @@ export class ScrapingPipelineModule {
           provide: BulkDownloadHandler,
           useFactory: (
             mapper: DomainMapperService,
-            tracker?: ExecutionTrackerService,
+            tracker: ExecutionTrackerService | undefined,
             // Optional (#1277): left unbound, bulk exports are ingested
             // exactly as before and nothing is retained.
-            bulkArchive?: IBulkArchive,
+            bulkArchive: IBulkArchive | undefined,
+            extraction: ExtractionProvider,
           ) =>
             new BulkDownloadHandler(
               mapper,
               tracker ?? null,
               bulkArchive ?? null,
+              hostSlotOf(extraction),
             ),
           inject: [
             DomainMapperService,
             { token: ExecutionTrackerService, optional: true },
             { token: BULK_ARCHIVE, optional: true },
+            ExtractionProvider,
           ],
         },
         {
           provide: ApiIngestHandler,
           useFactory: (
             mapper: DomainMapperService,
-            tracker?: ExecutionTrackerService,
-          ) => new ApiIngestHandler(mapper, tracker ?? null),
+            tracker: ExecutionTrackerService | undefined,
+            extraction: ExtractionProvider,
+          ) =>
+            new ApiIngestHandler(
+              mapper,
+              tracker ?? null,
+              hostSlotOf(extraction),
+            ),
           inject: [
             DomainMapperService,
             { token: ExecutionTrackerService, optional: true },
+            ExtractionProvider,
           ],
         },
         PdfExtractHandler,

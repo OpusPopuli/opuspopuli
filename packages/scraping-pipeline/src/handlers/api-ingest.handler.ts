@@ -63,6 +63,13 @@ export class ApiIngestHandler {
   constructor(
     private readonly mapper: DomainMapperService,
     private readonly executionTracker: ExecutionTrackerService | null = null,
+    /**
+     * Waits for the target host under the shared per-host rate limit (S1).
+     * This handler streams with its own `fetch`, so without it the FEC API —
+     * config 0.25 rps, quota ~0.28 — was paced only by the 250ms page gap,
+     * about 4 rps. Optional: left unbound, pacing is as before.
+     */
+    private readonly hostSlot: ((url: string) => Promise<void>) | null = null,
   ) {}
 
   async execute<T>(
@@ -336,8 +343,12 @@ export class ApiIngestHandler {
     body: Record<string, unknown>;
   }> {
     const url = this.buildPageUrl(baseUrl, api, apiKey, page, cursorParams);
-    this.logger.debug(`Fetching page ${page + 1}: ${url.toString()}`);
+    // Origin and path only: the query carries the API key.
+    this.logger.debug(
+      `Fetching page ${page + 1}: ${url.origin}${url.pathname}`,
+    );
 
+    await this.hostSlot?.(url.toString());
     const response = await fetch(url.toString(), {
       method: api.method ?? "GET",
       headers: { Accept: "application/json" },

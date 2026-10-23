@@ -23,6 +23,7 @@ import {
   ExtractionModule,
   CacheFactory,
   FallbackCache,
+  HOST_RATE_LIMITER_KEY,
   OCR_SERVICE,
   SOURCE_ARCHIVE,
 } from '@opuspopuli/extraction-provider';
@@ -85,7 +86,11 @@ import { PrismaBulkArchive } from '../infrastructure/prisma-bulk-archive';
 import { StorageModule } from '@opuspopuli/storage-provider';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { PrismaExecutionTrackerRepository } from '../infrastructure/prisma-execution-tracker-repository';
-import { REGION_CACHE } from './region.tokens';
+import {
+  DEFAULT_HOST_RATE,
+  HOST_RATE_LIMITER,
+  REGION_CACHE,
+} from './region.tokens';
 import { PipelineJobService } from './pipeline-job.service';
 import { StructuralAnalysisJobService } from './structural-analysis-job.service';
 import { randomUUID } from 'crypto';
@@ -245,6 +250,18 @@ const promptClientAsyncConfig = {
   ],
   providers: [
     RegionCacheService,
+    {
+      // Built like ExtractionProvider's own (same Redis, same key, same
+      // default), so the two share buckets and policies by key (S1).
+      provide: HOST_RATE_LIMITER,
+      useFactory: () =>
+        CacheFactory.createHostRateLimiter(
+          CacheFactory.createConfigFromEnv({
+            rateLimitOptions: DEFAULT_HOST_RATE,
+            rateLimiterKey: HOST_RATE_LIMITER_KEY,
+          }),
+        ),
+    },
     RegionPluginService,
     HttpFetcherService,
     RegionSyncService,

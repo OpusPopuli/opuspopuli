@@ -100,6 +100,26 @@ describe("BulkDownloadHandler", () => {
     globalThis.fetch = originalFetch;
   });
 
+  describe("per-host rate limit (S1)", () => {
+    it("waits for the host before downloading", async () => {
+      const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500";
+      const order: string[] = [];
+      const hostSlot = jest.fn(async () => {
+        order.push("slot");
+      });
+      (globalThis.fetch as jest.Mock).mockImplementation(async () => {
+        order.push("fetch");
+        return mockStreamResponse(csv);
+      });
+      const limited = new BulkDownloadHandler(mapper, null, null, hostSlot);
+
+      await limited.execute(createSource(), "california");
+
+      expect(hostSlot).toHaveBeenCalledWith("https://example.com/data.csv");
+      expect(order.slice(0, 2)).toEqual(["slot", "fetch"]);
+    });
+  });
+
   describe("snapshot archiving (#1277)", () => {
     const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500";
     let archive: { archive: jest.Mock };

@@ -2,14 +2,17 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnModuleDestroy,
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   resolveConfigPlaceholders,
+  resolveHostRatePolicies,
   type DataSourceConfig,
   type DeclarativeRegionConfig,
+  type IHostRateLimiter,
   type ISecretsProvider,
 } from '@opuspopuli/common';
 import {
@@ -25,6 +28,7 @@ import {
 import { SECRETS_PROVIDER } from '@opuspopuli/secrets-provider';
 import { ServiceInitializationException } from 'src/common/exceptions/app.exceptions';
 import { toRegionPluginRow, type RegionPluginRow } from './region.service';
+import { DEFAULT_HOST_RATE, HOST_RATE_LIMITER } from './region.tokens';
 
 export type { RegionPluginRow };
 
@@ -64,11 +68,15 @@ function comparePluginRows(
  * `RegionDomainService.regionSync.<method>` callers continue to work
  * because RegionSyncService keeps thin delegates that forward here.
  */
+/** How often host rate policies are republished; see scheduleRepublish. */
+const HOST_RATE_REPUBLISH_MS = 60 * 60 * 1000;
+
 @Injectable()
-export class RegionPluginService implements OnModuleInit {
+export class RegionPluginService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RegionPluginService.name, {
     timestamp: true,
   });
+  private republishTimer?: NodeJS.Timeout;
   private regionService!: RegionProviderService;
   private pluginRegionName: string | undefined;
   private pluginNormalizeDistrict = false;
@@ -85,6 +93,14 @@ export class RegionPluginService implements OnModuleInit {
     @Optional()
     @Inject(SECRETS_PROVIDER)
     private readonly secretsProvider?: ISecretsProvider,
+    /**
+     * Where the per-host fetch policies go (S1). Optional: without it the
+     * region configs' `rateLimit` simply is not published, which is how
+     * every sync ran before S1.
+     */
+    @Optional()
+    @Inject(HOST_RATE_LIMITER)
+    private readonly hostRateLimiter?: IHostRateLimiter,
   ) {}
 
   /** Boot sequence: vault keys → autosync region configs → federal + local. */
@@ -382,6 +398,75 @@ export class RegionPluginService implements OnModuleInit {
     this.logger.log(
       `RegionPluginService active plugin: ${this.regionService.getProviderName()} (${info.name}), ` +
         `federal: ${this.pluginRegistry.getFederal() ? 'loaded' : 'not loaded'}`,
+    );
+    await this.publishHostRatePolicies();
+  }
+
+  /**
+   * Republish the host policies hourly, from first publish on.
+   *
+   * Publication otherwise happens only when plugins load, and a node runs for
+   * weeks between loads. A publish that failed at boot (Redis briefly down),
+   * or policies lost with Redis's data, would leave the FEC host on the
+   * default until the next deploy. Unref'd so it never holds a process open.
+   */
+  private scheduleRepublish(): void {
+    if (this.republishTimer) return;
+    this.republishTimer = setInterval(() => {
+      this.publishHostRatePolicies().catch((error: Error) =>
+        this.logger.warn(`Host rate policy republish failed: ${error.message}`),
+      );
+    }, HOST_RATE_REPUBLISH_MS);
+    this.republishTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.republishTimer) clearInterval(this.republishTimer);
+    this.republishTimer = undefined;
+  }
+
+  /**
+   * Turn every loaded region's declared fetch rates into per-host policies
+   * and publish them (S1, `docs/plans/S1-per-host-rate-limiter.md`).
+   *
+   * Every load path ends here — boot, the admin toggle, the recovery
+   * mutation — after the federal plugin is up, so the published set always
+   * covers both. Region configs declared a `rateLimit` long before anything
+   * applied it; federal's 0.25 rps is the FEC API's quota.
+   */
+  private async publishHostRatePolicies(): Promise<void> {
+    if (!this.hostRateLimiter) {
+      // Optional only so test modules need not bind one. Unbound in an app,
+      // no region's declared rate is published and every host — the FEC API
+      // included — runs at the default: say so, once per load.
+      this.logger.warn(
+        'No HOST_RATE_LIMITER bound: region rate limits are not published, ' +
+          'and every host runs at the default rate',
+      );
+      return;
+    }
+    this.scheduleRepublish();
+    const regions = this.pluginRegistry.getAll().map(({ instance }) => ({
+      rateLimit: instance.getRateLimit?.(),
+      dataSources: instance.getDataSources?.() ?? [],
+    }));
+    const policies = resolveHostRatePolicies(
+      regions,
+      DEFAULT_HOST_RATE,
+      (rejected) =>
+        this.logger.warn(
+          `Ignoring invalid ${rejected.field} ${JSON.stringify(rejected.value)} ` +
+            `for ${rejected.host}; it must be a positive number`,
+        ),
+    );
+    await this.hostRateLimiter.setPolicies(policies);
+    this.logger.log(
+      `Host rate policies published for ${policies.size} host(s): ` +
+        [...policies]
+          .map(
+            ([host, p]) => `${host}=${p.requestsPerSecond}rps/${p.burstSize}`,
+          )
+          .join(', '),
     );
   }
 

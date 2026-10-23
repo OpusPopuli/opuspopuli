@@ -74,4 +74,15 @@ export interface IRegionPlugin extends IRegionProvider {
    * See opuspopuli#804 + opuspopuli-regions#51.
    */
   getBoundarySources?(): BoundarySourcesConfig | undefined;
+
+  /**
+   * The region config's `rateLimit` — the fetch rate its sources' hosts
+   * should see (S1, `docs/plans/S1-per-host-rate-limiter.md`).
+   *
+   * Optional: a plugin with no config, or a config that declares none,
+   * returns undefined and its hosts get the global default. Declared in
+   * region configs and validated long before anything read it; federal's
+   * 0.25 rps is the FEC API's quota.
+   */
+  getRateLimit?(): { requestsPerSecond: number; burstSize: number } | undefined;
 }

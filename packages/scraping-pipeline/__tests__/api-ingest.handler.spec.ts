@@ -75,6 +75,61 @@ describe("ApiIngestHandler", () => {
     global.fetch = originalFetch;
   });
 
+  describe("per-host rate limit (S1)", () => {
+    it("waits for the host before every page it fetches", async () => {
+      // This handler streams with its own fetch, so without the slot the FEC
+      // API — 0.25 rps in config — was paced only by a 250ms page gap.
+      const order: string[] = [];
+      const hostSlot = jest.fn(async (url: string) => {
+        order.push(`slot ${new URL(url).host}`);
+      });
+      (global.fetch as jest.Mock).mockImplementation(async () => {
+        order.push("fetch");
+        return mockFetchResponse({ results: [{ externalId: "C1" }] });
+      });
+      const limited = new ApiIngestHandler(mapper, null, hostSlot);
+
+      await limited.execute(createSource(), "california");
+
+      expect(hostSlot).toHaveBeenCalled();
+      expect(order[0]).toMatch(/^slot /);
+      expect(order.indexOf("fetch")).toBeGreaterThan(0);
+    });
+
+    it("never logs the API key, which rides in the page URL's query", async () => {
+      // The FEC key is set as a query parameter (apiKeyHeader) — so the old
+      // debug line, which logged the whole page URL, printed it whenever
+      // someone raised LOG_LEVEL during an incident.
+      process.env.TEST_FEC_KEY = "SECRET-KEY";
+      const debug = jest.fn();
+      (handler as unknown as { logger: { debug: jest.Mock } }).logger.debug =
+        debug;
+      (global.fetch as jest.Mock).mockResolvedValue(
+        mockFetchResponse({ results: [] }),
+      );
+      try {
+        await handler.execute(
+          createSource({
+            api: {
+              resultsPath: "results",
+              apiKeyEnvVar: "TEST_FEC_KEY",
+              apiKeyHeader: "api_key",
+            },
+          }),
+          "california",
+        );
+
+        const fetched = String((global.fetch as jest.Mock).mock.calls[0][0]);
+        expect(fetched).toContain("SECRET-KEY"); // the key IS sent...
+        const lines = debug.mock.calls.map((c) => String(c[0])).join("\n");
+        expect(lines).toContain("Fetching page");
+        expect(lines).not.toContain("SECRET-KEY"); // ...and not logged
+      } finally {
+        delete process.env.TEST_FEC_KEY;
+      }
+    });
+  });
+
   describe("execution tracking in accumulation mode (#1280)", () => {
     function createRepo() {
       return {

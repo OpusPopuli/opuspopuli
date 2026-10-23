@@ -76,6 +76,11 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     return this.regionConfig.boundarySources;
   }
 
+  /** The config's declared fetch rate, for every host its sources name (S1). */
+  getRateLimit(): { requestsPerSecond: number; burstSize: number } | undefined {
+    return this.regionConfig.rateLimit;
+  }
+
   getRegionInfo(): RegionInfo {
     return {
       id: this.regionConfig.regionId,

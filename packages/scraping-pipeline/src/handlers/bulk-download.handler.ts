@@ -106,6 +106,8 @@ export class BulkDownloadHandler {
      * ingestion behaves exactly as it did before the archive existed.
      */
     private readonly bulkArchive: IBulkArchive | null = null,
+    /** The shared per-host rate limit (S1); see ApiIngestHandler. */
+    private readonly hostSlot: ((url: string) => Promise<void>) | null = null,
   ) {}
 
   /**
@@ -189,6 +191,7 @@ export class BulkDownloadHandler {
     try {
       // 1. Stream download to temp file (no memory buffering)
       this.logger.log(`Downloading ${source.url}...`);
+      await this.hostSlot?.(source.url);
       const response = await fetch(source.url, {
         signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
       });
