@@ -37,6 +37,16 @@ The model holds ~24.5 GiB of this host's 48 GiB and that is not reducible by
 lowering `num_ctx` — measured, see the plan. Close the browser and editor
 before a baseline run; they are ~3.5 GiB.
 
+**1b. Keep the host awake.** An idle sleep pauses the Docker VM, and Redis
+expires locks by wall clock, so on wake a running LLM call's lane lock may
+have lapsed and the call is failed (the 2026-10-23 civics re-take lost two
+pages this way, to a 282 s sleep). Keep a spare terminal running this for
+the length of the run, and Ctrl-C it afterwards:
+
+```bash
+caffeinate -ims
+```
+
 **2. The services under test run the code you think.**
 
 ```bash
@@ -71,12 +81,15 @@ docker compose -f docker-compose-uat.yml -f docker-compose-uat.local.yml up -d <
      | grep -E "complete:|Job succeeded"
    ```
 
-2. Capture, giving the run length in seconds and the end time **in the host's
-   local zone** — container logs are UTC:
+2. Capture, giving the run's start and end **in the host's local zone** —
+   container logs are UTC:
 
    ```bash
-   ./scripts/gate0-baseline.sh civics 2032 "2026-10-21 21:28:30"
+   ./scripts/gate0-baseline.sh civics "2026-10-23 14:15:54" "2026-10-23 14:50:09"
    ```
+
+   Explicit bounds, not a duration: syncs run back to back, and a padded
+   window spills into the neighbouring run.
 
    The script refuses a future anchor and flags a GPU figure above 100%,
    because both previously produced confident nonsense.
@@ -90,15 +103,16 @@ docker compose -f docker-compose-uat.yml -f docker-compose-uat.local.yml up -d <
 
 ## Results
 
-| data type                | run   | items (c/u/s/f) | dominant stage                               | GPU busy | llm calls | gap    | notes                                                                                                                                                                                                                                                                 |
-| ------------------------ | ----- | --------------- | -------------------------------------------- | -------- | --------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| civics                   | 2032s | 0 / 12 / 13 / 2 | llm 2009.8s (98.9%)                          | 52.4%    | 22        | 944.3s | **Not clean.** Two calls died (`unexpected EOF`, runner killed under memory pressure); the gap is almost entirely those.                                                                                                                                              |
-| propositions             | 553s  | 1 / 51 / 0 / 0  | **pdf_parse 404.1s (73.1%)**                 | 13.4%    | 3         | 0.2s   | The CPU lane dominates, not the GPU. A 0.2s gap is what healthy looks like at concurrency 1.                                                                                                                                                                          |
-| representatives (county) | 392s  | 0 / 6 / 0 / 0   | llm 432.3s (110.3%)                          | 104.2%   | 81        | 23.9s  | Saturated. Over 100% is scrape-boundary quantization on a short run, not an error.                                                                                                                                                                                    |
-| representatives (state)  | 793s  | 0 / 121 / 0 / 0 | llm 434.8s (54.8%), **fetch 268.3s (33.8%)** | 52.1%    | 83        | 21.8s  | **Post-fix, 2026-10-22.** Accounted time 53.4% -> **88.7%**. The pre-fix run reported the same 121 items and the same ~53% llm with fetch at ZERO; the missing third was the scraping pipeline's own fetches, most of them failing Assembly pages plus retry backoff. |
-| meetings                 | —     | —               | —                                            | —        | —         | —      | **Deferred** to step 0 of this type's Phase B (plan §2, M4 note). |
-| campaign finance         | —     | —               | —                                            | —        | —         | —      | **Deferred** to step 0 of this type's Phase B (plan §2, M4 note). |
-| bills                    | —     | —               | —                                            | —        | —         | —      | **Deferred** to step 0 of this type's Phase B (plan §2, M4 note). ~48h, weekend only. |
+| data type                | run   | items (c/u/s/f) | dominant stage                               | GPU busy | llm calls | gap     | notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ----- | --------------- | -------------------------------------------- | -------- | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| civics                   | 2032s | 0 / 12 / 13 / 2 | llm 2009.8s (98.9%)                          | 52.4%    | 22        | 944.3s  | **Not clean.** Two calls died (`unexpected EOF`, runner killed under memory pressure); the gap is almost entirely those.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| civics (re-take)         | 2055s | 0 / 9 / 13 / 2  | llm 1686.0s (82.0%)                          | 90.8%    | 21        | -180.9s | **Not clean**, 2026-10-23, S2 image with the S7 lane queue on. No runner deaths; both failures were S7's 30 s lane lock (`job stalled more than allowable limit`), missed because **the Mac idle-slept** (14:35–14:46 EDT, one sleep of 282 s) while swapping (13% free, swap 92% full), and Ollama kept generating both — hence inference exceeding the stage (negative gap). Lock raised to 5 min in response. Items are the log's phase-2 counts; the script reported 12 updated / 12 skipped (its updated includes the 3 discovered sources), leaving one skip unreconciled — under investigation. |
+| propositions             | 553s  | 1 / 51 / 0 / 0  | **pdf_parse 404.1s (73.1%)**                 | 13.4%    | 3         | 0.2s    | The CPU lane dominates, not the GPU. A 0.2s gap is what healthy looks like at concurrency 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| representatives (county) | 392s  | 0 / 6 / 0 / 0   | llm 432.3s (110.3%)                          | 104.2%   | 81        | 23.9s   | Saturated. Over 100% is scrape-boundary quantization on a short run, not an error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| representatives (state)  | 793s  | 0 / 121 / 0 / 0 | llm 434.8s (54.8%), **fetch 268.3s (33.8%)** | 52.1%    | 83        | 21.8s   | **Post-fix, 2026-10-22.** Accounted time 53.4% -> **88.7%**. The pre-fix run reported the same 121 items and the same ~53% llm with fetch at ZERO; the missing third was the scraping pipeline's own fetches, most of them failing Assembly pages plus retry backoff.                                                                                                                                                                                                                                                                                                                                  |
+| meetings                 | —     | —               | —                                            | —        | —         | —       | **Deferred** to step 0 of this type's Phase B (plan §2, M4 note).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| campaign finance         | —     | —               | —                                            | —        | —         | —       | **Deferred** to step 0 of this type's Phase B (plan §2, M4 note).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| bills                    | —     | —               | —                                            | —        | —         | —       | **Deferred** to step 0 of this type's Phase B (plan §2, M4 note). ~48h, weekend only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 **The first three rows predate the fetch-path fix** and show no `fetch` time worth
 trusting. The stage was wired only into region's own `fetchTextWithRetry`,
