@@ -21,6 +21,7 @@ import { regionValidationSchema } from 'src/config/env.validation';
 import { RegionSyncProcessor } from './region-sync.processor';
 import { RegionSyncScheduler } from './region-sync.scheduler';
 import { MinutesSummaryProcessor } from './minutes-summary.processor';
+import { CivicsExtractProcessor } from './civics-extract.processor';
 import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
 
 @Module({
@@ -68,6 +69,7 @@ import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
     RegionSyncProcessor,
     RegionSyncScheduler,
     MinutesSummaryProcessor,
+    CivicsExtractProcessor,
   ],
 })
 export class RegionWorkerModule {}

@@ -234,6 +234,18 @@ export class SourceVersionService {
   }
 
   /**
+   * Retrieve an archived artifact by its row id — the reference a subject
+   * row, or a job, carries (`source_version_id`). The civics extraction
+   * worker reloads its page this way (civics S3).
+   *
+   * @param id - The `source_versions` row id
+   * @returns The stored artifact, or null if no such row
+   */
+  async getById(id: string) {
+    return this.db.sourceVersion.findUnique({ where: { id } });
+  }
+
+  /**
    * Provenance for an archived artifact without shipping its bytes.
    *
    * Separate from {@link getByHash} because the payload can be megabytes and

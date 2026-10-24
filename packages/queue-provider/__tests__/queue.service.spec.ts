@@ -95,6 +95,26 @@ describe("QueueService", () => {
       warn.mockRestore();
     });
 
+    it("drops a job on finish only when asked, leaving the queue's retention otherwise", async () => {
+      const { Queue } = jest.requireMock("bullmq") as { Queue: jest.Mock };
+      const queue = Queue.mock.results[0]?.value ?? new Queue();
+      queue.add.mockClear();
+
+      await service.enqueue("civics-extract", {}, { jobId: "a" });
+      await service.enqueue(
+        "civics-extract",
+        {},
+        { jobId: "b", removeOnFinish: true },
+      );
+
+      const [[, , kept], [, , dropped]] = queue.add.mock.calls;
+      expect(kept).not.toHaveProperty("removeOnComplete");
+      expect(dropped).toMatchObject({
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    });
+
     it("does not warn for a normal enqueue", async () => {
       const warn = jest
         .spyOn(

@@ -2,6 +2,8 @@ import {
   withRetry,
   isFetchRetryable,
   fetchTextWithRetry,
+  fetchBytesWithRetry,
+  decodeFetchedText,
   RetryableHttpError,
 } from './resilient-fetch';
 
@@ -251,5 +253,79 @@ describe('fetchTextWithRetry', () => {
     });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toMatch(/retry 1 for https:\/\/x\.test/);
+  });
+});
+
+describe('fetchBytesWithRetry', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('returns the raw bytes and the validators, through the same checks', async () => {
+    const body = Buffer.from('<p>caf\u00e9</p>', 'utf8');
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(body, {
+        headers: {
+          'content-type': 'Text/HTML; charset=utf-8',
+          etag: '"v1"',
+          'last-modified': 'Thu, 22 Oct 2026 10:00:00 GMT',
+        },
+      }),
+    );
+
+    const fetched = await fetchBytesWithRetry('https://x.test/page');
+
+    expect(fetched.body.equals(body)).toBe(true);
+    expect(fetched).toMatchObject({
+      contentType: 'text/html; charset=utf-8',
+      etag: '"v1"',
+      lastModified: 'Thu, 22 Oct 2026 10:00:00 GMT',
+    });
+    expect(Number.isNaN(Date.parse(fetched.fetchedAt))).toBe(false);
+  });
+
+  it('refuses a non-HTML content type, as the text fetch does', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response('%PDF', {
+        headers: { 'content-type': 'application/pdf' },
+      }),
+    );
+    await expect(fetchBytesWithRetry('https://x.test/a.pdf')).rejects.toThrow(
+      /Non-HTML content-type/,
+    );
+  });
+});
+
+describe('decodeFetchedText', () => {
+  // The K1 skip key is a hash of the text: if decoding the archived bytes
+  // differed from what `response.text()` returned before S3, every page would
+  // re-extract once on deploy. Compared against the real `Response.text()`.
+  it.each([
+    ['plain UTF-8', Buffer.from('<p>Assembly — Senate</p>', 'utf8'), 'utf-8'],
+    [
+      'a UTF-8 BOM',
+      Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from('<p>x</p>', 'utf8'),
+      ]),
+      'utf-8',
+    ],
+    [
+      'a declared latin-1 charset',
+      Buffer.from([0x63, 0x61, 0x66, 0xe9]),
+      'iso-8859-1',
+    ],
+    ['invalid UTF-8', Buffer.from([0xff, 0xfe, 0x41]), 'utf-8'],
+  ])('matches Response.text() for %s', async (_case, bytes, charset) => {
+    const expected = await new Response(bytes, {
+      headers: { 'content-type': `text/html; charset=${charset}` },
+    }).text();
+    expect(decodeFetchedText(bytes)).toBe(expected);
   });
 });

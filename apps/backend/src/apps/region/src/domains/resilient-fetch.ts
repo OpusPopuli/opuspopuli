@@ -154,6 +154,62 @@ export async function fetchTextWithRetry(
   url: string,
   opts: FetchTextOptions = {},
 ): Promise<string> {
+  return fetchWithRetry(url, opts, (response) => response.text());
+}
+
+/** A fetched body as received, with what the response said about it. */
+export interface FetchedBytes {
+  /** Raw body bytes, undecoded — what a content address is taken over */
+  body: Buffer;
+  /** Response Content-Type, lower-cased */
+  contentType: string;
+  /** When the body was received, ISO 8601 */
+  fetchedAt: string;
+  /** ETag response header, if the server sent one */
+  etag?: string;
+  /** Last-Modified response header, if the server sent one */
+  lastModified?: string;
+}
+
+/**
+ * {@link fetchTextWithRetry}, but returning the body's BYTES and the
+ * response's validators — for a caller that archives what it fetched in the
+ * source-version store (civics S3) and so needs the content address of the
+ * bytes as received, not of a decoded string.
+ *
+ * Decode with {@link decodeFetchedText} to get exactly what
+ * `fetchTextWithRetry` would have returned.
+ */
+export async function fetchBytesWithRetry(
+  url: string,
+  opts: FetchTextOptions = {},
+): Promise<FetchedBytes> {
+  return fetchWithRetry(url, opts, async (response) => ({
+    body: Buffer.from(await response.arrayBuffer()),
+    contentType: (response.headers.get('content-type') ?? '').toLowerCase(),
+    fetchedAt: new Date().toISOString(),
+    etag: response.headers.get('etag') ?? undefined,
+    lastModified: response.headers.get('last-modified') ?? undefined,
+  }));
+}
+
+/**
+ * The text `response.text()` would have produced from these bytes.
+ *
+ * UTF-8 regardless of the declared charset, BOM stripped — that is what the
+ * Fetch standard specifies for `text()`, so a page fetched as bytes and
+ * decoded here hashes the same as one fetched as text. Civics K1's skip key
+ * is over that text; a different decode would re-extract every page once.
+ */
+export function decodeFetchedText(body: Uint8Array): string {
+  return new TextDecoder('utf-8').decode(body);
+}
+
+async function fetchWithRetry<T>(
+  url: string,
+  opts: FetchTextOptions,
+  read: (response: Response) => Promise<T>,
+): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? 20_000;
   const allowed = opts.contentTypeWhitelist ?? ['text/html', 'xhtml+xml'];
 
@@ -166,18 +222,19 @@ export async function fetchTextWithRetry(
   return withStage(
     PipelineStage.Fetch,
     { dataType: opts.dataType },
-    () => fetchTextOnce(url, timeoutMs, allowed, opts),
+    () => fetchOnce(url, timeoutMs, allowed, opts, read),
     { observer: opts.metrics },
   );
 }
 
 /** One throttled, retried, content-type-checked fetch. */
-async function fetchTextOnce(
+async function fetchOnce<T>(
   url: string,
   timeoutMs: number,
   allowed: string[],
   opts: FetchTextOptions,
-): Promise<string> {
+  read: (response: Response) => Promise<T>,
+): Promise<T> {
   return withRetry(
     async () => {
       if (opts.throttle) await opts.throttle.acquire(url);
@@ -208,7 +265,7 @@ async function fetchTextOnce(
       // The body stream can also error mid-read (network blip after
       // headers arrived). isFetchRetryable handles the common shapes
       // (`terminated`, `socket hang up`, etc.) so the retry path triggers.
-      return response.text();
+      return read(response);
     },
     {
       maxAttempts: opts.maxAttempts ?? 3,
