@@ -396,6 +396,38 @@ next extracts.
   K1 and the attribution changes must not alter any output. Held-out page
   included, untuned.
 
+**Quality — measured 2026-10-24** (S3 image; `eval:civics --candidate model
+--models nemotron-3.5-lightning:30b-a3b`, seed 7, prompt v6, 211 s):
+
+| gold page | step 0 (2026-10-23) | 2026-10-24, two runs |
+|---|---|---|
+| failed-qualify | 0.900 / 0.834 | 1.000 / 0.875 |
+| qualified-ballot-measures | 1.000 / 0.834 | 1.000 / 0.834 — identical output |
+| teachers-and-students | n/a (correctly empty) | identical |
+| **legislative-process (held out)** | 0.432 / 0.867 | 0.455 / 0.857 |
+
+No page regressed, but two did not *match*, so the gate's literal "match step
+0" is not met — and the cause is not K1 or S3, neither of which the harness
+runs (it calls the prompt client and Ollama directly). Inputs were identical
+(candidate, seed, gold text, matcher, region config, hints), and the two
+2026-10-24 runs are byte-identical to each other. What differed is the
+**Ollama runner's batch size**: step 0 ran on a runner loaded with
+`-b 1024 -ub 1024`, both of today's on `-b 512 -ub 512` (same 32k context,
+same KV-cache and flash-attention flags; `/opt/homebrew/var/log/ollama.log`).
+Ollama picks it per load; a different batch reorders the floating-point work
+of prefill, and greedy decoding takes the other branch of a near-tie — the
+differing items are `lifecycleStages`, the field already known to sit on
+near-ties.
+
+**So greedy decoding is deterministic only within one runner load.** "`topK:
+1` makes the output a function of the input" (`civics-sync.service.ts`) holds
+for a fixed runner configuration, not across loads: the prompt hash and model
+digest do not pin the output. For attestation that means an output row's
+provenance identifies *what was asked of which weights*, not a reproducible
+result. For eval it means a reference and a candidate must be taken on the
+same runner configuration — compare `-b`/`-ub` in the Ollama log, or take both
+in one session.
+
 ### 5. UAT
 
 Each PR exercised on the local UAT stack before commit: two consecutive
