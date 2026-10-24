@@ -229,6 +229,9 @@ export class QueueService implements OnModuleDestroy {
       jobId: opts?.jobId,
       delay: opts?.delay,
       priority: opts?.priority,
+      ...(opts?.removeOnFinish
+        ? { removeOnComplete: true, removeOnFail: true }
+        : {}),
     };
   }
 }

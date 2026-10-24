@@ -163,6 +163,16 @@ describe('pipeline_jobs for fanned-out requests (S2)', () => {
     expect(await statusOf(parent.id)).toBe(JOB_STATUS.FAILED);
 
     await jobs.markRunning(child.id, 'bull-again');
+    // Reopened: running, with the sweep's verdict gone (seen on UAT, a row
+    // that ended `succeeded` still saying "Abandoned").
+    const reopened = await db.pipelineJob.findUniqueOrThrow({
+      where: { id: child.id },
+    });
+    expect([
+      reopened.status,
+      reopened.errorMessage,
+      reopened.finishedAt,
+    ]).toEqual([JOB_STATUS.RUNNING, null, null]);
     await jobs.markSucceeded(child.id, []);
     await jobs.settleParent(parent.id);
 

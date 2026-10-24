@@ -1,21 +1,36 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
   buildSkipKey,
   extractJsonObjectSlice,
+  htmlToReadableText,
+  laneJobId,
   stableHash,
   type DataSourceConfig,
   type ILLMProvider,
   type JsonRepairClass,
   parseJsonWithRepair,
 } from '@opuspopuli/common';
+import type { CivicsExtractJobData } from '@opuspopuli/queue-provider';
 import { DataType } from '@opuspopuli/region-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
+import {
+  abandonChildJobs,
+  inlineBatch,
+  settleChildJobs,
+  type ChildJobBatch,
+  type ChildOutcome,
+  type SettleEnd,
+} from 'src/common/child-jobs/child-job-batch';
 import { groundMeasureTypes } from './civics-grounding';
+import { CivicsExtractQueue } from './civics-extract.queue';
 import { LlmGeneratorBase } from './llm-generator.base';
+import { PipelineJobService } from './pipeline-job.service';
+import { decodeFetchedText, type FetchedBytes } from './resilient-fetch';
+import { SourceVersionService } from './source-version.service';
 import { civicsSyncTracker } from './sync-phase-logger';
 
 /**
@@ -200,7 +215,7 @@ export const CIVICS_EXTRACTOR_VERSION = 'civics-extractor-1';
  * pins the list against the prompt's inputs. The token budget is the
  * EFFECTIVE one, so changing the code default re-extracts too.
  */
-export function civicsConfigHash(ds: DataSourceConfig): string {
+export function civicsConfigHash(ds: CivicsSourceFields): string {
   return stableHash({
     extractor: CIVICS_EXTRACTOR_VERSION,
     contentGoal: ds.contentGoal,
@@ -208,6 +223,39 @@ export function civicsConfigHash(ds: DataSourceConfig): string {
     hints: ds.hints,
     llmMaxTokens: ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS,
   });
+}
+
+/**
+ * The data-source fields one page's extraction reads — what a
+ * `civics-extract` job carries (civics S3), so the worker needs no plugin.
+ */
+export type CivicsSourceFields = CivicsExtractJobData['source'];
+
+export function civicsSourceFields(ds: DataSourceConfig): CivicsSourceFields {
+  return {
+    url: ds.url,
+    contentGoal: ds.contentGoal,
+    category: ds.category,
+    hints: ds.hints,
+    llmMaxTokens: ds.llmMaxTokens,
+    llmRequestTimeoutMs: ds.llmRequestTimeoutMs,
+  };
+}
+
+/**
+ * Longest the civics sync waits between two page outcomes before it gives
+ * the rest up as failed: the lane's own wait bound
+ * (`LLM_LANE_WAIT_TIMEOUT_MS`, 6 h by default), since a page cannot take
+ * longer than its LLM call is allowed to wait.
+ */
+function extractIdleTimeoutMs(): number {
+  const parsed = Number.parseInt(
+    process.env.LLM_LANE_WAIT_TIMEOUT_MS ?? '',
+    10,
+  );
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : 6 * 60 * 60 * 1000;
 }
 
 /** What a completed extraction yielded, recorded with its skip key. */
@@ -247,6 +295,29 @@ const PAGE_OUTCOME: Record<
   },
 };
 
+/** One page's result, as the sync counts it. */
+export type CivicsPageOutcome = keyof typeof PAGE_OUTCOME;
+
+function isPageOutcome(value: unknown): value is CivicsPageOutcome {
+  return typeof value === 'string' && Object.hasOwn(PAGE_OUTCOME, value);
+}
+
+/** Everything a page's extraction is keyed and prompted by. */
+interface PageInputs {
+  promptText: string;
+  promptHash: string;
+  promptVersion: string;
+  sourceTextHash: string;
+  configHash: string;
+  skipKey: string | null;
+}
+
+/** A page ready for the extract queue. */
+interface QueuedPage {
+  jobId: string;
+  data: CivicsExtractJobData;
+}
+
 /**
  * Shared HTTP / HTML helpers passed in by the orchestrator (#828 follow-up
  * will consolidate these into a shared module after the bills extraction
@@ -255,8 +326,11 @@ const PAGE_OUTCOME: Record<
  * orchestrator-class dependency that would create a circular DI graph.
  */
 export interface CivicsCrawlHelpers {
-  fetchUrlText(url: string): Promise<string>;
-  htmlToReadableText(html: string): string;
+  /**
+   * Bytes, not text (civics S3): the page is archived in `source_versions`
+   * before its extraction is queued, and the worker reloads it from there.
+   */
+  fetchUrlBytes(url: string): Promise<FetchedBytes>;
   crawlCivicsUrls(
     ds: DataSourceConfig,
     registeredHosts: Set<string>,
@@ -318,6 +392,12 @@ export class CivicsSyncService extends LlmGeneratorBase {
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
+    /** Where each page is archived, and reloaded from by the worker (S3). */
+    @Optional() private readonly sourceVersions?: SourceVersionService,
+    /** Absent (or disabled): extraction runs in this process, as before S3. */
+    @Optional() private readonly extractQueue?: CivicsExtractQueue,
+    /** Read for an operator's cancel while the run waits on its pages. */
+    @Optional() private readonly pipelineJobs?: PipelineJobService,
   ) {
     // This class used to only *mirror* LlmGeneratorBase's constructor. It now
     // inherits it (#1281), so civics extraction goes through the same
@@ -331,11 +411,13 @@ export class CivicsSyncService extends LlmGeneratorBase {
    * @param options.reextract - Ignore K1's skip records and extract every
    *   page — the operator's way to force a fresh run (the sync's
    *   `resetWatermark`), rather than deleting rows by hand.
+   * @param options.pipelineJobId - The run's `pipeline_jobs` row, read for a
+   *   cancel between pages.
    */
   async sync(
     plugin: CivicsProvider,
     helpers: CivicsCrawlHelpers,
-    options: { reextract?: boolean } = {},
+    options: { reextract?: boolean; pipelineJobId?: string } = {},
   ): Promise<{
     processed: number;
     created: number;
@@ -345,9 +427,10 @@ export class CivicsSyncService extends LlmGeneratorBase {
     // `db` joins this guard because LlmGeneratorBase declares it optional —
     // a generator can legitimately be constructed without one. Civics sync
     // cannot, so it refuses here rather than asserting its way through.
-    if (!this.promptClient || !this.llm || !this.db) {
+    if (!this.promptClient || !this.llm || !this.db || !this.sourceVersions) {
       this.logger.warn(
-        'Civics sync requires PromptClient, LLM provider and DbService; skipping',
+        'Civics sync requires PromptClient, LLM provider, DbService and ' +
+          'SourceVersionService; skipping',
       );
       return { processed: 0, created: 0, updated: 0 };
     }
@@ -415,28 +498,23 @@ export class CivicsSyncService extends LlmGeneratorBase {
     discoverTracker.complete();
 
     // ─── Phase 2/2 — extract_and_upsert ────────────────────────────
-    const extractTracker = this.civicsTracker(
-      'extract_and_upsert',
-      allUrls.length,
-      { region: regionId },
+    const end = await this.extractPages(
+      regionId,
+      allUrls,
+      helpers,
+      options,
+      counts,
     );
-    for (const { url, ds } of allUrls) {
-      const result = await this.extractAndUpsertPage(
-        regionId,
-        url,
-        ds,
-        helpers,
-        options.reextract,
-      );
-      extractTracker.item({
-        name: url,
-        externalId: null,
-        ...PAGE_OUTCOME[result],
-      });
-      counts[result]++;
-    }
-    extractTracker.complete();
     const { created, updated, stale } = counts;
+    if (end !== 'settled') {
+      this.logger.warn(
+        { regionId, end },
+        end === 'cancelled'
+          ? 'Civics sync cancelled: pages not yet started were dropped; ' +
+              'those already running finished first'
+          : 'Civics sync gave up on pages that never reported — counted as failed',
+      );
+    }
 
     // Surfaced once per run at `warn`, because the per-page warnings are easy
     // to lose in a long sync and the aggregate is the thing worth noticing: a
@@ -455,7 +533,8 @@ export class CivicsSyncService extends LlmGeneratorBase {
 
     // Once per run, not per page: a term can lose a source on one page and
     // gain one on the next, and pruning mid-run would churn rows that the
-    // same sync is about to re-source.
+    // same sync is about to re-source. After `extractPages`, which returns
+    // only once every queued page has reported (S3).
     await this.pruneUnsourcedGlossaryEntries(regionId);
 
     // `skipped` reaches the job's result (`itemsSkipped`): with K1 a normal
@@ -482,7 +561,7 @@ export class CivicsSyncService extends LlmGeneratorBase {
   private groundTypes(
     measureTypes: unknown,
     content: string,
-    ds: DataSourceConfig,
+    ds: CivicsSourceFields,
     sourceUrl: string,
     promptVersion: string | undefined,
     promptHash: string | undefined,
@@ -704,286 +783,558 @@ export class CivicsSyncService extends LlmGeneratorBase {
   }
 
   /**
-   * Fetch a civics page, send it through the civics-extraction prompt,
-   * upsert the resulting `CivicsBlock` and glossary entries.
+   * Fetch, archive and key every page, queue the changed ones, and wait for
+   * them all (civics S3). Each outcome is counted as it arrives, so the
+   * consecutive-failure abort can fire mid-run; on an abort (or any error)
+   * the pages not yet started are dropped and the running ones waited out
+   * before it propagates.
    */
-  private async extractAndUpsertPage(
+  private async extractPages(
+    regionId: string,
+    pages: Array<{ url: string; ds: DataSourceConfig }>,
+    helpers: CivicsCrawlHelpers,
+    options: { reextract?: boolean; pipelineJobId?: string },
+    counts: Record<CivicsPageOutcome, number>,
+  ): Promise<SettleEnd> {
+    const tracker = this.civicsTracker('extract_and_upsert', pages.length, {
+      region: regionId,
+    });
+    const record = (url: string, result: CivicsPageOutcome): void => {
+      tracker.item({ name: url, externalId: null, ...PAGE_OUTCOME[result] });
+      counts[result]++;
+    };
+    // jobId → the pages it stands for: two sources that reach one page with
+    // identical inputs share a job, and both are counted.
+    const queued = new Map<string, string[]>();
+    const onOutcome = (outcome: ChildOutcome<string>): void => {
+      const urls = queued.get(outcome.jobId) ?? [];
+      queued.delete(outcome.jobId);
+      for (const url of urls) record(url, this.outcomeOf(url, outcome));
+    };
+    const isCancelled = () => this.isCancelled(options.pipelineJobId);
+    const idleTimeoutMs = extractIdleTimeoutMs();
+
+    const batch = await this.openExtractBatch();
+    try {
+      for (const { url, ds } of pages) {
+        if (await isCancelled()) break;
+        const prepared = await this.preparePage(
+          regionId,
+          url,
+          ds,
+          helpers,
+          options.reextract,
+        );
+        // Counted now: a page settled without a job (unchanged, or failed
+        // before one was queued); otherwise its job's outcome counts it.
+        const settledNow =
+          'outcome' in prepared
+            ? prepared.outcome
+            : await this.queuePage(batch, queued, url, prepared);
+        if (settledNow) record(url, settledNow);
+        batch.take().forEach(onOutcome);
+      }
+      const end = await settleChildJobs(batch, {
+        onOutcome,
+        isCancelled,
+        idleTimeoutMs,
+      });
+      tracker.complete();
+      return end;
+    } catch (error) {
+      await abandonChildJobs(batch, idleTimeoutMs);
+      throw error;
+    } finally {
+      await batch.close();
+    }
+  }
+
+  /** The extract queue when one is bound and on; otherwise this process. */
+  private openExtractBatch(): Promise<
+    ChildJobBatch<CivicsExtractJobData, string>
+  > {
+    if (this.extractQueue?.enabled) return this.extractQueue.open();
+    return Promise.resolve(inlineBatch((job) => this.extractPage(job)));
+  }
+
+  /**
+   * Queue a page, or count it with the job already queued for the same
+   * inputs. A failure to queue is the page's failure, not the run's.
+   */
+  private async queuePage(
+    batch: ChildJobBatch<CivicsExtractJobData, string>,
+    queued: Map<string, string[]>,
+    url: string,
+    page: QueuedPage,
+  ): Promise<CivicsPageOutcome | undefined> {
+    const sharing = queued.get(page.jobId);
+    if (sharing) {
+      sharing.push(url);
+      return undefined;
+    }
+    queued.set(page.jobId, [url]);
+    try {
+      await batch.add(page.data, page.jobId);
+      return undefined;
+    } catch (error) {
+      queued.delete(page.jobId);
+      this.logger.error(
+        `Civics extraction could not be queued for ${url}: ${(error as Error).message}`,
+      );
+      return 'failed';
+    }
+  }
+
+  /** A job's report as a page outcome; anything unrecognised is a failure. */
+  private outcomeOf(
+    url: string,
+    outcome: ChildOutcome<string>,
+  ): CivicsPageOutcome {
+    if (!outcome.ok) {
+      this.logger.error(
+        `Civics extraction failed for ${url}: ${outcome.reason}`,
+      );
+      return 'failed';
+    }
+    return isPageOutcome(outcome.value) ? outcome.value : 'failed';
+  }
+
+  private async isCancelled(pipelineJobId?: string): Promise<boolean> {
+    if (!pipelineJobId || !this.pipelineJobs) return false;
+    try {
+      return await this.pipelineJobs.isCancelled(pipelineJobId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read cancellation for ${pipelineJobId}: ${(error as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * The fetch half of a page: fetch its bytes, derive the text and key it
+   * (K1). Unchanged → counted here, no job, nothing archived. Otherwise
+   * archive the bytes and return the job to queue: keyed by `laneJobId` so a
+   * page still in flight from an earlier run collapses onto that job; an
+   * unknown digest (no key) gets a one-off id and never collapses.
+   *
+   * Archived only once it is going to be extracted: the archive dedupes on
+   * the BYTES and K1 on the TEXT, so a page whose markup changes every
+   * request (a token, a timestamp) would otherwise add an unreferenced row
+   * every run while K1 skipped it.
+   */
+  private async preparePage(
     regionId: string,
     sourceUrl: string,
     ds: DataSourceConfig,
     helpers: CivicsCrawlHelpers,
     reextract = false,
-  ): Promise<
-    'created' | 'updated' | 'failed' | 'skipped' | 'stale' | 'unchanged'
-  > {
-    if (!this.promptClient || !this.llm) return 'failed';
+  ): Promise<{ outcome: CivicsPageOutcome } | QueuedPage> {
     try {
-      const html = await helpers.fetchUrlText(sourceUrl);
-      const content = helpers.htmlToReadableText(html);
-      const { promptText, promptHash, promptVersion } =
-        await this.promptClient.getCivicsExtractionPrompt({
-          regionId,
-          sourceUrl,
-          contentGoal: ds.contentGoal,
-          category: ds.category,
-          hints: ds.hints,
-          html: content,
-        });
-
-      // K1: skip a page whose every input is unchanged since its last
-      // completed extraction. Checked before the LLM call — which is the
-      // whole cost: the 2026-10-23 baseline spent 97% of its run there.
-      const sourceTextHash = sha256(content);
-      const configHash = civicsConfigHash(ds);
-      const skipKey = buildSkipKey({
-        sourceHash: sourceTextHash,
-        promptHash,
-        modelDigest: (await this.llm.getModelDigest()) ?? '',
-        configHash,
-      });
+      const fetched = await helpers.fetchUrlBytes(sourceUrl);
+      const source = civicsSourceFields(ds);
+      const content = htmlToReadableText(decodeFetchedText(fetched.body));
+      const { skipKey } = await this.pageInputs(
+        regionId,
+        sourceUrl,
+        source,
+        content,
+      );
       if (
         !reextract &&
         (await this.isUnchanged(regionId, sourceUrl, skipKey))
       ) {
-        return 'unchanged';
+        return { outcome: 'unchanged' };
       }
-
-      const maxTokens = ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS;
-      const result = await this.llm.generate(promptText, {
-        maxTokens,
-        // GREEDY. `temperature: 0.1` alone does not make this deterministic,
-        // which cost three runs to work out: temperature sharpens the
-        // DIFFERENCE between candidate probabilities and does nothing to a
-        // genuine tie. The model appears near-50/50 on one decision — "does
-        // this page carry civic content?" — and a 0.5/0.5 split stays 0.5/0.5
-        // at any temperature above zero. Three runs on 2026-10-02 bore that
-        // out: `failed-qualify` returned an empty block on all three while the
-        // eval harness extracted it at three fixed seeds, and the Assembly
-        // glossary page (55 terms, the largest contributor in the corpus)
-        // landed on two runs and not the third.
-        //
-        // `topK: 1` takes the argmax even when the argmax wins 0.501 to
-        // 0.499, which makes the output a function of the input. If a page
-        // then extracts to nothing, that is a fact about the page or the
-        // prompt — diagnosable — rather than a roll of the dice.
-        //
-        // This does NOT reintroduce the risk the seed comment below warns
-        // about. A pinned seed freezes one arbitrary draw out of many; greedy
-        // takes the model's single best answer, which is the branch a sampler
-        // lands on most often anyway.
-        //
-        // `temperature: 0` would be the honest way to say this, but #1325
-        // makes `||` coerce an explicit 0 to the default 0.7 — the exact
-        // opposite of determinism. 0.1 is kept because it is harmless once
-        // only one candidate survives top-k, and `topK: 1` is truthy so it
-        // passes through that same `||` intact.
-        temperature: 0.1,
-        topK: 1,
-        ...(civicsSeed() !== undefined ? { seed: civicsSeed() } : {}),
-        requestTimeoutMs: ds.llmRequestTimeoutMs,
-      });
-
-      // A prompt cut short on input (num_ctx) is not pinned: its answer came
-      // from part of the page, and the context window is not in the key —
-      // raising it must reach this page, so it runs again next time.
-      const pinKey = result.promptTruncated ? null : skipKey;
-
-      const candidate = extractJsonObjectSlice(result.text);
-      if (!candidate) {
-        // The old line said only "no JSON object" and a character count, which
-        // is why this cost a day: it cannot distinguish "the model wrote prose
-        // instead of JSON" from "the model was still writing valid JSON when
-        // it hit the token ceiling". `finishReason` answers that outright and
-        // was already on the result, discarded.
-        //
-        // Adding `hitTokenCeiling` to the structured fields was not enough:
-        // the MESSAGE still said "no JSON object", and that is the part a human
-        // reads. It was written up as a "32,000-token runaway producing no
-        // JSON" — three descriptions of the ceiling doing its job — and stayed
-        // an open mystery for two days. So the message itself now names the
-        // cause and the fix.
-        const ceilingHit = result.finishReason === 'length';
-        this.logger.warn(
-          {
-            sourceUrl,
-            finishReason: result.finishReason,
-            tokensIn: result.tokensIn,
-            tokensOut: result.tokensOut,
-            maxTokens,
-            hitTokenCeiling: ceilingHit,
-            // The INPUT side of the same question. Both were already on the
-            // result and neither was logged, which is how "the prompt was
-            // silently truncated" stays invisible at this exact moment.
-            promptTruncated: result.promptTruncated,
-            promptTokensEstimated: result.promptTokensEstimated,
-            promptChars: promptText.length,
-            contentChars: content.length,
-            promptVersion,
-            promptHash,
-            responseChars: result.text.length,
-            responseHead: result.text.slice(0, 160),
-          },
-          ceilingHit
-            ? `Civics extraction: output TRUNCATED at the ${maxTokens}-token ` +
-                `ceiling for ${sourceUrl} — the model was still writing valid ` +
-                `JSON (${result.text.length} chars) when it was cut off. This is ` +
-                `a budget problem, not a model or prompt problem: raise ` +
-                `llmMaxTokens for this data source.`
-            : // NOT "so it must be the prompt". There is a third cause this
-              // cannot see from here: a prompt cut on the way IN. With num_ctx
-              // unset the model may never reach the JSON-format instructions at
-              // the tail of the prompt, answer in prose, and report 'stop' — and
-              // #1322's detector misses an overflow this mild, because 16,386
-              // tokens read of ~17,937 sent is 91% coverage, well above the 50%
-              // threshold. Naming the candidates beats asserting one of them.
-              `Civics extraction: no JSON object for ${sourceUrl} — the model ` +
-                `stopped on its own (${result.finishReason ?? 'reason unreported'}) ` +
-                `without producing one. Not a budget problem. Check, in order: ` +
-                `whether the prompt was cut on input (promptTruncated below, and ` +
-                `tokensIn vs promptTokensEstimated), then the prompt, then the model.`,
-        );
-        await this.captureFailedExtraction(sourceUrl, promptText, result.text);
-        return 'failed';
-      }
-
-      const block = await this.parseBlockWithRepair(
-        candidate,
-        sourceUrl,
-        promptText,
-        result,
-        promptVersion,
-        promptHash,
-      );
-      if (!block) return 'failed';
-
-      // Ground the measure types against the page before anything persists.
-      // Deliberately BEFORE the empty check below: a block whose only types
-      // were fabrications becomes empty here, and an empty block is a skip,
-      // not a row. See civics-grounding.ts for the measured case this exists
-      // for — three real types filed under initialisms the page never uses,
-      // plus two invented outright, on one page of one run.
-      block.measureTypes = this.groundTypes(
-        block.measureTypes,
-        content,
-        ds,
-        sourceUrl,
-        promptVersion,
-        promptHash,
-      );
-
-      // Looked up BEFORE the empty check, not after, which is the fix for
-      // #1335. "This page has no civic content" and "this page used to have
-      // civic content and now extracts none" are different events, and only
-      // the second one is a problem — but they were indistinguishable while
-      // the empty check returned before anything knew a row existed.
-      const existing = await this.db!.civicsBlock.findUnique({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        select: { id: true, promptVersion: true, extractedAt: true },
-      });
-
-      // A page the crawler reached under the source's scope but that holds no
-      // civic content (e.g. dining services, records-request) extracts to a
-      // well-formed but entirely empty block. Persisting it creates a noise
-      // CivicsBlock, so skip the upsert entirely. See #874.
-      if (isEmptyCivicsExtraction(block)) {
-        if (!existing) {
-          this.logger.log(
-            `Civics extraction: no civic content on ${sourceUrl} — skipping empty block`,
-          );
-          // Recorded, so an unchanged empty page is not re-extracted every
-          // run — 13 of 24 pages in the baseline. The empty-over-existing
-          // case below records nothing: that page must retry.
-          await this.recordExtraction(regionId, sourceUrl, pinKey, 'empty');
-          return 'skipped';
-        }
-
-        // An empty extraction over an EXISTING row. The row is kept — serving
-        // the last good extraction beats serving nothing — but keeping it
-        // silently is what #1335 is about: measured on 2026-10-07, one of
-        // twelve California pages sat on prompt v5 while the other eleven were
-        // v6, because two later successful syncs passed over it and said
-        // nothing. The job reported `succeeded` both times.
-        //
-        // So this is a `warn`, and it names the drift explicitly: a reader
-        // comparing pages otherwise has no signal that one of them is several
-        // syncs behind, and the stored promptHash/promptVersion no longer
-        // describe what the region is being served elsewhere.
-        this.logger.warn(
-          {
-            sourceUrl,
-            storedPromptVersion: existing.promptVersion,
-            livePromptVersion: promptVersion,
-            storedExtractedAt: existing.extractedAt,
-            promptVersionDrifted: existing.promptVersion !== promptVersion,
-          },
-          `Civics extraction: ${sourceUrl} extracted EMPTY over an existing ` +
-            `block, so the previous extraction is being kept. It was stored ` +
-            `by prompt ${existing.promptVersion ?? 'unknown'} and the live ` +
-            `prompt is ${promptVersion ?? 'unknown'} — this row is now ` +
-            `staler than its siblings and its provenance no longer matches.`,
-        );
-        // Cleared, so the page retries next run even when this was a forced
-        // run (`reextract`) whose old record still matches the key.
-        await this.db!.civicsPageExtraction.deleteMany({
-          where: { regionId, sourceUrl },
-        });
-        return 'stale';
-      }
-
-      const fields = {
-        chambers: toJsonField(block.chambers),
-        measureTypes: toJsonField(block.measureTypes),
-        lifecycleStages: toJsonField(block.lifecycleStages),
-        sessionScheme: toJsonField(block.sessionScheme),
-        glossary: toJsonField(block.glossary),
-      };
-
-      // Through the shared write path (#1281): the attribution columns are
-      // assembled in one place. The digest identifies WHICH weights produced
-      // the block, because `ollama pull` can move a tag; the two input
-      // hashes say what it was produced FROM (K1).
-      const data = await this.withProvenance(
-        { ...fields, sourceTextHash, configHash, extractedAt: new Date() },
-        { promptHash, promptVersion },
-        (p) => ({
-          promptHash: p.promptHash,
-          promptVersion: p.promptVersion,
-          llmModel: p.llmModel,
-          llmDigest: p.llmModelDigest,
-        }),
-      );
-
-      await this.db!.civicsBlock.upsert({
-        where: { regionId_sourceUrl: { regionId, sourceUrl } },
-        create: { regionId, sourceUrl, ...data },
-        update: data,
-      });
-
-      const glossaryUpserted = await this.upsertGlossaryEntries(
+      const sourceVersionId = await this.archivePage(
         regionId,
         sourceUrl,
-        block.glossary,
-        {
-          promptHash: data.promptHash,
-          promptVersion: data.promptVersion,
-          llmModel: data.llmModel,
-          llmDigest: data.llmDigest,
-        },
+        fetched,
       );
-      // Last: a key is recorded only once everything it stands for is written.
-      await this.recordExtraction(regionId, sourceUrl, pinKey, 'block');
-
-      const outcome = existing ? 'updated' : 'created';
-      this.logger.log(
-        `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
-      );
-      return outcome;
+      if (!sourceVersionId) return { outcome: 'failed' };
+      return {
+        jobId: extractJobId(regionId, sourceUrl, skipKey, reextract),
+        data: { regionId, sourceUrl, sourceVersionId, source, reextract },
+      };
     } catch (e) {
+      // Fetch, prompt-service or model digest: anything before the job.
       this.logger.error(
-        `Civics extraction failed for ${sourceUrl}: ${(e as Error).message}`,
+        `Civics page could not be prepared for extraction (${sourceUrl}): ${(e as Error).message}`,
+      );
+      return { outcome: 'failed' };
+    }
+  }
+
+  /**
+   * Archive a fetched page; its row id is what the extraction job carries.
+   * A page the archive refuses (empty, or over its size cap) cannot be
+   * queued — there is nothing for the worker to reload.
+   */
+  private async archivePage(
+    regionId: string,
+    sourceUrl: string,
+    fetched: FetchedBytes,
+  ): Promise<string | undefined> {
+    const archived = await this.sourceVersions!.record({
+      content: fetched.body,
+      contentHash: createHash('sha256').update(fetched.body).digest('hex'),
+      sourceUrl,
+      contentType: fetched.contentType,
+      fetchedAt: fetched.fetchedAt,
+      etag: fetched.etag,
+      lastModified: fetched.lastModified,
+      regionId,
+      dataType: DataType.CIVICS,
+    });
+    if (!archived.sourceVersionId) {
+      this.logger.warn(
+        `Civics page ${sourceUrl} not archived (${archived.skippedReason ?? 'unknown'}); ` +
+          `it cannot be extracted this run`,
+      );
+    }
+    return archived.sourceVersionId;
+  }
+
+  /**
+   * The prompt and the K1 skip key for one page's text. The parent and the
+   * worker both call this — from the same bytes, through the same decode —
+   * so they agree on the key.
+   */
+  private async pageInputs(
+    regionId: string,
+    sourceUrl: string,
+    source: CivicsSourceFields,
+    content: string,
+  ): Promise<PageInputs> {
+    const { promptText, promptHash, promptVersion } =
+      await this.promptClient!.getCivicsExtractionPrompt({
+        regionId,
+        sourceUrl,
+        contentGoal: source.contentGoal,
+        category: source.category,
+        hints: source.hints,
+        html: content,
+      });
+    // K1: skip a page whose every input is unchanged since its last
+    // completed extraction. Checked before the LLM call — which is the
+    // whole cost: the 2026-10-23 baseline spent 97% of its run there.
+    const sourceTextHash = sha256(content);
+    const configHash = civicsConfigHash(source);
+    const skipKey = buildSkipKey({
+      sourceHash: sourceTextHash,
+      promptHash,
+      modelDigest: (await this.llm!.getModelDigest()) ?? '',
+      configHash,
+    });
+    return {
+      promptText,
+      promptHash,
+      promptVersion,
+      sourceTextHash,
+      configHash,
+      skipKey,
+    };
+  }
+
+  /**
+   * One page's extraction — the `civics-extract` worker's job (S3), or run
+   * inline when no queue is bound. Reloads the page from the archive and
+   * re-checks its key: an earlier run may have finished it since it was
+   * queued.
+   *
+   * A thrown error (a runner killed, the lane unreachable) is retried by the
+   * queue; a deterministic failure — no JSON, JSON beyond repair — returns
+   * `failed` and is not, because greedy decoding would reproduce it.
+   */
+  async extractPage(job: CivicsExtractJobData): Promise<CivicsPageOutcome> {
+    if (!this.promptClient || !this.llm || !this.db || !this.sourceVersions) {
+      throw new Error(
+        'Civics extraction requires PromptClient, LLM provider, DbService and SourceVersionService',
+      );
+    }
+    const version = await this.sourceVersions.getById(job.sourceVersionId);
+    if (!version) {
+      this.logger.warn(
+        `Civics extraction: archived page ${job.sourceVersionId} for ` +
+          `${job.sourceUrl} is gone; the next sync re-fetches it`,
       );
       return 'failed';
     }
+    const content = htmlToReadableText(
+      decodeFetchedText(Buffer.from(version.content)),
+    );
+    const page = await this.pageInputs(
+      job.regionId,
+      job.sourceUrl,
+      job.source,
+      content,
+    );
+    if (
+      !job.reextract &&
+      (await this.isUnchanged(job.regionId, job.sourceUrl, page.skipKey))
+    ) {
+      return 'unchanged';
+    }
+    return this.extractContent(job, content, page);
+  }
+
+  /**
+   * Send a page's text through the civics-extraction prompt and upsert the
+   * resulting `CivicsBlock` and glossary entries.
+   */
+  private async extractContent(
+    job: CivicsExtractJobData,
+    content: string,
+    page: PageInputs,
+  ): Promise<CivicsPageOutcome> {
+    const { regionId, sourceUrl, source: ds } = job;
+    const {
+      promptText,
+      promptHash,
+      promptVersion,
+      sourceTextHash,
+      configHash,
+      skipKey,
+    } = page;
+    const maxTokens = ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS;
+    const result = await this.llm!.generate(promptText, {
+      maxTokens,
+      // GREEDY. `temperature: 0.1` alone does not make this deterministic,
+      // which cost three runs to work out: temperature sharpens the
+      // DIFFERENCE between candidate probabilities and does nothing to a
+      // genuine tie. The model appears near-50/50 on one decision — "does
+      // this page carry civic content?" — and a 0.5/0.5 split stays 0.5/0.5
+      // at any temperature above zero. Three runs on 2026-10-02 bore that
+      // out: `failed-qualify` returned an empty block on all three while the
+      // eval harness extracted it at three fixed seeds, and the Assembly
+      // glossary page (55 terms, the largest contributor in the corpus)
+      // landed on two runs and not the third.
+      //
+      // `topK: 1` takes the argmax even when the argmax wins 0.501 to
+      // 0.499, which makes the output a function of the input. If a page
+      // then extracts to nothing, that is a fact about the page or the
+      // prompt — diagnosable — rather than a roll of the dice.
+      //
+      // This does NOT reintroduce the risk the seed comment below warns
+      // about. A pinned seed freezes one arbitrary draw out of many; greedy
+      // takes the model's single best answer, which is the branch a sampler
+      // lands on most often anyway.
+      //
+      // `temperature: 0` would be the honest way to say this, but #1325
+      // makes `||` coerce an explicit 0 to the default 0.7 — the exact
+      // opposite of determinism. 0.1 is kept because it is harmless once
+      // only one candidate survives top-k, and `topK: 1` is truthy so it
+      // passes through that same `||` intact.
+      temperature: 0.1,
+      topK: 1,
+      ...(civicsSeed() !== undefined ? { seed: civicsSeed() } : {}),
+      requestTimeoutMs: ds.llmRequestTimeoutMs,
+    });
+
+    // A prompt cut short on input (num_ctx) is not pinned: its answer came
+    // from part of the page, and the context window is not in the key —
+    // raising it must reach this page, so it runs again next time.
+    const pinKey = result.promptTruncated ? null : skipKey;
+
+    const candidate = extractJsonObjectSlice(result.text);
+    if (!candidate) {
+      // The old line said only "no JSON object" and a character count, which
+      // is why this cost a day: it cannot distinguish "the model wrote prose
+      // instead of JSON" from "the model was still writing valid JSON when
+      // it hit the token ceiling". `finishReason` answers that outright and
+      // was already on the result, discarded.
+      //
+      // Adding `hitTokenCeiling` to the structured fields was not enough:
+      // the MESSAGE still said "no JSON object", and that is the part a human
+      // reads. It was written up as a "32,000-token runaway producing no
+      // JSON" — three descriptions of the ceiling doing its job — and stayed
+      // an open mystery for two days. So the message itself now names the
+      // cause and the fix.
+      const ceilingHit = result.finishReason === 'length';
+      this.logger.warn(
+        {
+          sourceUrl,
+          finishReason: result.finishReason,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          maxTokens,
+          hitTokenCeiling: ceilingHit,
+          // The INPUT side of the same question. Both were already on the
+          // result and neither was logged, which is how "the prompt was
+          // silently truncated" stays invisible at this exact moment.
+          promptTruncated: result.promptTruncated,
+          promptTokensEstimated: result.promptTokensEstimated,
+          promptChars: promptText.length,
+          contentChars: content.length,
+          promptVersion,
+          promptHash,
+          responseChars: result.text.length,
+          responseHead: result.text.slice(0, 160),
+        },
+        ceilingHit
+          ? `Civics extraction: output TRUNCATED at the ${maxTokens}-token ` +
+              `ceiling for ${sourceUrl} — the model was still writing valid ` +
+              `JSON (${result.text.length} chars) when it was cut off. This is ` +
+              `a budget problem, not a model or prompt problem: raise ` +
+              `llmMaxTokens for this data source.`
+          : // NOT "so it must be the prompt". There is a third cause this
+            // cannot see from here: a prompt cut on the way IN. With num_ctx
+            // unset the model may never reach the JSON-format instructions at
+            // the tail of the prompt, answer in prose, and report 'stop' — and
+            // #1322's detector misses an overflow this mild, because 16,386
+            // tokens read of ~17,937 sent is 91% coverage, well above the 50%
+            // threshold. Naming the candidates beats asserting one of them.
+            `Civics extraction: no JSON object for ${sourceUrl} — the model ` +
+              `stopped on its own (${result.finishReason ?? 'reason unreported'}) ` +
+              `without producing one. Not a budget problem. Check, in order: ` +
+              `whether the prompt was cut on input (promptTruncated below, and ` +
+              `tokensIn vs promptTokensEstimated), then the prompt, then the model.`,
+      );
+      await this.captureFailedExtraction(sourceUrl, promptText, result.text);
+      return 'failed';
+    }
+
+    const block = await this.parseBlockWithRepair(
+      candidate,
+      sourceUrl,
+      promptText,
+      result,
+      promptVersion,
+      promptHash,
+    );
+    if (!block) return 'failed';
+
+    // Ground the measure types against the page before anything persists.
+    // Deliberately BEFORE the empty check below: a block whose only types
+    // were fabrications becomes empty here, and an empty block is a skip,
+    // not a row. See civics-grounding.ts for the measured case this exists
+    // for — three real types filed under initialisms the page never uses,
+    // plus two invented outright, on one page of one run.
+    block.measureTypes = this.groundTypes(
+      block.measureTypes,
+      content,
+      ds,
+      sourceUrl,
+      promptVersion,
+      promptHash,
+    );
+
+    // Looked up BEFORE the empty check, not after, which is the fix for
+    // #1335. "This page has no civic content" and "this page used to have
+    // civic content and now extracts none" are different events, and only
+    // the second one is a problem — but they were indistinguishable while
+    // the empty check returned before anything knew a row existed.
+    const existing = await this.db!.civicsBlock.findUnique({
+      where: { regionId_sourceUrl: { regionId, sourceUrl } },
+      select: { id: true, promptVersion: true, extractedAt: true },
+    });
+
+    // A page the crawler reached under the source's scope but that holds no
+    // civic content (e.g. dining services, records-request) extracts to a
+    // well-formed but entirely empty block. Persisting it creates a noise
+    // CivicsBlock, so skip the upsert entirely. See #874.
+    if (isEmptyCivicsExtraction(block)) {
+      if (!existing) {
+        this.logger.log(
+          `Civics extraction: no civic content on ${sourceUrl} — skipping empty block`,
+        );
+        // Recorded, so an unchanged empty page is not re-extracted every
+        // run — 13 of 24 pages in the baseline. The empty-over-existing
+        // case below records nothing: that page must retry.
+        await this.recordExtraction(regionId, sourceUrl, pinKey, 'empty');
+        return 'skipped';
+      }
+
+      // An empty extraction over an EXISTING row. The row is kept — serving
+      // the last good extraction beats serving nothing — but keeping it
+      // silently is what #1335 is about: measured on 2026-10-07, one of
+      // twelve California pages sat on prompt v5 while the other eleven were
+      // v6, because two later successful syncs passed over it and said
+      // nothing. The job reported `succeeded` both times.
+      //
+      // So this is a `warn`, and it names the drift explicitly: a reader
+      // comparing pages otherwise has no signal that one of them is several
+      // syncs behind, and the stored promptHash/promptVersion no longer
+      // describe what the region is being served elsewhere.
+      this.logger.warn(
+        {
+          sourceUrl,
+          storedPromptVersion: existing.promptVersion,
+          livePromptVersion: promptVersion,
+          storedExtractedAt: existing.extractedAt,
+          promptVersionDrifted: existing.promptVersion !== promptVersion,
+        },
+        `Civics extraction: ${sourceUrl} extracted EMPTY over an existing ` +
+          `block, so the previous extraction is being kept. It was stored ` +
+          `by prompt ${existing.promptVersion ?? 'unknown'} and the live ` +
+          `prompt is ${promptVersion ?? 'unknown'} — this row is now ` +
+          `staler than its siblings and its provenance no longer matches.`,
+      );
+      // Cleared, so the page retries next run even when this was a forced
+      // run (`reextract`) whose old record still matches the key.
+      await this.db!.civicsPageExtraction.deleteMany({
+        where: { regionId, sourceUrl },
+      });
+      return 'stale';
+    }
+
+    const fields = {
+      chambers: toJsonField(block.chambers),
+      measureTypes: toJsonField(block.measureTypes),
+      lifecycleStages: toJsonField(block.lifecycleStages),
+      sessionScheme: toJsonField(block.sessionScheme),
+      glossary: toJsonField(block.glossary),
+    };
+
+    // Through the shared write path (#1281): the attribution columns are
+    // assembled in one place. The digest identifies WHICH weights produced
+    // the block, because `ollama pull` can move a tag; the two input
+    // hashes say what it was produced FROM (K1).
+    const data = await this.withProvenance(
+      {
+        ...fields,
+        sourceTextHash,
+        configHash,
+        sourceVersionId: job.sourceVersionId,
+        extractedAt: new Date(),
+      },
+      { promptHash, promptVersion },
+      (p) => ({
+        promptHash: p.promptHash,
+        promptVersion: p.promptVersion,
+        llmModel: p.llmModel,
+        llmDigest: p.llmModelDigest,
+      }),
+    );
+
+    await this.db!.civicsBlock.upsert({
+      where: { regionId_sourceUrl: { regionId, sourceUrl } },
+      create: { regionId, sourceUrl, ...data },
+      update: data,
+    });
+    // The text the block was extracted from, on the archived bytes it came
+    // from (#1306) — what `source_text_hash` is a hash of.
+    await this.sourceVersions!.attachDerivedText(job.sourceVersionId, content);
+
+    const glossaryUpserted = await this.upsertGlossaryEntries(
+      regionId,
+      sourceUrl,
+      block.glossary,
+      {
+        promptHash: data.promptHash,
+        promptVersion: data.promptVersion,
+        llmModel: data.llmModel,
+        llmDigest: data.llmDigest,
+      },
+    );
+    // Last: a key is recorded only once everything it stands for is written.
+    await this.recordExtraction(regionId, sourceUrl, pinKey, 'block');
+
+    const outcome = existing ? 'updated' : 'created';
+    this.logger.log(
+      `Civics extracted from ${sourceUrl} (${outcome}, ${glossaryUpserted} glossary terms)`,
+    );
+    return outcome;
   }
 
   /**
@@ -1231,6 +1582,27 @@ function isEmptyCivicsExtraction(block: {
     isEmptyList(block.lifecycleStages) &&
     isEmptyList(block.glossary) &&
     isEmptyScheme
+  );
+}
+
+/**
+ * The `civics-extract` job id for a page: its region + URL, the stage, and
+ * the skip key — so a page still in flight collapses onto its job. A forced
+ * run gets its own stage, so it never collapses onto an unforced job in
+ * flight and inherits that job's `reextract: false`. No key (an unknown
+ * digest) → a one-off id that never collapses.
+ */
+function extractJobId(
+  regionId: string,
+  sourceUrl: string,
+  skipKey: string | null,
+  reextract: boolean,
+): string {
+  if (!skipKey) return `civics-${randomUUID()}`;
+  return laneJobId(
+    sha256(`${regionId}\n${sourceUrl}`).slice(0, 32),
+    reextract ? 'reextract' : 'extract',
+    skipKey,
   );
 }
 

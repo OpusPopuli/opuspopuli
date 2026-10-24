@@ -16,6 +16,7 @@ import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
+import * as resilientFetch from './resilient-fetch';
 import { RegionPluginService } from './region-plugin.service';
 import { RegionCacheService } from './region-cache.service';
 import { HOST_RATE_LIMITER, REGION_CACHE } from './region.tokens';
@@ -253,27 +254,59 @@ describe('RegionSyncService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('civics re-extraction (K1)', () => {
-    const syncCivics = (archiveOptions?: { resetWatermark?: boolean }) =>
+  describe('civics re-extraction (K1) and cancellation (S3)', () => {
+    const syncCivics = (
+      pipelineJobId?: string,
+      archiveOptions?: { resetWatermark?: boolean },
+    ) =>
       (
         service as unknown as {
-          syncCivics: (p: unknown, a?: unknown) => Promise<unknown>;
+          syncCivics: (
+            p: unknown,
+            id?: string,
+            a?: unknown,
+          ) => Promise<unknown>;
         }
-      ).syncCivics({}, archiveOptions);
+      ).syncCivics({}, pipelineJobId, archiveOptions);
 
-    it("forces civics past its skip records on the sync's resetWatermark", async () => {
+    it("forces civics past its skip records on the sync's resetWatermark, and passes the run's job id", async () => {
       const sync = jest
         .spyOn(civicsSync, 'sync')
         .mockResolvedValue({ processed: 0, created: 0, updated: 0 });
 
-      await syncCivics({ resetWatermark: true });
+      await syncCivics('job-1', { resetWatermark: true });
       await syncCivics();
 
       expect(sync.mock.calls.map((c) => c[2])).toEqual([
-        { reextract: true },
-        { reextract: false },
+        { reextract: true, pipelineJobId: 'job-1' },
+        { reextract: false, pipelineJobId: undefined },
       ]);
     });
+  });
+
+  it('fetches civics pages as bytes, labelled civics (S3)', async () => {
+    const sync = jest
+      .spyOn(civicsSync, 'sync')
+      .mockResolvedValue({ processed: 0, created: 0, updated: 0 });
+    const fetchBytes = jest
+      .spyOn(resilientFetch, 'fetchBytesWithRetry')
+      .mockResolvedValue({
+        body: Buffer.from(''),
+        contentType: 'text/html',
+        fetchedAt: '2026-10-24T00:00:00.000Z',
+      });
+    await (
+      service as unknown as { syncCivics: (p: unknown) => Promise<unknown> }
+    ).syncCivics({});
+
+    const helpers = sync.mock.calls[0][1];
+    await helpers.fetchUrlBytes('https://www.senate.ca.gov/x');
+
+    expect(fetchBytes).toHaveBeenCalledWith(
+      'https://www.senate.ca.gov/x',
+      expect.objectContaining({ dataType: 'civics' }),
+    );
+    fetchBytes.mockRestore();
   });
 
   describe('getRegionInfo', () => {

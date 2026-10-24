@@ -65,6 +65,29 @@ export interface MinutesSummaryJobData {
   force?: boolean;
 }
 
+/**
+ * Job data for the civics-extract queue — one job per changed civics page
+ * (civics S3). The page itself is NOT in the payload: the worker reloads the
+ * archived bytes by `sourceVersionId`, so Redis carries ids, not page text.
+ */
+export interface CivicsExtractJobData {
+  regionId: string;
+  sourceUrl: string;
+  /** The `source_versions` row holding the page as fetched. */
+  sourceVersionId: string;
+  /** The data-source fields the extraction reads (prompt inputs + limits). */
+  source: {
+    url: string;
+    contentGoal: string;
+    category?: string;
+    hints?: string[];
+    llmMaxTokens?: number;
+    llmRequestTimeoutMs?: number;
+  };
+  /** Extract even when the page's skip key matches its last record. */
+  reextract?: boolean;
+}
+
 export interface StructuralAnalysisJobData {
   structuralAnalysisJobId: string;
   regionId: string;
@@ -184,6 +207,13 @@ export interface EnqueueOptions {
   jobId?: string;
   delay?: number;
   priority?: number;
+  /**
+   * Drop the job from Redis as soon as it finishes, instead of the queue's
+   * retention. Needed where a deterministic jobId must collapse only onto
+   * work still in flight: BullMQ treats an add whose id matches a RETAINED
+   * finished job as a no-op.
+   */
+  removeOnFinish?: boolean;
 }
 
 export interface QueueJobInfo {

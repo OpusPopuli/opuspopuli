@@ -11,15 +11,25 @@ import {
 } from '@opuspopuli/prompt-client';
 import { stableHash, type ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
+import type { FetchedBytes } from './resilient-fetch';
+import { SourceVersionService } from './source-version.service';
 
 import {
   CIVICS_MAX_OUTPUT_TOKENS,
   CIVICS_EXTRACTOR_VERSION,
   CivicsSyncService,
   civicsConfigHash,
+  civicsSourceFields,
   type CivicsCrawlHelpers,
   type CivicsProvider,
 } from './civics-sync.service';
+import { CivicsExtractQueue } from './civics-extract.queue';
+import { PipelineJobService } from './pipeline-job.service';
+import { SyncAbortedError } from './sync-phase-logger';
+import {
+  inlineBatch,
+  type ChildJobBatch,
+} from 'src/common/child-jobs/child-job-batch';
 
 /**
  * Regression coverage for #869: `llm` is an interface (`ILLMProvider`) and is
@@ -34,8 +44,10 @@ import {
  * (not just the guard logic) is exercised.
  */
 describe('CivicsSyncService', () => {
-  const buildService = async (opts: { withLlm?: boolean } = {}) => {
-    const { withLlm = true } = opts;
+  const buildService = async (
+    opts: { withLlm?: boolean; extra?: unknown[] } = {},
+  ) => {
+    const { withLlm = true, extra = [] } = opts;
 
     const mockPromptClient = createMock<PromptClientService>();
     const mockLlm = {
@@ -45,11 +57,26 @@ describe('CivicsSyncService', () => {
       getModelDigest: jest.fn().mockResolvedValue('stub-digest'),
     } as unknown as jest.Mocked<ILLMProvider>;
     const mockDb = createMock<DbService>();
+    // An archive that hands back what it was given (civics S3): no queue is
+    // bound here, so extraction runs inline and reloads the page by id.
+    const archived = new Map<string, Buffer>();
+    const mockSourceVersions = {
+      record: jest.fn(async ({ content }: { content: Buffer }) => {
+        const id = `sv-${archived.size + 1}`;
+        archived.set(id, content);
+        return { contentHash: 'h', stored: true, sourceVersionId: id };
+      }),
+      getById: jest.fn(async (id: string) =>
+        archived.has(id) ? { id, content: archived.get(id) } : null,
+      ),
+      attachDerivedText: jest.fn().mockResolvedValue(true),
+    };
 
     const providers: unknown[] = [
       CivicsSyncService,
       { provide: DbService, useValue: mockDb },
       { provide: PromptClientService, useValue: mockPromptClient },
+      { provide: SourceVersionService, useValue: mockSourceVersions },
     ];
     if (withLlm) {
       // The INGESTION token, not the shared one (roadmap §6.4): civics
@@ -59,6 +86,7 @@ describe('CivicsSyncService', () => {
       // at runtime, so the token must still be explicit.
       providers.push({ provide: 'LLM_INGESTION_PROVIDER', useValue: mockLlm });
     }
+    providers.push(...extra);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: providers as Parameters<
@@ -71,12 +99,19 @@ describe('CivicsSyncService', () => {
       mockLlm,
       mockDb,
       mockPromptClient,
+      mockSourceVersions,
     };
   };
 
+  /** A fetched page whose readable text is `readable text`. */
+  const fetched = (html = '<p>readable text</p>'): FetchedBytes => ({
+    body: Buffer.from(html, 'utf8'),
+    contentType: 'text/html',
+    fetchedAt: '2026-10-24T00:00:00.000Z',
+  });
+
   const makeHelpers = (): jest.Mocked<CivicsCrawlHelpers> => ({
-    fetchUrlText: jest.fn(),
-    htmlToReadableText: jest.fn(),
+    fetchUrlBytes: jest.fn(),
     crawlCivicsUrls: jest.fn().mockResolvedValue([]),
   });
 
@@ -117,8 +152,7 @@ describe('CivicsSyncService', () => {
     } as unknown as CivicsProvider;
 
     const helpers: jest.Mocked<CivicsCrawlHelpers> = {
-      fetchUrlText: jest.fn().mockResolvedValue('<html/>'),
-      htmlToReadableText: jest.fn().mockReturnValue('readable text'),
+      fetchUrlBytes: jest.fn().mockResolvedValue(fetched()),
       crawlCivicsUrls: jest.fn().mockResolvedValue([sourceUrl]),
     };
 
@@ -196,8 +230,7 @@ describe('CivicsSyncService', () => {
           ]),
       } as unknown as CivicsProvider;
       const helpers: jest.Mocked<CivicsCrawlHelpers> = {
-        fetchUrlText: jest.fn().mockResolvedValue('<html/>'),
-        htmlToReadableText: jest.fn().mockReturnValue('readable text'),
+        fetchUrlBytes: jest.fn().mockResolvedValue(fetched()),
         crawlCivicsUrls: jest.fn().mockResolvedValue([sourceUrl]),
       };
 
@@ -704,5 +737,347 @@ describe('civicsConfigHash — what a page skip must notice (K1)', () => {
     expect(
       civicsConfigHash({ ...base, crawlDepth: 3, crawlMaxPages: 50 } as never),
     ).toBe(civicsConfigHash(base as never));
+  });
+});
+
+// ── Civics S3: the fetch half, the queue, and the worker's job ─────────
+describe('CivicsSyncService — extraction off the fetch loop (S3)', () => {
+  const BLOCK = JSON.stringify({ chambers: [{ name: 'Senate' }] });
+  const PAGE = 'https://www.senate.ca.gov/citizens-guide/process';
+  const OTHER = 'https://www.senate.ca.gov/citizens-guide/other';
+
+  const plugin = (sources: Record<string, unknown>[]) =>
+    ({
+      getName: () => 'california',
+      getDataSources: () => sources,
+    }) as unknown as CivicsProvider;
+  const source = { url: PAGE, contentGoal: 'goal', category: 'Senate' };
+  const page = (): Buffer => Buffer.from('<p>A bill is introduced.</p>');
+
+  /** A service with the archive, the LLM and the prompt stubbed. */
+  const build = async (extra: unknown[] = []) => {
+    const archived = new Map<string, Buffer>();
+    const sourceVersions = {
+      record: jest.fn(async ({ content }: { content: Buffer }) => {
+        const id = `sv-${archived.size + 1}`;
+        archived.set(id, content);
+        return { contentHash: 'h', stored: true, sourceVersionId: id };
+      }),
+      getById: jest.fn(async (id: string) =>
+        archived.has(id) ? { id, content: archived.get(id) } : null,
+      ),
+      attachDerivedText: jest.fn().mockResolvedValue(true),
+    };
+    const llm = {
+      generate: jest.fn().mockResolvedValue({ text: BLOCK }),
+      getModelName: () => 'm',
+      getModelDigest: jest.fn().mockResolvedValue('d'),
+    };
+    const prompt = createMock<PromptClientService>();
+    prompt.getCivicsExtractionPrompt.mockResolvedValue({
+      promptText: 'p',
+      promptHash: 'h',
+      promptVersion: 'v6',
+    } as never);
+    const db = createMock<DbService>();
+    (db.civicsBlock.findUnique as jest.Mock).mockResolvedValue(null);
+    (db.civicsPageExtraction.findUnique as jest.Mock).mockResolvedValue(null);
+    const module = await Test.createTestingModule({
+      providers: [
+        CivicsSyncService,
+        { provide: DbService, useValue: db },
+        { provide: PromptClientService, useValue: prompt },
+        { provide: 'LLM_INGESTION_PROVIDER', useValue: llm },
+        { provide: SourceVersionService, useValue: sourceVersions },
+        ...(extra as never[]),
+      ],
+    }).compile();
+    return { service: module.get(CivicsSyncService), llm, sourceVersions, db };
+  };
+
+  const helpers = (
+    urls: string[],
+    fetchUrlBytes: CivicsCrawlHelpers['fetchUrlBytes'] = async () => ({
+      body: page(),
+      contentType: 'text/html',
+      fetchedAt: '2026-10-24T00:00:00.000Z',
+    }),
+  ): CivicsCrawlHelpers => ({
+    crawlCivicsUrls: async () => urls,
+    fetchUrlBytes,
+  });
+
+  /** A queue whose batch is `batch`, standing in for Redis. */
+  const queueOf = (batch: ChildJobBatch<unknown, string>) => ({
+    provide: CivicsExtractQueue,
+    useValue: { enabled: true, open: jest.fn().mockResolvedValue(batch) },
+  });
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('archives each page and writes the block against that archived copy', async () => {
+    const { service, sourceVersions, db } = await build();
+
+    await service.sync(plugin([source]), helpers([PAGE]));
+
+    expect(sourceVersions.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceUrl: PAGE,
+        dataType: 'civics',
+        contentType: 'text/html',
+      }),
+    );
+    expect(db.civicsBlock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ sourceVersionId: 'sv-1' }),
+      }),
+    );
+    expect(sourceVersions.attachDerivedText).toHaveBeenCalledWith(
+      'sv-1',
+      'A bill is introduced.',
+    );
+  });
+
+  it('extracts a page reached by two sources with identical inputs once, counting both', async () => {
+    // A queue whose jobs report only once the parent waits — the second
+    // source reaches the page while its job is still in flight.
+    const ids: string[] = [];
+    let added = 0;
+    let released = false;
+    const inFlight: ChildJobBatch<unknown, string> = {
+      add: async (_d, id) => {
+        added++;
+        ids.push(id);
+      },
+      take: () =>
+        released
+          ? ids
+              .splice(0)
+              .map((jobId) => ({ jobId, ok: true as const, value: 'created' }))
+          : [],
+      get pending() {
+        return ids.length;
+      },
+      waitForOutcome: async () => {
+        released = true;
+      },
+      dropWaiting: async () => 0,
+      failPending: async () => undefined,
+      close: async () => undefined,
+    };
+    const { service } = await build([queueOf(inFlight)]);
+
+    const result = await service.sync(
+      plugin([source, { ...source }]),
+      helpers([PAGE]),
+    );
+
+    expect(added).toBe(1);
+    expect(result.created).toBe(2);
+  });
+
+  it('counts a page it could not queue as failed, and carries on', async () => {
+    const batch = inlineBatch(async () => 'created');
+    let calls = 0;
+    const { service } = await build([
+      queueOf({
+        ...batch,
+        add: async (d, id) => {
+          if (calls++ === 0) throw new Error('redis down');
+          return batch.add(d, id);
+        },
+      }),
+    ]);
+
+    const result = await service.sync(plugin([source]), helpers([PAGE, OTHER]));
+
+    expect(result).toMatchObject({ created: 1, processed: 1 });
+  });
+
+  it('counts a job result it does not recognise as a failure', async () => {
+    // As failures they trip the consecutive-failure abort; counted as
+    // anything else they would not.
+    const { service } = await build([
+      queueOf(inlineBatch(async () => 'exploded')),
+    ]);
+    const urls = Array.from({ length: 6 }, (_, i) => `${PAGE}/${i}`);
+
+    await expect(
+      service.sync(plugin([source]), helpers(urls)),
+    ).rejects.toBeInstanceOf(SyncAbortedError);
+  });
+
+  it('archives nothing for a page K1 skips', async () => {
+    // The archive dedupes on bytes, K1 on text: a page whose markup churns
+    // every request would otherwise add a row every run.
+    const { service, sourceVersions, db } = await build();
+    const { skipKey } = await (
+      service as unknown as {
+        pageInputs: (...a: unknown[]) => Promise<{ skipKey: string }>;
+      }
+    ).pageInputs(
+      'california',
+      PAGE,
+      civicsSourceFields(source as never),
+      'A bill is introduced.',
+    );
+    (db.civicsPageExtraction.findUnique as jest.Mock).mockResolvedValue({
+      skipKey,
+      outcome: 'empty',
+    });
+
+    const result = await service.sync(plugin([source]), helpers([PAGE]));
+
+    expect(result.skipped).toBe(1);
+    expect(sourceVersions.record).not.toHaveBeenCalled();
+  });
+
+  it('gives a forced run its own job ids, so it never collapses onto an unforced one', async () => {
+    const ids: string[] = [];
+    const batch = inlineBatch(async () => 'updated');
+    const { service } = await build([
+      queueOf({ ...batch, add: (d, id) => (ids.push(id), batch.add(d, id)) }),
+    ]);
+
+    await service.sync(plugin([source]), helpers([PAGE]));
+    await service.sync(plugin([source]), helpers([PAGE]), { reextract: true });
+
+    expect(ids[0]).toMatch(/__extract__/);
+    expect(ids[1]).toMatch(/__reextract__/);
+    expect(ids[1].replace('reextract', 'extract')).toBe(ids[0]);
+  });
+
+  it('stops fetching when the run is cancelled', async () => {
+    const fetchBytes = jest.fn();
+    const { service } = await build([
+      {
+        provide: PipelineJobService,
+        useValue: { isCancelled: jest.fn().mockResolvedValue(true) },
+      },
+    ]);
+
+    await service.sync(plugin([source]), helpers([PAGE], fetchBytes), {
+      pipelineJobId: 'job-1',
+    });
+
+    expect(fetchBytes).not.toHaveBeenCalled();
+  });
+
+  it('carries on when cancellation cannot be read', async () => {
+    const { service, llm } = await build([
+      {
+        provide: PipelineJobService,
+        useValue: { isCancelled: jest.fn().mockRejectedValue(new Error('db')) },
+      },
+    ]);
+
+    await service.sync(plugin([source]), helpers([PAGE]), {
+      pipelineJobId: 'job-1',
+    });
+
+    expect(llm.generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails a page the archive refuses — there is nothing for the worker to reload', async () => {
+    const { service, sourceVersions, llm } = await build();
+    sourceVersions.record.mockResolvedValueOnce({
+      contentHash: 'h',
+      stored: false,
+      skippedReason: 'too-large',
+    } as never);
+
+    const result = await service.sync(plugin([source]), helpers([PAGE]));
+
+    expect(llm.generate).not.toHaveBeenCalled();
+    expect(result.processed).toBe(0);
+  });
+
+  it('fails a page whose fetch throws, without queueing it', async () => {
+    const { service, llm } = await build();
+
+    await service.sync(
+      plugin([source]),
+      helpers([PAGE], async () => {
+        throw new Error('HTTP 404');
+      }),
+    );
+
+    expect(llm.generate).not.toHaveBeenCalled();
+  });
+
+  it('aborts after consecutive failures and leaves no job running past it', async () => {
+    const dropWaiting = jest.fn().mockResolvedValue(0);
+    const batch = inlineBatch(async () => 'failed');
+    const { service } = await build([queueOf({ ...batch, dropWaiting })]);
+    const urls = Array.from({ length: 6 }, (_, i) => `${PAGE}/${i}`);
+
+    await expect(
+      service.sync(plugin([source]), helpers(urls)),
+    ).rejects.toBeInstanceOf(SyncAbortedError);
+    expect(dropWaiting).toHaveBeenCalled();
+  });
+
+  describe('extractPage (the worker job)', () => {
+    const job = (sourceVersionId: string) => ({
+      regionId: 'california',
+      sourceUrl: PAGE,
+      sourceVersionId,
+      source: civicsSourceFields(source as never),
+    });
+
+    it('re-checks the key and skips a page an earlier run finished', async () => {
+      const { service, llm, sourceVersions, db } = await build();
+      await sourceVersions.record({ content: page() });
+      const key = await (
+        service as unknown as {
+          pageInputs: (...a: unknown[]) => Promise<{ skipKey: string }>;
+        }
+      ).pageInputs(
+        'california',
+        PAGE,
+        job('sv-1').source,
+        'A bill is introduced.',
+      );
+      (db.civicsPageExtraction.findUnique as jest.Mock).mockResolvedValue({
+        skipKey: key.skipKey,
+        outcome: 'empty',
+      });
+
+      await expect(service.extractPage(job('sv-1'))).resolves.toBe('unchanged');
+      expect(llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('fails without retrying when its archived page is gone', async () => {
+      const { service } = await build();
+
+      await expect(service.extractPage(job('missing'))).resolves.toBe('failed');
+    });
+
+    it('throws when it is not wired to run at all', async () => {
+      const module = await Test.createTestingModule({
+        providers: [
+          CivicsSyncService,
+          { provide: DbService, useValue: createMock<DbService>() },
+        ],
+      }).compile();
+
+      await expect(
+        module.get(CivicsSyncService).extractPage(job('sv-1')),
+      ).rejects.toThrow(/requires/);
+    });
+
+    it('hashes the same config from the job as from the data source', () => {
+      // The worker rebuilds the key from a JSON round-tripped payload.
+      const ds = { ...source, hints: ['a'], crawlDepth: 2 } as never;
+      const viaJob = JSON.parse(JSON.stringify(civicsSourceFields(ds)));
+
+      expect(civicsConfigHash(viaJob)).toBe(
+        civicsConfigHash(civicsSourceFields(ds)),
+      );
+    });
   });
 });

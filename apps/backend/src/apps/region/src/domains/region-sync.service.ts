@@ -61,7 +61,11 @@ import { LegislativeActionLinkerService } from './legislative-action-linker.serv
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { htmlToReadableText } from '@opuspopuli/common';
-import { fetchTextWithRetry } from './resilient-fetch';
+import {
+  fetchBytesWithRetry,
+  fetchTextWithRetry,
+  type FetchTextOptions,
+} from './resilient-fetch';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   BILL_LIFECYCLE_SELECT,
@@ -1032,7 +1036,8 @@ export class RegionSyncService implements OnModuleDestroy {
         this.syncRepresentatives(provider, maxReps, regionId),
       [DataType.CAMPAIGN_FINANCE]: () =>
         this.syncCampaignFinance(provider, pipelineJobId),
-      [DataType.CIVICS]: () => this.syncCivics(provider, archiveOptions),
+      [DataType.CIVICS]: () =>
+        this.syncCivics(provider, pipelineJobId, archiveOptions),
       [DataType.BILLS]: () =>
         this.syncBills(maxBills, provider, forceStatusRecheck),
       [DataType.COUNTY_THRESHOLDS]: () => this.syncCountyThresholds(provider),
@@ -1222,13 +1227,14 @@ export class RegionSyncService implements OnModuleDestroy {
     return this.campaignFinanceSyncService.sync(provider, pipelineJobId);
   }
 
-  /** Delegates to {@link CivicsSyncService} (#828 Step 5). Shared HTTP /
-   *  HTML helpers (fetchUrlText, htmlToReadableText, crawlCivicsUrls)
-   *  are passed in as callbacks because bills sync also uses them; the
-   *  consolidation lands as a follow-up after #828 Step 7 (bills) lifts
-   *  them into a shared module. */
+  /** Delegates to {@link CivicsSyncService} (#828 Step 5). Shared HTTP
+   *  helpers (the throttled fetch, crawlCivicsUrls) are passed in as
+   *  callbacks because bills sync also uses them; the consolidation lands
+   *  as a follow-up after #828 Step 7 (bills) lifts them into a shared
+   *  module. */
   private async syncCivics(
     plugin: DataFetcher,
+    pipelineJobId?: string,
     archiveOptions?: ArchiveIngestOptions,
   ): Promise<{
     processed: number;
@@ -1241,13 +1247,16 @@ export class RegionSyncService implements OnModuleDestroy {
     return this.civicsSyncService.sync(
       plugin,
       {
-        fetchUrlText: (url) => this.fetchUrlText(url, DataType.CIVICS),
-        htmlToReadableText: this.htmlToReadableText.bind(this),
+        fetchUrlBytes: (url) =>
+          fetchBytesWithRetry(url, this.fetchOptions(DataType.CIVICS)),
         crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
       },
       // `resetWatermark` — "ignore the stored ingestion state for this run" —
       // forces civics re-extraction past its skip records (K1).
-      { reextract: archiveOptions?.resetWatermark === true },
+      {
+        reextract: archiveOptions?.resetWatermark === true,
+        pipelineJobId,
+      },
     );
   }
 
@@ -3339,13 +3348,18 @@ export class RegionSyncService implements OnModuleDestroy {
     url: string,
     dataType: DataType = DataType.BILLS,
   ): Promise<string> {
-    return fetchTextWithRetry(url, {
+    return fetchTextWithRetry(url, this.fetchOptions(dataType));
+  }
+
+  /** The throttle, retry and metrics every page fetch here shares. */
+  private fetchOptions(dataType: DataType): FetchTextOptions {
+    return {
       timeoutMs: 20_000,
       throttle: this.hostRateLimiter,
       logger: this.logger,
       metrics: this.metrics,
       dataType,
-    });
+    };
   }
 
   /**

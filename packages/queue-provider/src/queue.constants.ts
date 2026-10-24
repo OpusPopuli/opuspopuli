@@ -3,6 +3,12 @@ export const STRUCTURAL_ANALYSIS_QUEUE = "pipeline-structural-analysis";
 export const LLM_RERANK_QUEUE = "llm-rerank";
 /** Per-minutes-row AI synopsis + claims generation (#813). */
 export const MINUTES_SUMMARY_QUEUE = "minutes-summary";
+/**
+ * Per-page civics extraction (civics S3, `docs/plans/civics-phase-b.md` §3):
+ * the civics sync fetches and archives each page, then queues its LLM
+ * extraction here and waits for the outcome.
+ */
+export const CIVICS_EXTRACT_QUEUE = "civics-extract";
 
 export const ANALYSIS_REQUEST_SOURCE = {
   CACHE_MISS: "cache_miss",

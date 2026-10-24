@@ -144,6 +144,10 @@ export class PipelineJobService {
         startedAt: new Date(),
         attempts: { increment: 1 },
         workerHost: workerHost(),
+        // A reopened swept row must not keep the sweep's verdict: it would
+        // finish `succeeded` still saying "Abandoned".
+        finishedAt: null,
+        errorMessage: null,
       },
     });
   }
