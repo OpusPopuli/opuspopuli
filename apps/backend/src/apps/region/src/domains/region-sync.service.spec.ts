@@ -3775,6 +3775,16 @@ describe('RegionSyncService — proposition analysis wiring', () => {
     const analyzer = {
       generate: jest.fn().mockResolvedValue(true),
       generateMissing: jest.fn().mockResolvedValue(undefined),
+      // S4: the sync selects the stale measures and analyses each as a job
+      // (inline here — no queue is bound).
+      stampAndSelectStale: jest.fn().mockResolvedValue({
+        live: { promptHash: 'p', modelDigest: 'd', configHash: 'c' },
+        pending: [
+          { id: 'id-1', externalId: 'SCA 1', fullTextHash: 'h1' },
+          { id: 'id-2', externalId: 'SCA 2', fullTextHash: 'h2' },
+        ],
+      }),
+      analyseOne: jest.fn().mockResolvedValue('updated'),
       ...opts.analyzer,
     } as unknown as jest.Mocked<PropositionAnalysisService>;
 
@@ -3906,9 +3916,9 @@ describe('RegionSyncService — proposition analysis wiring', () => {
   });
 
   describe('post-sync analyzer hook', () => {
-    it('calls generateMissing after a propositions sync', async () => {
-      const { service, analyzer, mockPlugin } = await buildService();
-      mockPlugin.fetchPropositions.mockResolvedValueOnce([
+    const syncOne = async (analyzerOverrides = {}) => {
+      const built = await buildService({ analyzer: analyzerOverrides });
+      built.mockPlugin.fetchPropositions.mockResolvedValueOnce([
         {
           externalId: 'SCA 1',
           title: 'Test',
@@ -3916,33 +3926,87 @@ describe('RegionSyncService — proposition analysis wiring', () => {
           status: PropositionStatus.PENDING,
         } as Proposition,
       ]);
+      const result = await built.service.syncDataType(DataType.PROPOSITIONS);
+      return { ...built, result };
+    };
 
-      await service.syncDataType(DataType.PROPOSITIONS);
+    it('analyses every stale measure after a propositions sync, one job each (S4)', async () => {
+      const { analyzer } = await syncOne();
 
-      expect(analyzer.generateMissing).toHaveBeenCalledTimes(1);
+      expect(analyzer.stampAndSelectStale).toHaveBeenCalledTimes(1);
+      expect(analyzer.analyseOne.mock.calls).toEqual([['id-1'], ['id-2']]);
     });
 
-    it('keeps the sync result successful when the analyzer hook throws', async () => {
-      const { service, analyzer, mockPlugin } = await buildService({
-        analyzer: {
-          generateMissing: jest
-            .fn()
-            .mockRejectedValue(new Error('analyzer down')),
-        },
+    it('keeps the sync result successful when a measure fails transiently', async () => {
+      const { analyzer, result } = await syncOne({
+        analyseOne: jest
+          .fn()
+          .mockRejectedValue(new Error('failed transiently (llm_error)')),
       });
-      mockPlugin.fetchPropositions.mockResolvedValueOnce([
-        {
-          externalId: 'SCA 1',
-          title: 'Test',
-          summary: 'sum',
-          status: PropositionStatus.PENDING,
-        } as Proposition,
-      ]);
-
-      const result = await service.syncDataType(DataType.PROPOSITIONS);
 
       expect(result.errors).toEqual([]);
-      expect(analyzer.generateMissing).toHaveBeenCalled();
+      expect(analyzer.analyseOne).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the sync result successful when the selection itself throws', async () => {
+      const { analyzer, result } = await syncOne({
+        stampAndSelectStale: jest
+          .fn()
+          .mockRejectedValue(new Error('analyzer down')),
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(analyzer.analyseOne).not.toHaveBeenCalled();
+    });
+
+    it('stops the phase after consecutive failures, waits, and still succeeds the sync', async () => {
+      const stale = Array.from({ length: 8 }, (_, i) => ({
+        id: `id-${i}`,
+        externalId: `M${i}`,
+        fullTextHash: `h${i}`,
+      }));
+      const { analyzer, result } = await syncOne({
+        stampAndSelectStale: jest.fn().mockResolvedValue({
+          live: { promptHash: 'p', modelDigest: 'd', configHash: 'c' },
+          pending: stale,
+        }),
+        analyseOne: jest.fn().mockResolvedValue('failed'),
+      });
+
+      // The tracker's consecutive-failure abort (5) stops the phase.
+      expect(analyzer.analyseOne).toHaveBeenCalledTimes(5);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('counts an unrecognised job result as a failure', async () => {
+      const stale = Array.from({ length: 6 }, (_, i) => ({
+        id: `id-${i}`,
+        externalId: `M${i}`,
+        fullTextHash: `h${i}`,
+      }));
+      const { analyzer } = await syncOne({
+        stampAndSelectStale: jest.fn().mockResolvedValue({
+          live: { promptHash: 'p', modelDigest: 'd', configHash: 'c' },
+          pending: stale,
+        }),
+        analyseOne: jest.fn().mockResolvedValue('exploded'),
+      });
+
+      // As failures they trip the abort; counted as anything else they
+      // would not.
+      expect(analyzer.analyseOne).toHaveBeenCalledTimes(5);
+    });
+
+    it('invalidates the propositions cache only when an analysis was written', async () => {
+      const written = await syncOne();
+      const nothing = await syncOne({
+        analyseOne: jest.fn().mockResolvedValue('unchanged'),
+      });
+
+      // Each invalidation lists the cache's keys once.
+      expect(written.mockCache.keys.mock.calls.length).toBe(
+        nothing.mockCache.keys.mock.calls.length + 1,
+      );
     });
   });
 });

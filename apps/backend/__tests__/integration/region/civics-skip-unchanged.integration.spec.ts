@@ -32,7 +32,7 @@ import {
   civicsConfigHash,
   civicsSourceFields,
 } from '../../../src/apps/region/src/domains/civics-sync.service';
-import { CivicsExtractQueue } from '../../../src/apps/region/src/domains/civics-extract.queue';
+import { ChildJobQueues } from '../../../src/common/child-jobs/child-job-queues';
 import { SourceVersionService } from '../../../src/apps/region/src/domains/source-version.service';
 import { cleanDatabase, disconnectDatabase, getDbService } from '../utils';
 
@@ -70,7 +70,7 @@ const EMPTY = JSON.stringify({
  */
 async function startQueue(
   extract: (job: CivicsExtractJobData) => Promise<string>,
-): Promise<{ queue: CivicsExtractQueue; stop: () => Promise<void> }> {
+): Promise<{ queue: ChildJobQueues; stop: () => Promise<void> }> {
   const prefix = `civics-s3-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
   const workerConnection = new IORedis(REDIS_URL, {
@@ -82,7 +82,7 @@ async function startQueue(
     (job) => extract(job.data),
     { connection: workerConnection, prefix },
   );
-  const queue = new CivicsExtractQueue(queueService, connection, {
+  const queue = new ChildJobQueues(queueService, connection, {
     get: () => prefix,
   } as never);
   return {

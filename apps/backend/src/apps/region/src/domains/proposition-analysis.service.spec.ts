@@ -253,6 +253,109 @@ describe('PropositionAnalysisService', () => {
     });
   });
 
+  describe('analyseOne (the proposition-analysis job, S4)', () => {
+    const current = {
+      analysisGeneratedAt: new Date('2026-04-21T00:00:00Z'),
+      analysisPromptHash: PROMPT_HASH,
+      analysisSourceTextHash: FULL_TEXT_HASH,
+      analysisLlmDigest: 'stub-digest',
+    };
+
+    it('is created for a first analysis and updated for a re-analysis', async () => {
+      const first = await buildService({ findUnique: baseProp() });
+      await expect(first.service.analyseOne('prop-1')).resolves.toBe('created');
+
+      const again = await buildService({
+        findUnique: baseProp({ ...current, analysisLlmDigest: 'older' }),
+      });
+      await expect(again.service.analyseOne('prop-1')).resolves.toBe('updated');
+    });
+
+    it('is unchanged — no LLM call — when the measure became current after it was queued', async () => {
+      const built = await buildService({ findUnique: baseProp(current) });
+
+      await expect(built.service.analyseOne('prop-1')).resolves.toBe(
+        'unchanged',
+      );
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('throws on a transport failure so the queue retries it — and still records it', async () => {
+      const built = await buildService({
+        llmThrows: new Error('unexpected EOF'),
+      });
+
+      await expect(built.service.analyseOne('prop-1')).rejects.toThrow(
+        'llm_error',
+      );
+      expect(built.db.proposition.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ analysisFailureReason: 'llm_error' }),
+        }),
+      );
+    });
+
+    it('returns failed, not a retry, for a deterministic failure', async () => {
+      const built = await buildService({ llmText: 'no JSON at all' });
+
+      await expect(built.service.analyseOne('prop-1')).resolves.toBe('failed');
+    });
+
+    it('is skipped — not a failure — for a measure that is gone or has no text', async () => {
+      // A failure would repeat every run and, five in a row, trip the abort.
+      const built = await buildService({ findUnique: null });
+
+      await expect(built.service.analyseOne('missing')).resolves.toBe(
+        'skipped',
+      );
+    });
+
+    it('never selects a measure with empty text', async () => {
+      const built = await buildService({ findMany: [] });
+
+      await built.service.stampAndSelectStale();
+
+      const where = built.db.proposition.findMany.mock.calls[0][0].where;
+      expect(where.AND).toEqual([
+        { fullText: { not: null } },
+        { fullText: { not: '' } },
+      ]);
+    });
+  });
+
+  describe('analysisJobId (S4)', () => {
+    const live = {
+      promptHash: PROMPT_HASH,
+      modelDigest: 'stub-digest',
+      configHash: propositionAnalysisConfigHash(6000),
+    };
+    const prop = {
+      id: '11111111-1111-1111-1111-111111111111',
+      fullTextHash: FULL_TEXT_HASH,
+    };
+
+    it('is the measure, the stage and the skip key — equal for equal inputs', () => {
+      const id = PropositionAnalysisService.analysisJobId(prop, live);
+
+      expect(id).toMatch(new RegExp(`^${prop.id}__analyse__sk1-[0-9a-f]{64}$`));
+      expect(PropositionAnalysisService.analysisJobId(prop, live)).toBe(id);
+      expect(
+        PropositionAnalysisService.analysisJobId(prop, {
+          ...live,
+          modelDigest: 'other',
+        }),
+      ).not.toBe(id);
+    });
+
+    it('is a one-off id when an axis is unknown — it never collapses', () => {
+      const unknown = { ...live, modelDigest: undefined };
+
+      expect(PropositionAnalysisService.analysisJobId(prop, unknown)).not.toBe(
+        PropositionAnalysisService.analysisJobId(prop, unknown),
+      );
+    });
+  });
+
   describe('generate(id)', () => {
     it('returns false when proposition is not found', async () => {
       const built = await buildService({ findUnique: null });

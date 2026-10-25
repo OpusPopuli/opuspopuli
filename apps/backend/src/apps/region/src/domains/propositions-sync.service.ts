@@ -2,7 +2,24 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { Proposition } from '@opuspopuli/common';
-import { PropositionAnalysisService } from './proposition-analysis.service';
+import {
+  PROPOSITION_ANALYSIS_QUEUE,
+  type PropositionAnalysisJobData,
+} from '@opuspopuli/queue-provider';
+import {
+  abandonChildJobs,
+  inlineBatch,
+  laneIdleTimeoutMs,
+  settleChildJobs,
+  type ChildJobBatch,
+  type ChildOutcome,
+} from 'src/common/child-jobs/child-job-batch';
+import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
+import { PipelineJobService } from './pipeline-job.service';
+import {
+  PropositionAnalysisService,
+  type PropositionAnalysisOutcome,
+} from './proposition-analysis.service';
 import { PropositionEmbeddingService } from './proposition-embedding.service';
 import { RegionCacheService } from './region-cache.service';
 import { propositionSyncTracker } from './sync-phase-logger';
@@ -55,6 +72,36 @@ export interface UpsertByExternalId {
     upsert: (items: T[]) => unknown[],
     cachePrefix: string,
   ): Promise<{ processed: number; created: number; updated: number }>;
+}
+
+/** How each measure's analysis outcome is counted in the phase log. */
+const ANALYSIS_OUTCOME: Record<
+  PropositionAnalysisOutcome,
+  {
+    outcomeLabel: string;
+    outcome: 'created' | 'updated' | 'skipped' | 'error';
+    reason?: string;
+  }
+> = {
+  created: { outcomeLabel: 'analysed (first analysis)', outcome: 'created' },
+  updated: { outcomeLabel: 'analysed', outcome: 'updated' },
+  unchanged: {
+    outcomeLabel: 'skipped (current by the time it ran)',
+    outcome: 'skipped',
+    reason: 'unchanged',
+  },
+  skipped: {
+    outcomeLabel: 'skipped (gone, or no text to analyse)',
+    outcome: 'skipped',
+    reason: 'no_text',
+  },
+  failed: { outcomeLabel: 'failed', outcome: 'error' },
+};
+
+function isAnalysisOutcome(
+  value: unknown,
+): value is PropositionAnalysisOutcome {
+  return typeof value === 'string' && Object.hasOwn(ANALYSIS_OUTCOME, value);
 }
 
 /**
@@ -110,12 +157,16 @@ export class PropositionsSyncService {
     private readonly sourceVersions?: SourceVersionService,
     /**
      * Where item outcomes go (M1, `docs/plans/ingestion-resource-lanes.md`
-     * §2). Optional and last: several specs construct this service by hand,
+     * §2). Optional: several specs construct this service by hand,
      * and a sync must run identically with no metrics bound.
      */
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
+    /** Absent (or disabled): analysis runs in this process, as before S4. */
+    @Optional() private readonly childQueues?: ChildJobQueues,
+    /** Read for an operator's cancel while the run waits on its analyses. */
+    @Optional() private readonly pipelineJobs?: PipelineJobService,
   ) {}
 
   /**
@@ -334,35 +385,149 @@ export class PropositionsSyncService {
     }
 
     // ─── Phase 3/3 — analysis ──────────────────────────────────────
-    const analysisTracker = this.propositionTracker(
-      'analysis',
-      this.propositionAnalysis ? 1 : 0,
-      { region: regionId },
-    );
-    if (this.propositionAnalysis) {
-      try {
-        await this.propositionAnalysis.generateMissing();
-        analysisTracker.item({
-          name: 'propositionAnalysis.generateMissing',
-          externalId: null,
-          outcomeLabel: 'analysis pass complete',
-          outcome: 'updated',
-        });
-      } catch (error) {
-        analysisTracker.item({
-          name: 'propositionAnalysis.generateMissing',
-          externalId: null,
-          outcomeLabel: `failed: ${(error as Error).message}`,
-          outcome: 'error',
-        });
-        this.logger.warn(
-          `Proposition analysis post-sync pass failed: ${(error as Error).message}`,
-        );
-      }
-    }
-    analysisTracker.complete();
+    await this.analyseStale(regionId, pipelineJobId);
 
     return result;
+  }
+
+  /**
+   * Phase 3/3 (propositions S4): every measure whose analysis is stale on
+   * some axis becomes one `proposition-analysis` job, and the phase waits for
+   * them all, counting each measure's outcome as it arrives. Corpus-wide, as
+   * `generateMissing` is (see its comment).
+   *
+   * Never fails the sync — the civic data is already written, and a missing
+   * analysis is visible on the row (`analysisFailureReason`). A
+   * consecutive-failure abort stops the phase, waits out the running job,
+   * and is logged.
+   */
+  private async analyseStale(
+    regionId: string,
+    pipelineJobId?: string,
+  ): Promise<void> {
+    const analysis = this.propositionAnalysis;
+    const stale = analysis ? await this.selectStaleSafely(analysis) : null;
+    const tracker = this.propositionTracker(
+      'analysis',
+      stale?.pending.length ?? 0,
+      { region: regionId },
+    );
+    if (!analysis || !stale || stale.pending.length === 0) {
+      tracker.complete();
+      return;
+    }
+
+    const measures = new Map<string, string>();
+    let written = 0;
+    const onOutcome = (outcome: ChildOutcome<string>): void => {
+      const externalId = measures.get(outcome.jobId) ?? outcome.jobId;
+      measures.delete(outcome.jobId);
+      const result = this.analysisOutcomeOf(externalId, outcome);
+      if (result === 'created' || result === 'updated') written++;
+      tracker.item({
+        name: externalId,
+        externalId,
+        ...ANALYSIS_OUTCOME[result],
+      });
+    };
+    const idleTimeoutMs = laneIdleTimeoutMs();
+    const batch = await this.openAnalysisBatch(analysis);
+    try {
+      for (const prop of stale.pending) {
+        // Before each measure, not only while waiting: inline (no queue),
+        // every analysis runs inside this loop.
+        if (await this.isCancelled(pipelineJobId)) break;
+        const jobId = PropositionAnalysisService.analysisJobId(
+          prop,
+          stale.live,
+        );
+        measures.set(jobId, prop.externalId);
+        await this.queueAnalysis(batch, jobId, prop.id, onOutcome);
+        batch.take().forEach(onOutcome);
+      }
+      await settleChildJobs(batch, {
+        onOutcome,
+        isCancelled: () => this.isCancelled(pipelineJobId),
+        idleTimeoutMs,
+      });
+      tracker.complete();
+    } catch (error) {
+      await abandonChildJobs(batch, idleTimeoutMs);
+      this.logger.warn(
+        `Proposition analysis phase stopped (sync continues): ${(error as Error).message}`,
+      );
+    } finally {
+      await batch.close();
+    }
+    if (written > 0) await this.cacheService?.invalidateCache('propositions:');
+  }
+
+  /** The stale selection, or null — logged — when it cannot be made. */
+  private async selectStaleSafely(
+    analysis: PropositionAnalysisService,
+  ): Promise<Awaited<
+    ReturnType<PropositionAnalysisService['stampAndSelectStale']>
+  > | null> {
+    try {
+      return await analysis.stampAndSelectStale();
+    } catch (error) {
+      this.logger.warn(
+        `Proposition analysis selection failed (sync continues): ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /** The analysis queue when one is bound and on; otherwise this process. */
+  private openAnalysisBatch(
+    analysis: PropositionAnalysisService,
+  ): Promise<ChildJobBatch<PropositionAnalysisJobData, string>> {
+    if (this.childQueues?.enabled(PROPOSITION_ANALYSIS_QUEUE)) {
+      return this.childQueues.open(PROPOSITION_ANALYSIS_QUEUE);
+    }
+    return Promise.resolve(
+      inlineBatch((job) => analysis.analyseOne(job.propositionId)),
+    );
+  }
+
+  /** Queue one measure; a failure to queue is that measure's failure. */
+  private async queueAnalysis(
+    batch: ChildJobBatch<PropositionAnalysisJobData, string>,
+    jobId: string,
+    propositionId: string,
+    onOutcome: (outcome: ChildOutcome<string>) => void,
+  ): Promise<void> {
+    try {
+      await batch.add({ propositionId }, jobId);
+    } catch (error) {
+      onOutcome({ jobId, ok: false, reason: (error as Error).message });
+    }
+  }
+
+  /** A job's report as an outcome; anything unrecognised is a failure. */
+  private analysisOutcomeOf(
+    externalId: string,
+    outcome: ChildOutcome<string>,
+  ): PropositionAnalysisOutcome {
+    if (!outcome.ok) {
+      this.logger.warn(
+        `Proposition analysis failed for ${externalId}: ${outcome.reason}`,
+      );
+      return 'failed';
+    }
+    return isAnalysisOutcome(outcome.value) ? outcome.value : 'failed';
+  }
+
+  private async isCancelled(pipelineJobId?: string): Promise<boolean> {
+    if (!pipelineJobId || !this.pipelineJobs) return false;
+    try {
+      return await this.pipelineJobs.isCancelled(pipelineJobId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read cancellation for ${pipelineJobId}: ${(error as Error).message}`,
+      );
+      return false;
+    }
   }
 
   /**

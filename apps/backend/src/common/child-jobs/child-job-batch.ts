@@ -74,6 +74,21 @@ export interface SettleOptions<R> {
 
 const DEFAULT_POLL_MS = 30_000;
 
+/**
+ * Longest a sync waits between two child outcomes before giving the rest up
+ * as failed: the LLM lane's own wait bound (`LLM_LANE_WAIT_TIMEOUT_MS`, 6 h by
+ * default), since a child cannot take longer than its LLM call may wait.
+ */
+export function laneIdleTimeoutMs(): number {
+  const parsed = Number.parseInt(
+    process.env.LLM_LANE_WAIT_TIMEOUT_MS ?? '',
+    10,
+  );
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : 6 * 60 * 60 * 1000;
+}
+
 const logger = new Logger('ChildJobBatch');
 
 /**

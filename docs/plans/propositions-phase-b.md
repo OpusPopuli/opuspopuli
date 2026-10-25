@@ -174,7 +174,7 @@ prompt-service and is raised with the owner.
 
 - **S4 — analysis onto its own queue.** After the upsert, every row whose
   analysis key differs becomes one `proposition-analysis` job
-  (`laneJobId(<id>, 'analyse' | 'reanalyse', skipKey)`, removed on finish),
+  (`laneJobId(<id>, 'analyse', skipKey)`, removed on finish),
   consumed by a region-worker processor that reloads the row and re-checks
   the key; the sync waits for every outcome through `src/common/child-jobs`
   (the civics S3 template), so its lock and counts keep their meaning.
@@ -201,6 +201,69 @@ the parser key, so the key changed): run 3 (job 118) 480 s, all 95 re-parsed
 under `pdf-extractor-1+7cf950246438`, the "recorded under another key" info
 line firing once per PDF as designed; **run 4 (job 119) 92 s, `pdf_parse`
 0.0 s**, no such lines, 0 analyses stale.
+
+#### S4 — design (2026-10-25, after #1408 merged)
+
+The civics S3 template (`civics-phase-b.md` §3) and its owner decisions —
+**the sync waits for its jobs**, jobs carry **ids, not content** — apply
+unchanged; this section records only what is specific to propositions.
+
+- **Queue `proposition-analysis`**, one job per stale measure, payload
+  `{ propositionId }`. Job id `laneJobId(<propositionId>, 'analyse',
+  skipKey)`, the skip key `buildSkipKey(full_text_hash, prompt hash, model
+  digest, analysis config hash)` — the four axes of K-P2, so a run's job
+  collapses onto an in-flight job only for identical inputs; an unknown
+  digest gets a one-off id. Removed on finish.
+- **The sync's analysis phase** selects the stale measures exactly as
+  `generateMissing` does (legacy stamp first, then `staleWhere`, the
+  `PROPOSITION_ANALYSIS_MAX_PROPS` cap, corpus-wide as today), queues them,
+  and counts each measure's outcome as it arrives — one tracker item per
+  measure, where today it logs one "analysis pass complete" item whatever
+  happened. Then it invalidates the propositions cache if anything was
+  written.
+- **The worker** (`PropositionAnalysisProcessor`, region-worker,
+  `BULLMQ_QUEUE_PROPOSITION_ANALYSIS_CONCURRENCY`, default 1) reloads the row,
+  **re-checks it on every axis** (`isCurrent`) and analyses it. Its outcome:
+  `created` (first analysis) | `updated` | `unchanged` (current by the time it
+  ran) | `failed`.
+- **Retries — the proposition-specific part.** Today every error, transport
+  included, is caught and recorded as `analysisFailureReason`. The worker
+  keeps recording it, then **throws on `llm_error`** (a runner killed, the
+  lane unreachable — transient), so the queue retries; a later success
+  clears the reason, as now. The deterministic reasons (`truncated`,
+  `no_json`, `parse_error`, `no_summary`) are recorded and **returned** as
+  `failed`, not retried: `truncated` is the budget, the rest would cost a
+  full generation to likely repeat.
+- **Unchanged paths:** `generateMissing` (the backfill script) and
+  `regenerate(id)` (the operator resolver, an interactive single row) stay
+  in-process. Embeddings stay inline — 72 short texts, measured cheap.
+- **One queue helper for every type.** `CivicsExtractQueue` becomes a
+  generic `ChildJobQueues` (open a batch / is-enabled, by queue name), so the
+  second type does not copy the first.
+
+**Acceptance:** an unchanged sync queues nothing; a changed prompt or digest
+re-analyses exactly the stale measures through the queue; a worker restart
+mid-analysis re-runs only the interrupted measure; a transient failure is
+retried within the run and a parse failure is not; outcomes per measure
+appear in the phase log; `eval:generation` and `eval:symmetry` match step 0
+within sampled-decoding variance, on the same runner configuration.
+
+**UAT, S4 (2026-10-25).** No proposition was stale, so a temporary compose
+override set the worker's `PROPOSITION_ANALYSIS_MAX_TOKENS=6001` (the config
+axis) and `PROPOSITION_ANALYSIS_MAX_PROPS=5`:
+
+| run | result |
+|---|---|
+| A — unchanged | 92 s; analysis phase queued **nothing** (0 items) |
+| B — override on | 261 s; **5 measures, 5 `proposition-analysis` jobs**, one at a time, 22–47 s each, every outcome logged by name (`[1/5] 25-0004A1: analysed` …); job ids `<id>__analyse__sk1-<key>` |
+| D — override removed | 200 s; **exactly the same 5** re-analysed under the normal config; all 72 back on one config hash |
+
+Not run on UAT: a worker restart mid-analysis. The mechanism is the shared
+child-jobs helper and BullMQ, exercised on the real stack by civics (run 5:
+queued jobs carried on, only the interrupted item re-ran); the one
+proposition-specific part — re-checking a measure that became current — is in
+the integration spec. On UAT the crashed worker's type lock would block the
+restoring run D for an hour (S2's lock TTL).
 
 ### 4. Re-measure and gate
 

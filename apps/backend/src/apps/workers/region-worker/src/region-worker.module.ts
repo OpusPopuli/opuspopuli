@@ -22,6 +22,7 @@ import { RegionSyncProcessor } from './region-sync.processor';
 import { RegionSyncScheduler } from './region-sync.scheduler';
 import { MinutesSummaryProcessor } from './minutes-summary.processor';
 import { CivicsExtractProcessor } from './civics-extract.processor';
+import { PropositionAnalysisProcessor } from './proposition-analysis.processor';
 import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
 
 @Module({
@@ -70,6 +71,7 @@ import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
     RegionSyncScheduler,
     MinutesSummaryProcessor,
     CivicsExtractProcessor,
+    PropositionAnalysisProcessor,
   ],
 })
 export class RegionWorkerModule {}

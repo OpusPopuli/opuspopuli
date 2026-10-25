@@ -88,6 +88,15 @@ export interface CivicsExtractJobData {
   reextract?: boolean;
 }
 
+/**
+ * Job data for the proposition-analysis queue — one job per stale measure
+ * (propositions S4). Only the id: the worker reloads the row and re-checks
+ * it on every axis of the analysis key before generating.
+ */
+export interface PropositionAnalysisJobData {
+  propositionId: string;
+}
+
 export interface StructuralAnalysisJobData {
   structuralAnalysisJobId: string;
   regionId: string;

@@ -1,8 +1,10 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  buildSkipKey,
   extractJsonObjectSlice,
+  laneJobId,
   stableHash,
   type JsonRepairClass,
   parseJsonWithRepair,
@@ -50,13 +52,40 @@ export function propositionAnalysisConfigHash(maxTokens: number): string {
   });
 }
 
+/** The columns an analysis reads and its staleness check compares. */
+const ANALYSIS_ROW_SELECT = {
+  id: true,
+  externalId: true,
+  title: true,
+  fullText: true,
+  analysisPromptHash: true,
+  sourceVersionId: true,
+  analysisSourceTextHash: true,
+  fullTextHash: true,
+  analysisGeneratedAt: true,
+  analysisLlmDigest: true,
+  analysisConfigHash: true,
+} as const;
+
+/**
+ * One measure's analysis as the propositions sync counts it (S4):
+ * `unchanged` — current on every axis by the time the job ran.
+ */
+export type PropositionAnalysisOutcome =
+  | 'created'
+  | 'updated'
+  | 'unchanged'
+  /** Gone, or no text to analyse, by the time it ran — nothing to do. */
+  | 'skipped'
+  | 'failed';
+
 /**
  * What a current analysis must match, resolved once per run. `promptHash`
  * and `modelDigest` are undefined when they could not be resolved — that
  * axis is then not used to call rows stale, as the prompt axis already
  * behaved before the model axis existed.
  */
-interface LiveAnalysisKey {
+export interface LiveAnalysisKey {
   promptHash?: string;
   modelDigest?: string;
   configHash: string;
@@ -78,7 +107,7 @@ interface AnalysisPayload {
 }
 
 /** Minimum shape needed from a Proposition row to run analysis. */
-interface PropForAnalysis {
+export interface PropForAnalysis {
   id: string;
   externalId: string;
   title: string;
@@ -112,7 +141,9 @@ interface PropForAnalysis {
  * Tunable via env vars:
  * - PROPOSITION_ANALYSIS_MAX_TOKENS (default 6000) — see the constant below;
  *   the default was measured, not guessed.
- * - PROPOSITION_ANALYSIS_CONCURRENCY (default 1)
+ * - PROPOSITION_ANALYSIS_CONCURRENCY (default 1) — the batch pass
+ *   (`generateMissing`, the backfill script) only. The sync queues each
+ *   measure (S4); its concurrency is `BULLMQ_QUEUE_PROPOSITION_ANALYSIS_CONCURRENCY`.
  * - PROPOSITION_ANALYSIS_MAX_PROPS (default unlimited) — dev cap.
  */
 type GenerateOutcome =
@@ -224,30 +255,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   async generate(propositionId: string, force = false): Promise<boolean> {
     if (!this.promptClient || !this.llm || !this.db) return false;
 
-    const prop = await this.db.proposition.findUnique({
-      where: { id: propositionId },
-      select: {
-        id: true,
-        externalId: true,
-        title: true,
-        fullText: true,
-        analysisPromptHash: true,
-        sourceVersionId: true,
-        analysisSourceTextHash: true,
-        fullTextHash: true,
-        analysisGeneratedAt: true,
-        analysisLlmDigest: true,
-        analysisConfigHash: true,
-      },
-    });
-    if (!prop) {
-      this.logger.warn(`Proposition ${propositionId} not found`);
-      return false;
-    }
-    if (!prop.fullText || prop.fullText.trim().length === 0) {
-      this.logger.debug(`Skipping ${prop.externalId}: no fullText to analyze`);
-      return false;
-    }
+    const prop = await this.loadForAnalysis(propositionId);
+    if (!prop) return false;
 
     if (!force && (await this.isCurrent(prop))) {
       this.logger.debug(
@@ -260,9 +269,84 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   }
 
   /**
+   * One measure's analysis as a `proposition-analysis` job (S4): reload the
+   * row, re-check it on every axis — an earlier run may have analysed it
+   * since it was queued — and analyse it.
+   *
+   * A transport failure (`llm_error`: a runner killed, the lane unreachable)
+   * is recorded on the row like any failure, then THROWN, so the queue
+   * retries it; a later success clears the reason. A deterministic one
+   * (`truncated`, `no_json`, `parse_error`, `no_summary`) is recorded and
+   * returned as `failed`: a retry would spend a full generation to likely
+   * repeat it.
+   */
+  async analyseOne(propositionId: string): Promise<PropositionAnalysisOutcome> {
+    if (!this.promptClient || !this.llm || !this.db) {
+      throw new Error(
+        'Proposition analysis requires PromptClient, LLM provider and DbService',
+      );
+    }
+    const prop = await this.loadForAnalysis(propositionId);
+    // Not a failure: counting it as one would repeat every run and, five in
+    // a row, trip the phase's consecutive-failure abort.
+    if (!prop) return 'skipped';
+    if (await this.isCurrent(prop)) return 'unchanged';
+
+    const result = await this.tryGenerateAndPersist(prop);
+    if (result.ok) return prop.analysisGeneratedAt ? 'updated' : 'created';
+    if (result.reason === 'llm_error') {
+      throw new Error(
+        `Analysis of ${prop.externalId} failed transiently (llm_error); retrying`,
+      );
+    }
+    return 'failed';
+  }
+
+  /**
+   * The job id for a stale measure's analysis (S4): its id, and the skip key
+   * over the four axes it is judged on, so a job collapses onto one in
+   * flight only for identical inputs. An unknown prompt hash or digest gives
+   * no key — a one-off id that never collapses.
+   */
+  static analysisJobId(
+    prop: Pick<PropForAnalysis, 'id' | 'fullTextHash'>,
+    live: LiveAnalysisKey,
+  ): string {
+    const skipKey = buildSkipKey({
+      sourceHash: prop.fullTextHash ?? '',
+      promptHash: live.promptHash ?? '',
+      modelDigest: live.modelDigest ?? '',
+      configHash: live.configHash,
+    });
+    return skipKey
+      ? laneJobId(prop.id, 'analyse', skipKey)
+      : `proposition-analysis-${randomUUID()}`;
+  }
+
+  /** A measure with text to analyse, or null — logged — when there is none. */
+  private async loadForAnalysis(
+    propositionId: string,
+  ): Promise<PropForAnalysis | null> {
+    const prop = await this.db!.proposition.findUnique({
+      where: { id: propositionId },
+      select: ANALYSIS_ROW_SELECT,
+    });
+    if (!prop) {
+      this.logger.warn(`Proposition ${propositionId} not found`);
+      return null;
+    }
+    if (!prop.fullText || prop.fullText.trim().length === 0) {
+      this.logger.debug(`Skipping ${prop.externalId}: no fullText to analyze`);
+      return null;
+    }
+    return prop;
+  }
+
+  /**
    * Generate analyses for all propositions that have fullText but no
    * analysis yet (or whose prompt template has since changed). Used by
-   * the backfill script and the post-ingestion hook.
+   * the backfill script; the propositions sync queues each measure instead
+   * (S4, `PropositionsSyncService.analyseStale`).
    *
    * ── CORPUS-WIDE, not region-scoped ───────────────────────────────────
    *
@@ -287,41 +371,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   async generateMissing(maxPropsOverride?: number): Promise<void> {
     if (!this.promptClient || !this.llm || !this.db) return;
 
-    const cap =
-      maxPropsOverride && maxPropsOverride > 0
-        ? maxPropsOverride
-        : this.maxProps;
-
-    // Resolved ONCE for the whole batch: a prompt revision or a model pull
-    // makes every stored analysis stale at once, so one lookup and an
-    // in-database comparison beat a lookup per row.
-    const live = await this.liveKey();
-    await this.stampLegacyConfigHash(live);
-
-    const candidates = await this.db.proposition.findMany({
-      where: {
-        deletedAt: null,
-        fullText: { not: null },
-        OR: this.staleWhere(live),
-      },
-      select: {
-        id: true,
-        externalId: true,
-        title: true,
-        fullText: true,
-        analysisPromptHash: true,
-        sourceVersionId: true,
-        analysisSourceTextHash: true,
-        fullTextHash: true,
-        analysisGeneratedAt: true,
-        analysisLlmDigest: true,
-        analysisConfigHash: true,
-      },
-      orderBy: { electionDate: 'desc' },
-      take: cap,
-    });
-
-    const pending = candidates;
+    const { pending } = await this.stampAndSelectStale(maxPropsOverride);
 
     if (pending.length === 0) return;
 
@@ -371,6 +421,41 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   private static sourceTextHash(fullText: string | null): string | null {
     if (fullText === null || fullText === undefined) return null;
     return createHash('sha256').update(fullText, 'utf8').digest('hex');
+  }
+
+  /**
+   * The measures whose analysis is stale on some axis, and the live key they
+   * were judged against — what both the batch pass and the propositions
+   * sync's queue (S4) act on. Stamps legacy config hashes first, so a
+   * stamped row is not selected.
+   */
+  async stampAndSelectStale(
+    maxPropsOverride?: number,
+  ): Promise<{ live: LiveAnalysisKey; pending: PropForAnalysis[] }> {
+    const cap =
+      maxPropsOverride && maxPropsOverride > 0
+        ? maxPropsOverride
+        : this.maxProps;
+
+    // Resolved ONCE for the whole batch: a prompt revision or a model pull
+    // makes every stored analysis stale at once, so one lookup and an
+    // in-database comparison beat a lookup per row.
+    const live = await this.liveKey();
+    await this.stampLegacyConfigHash(live);
+
+    const pending = await this.db!.proposition.findMany({
+      where: {
+        deletedAt: null,
+        // Both: an empty text has nothing to analyse, and would otherwise be
+        // selected — and skipped — every run.
+        AND: [{ fullText: { not: null } }, { fullText: { not: '' } }],
+        OR: this.staleWhere(live),
+      },
+      select: ANALYSIS_ROW_SELECT,
+      orderBy: { electionDate: 'desc' },
+      take: cap,
+    });
+    return { live, pending };
   }
 
   /**

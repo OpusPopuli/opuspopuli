@@ -14,19 +14,23 @@ import {
   type JsonRepairClass,
   parseJsonWithRepair,
 } from '@opuspopuli/common';
-import type { CivicsExtractJobData } from '@opuspopuli/queue-provider';
+import {
+  CIVICS_EXTRACT_QUEUE,
+  type CivicsExtractJobData,
+} from '@opuspopuli/queue-provider';
 import { DataType } from '@opuspopuli/region-provider';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import {
   abandonChildJobs,
   inlineBatch,
+  laneIdleTimeoutMs,
   settleChildJobs,
   type ChildJobBatch,
   type ChildOutcome,
   type SettleEnd,
 } from 'src/common/child-jobs/child-job-batch';
+import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
 import { groundMeasureTypes } from './civics-grounding';
-import { CivicsExtractQueue } from './civics-extract.queue';
 import { LlmGeneratorBase } from './llm-generator.base';
 import { PipelineJobService } from './pipeline-job.service';
 import { decodeFetchedText, type FetchedBytes } from './resilient-fetch';
@@ -242,22 +246,6 @@ export function civicsSourceFields(ds: DataSourceConfig): CivicsSourceFields {
   };
 }
 
-/**
- * Longest the civics sync waits between two page outcomes before it gives
- * the rest up as failed: the lane's own wait bound
- * (`LLM_LANE_WAIT_TIMEOUT_MS`, 6 h by default), since a page cannot take
- * longer than its LLM call is allowed to wait.
- */
-function extractIdleTimeoutMs(): number {
-  const parsed = Number.parseInt(
-    process.env.LLM_LANE_WAIT_TIMEOUT_MS ?? '',
-    10,
-  );
-  return Number.isSafeInteger(parsed) && parsed > 0
-    ? parsed
-    : 6 * 60 * 60 * 1000;
-}
-
 /** What a completed extraction yielded, recorded with its skip key. */
 type PageExtractionOutcome = 'block' | 'empty';
 
@@ -395,7 +383,7 @@ export class CivicsSyncService extends LlmGeneratorBase {
     /** Where each page is archived, and reloaded from by the worker (S3). */
     @Optional() private readonly sourceVersions?: SourceVersionService,
     /** Absent (or disabled): extraction runs in this process, as before S3. */
-    @Optional() private readonly extractQueue?: CivicsExtractQueue,
+    @Optional() private readonly childQueues?: ChildJobQueues,
     /** Read for an operator's cancel while the run waits on its pages. */
     @Optional() private readonly pipelineJobs?: PipelineJobService,
   ) {
@@ -812,7 +800,7 @@ export class CivicsSyncService extends LlmGeneratorBase {
       for (const url of urls) record(url, this.outcomeOf(url, outcome));
     };
     const isCancelled = () => this.isCancelled(options.pipelineJobId);
-    const idleTimeoutMs = extractIdleTimeoutMs();
+    const idleTimeoutMs = laneIdleTimeoutMs();
 
     const batch = await this.openExtractBatch();
     try {
@@ -853,7 +841,9 @@ export class CivicsSyncService extends LlmGeneratorBase {
   private openExtractBatch(): Promise<
     ChildJobBatch<CivicsExtractJobData, string>
   > {
-    if (this.extractQueue?.enabled) return this.extractQueue.open();
+    if (this.childQueues?.enabled(CIVICS_EXTRACT_QUEUE)) {
+      return this.childQueues.open(CIVICS_EXTRACT_QUEUE);
+    }
     return Promise.resolve(inlineBatch((job) => this.extractPage(job)));
   }
 
