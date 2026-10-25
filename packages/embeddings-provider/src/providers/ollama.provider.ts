@@ -231,6 +231,44 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
     return this.model;
   }
 
+  /** `undefined` = not looked up yet; `null` = looked up, unknown. */
+  private modelDigest: string | null | undefined;
+
+  /**
+   * The digest Ollama reports for this model's tag. A pull under the same
+   * tag changes it, so a vector records which weights made it. Undefined when
+   * Ollama cannot be asked or does not list the model — never throws.
+   *
+   * Only an ANSWER is cached (a digest, or a definite "not listed"): a failed
+   * lookup is retried next call, so one Ollama blip at first use does not
+   * switch the digest axis off — and write null digests — for the life of
+   * the process.
+   */
+  async getModelDigest(): Promise<string | undefined> {
+    if (this.modelDigest !== undefined) return this.modelDigest ?? undefined;
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/tags`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = (await response.json()) as {
+        models?: { name?: string; digest?: string }[];
+      };
+      const want = withDefaultTag(this.model);
+      const match = (data.models ?? []).find(
+        (m) => typeof m.name === "string" && withDefaultTag(m.name) === want,
+      );
+      // Normalise: Ollama has used both `sha256:` and `sha256-` prefixes.
+      this.modelDigest = match?.digest
+        ? match.digest.replace(/^sha256[:-]/, "")
+        : null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve the digest of ${this.model}: ${(error as Error).message}`,
+      );
+      return undefined;
+    }
+    return this.modelDigest ?? undefined;
+  }
+
   getDimensions(): number {
     return this.dimensions;
   }

@@ -82,9 +82,9 @@ describe("OllamaEmbeddingProvider", () => {
 
       // A degraded vector beats no vector: refusing here would fail a whole
       // sync over one long row.
-      await expect(
-        p.embedDocuments(["z".repeat(9000)]),
-      ).resolves.toHaveLength(1);
+      await expect(p.embedDocuments(["z".repeat(9000)])).resolves.toHaveLength(
+        1,
+      );
     });
   });
 
@@ -282,6 +282,48 @@ describe("OllamaEmbeddingProvider", () => {
       expect(bodyOf(1).input).toEqual([
         "search_query: requisitos de identificacion",
       ]);
+    });
+  });
+
+  describe("getModelDigest", () => {
+    const tagged = (models: { name: string; digest?: string }[]) => ({
+      ok: true,
+      json: () => Promise.resolve({ models }),
+    });
+
+    it("returns the configured model's digest, prefix stripped, and asks once", async () => {
+      mockFetch.mockResolvedValueOnce(
+        tagged([
+          { name: "qwen3.5:9b", digest: "sha256:other" },
+          { name: "nomic-embed-text-v2-moe:latest", digest: "sha256-abc123" },
+        ]),
+      );
+
+      await expect(provider.getModelDigest()).resolves.toBe("abc123");
+      await expect(provider.getModelDigest()).resolves.toBe("abc123");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("is undefined, not a throw, when Ollama cannot be asked — and asks again next time", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+      await expect(provider.getModelDigest()).resolves.toBeUndefined();
+
+      // A blip is not an answer: the next call resolves the real digest.
+      mockFetch.mockResolvedValueOnce(
+        tagged([
+          { name: "nomic-embed-text-v2-moe:latest", digest: "sha256:abc" },
+        ]),
+      );
+      await expect(provider.getModelDigest()).resolves.toBe("abc");
+    });
+
+    it("is undefined when the model is not listed", async () => {
+      mockFetch.mockResolvedValueOnce(
+        tagged([{ name: "qwen3.5:9b", digest: "x" }]),
+      );
+
+      await expect(provider.getModelDigest()).resolves.toBeUndefined();
     });
   });
 

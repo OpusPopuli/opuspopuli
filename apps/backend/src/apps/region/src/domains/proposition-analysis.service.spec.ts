@@ -9,7 +9,10 @@ import type { ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
 import { recordClaims } from './claim-recorder';
-import { PropositionAnalysisService } from './proposition-analysis.service';
+import {
+  PropositionAnalysisService,
+  propositionAnalysisConfigHash,
+} from './proposition-analysis.service';
 
 jest.mock('./claim-recorder', () => ({
   recordClaims: jest.fn().mockResolvedValue({ written: 0, byState: {} }),
@@ -80,6 +83,8 @@ interface PropRow {
   analysisSourceTextHash: string | null;
   fullTextHash: string | null;
   analysisGeneratedAt: Date | null;
+  analysisLlmDigest: string | null;
+  analysisConfigHash: string | null;
   updatedAt: Date;
   deletedAt?: Date | null;
 }
@@ -103,6 +108,8 @@ const baseProp = (overrides: Partial<PropRow> = {}): PropRow => ({
   analysisSourceTextHash: null,
   fullTextHash: FULL_TEXT_HASH,
   analysisGeneratedAt: null,
+  analysisLlmDigest: null,
+  analysisConfigHash: null,
   updatedAt: new Date('2026-04-20T00:00:00Z'),
   deletedAt: null,
   ...overrides,
@@ -184,6 +191,7 @@ describe('PropositionAnalysisService', () => {
         findUnique: jest.fn().mockResolvedValue(findUnique),
         findMany: jest.fn().mockResolvedValue(findMany),
         update: jest.fn().mockResolvedValue(undefined),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         // Prisma field references (#1279). The real client exposes these so a
         // query can compare two COLUMNS — `analysis_source_text_hash` against
         // the Postgres-generated `full_text_hash` — without raw SQL. Shaped
@@ -227,6 +235,7 @@ describe('PropositionAnalysisService', () => {
           findUnique: jest.Mock;
           findMany: jest.Mock;
           update: jest.Mock;
+          updateMany: jest.Mock;
         };
       },
     };
@@ -275,12 +284,50 @@ describe('PropositionAnalysisService', () => {
           analysisPromptHash: PROMPT_HASH,
           // Current on the SOURCE-TEXT axis too, not just the prompt axis.
           analysisSourceTextHash: FULL_TEXT_HASH,
+          // ...and on the model axis (K-P2).
+          analysisLlmDigest: 'stub-digest',
           updatedAt: new Date('2026-04-20T00:00:00Z'),
         }),
       });
 
       await expect(built.service.generate('prop-1')).resolves.toBe(false);
       expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('is still current after a sync touched the row — updatedAt is not an axis', async () => {
+      // Every sync upsert and every embedding write bump updatedAt, so the
+      // old `updatedAt > analysisGeneratedAt` check made every row stale.
+      const built = await buildService({
+        findUnique: baseProp({
+          analysisGeneratedAt: new Date('2026-04-21T00:00:00Z'),
+          analysisPromptHash: PROMPT_HASH,
+          analysisSourceTextHash: FULL_TEXT_HASH,
+          analysisLlmDigest: 'stub-digest',
+          updatedAt: new Date('2026-10-24T00:00:00Z'),
+        }),
+      });
+
+      await expect(built.service.generate('prop-1')).resolves.toBe(false);
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the model weights changed', { analysisLlmDigest: 'older-digest' }],
+      ['the analyzer config changed', { analysisConfigHash: 'other-config' }],
+    ])('regenerates when %s (K-P2)', async (_why, axis) => {
+      const built = await buildService({
+        findUnique: baseProp({
+          analysisGeneratedAt: new Date('2026-04-21T00:00:00Z'),
+          analysisPromptHash: PROMPT_HASH,
+          analysisSourceTextHash: FULL_TEXT_HASH,
+          analysisLlmDigest: 'stub-digest',
+          ...axis,
+        }),
+      });
+
+      await built.service.generate('prop-1');
+
+      expect(built.llm.generate).toHaveBeenCalled();
     });
 
     describe('source-text staleness (#1279)', () => {
@@ -796,6 +843,79 @@ describe('PropositionAnalysisService', () => {
             { analysisPromptHash: null },
             { analysisPromptHash: { not: PROMPT_HASH } },
           ]),
+        );
+      });
+
+      it('selects analyses written by other weights or another analyzer config (K-P2)', async () => {
+        const built = await buildService({ findMany: [] });
+
+        await built.service.generateMissing();
+
+        const where = built.db.proposition.findMany.mock.calls[0][0]
+          .where as Record<string, unknown>;
+        expect(where.OR).toEqual(
+          expect.arrayContaining([
+            { analysisLlmDigest: null },
+            { analysisLlmDigest: { not: 'stub-digest' } },
+            { analysisConfigHash: null },
+            {
+              analysisConfigHash: {
+                not: propositionAnalysisConfigHash(6000),
+              },
+            },
+          ]),
+        );
+      });
+
+      it('stamps the config hash on current pre-K-P2 analyses instead of regenerating them', async () => {
+        // The owner's backfill decision (2026-10-24).
+        const built = await buildService({ findMany: [] });
+
+        await built.service.generateMissing();
+
+        expect(built.db.proposition.updateMany).toHaveBeenCalledWith({
+          where: {
+            analysisConfigHash: null,
+            analysisGeneratedAt: { not: null },
+          },
+          data: { analysisConfigHash: propositionAnalysisConfigHash(6000) },
+        });
+        // Stamped BEFORE the selection, so the stamped rows are not selected.
+        expect(
+          built.db.proposition.updateMany.mock.invocationCallOrder[0],
+        ).toBeLessThan(
+          built.db.proposition.findMany.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('does not use the model axis when the digest is unknown', async () => {
+        // Unknown weights cannot prove a change; regenerating the corpus on a
+        // failed digest lookup would be hours of GPU for nothing.
+        const built = await buildService({ findMany: [] });
+        built.llm.getModelDigest.mockResolvedValueOnce(undefined);
+
+        await built.service.generateMissing();
+
+        const where = built.db.proposition.findMany.mock.calls[0][0].where as {
+          OR: Record<string, unknown>[];
+        };
+        expect(where.OR.some((arm) => 'analysisLlmDigest' in arm)).toBe(false);
+        // The backfill still runs: waiting on the digest would re-analyse
+        // every legacy row on a run whose lookup failed.
+        expect(built.db.proposition.updateMany).toHaveBeenCalled();
+      });
+
+      it('records the config hash with every analysis it writes', async () => {
+        const built = await buildService({ findMany: [baseProp()] });
+
+        await built.service.generateMissing();
+
+        expect(built.db.proposition.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              analysisConfigHash: propositionAnalysisConfigHash(6000),
+            }),
+          }),
         );
       });
 

@@ -202,6 +202,27 @@ export interface ISourceArchive {
         contentType?: string;
       },
   ): Promise<ArchiveOutcome>;
+
+  /**
+   * The text a PDF parser of `parserVersion` produced from an archived
+   * artifact, if one was recorded (propositions Phase B, K-P1). Optional: an
+   * archive that does not keep parses simply means every PDF is parsed.
+   * Must not throw — undefined on any failure.
+   */
+  findParsedText?(
+    sourceVersionId: string,
+    parserVersion: string,
+  ): Promise<string | undefined>;
+
+  /**
+   * Record a COMPLETE parse of an archived artifact, replacing one made by
+   * another parser version. Must not throw.
+   */
+  recordParsedText?(
+    sourceVersionId: string,
+    parserVersion: string,
+    text: string,
+  ): Promise<void>;
 }
 
 /**

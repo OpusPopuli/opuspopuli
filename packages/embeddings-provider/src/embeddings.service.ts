@@ -74,6 +74,11 @@ export class EmbeddingsService {
     await this.provider.assertReady?.();
   }
 
+  /** The provider's model digest, when it has one (see IEmbeddingProvider). */
+  async getModelDigest(): Promise<string | undefined> {
+    return this.provider.getModelDigest?.();
+  }
+
   /**
    * Get provider information
    */

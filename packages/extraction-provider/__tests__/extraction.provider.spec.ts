@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ExtractionProvider, stripNulBytes } from "../src/extraction.provider";
 import { FetchError } from "../src/types";
+import {
+  PDF_EXTRACTOR_VERSION,
+  PdfExtractor,
+} from "../src/utils/pdf-extractor";
 import type { MetricsObserver } from "@opuspopuli/common";
 
 // Mock fetch globally
@@ -486,6 +490,130 @@ describe("ExtractionProvider", () => {
       });
 
       expect(result.content).toBe(body);
+    });
+  });
+
+  describe("PDF parse reuse (K-P1)", () => {
+    const pdfBytes = Buffer.from("%PDF-1.6 unchanged bytes");
+    let archive: {
+      archive: jest.Mock;
+      findParsedText: jest.Mock;
+      recordParsedText: jest.Mock;
+    };
+    let archivingProvider: ExtractionProvider;
+    let extract: jest.SpyInstance;
+
+    beforeEach(() => {
+      archive = {
+        archive: jest.fn().mockResolvedValue({ sourceVersionId: "sv-1" }),
+        findParsedText: jest.fn().mockResolvedValue(undefined),
+        recordParsedText: jest.fn().mockResolvedValue(undefined),
+      };
+      archivingProvider = new ExtractionProvider(
+        { cacheProvider: "memory" },
+        undefined,
+        archive,
+      );
+      extract = jest
+        .spyOn(PdfExtractor, "extractWithOutcome")
+        .mockResolvedValue({ text: "parsed\u0000 text", complete: true });
+      mockFetch.mockImplementation(async () =>
+        httpResponse(pdfBytes, {
+          contentType: "application/pdf",
+          url: "https://example.gov/m.pdf",
+        }),
+      );
+    });
+
+    afterEach(async () => {
+      extract.mockRestore();
+      await archivingProvider.onModuleDestroy?.();
+    });
+
+    const fetchPdf = () =>
+      archivingProvider.fetchPdfText("https://example.gov/m.pdf", {
+        archive: { dataType: "propositions" },
+      } as never);
+
+    it("parses an archived PDF once, then reuses the parse for the same bytes", async () => {
+      await fetchPdf();
+      const [id, key, text] = archive.recordParsedText.mock.calls[0];
+      expect([id, text]).toEqual(["sv-1", "parsed text"]);
+      // The cascade version plus a hash of what this process parses with.
+      expect(key).toMatch(
+        new RegExp(`^${PDF_EXTRACTOR_VERSION}\\+[0-9a-f]{12}$`),
+      );
+      expect(key.length).toBeLessThanOrEqual(40);
+
+      archive.findParsedText.mockResolvedValue("parsed text");
+      extract.mockClear();
+      const second = await fetchPdf();
+
+      // The bytes are still fetched — their address is the proof — but the
+      // 78%-of-the-run parse is not repeated.
+      expect(extract).not.toHaveBeenCalled();
+      expect(second).toEqual({ text: "parsed text", sourceVersionId: "sv-1" });
+      expect(archive.findParsedText).toHaveBeenLastCalledWith("sv-1", key);
+    });
+
+    it("keys a parse by how this process OCRs, so another OCR setup re-parses", async () => {
+      const ocr = (languages: string[]) => ({
+        extractFromBuffer: jest.fn(),
+        getProviderInfo: () => ({
+          name: "Tesseract",
+          supportedLanguages: languages,
+        }),
+      });
+      const keyOf = async (languages: string[]) => {
+        const p = new ExtractionProvider(
+          { cacheProvider: "memory" },
+          ocr(languages),
+          archive,
+        );
+        archive.recordParsedText.mockClear();
+        await p.fetchPdfText("https://example.gov/m.pdf", {
+          archive: { dataType: "propositions" },
+        } as never);
+        await p.onModuleDestroy?.();
+        return archive.recordParsedText.mock.calls[0][1] as string;
+      };
+
+      expect(await keyOf(["eng"])).not.toBe(await keyOf(["eng", "spa"]));
+      expect(await keyOf(["eng"])).toBe(await keyOf(["eng"]));
+    });
+
+    it("does not record a parse that fell back — OCR down must not be pinned", async () => {
+      extract.mockResolvedValue({ text: "best effort", complete: false });
+
+      const result = await fetchPdf();
+
+      expect(result.text).toBe("best effort");
+      expect(archive.recordParsedText).not.toHaveBeenCalled();
+    });
+
+    it("parses, and records nothing, when the bytes were not archived", async () => {
+      archive.archive.mockResolvedValue({});
+
+      await fetchPdf();
+
+      expect(archive.findParsedText).not.toHaveBeenCalled();
+      expect(archive.recordParsedText).not.toHaveBeenCalled();
+      expect(extract).toHaveBeenCalledTimes(1);
+    });
+
+    it("parses as before with an archive that keeps no parses", async () => {
+      const plain = new ExtractionProvider(
+        { cacheProvider: "memory" },
+        undefined,
+        { archive: jest.fn().mockResolvedValue({ sourceVersionId: "sv-1" }) },
+      );
+
+      await expect(
+        plain.fetchPdfText("https://example.gov/m.pdf", {
+          archive: { dataType: "propositions" },
+        } as never),
+      ).resolves.toMatchObject({ text: "parsed text" });
+      await plain.onModuleDestroy?.();
     });
   });
 

@@ -1190,10 +1190,14 @@ model Proposition {
 
   /// Model that produced `embedding` — see Document.embeddingModel.
   embeddingModel String? @map("embedding_model") @db.VarChar(80)
+  /// The weights behind `embeddingModel` (Ollama's digest; null for xenova,
+  /// whose model id is the whole identity). Propositions Phase B.
+  embeddingModelDigest String? @map("embedding_model_digest") @db.VarChar(80)
 
-  /// SHA-256 of the fullText that produced `embedding`. Proposition sync runs
-  /// often and fullText rarely changes; without this every sync would re-embed
-  /// all 52 rows to produce identical vectors.
+  /// SHA-256 of the text that produced `embedding` — `title + summary`
+  /// (`PropositionEmbeddingService.embeddingSource`), not fullText. Proposition
+  /// sync runs often and that text rarely changes; without this every sync
+  /// would re-embed every row to produce identical vectors.
   embeddingSourceHash String? @map("embedding_source_hash")
 
   /// SHA-256 of `fullText`, maintained by POSTGRES — `GENERATED ALWAYS AS
@@ -1243,6 +1247,9 @@ model Proposition {
   /// different characters — so an analysis is stale when this differs from
   /// `fullTextHash`. NULL means "unknown", which is treated as stale.
   analysisSourceTextHash String?   @map("analysis_source_text_hash") @db.VarChar(64)
+  /// stableHash of the analyzer version and the effective generation settings
+  /// — the config axis of the analysis skip key (propositions Phase B).
+  analysisConfigHash     String?   @map("analysis_config_hash") @db.VarChar(64)
   analysisPromptVersion  String?   @map("analysis_prompt_version") @db.VarChar(20)
   /// Model that produced the analysis (#1149).
   analysisLlmModel       String?   @map("analysis_llm_model") @db.VarChar(80)
@@ -2489,6 +2496,12 @@ model SourceVersion {
   /// SHA-256 of `derivedText`, hex. What `Evidence.sourceTextHash` is
   /// compared against.
   derivedTextHash String? @map("derived_text_hash") @db.VarChar(64)
+  /// What the PDF parser produced from these bytes, and which parser version
+  /// produced it — so unchanged bytes are not re-parsed (propositions Phase B,
+  /// K-P1). Unlike `derivedText`, not what a subject row stored.
+  parsedText      String? @map("parsed_text") @db.Text
+  parsedTextHash  String? @map("parsed_text_hash") @db.VarChar(64)
+  parserVersion   String? @map("parser_version") @db.VarChar(40)
 
   execution    PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
   manifest     StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)

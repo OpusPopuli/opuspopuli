@@ -8,8 +8,10 @@
  * @see https://github.com/OpusPopuli/opuspopuli/issues/198
  */
 
+import { createHash } from "node:crypto";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import {
+  installedVersion,
   METRICS_OBSERVER,
   type MetricsObserver,
   PipelineStage,
@@ -19,8 +21,10 @@ import * as cheerio from "cheerio";
 import type { CheerioAPI, Cheerio } from "cheerio";
 import type { Element } from "domhandler";
 import {
+  PDF_EXTRACTOR_VERSION,
   PdfExtractor,
   type IOcrProviderForPdf,
+  type PdfExtraction,
 } from "./utils/pdf-extractor.js";
 
 /**
@@ -318,15 +322,20 @@ export class ExtractionProvider {
    * empty for image-based PDFs).
    */
   async extractPdfText(buffer: Buffer): Promise<string> {
+    return (await this.parsePdf(buffer)).text;
+  }
+
+  /** {@link extractPdfText}, saying whether the parse is complete. */
+  private async parsePdf(buffer: Buffer): Promise<PdfExtraction> {
     this.logger.debug("Extracting text from PDF");
     // The whole cascade, as one `pdf_parse` stage. Tier 3 rasterises and
     // hands off to OCR, which measures itself as the `ocr` stage — so a
     // scanned PDF shows up in both, and the difference between them is what
     // the parse tiers cost before OCR was reached. Row 8 compares the two.
-    const text = await withStage(
+    const parsed = await withStage(
       PipelineStage.PdfParse,
       {},
-      () => PdfExtractor.extract(buffer, this.ocrService),
+      () => PdfExtractor.extractWithOutcome(buffer, this.ocrService),
       { observer: this.metrics },
     );
     // Strip NUL bytes (0x00) that scanned / mixed-encoding PDFs can emit.
@@ -334,7 +343,7 @@ export class ExtractionProvider {
     // UTF8"), which would crash any downstream DB write of the extracted text
     // (minutes.rawText, bill/meeting fields). Single choke point for every PDF
     // path — see #912.
-    return stripNulBytes(text);
+    return { ...parsed, text: stripNulBytes(parsed.text) };
   }
 
   /**
@@ -394,13 +403,66 @@ export class ExtractionProvider {
     options: RetryOptions = {},
   ): Promise<PdfFetchResult> {
     const result = await this.fetchBytesWithRetry(url, options);
-    const text = await this.extractPdfText(result.content);
+    const text = await this.parseArchivedPdf(result);
     return {
       text,
       ...(result.sourceVersionId && {
         sourceVersionId: result.sourceVersionId,
       }),
     };
+  }
+
+  /**
+   * Parse a fetched PDF — or, when its bytes are archived and were already
+   * parsed completely by this parser version, return that parse instead
+   * (propositions Phase B, K-P1). On 2026-10-24 a propositions sync spent 78%
+   * of its run re-parsing, 74% re-OCRing, PDFs whose bytes had not changed.
+   *
+   * The bytes are still fetched: their content address is what proves them
+   * unchanged. Only a complete parse is recorded, so a PDF parsed while OCR
+   * was down is parsed again next time rather than pinned to its fallback.
+   */
+  private async parseArchivedPdf(result: BytesFetchResult): Promise<string> {
+    const id = result.sourceVersionId;
+    const archive = this.sourceArchive;
+    const key = this.parserKey();
+    if (id && archive?.findParsedText) {
+      const reused = await archive.findParsedText(id, key);
+      if (reused !== undefined) {
+        this.logger.debug(`Reused the ${key} parse of ${id}`);
+        return reused;
+      }
+    }
+    const parsed = await this.parsePdf(result.content);
+    if (id && parsed.complete && archive?.recordParsedText) {
+      await archive.recordParsedText(id, key, parsed.text);
+    }
+    return parsed.text;
+  }
+
+  private cachedParserKey?: string;
+
+  /**
+   * What a recorded parse must have been made with to be reused (K-P1): the
+   * cascade's version, plus a short hash of what it runs with in THIS
+   * process — the installed pdf-parse and mupdf, and the OCR engine's
+   * description. Two processes OCRing differently (another language pack, a
+   * preprocessing preset) never serve each other's parses, and a dependency
+   * bump re-parses without anyone remembering to bump a constant. Fits
+   * `source_versions.parser_version` (40 chars).
+   */
+  private parserKey(): string {
+    this.cachedParserKey ??= `${PDF_EXTRACTOR_VERSION}+${createHash("sha256")
+      .update(
+        JSON.stringify({
+          pdfParse: installedVersion("pdf-parse", __filename) ?? "unknown",
+          mupdf: installedVersion("mupdf", __filename) ?? "unknown",
+          ocr: this.ocrService?.getProviderInfo?.() ?? null,
+        }),
+      )
+      .digest("hex")
+      .slice(0, 12)}`;
+    return this.cachedParserKey;
   }
 
   /**

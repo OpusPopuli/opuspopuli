@@ -23,6 +23,7 @@ describe('PropositionEmbeddingService', () => {
   let embeddings: {
     getEmbeddingsForQuery: jest.Mock;
     getProviderInfo: jest.Mock;
+    getModelDigest: jest.Mock;
     assertProviderReady: jest.Mock;
   };
 
@@ -38,6 +39,7 @@ describe('PropositionEmbeddingService', () => {
         dimensions: EMBEDDING_DIMENSIONS,
         model: 'nomic-embed-text-v2-moe:latest',
       }),
+      getModelDigest: jest.fn().mockResolvedValue('emb-digest'),
       // Startup also verifies the model is actually pulled (#1156); a missing
       // one otherwise surfaces per row as a 404 behind a healthy service.
       assertProviderReady: jest.fn().mockResolvedValue(undefined),
@@ -98,7 +100,52 @@ describe('PropositionEmbeddingService', () => {
       title: 'ESTABLISHES VOTER IDENTIFICATION REQUIREMENTS',
       summary: 'Requires identification.',
       embeddingSourceHash: null,
+      embeddingModel: 'nomic-embed-text-v2-moe:latest',
+      embeddingModelDigest: 'emb-digest',
       ...over,
+    });
+    const current = () =>
+      PropositionEmbeddingService.sourceHash(
+        PropositionEmbeddingService.embeddingSource(row()),
+      );
+
+    it.each([
+      ['the embedding model changed', { embeddingModel: 'mxbai-embed-large' }],
+      ['the weights behind the tag changed', { embeddingModelDigest: 'older' }],
+      ['the vector predates the digest', { embeddingModelDigest: null }],
+    ])('re-embeds unchanged text when %s', async (_why, over) => {
+      db.proposition.findMany.mockResolvedValue([
+        row({ embeddingSourceHash: current(), ...over }),
+      ]);
+
+      const result = await service.embedMissing();
+
+      expect(result).toMatchObject({ embedded: 1, unchanged: 0 });
+    });
+
+    it('does not compare digests when the provider has none (xenova)', async () => {
+      embeddings.getModelDigest.mockResolvedValue(undefined);
+      db.proposition.findMany.mockResolvedValue([
+        row({ embeddingSourceHash: current(), embeddingModelDigest: null }),
+      ]);
+
+      const result = await service.embedMissing();
+
+      expect(result).toMatchObject({ embedded: 0, unchanged: 1 });
+    });
+
+    it('records which weights made the vector', async () => {
+      db.proposition.findMany.mockResolvedValue([row()]);
+
+      await service.embedMissing();
+
+      const values = db.$executeRaw.mock.calls[0].slice(1);
+      expect(values).toEqual(
+        expect.arrayContaining([
+          'nomic-embed-text-v2-moe:latest',
+          'emb-digest',
+        ]),
+      );
     });
 
     it('embeds a proposition that has no vector yet', async () => {

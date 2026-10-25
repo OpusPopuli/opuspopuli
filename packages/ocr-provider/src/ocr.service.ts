@@ -149,6 +149,7 @@ export class OcrService implements OnModuleDestroy {
       name: this.provider.getName(),
       supportedLanguages: this.provider.getSupportedLanguages(),
       preprocessingEnabled: this.preprocessor?.shouldPreprocess() ?? false,
+      engineVersion: this.provider.getEngineVersion?.(),
     };
   }
 

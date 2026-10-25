@@ -134,6 +134,12 @@ describe("OcrService", () => {
       expect(info.name).toBe("MockProvider");
       expect(info.supportedLanguages).toEqual(["eng"]);
     });
+
+    it("includes the engine version when the provider reports one", () => {
+      (mockProvider as any).getEngineVersion = () => "5.1.1";
+
+      expect(service.getProviderInfo().engineVersion).toBe("5.1.1");
+    });
   });
 
   describe("onModuleDestroy", () => {

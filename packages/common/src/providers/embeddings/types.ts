@@ -69,6 +69,15 @@ export interface IEmbeddingProvider {
    * transient blip into a crash loop.
    */
   assertReady?(): Promise<void>;
+
+  /**
+   * The digest of the weights behind {@link getModelName}, where the provider
+   * can tell — so a stored vector can say which weights made it, and a model
+   * pull under the same tag re-embeds (propositions Phase B). Optional: an
+   * in-process model is identified by its name alone. Never throws; undefined
+   * when unknown.
+   */
+  getModelDigest?(): Promise<string | undefined>;
 }
 
 /**

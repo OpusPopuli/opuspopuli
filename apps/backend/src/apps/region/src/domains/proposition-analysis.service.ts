@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   extractJsonObjectSlice,
+  stableHash,
   type JsonRepairClass,
   parseJsonWithRepair,
   type PropositionAnalysisClaim,
@@ -16,9 +17,50 @@ import { normaliseAnalysisClaims } from './claim-normalisers';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import {
   LlmGeneratorBase,
+  UNKNOWN_MODEL_DIGEST,
   type GenerationFailure,
   type GenerationFailureReason,
 } from './llm-generator.base';
+
+/**
+ * The version of the code between the model's answer and the stored row —
+ * JSON repair, the section and claim normalisers, contact-detail handling.
+ * Part of the analysis skip key's config axis (propositions Phase B, K-P2):
+ * **bump it whenever post-processing changes what an analysis stores**, or
+ * the change never reaches a measure whose text, prompt and model are
+ * unchanged. (The prompt template is versioned by its own hash.)
+ */
+export const PROPOSITION_ANALYZER_VERSION = 'proposition-analyzer-1';
+
+/** Sampling temperature for an analysis — part of the config axis. */
+const ANALYSIS_TEMPERATURE = 0.2;
+
+/**
+ * The config axis of the analysis skip key: the analyzer version and the
+ * EFFECTIVE generation settings. Effective, not the code default — a node
+ * that sets `PROPOSITION_ANALYSIS_MAX_TOKENS` hashes the value it runs with.
+ * Region config does not reach the analysis prompt (`formatPropData` is id,
+ * title and full text), so it is not here.
+ */
+export function propositionAnalysisConfigHash(maxTokens: number): string {
+  return stableHash({
+    analyzer: PROPOSITION_ANALYZER_VERSION,
+    maxTokens,
+    temperature: ANALYSIS_TEMPERATURE,
+  });
+}
+
+/**
+ * What a current analysis must match, resolved once per run. `promptHash`
+ * and `modelDigest` are undefined when they could not be resolved — that
+ * axis is then not used to call rows stale, as the prompt axis already
+ * behaved before the model axis existed.
+ */
+interface LiveAnalysisKey {
+  promptHash?: string;
+  modelDigest?: string;
+  configHash: string;
+}
 
 /**
  * Shape we ask the LLM to return. Matches the DB columns added by the
@@ -47,7 +89,8 @@ interface PropForAnalysis {
   analysisSourceTextHash: string | null;
   fullTextHash: string | null;
   analysisGeneratedAt: Date | null;
-  updatedAt: Date;
+  analysisLlmDigest: string | null;
+  analysisConfigHash: string | null;
 }
 
 /**
@@ -193,7 +236,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         analysisSourceTextHash: true,
         fullTextHash: true,
         analysisGeneratedAt: true,
-        updatedAt: true,
+        analysisLlmDigest: true,
+        analysisConfigHash: true,
       },
     });
     if (!prop) {
@@ -207,7 +251,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
 
     if (!force && (await this.isCurrent(prop))) {
       this.logger.debug(
-        `Skipping ${prop.externalId}: analysis is current (prompt hash unchanged, fullText unmodified since generation)`,
+        `Skipping ${prop.externalId}: analysis is current (text, prompt, model and analyzer config unchanged)`,
       );
       return false;
     }
@@ -248,60 +292,17 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         ? maxPropsOverride
         : this.maxProps;
 
-    // Resolve the live prompt hash ONCE for the whole batch. A prompt
-    // revision makes every stored analysis stale simultaneously, so paying
-    // for one lookup and comparing in memory beats a lookup per row.
-    let currentHash: string | undefined;
-    try {
-      currentHash = await this.promptClient.getPromptHash(
-        'document-analysis-proposition-analysis',
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Prompt hash lookup failed; regenerating only never-analysed ` +
-          `propositions this run: ${(error as Error).message}`,
-      );
-    }
+    // Resolved ONCE for the whole batch: a prompt revision or a model pull
+    // makes every stored analysis stale at once, so one lookup and an
+    // in-database comparison beat a lookup per row.
+    const live = await this.liveKey();
+    await this.stampLegacyConfigHash(live);
 
     const candidates = await this.db.proposition.findMany({
       where: {
         deletedAt: null,
         fullText: { not: null },
-        // Never analysed, OR analysed under a different prompt. The second
-        // arm is what makes a template revision actually take effect: this
-        // previously selected only `analysisGeneratedAt: null`, so a revised
-        // prompt regenerated nothing while the backfill script claimed it
-        // handled exactly that case (#1212 S5). Rows touched since their
-        // analysis are caught by the isCurrent() filter below, which Prisma
-        // cannot express as a column-to-column comparison.
-        OR: [
-          { analysisGeneratedAt: null },
-          // Prompt axis (#1212 S5) — only when the live hash resolved.
-          ...(currentHash
-            ? [
-                { analysisPromptHash: null },
-                { analysisPromptHash: { not: currentHash } },
-              ]
-            : []),
-          // Source-text axis (#1279). `fullTextHash` is maintained by Postgres
-          // as a generated column, so this compares two stored hashes rather
-          // than re-reading every fullText to apply a cap — which is why S5
-          // could not do it.
-          //
-          // BOTH arms are required. `NOT { equals: ref }` compiles to
-          // `hash <> full_text_hash`, and in SQL three-valued logic a NULL on
-          // either side yields NULL, not true — so a row that has never
-          // recorded which text it analysed matches NEITHER arm and would be
-          // silently treated as fresh. Verified against seeded rows.
-          { analysisSourceTextHash: null },
-          {
-            NOT: {
-              analysisSourceTextHash: {
-                equals: this.db.proposition.fields.fullTextHash,
-              },
-            },
-          },
-        ],
+        OR: this.staleWhere(live),
       },
       select: {
         id: true,
@@ -313,7 +314,8 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
         analysisSourceTextHash: true,
         fullTextHash: true,
         analysisGeneratedAt: true,
-        updatedAt: true,
+        analysisLlmDigest: true,
+        analysisConfigHash: true,
       },
       orderBy: { electionDate: 'desc' },
       take: cap,
@@ -372,36 +374,120 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   }
 
   /**
-   * Decide whether a stored analysis is still current: the prompt hash
-   * matches what the prompt-service returns today AND the proposition row
-   * hasn't been touched since the analysis was written. Either miss
-   * triggers a regeneration.
+   * The live values a current analysis must match (K-P2). A failed lookup
+   * leaves that axis undefined rather than failing the run.
+   */
+  private async liveKey(): Promise<LiveAnalysisKey> {
+    let promptHash: string | undefined;
+    try {
+      promptHash = await this.promptClient!.getPromptHash(
+        'document-analysis-proposition-analysis',
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Prompt hash lookup failed; the prompt axis is not checked this run: ${(error as Error).message}`,
+      );
+    }
+    const digest = (await this.llm!.getModelDigest()) ?? '';
+    return {
+      promptHash,
+      modelDigest:
+        digest && digest !== UNKNOWN_MODEL_DIGEST ? digest : undefined,
+      configHash: propositionAnalysisConfigHash(this.maxTokens),
+    };
+  }
+
+  /**
+   * The one-time backfill the owner chose (2026-10-24): an analysis written
+   * before the config axis existed has no config hash, and is stamped with
+   * the live one instead of regenerated.
+   *
+   * An accepted assumption, not a proof: the stamp says the row was produced
+   * by this analyzer and these settings, which is true unless a node ran it
+   * under another `PROPOSITION_ANALYSIS_MAX_TOKENS` or before a normaliser
+   * change. Stamping fills only the config column — a row stale on its
+   * prompt, model or text is still caught by that axis — so it does not wait
+   * for the prompt hash or digest to resolve: waiting would re-analyse every
+   * legacy row on a run whose digest lookup failed. Touches only rows with no
+   * hash yet; after the first run, none.
+   */
+  private async stampLegacyConfigHash(live: LiveAnalysisKey): Promise<void> {
+    const { count } = await this.db!.proposition.updateMany({
+      where: {
+        analysisConfigHash: null,
+        analysisGeneratedAt: { not: null },
+      },
+      data: { analysisConfigHash: live.configHash },
+    });
+    if (count > 0) {
+      this.logger.log(
+        `Stamped the analyzer config hash on ${count} current analysis(es) written before it was recorded`,
+      );
+    }
+  }
+
+  /**
+   * Rows whose analysis is stale on any axis of the key (K-P2): never
+   * analysed, or analysed under a different prompt, model, analyzer config,
+   * or text.
+   */
+  private staleWhere(live: LiveAnalysisKey): Prisma.PropositionWhereInput[] {
+    // Each axis needs BOTH arms. `{ not: x }` compiles to `col <> x`, and in
+    // SQL three-valued logic a NULL column yields NULL, not true — a row that
+    // never recorded the value would match neither arm and read as fresh.
+    const axis = (
+      field: 'analysisPromptHash' | 'analysisLlmDigest' | 'analysisConfigHash',
+      value: string | undefined,
+    ): Prisma.PropositionWhereInput[] =>
+      value ? [{ [field]: null }, { [field]: { not: value } }] : [];
+    return [
+      { analysisGeneratedAt: null },
+      // Prompt axis (#1212 S5); model axis (K-P2 — a model pull used to
+      // leave every analysis "current"); config axis (K-P2).
+      ...axis('analysisPromptHash', live.promptHash),
+      ...axis('analysisLlmDigest', live.modelDigest),
+      ...axis('analysisConfigHash', live.configHash),
+      // Source-text axis (#1279). `fullTextHash` is a Postgres generated
+      // column, so this compares two stored hashes in the database.
+      { analysisSourceTextHash: null },
+      {
+        NOT: {
+          analysisSourceTextHash: {
+            equals: this.db!.proposition.fields.fullTextHash,
+          },
+        },
+      },
+    ];
+  }
+
+  /**
+   * Whether a stored analysis is current on every axis of the key (K-P2) —
+   * the single-row path's version of {@link staleWhere}. No `updatedAt`
+   * condition: every sync upsert and every embedding write bump `updatedAt`,
+   * so that condition made every row stale after any sync.
    */
   private async isCurrent(prop: PropForAnalysis): Promise<boolean> {
     if (!prop.analysisGeneratedAt || !prop.analysisPromptHash) return false;
-    if (prop.updatedAt.getTime() > prop.analysisGeneratedAt.getTime()) {
-      return false;
-    }
-    // Source-text axis (#1279): the analysis is stale if the text it was
-    // generated against is not the text stored now. Computed here rather than
-    // read from `fullTextHash` so the single-proposition path does not depend
-    // on the caller having selected that column.
+    // Computed here rather than read from `fullTextHash` so the single-row
+    // path does not depend on the caller having selected that column.
     const sourceHash = PropositionAnalysisService.sourceTextHash(
       prop.fullText ?? null,
     );
     if (!prop.analysisSourceTextHash) return false;
     if (prop.analysisSourceTextHash !== sourceHash) return false;
-    try {
-      const currentHash = await this.promptClient!.getPromptHash(
-        'document-analysis-proposition-analysis',
-      );
-      return currentHash === prop.analysisPromptHash;
-    } catch (error) {
-      this.logger.warn(
-        `Prompt hash lookup failed; treating analysis as stale: ${(error as Error).message}`,
-      );
+    const live = await this.liveKey();
+    if (!live.promptHash || live.promptHash !== prop.analysisPromptHash) {
       return false;
     }
+    if (live.modelDigest && live.modelDigest !== prop.analysisLlmDigest) {
+      return false;
+    }
+    // A pre-K-P2 row is current on the config axis (the backfill rule); the
+    // next batch run stamps its hash.
+    return (
+      prop.analysisConfigHash === null ||
+      prop.analysisConfigHash === live.configHash
+    );
   }
 
   private async tryGenerateAndPersist(
@@ -450,6 +536,9 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
           analysisSourceTextHash: PropositionAnalysisService.sourceTextHash(
             prop.fullText,
           ),
+          // The config axis of the skip key (K-P2): which analyzer and
+          // generation settings produced this.
+          analysisConfigHash: propositionAnalysisConfigHash(this.maxTokens),
           analysisGeneratedAt: new Date(),
           // A measure that analyses now is no longer unanalysable. Clearing in
           // the same update is what keeps the column from accumulating stale
@@ -531,7 +620,7 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
 
     const result = await this.llm!.generate(promptText, {
       maxTokens: this.maxTokens,
-      temperature: 0.2,
+      temperature: ANALYSIS_TEMPERATURE,
     });
 
     // Carried on every refusal below. `finishReason` is the field that
