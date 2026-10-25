@@ -81,6 +81,8 @@ describe('RegionQueryService — caching', () => {
         // the Postgres-maintained hash of the current text.
         fullTextHash: null,
         analysisSourceTextHash: null,
+        analysisConfigHash: null,
+        embeddingModelDigest: null,
         analysisFailureReason: null,
         analysisFailedAt: null,
         status: 'pending',
@@ -199,6 +201,8 @@ describe('RegionQueryService — query methods', () => {
           // the Postgres-maintained hash of the current text.
           fullTextHash: null,
           analysisSourceTextHash: null,
+          analysisConfigHash: null,
+          embeddingModelDigest: null,
           analysisFailureReason: null,
           analysisFailedAt: null,
           electionDate: null,
@@ -247,6 +251,8 @@ describe('RegionQueryService — query methods', () => {
         // the Postgres-maintained hash of the current text.
         fullTextHash: null,
         analysisSourceTextHash: null,
+        analysisConfigHash: null,
+        embeddingModelDigest: null,
         analysisFailureReason: null,
         analysisFailedAt: null,
         electionDate: null,

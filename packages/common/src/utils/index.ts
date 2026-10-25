@@ -1,5 +1,6 @@
 export { batchTransaction } from "./batch-transaction.js";
 export { htmlToReadableText } from "./html-to-text.js";
+export { installedVersion } from "./installed-version.js";
 export {
   resolveSupabaseKey,
   initSupabaseFromConfig,

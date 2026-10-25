@@ -40,7 +40,12 @@ describe('Proposition embeddings (#1074)', () => {
   let service: PropositionEmbeddingService;
   const embeddings = {
     getEmbeddingsForQuery: jest.fn(),
-    getProviderInfo: jest.fn(() => ({ dimensions: EMBEDDING_DIMENSIONS })),
+    getProviderInfo: jest.fn(() => ({
+      dimensions: EMBEDDING_DIMENSIONS,
+      model: 'nomic-embed-text-v2-moe:latest',
+    })),
+    // Propositions Phase B: a vector records the weights that made it.
+    getModelDigest: jest.fn().mockResolvedValue('it-embedding-digest'),
   };
 
   const EXTERNAL_IDS = ['TEST-1074-A', 'TEST-1074-B'];
@@ -172,9 +177,11 @@ describe('Proposition embeddings (#1074)', () => {
   it('supports cosine-distance ranking over the stored vectors', async () => {
     const a = await seed(EXTERNAL_IDS[0], 'MEASURE A', 'First.');
     const b = await seed(EXTERNAL_IDS[1], 'MEASURE B', 'Second.');
-    embeddings.getEmbeddingsForQuery
-      .mockResolvedValueOnce(vectorFor(1))
-      .mockResolvedValueOnce(vectorFor(2));
+    // By content, not by call order: `embedMissing` scans rows in no fixed
+    // order, and another suite's leftover rows can be scanned first.
+    embeddings.getEmbeddingsForQuery.mockImplementation(
+      async (source: string) => vectorFor(source.includes('MEASURE B') ? 2 : 1),
+    );
 
     await service.embedMissing();
 

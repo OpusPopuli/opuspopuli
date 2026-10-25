@@ -121,8 +121,18 @@ export class PropositionEmbeddingService implements OnModuleInit {
         title: true,
         summary: true,
         embeddingSourceHash: true,
+        embeddingModel: true,
+        embeddingModelDigest: true,
       },
     });
+
+    // The model that would embed now, and its weights where the provider
+    // can tell. A stored vector from another model — or other weights under
+    // the same tag — is stale even when its text is not (propositions Phase
+    // B): before, a provider switch left every vector from the old model in
+    // place, silently mixed with new ones.
+    const model = this.embeddings.getProviderInfo().model;
+    const digest = await this.embeddings.getModelDigest();
 
     let embedded = 0;
     let unchanged = 0;
@@ -155,7 +165,12 @@ export class PropositionEmbeddingService implements OnModuleInit {
       // Also re-embeds when the vector is missing but the hash is somehow
       // present — a half-written row from an interrupted run should heal on
       // the next pass rather than be skipped forever.
-      if (p.embeddingSourceHash === hash && (await this.hasVector(p.id))) {
+      if (
+        p.embeddingSourceHash === hash &&
+        p.embeddingModel === model &&
+        (!digest || p.embeddingModelDigest === digest) &&
+        (await this.hasVector(p.id))
+      ) {
         unchanged++;
         continue;
       }
@@ -165,12 +180,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
         // and returns an array, and this column holds exactly one vector. The
         // source is short by design, so there is nothing to chunk.
         const vector = await this.embeddings.getEmbeddingsForQuery(source);
-        await this.writeVector(
-          p.id,
-          vector,
-          hash,
-          this.embeddings.getProviderInfo().model,
-        );
+        await this.writeVector(p.id, vector, hash, model, digest);
         embedded++;
       } catch (error) {
         // Per-row isolation: one measure with unusual text must not abort the
@@ -232,6 +242,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
     vector: number[],
     hash: string,
     model: string,
+    digest: string | undefined,
   ): Promise<void> {
     if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSIONS) {
       throw new Error(
@@ -249,6 +260,7 @@ export class PropositionEmbeddingService implements OnModuleInit {
       SET embedding = ${literal}::vector,
           embedding_source_hash = ${hash},
           embedding_model = ${model},
+          embedding_model_digest = ${digest ?? null},
           updated_at = NOW()
       WHERE id = ${id}
     `;

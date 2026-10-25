@@ -55,4 +55,43 @@ export class PrismaSourceArchive implements ISourceArchive {
       }),
     };
   }
+
+  /**
+   * A recorded parse of an archived PDF (K-P1). Swallows failures: the port
+   * must not throw, and a miss just means the PDF is parsed.
+   */
+  async findParsedText(
+    sourceVersionId: string,
+    parserVersion: string,
+  ): Promise<string | undefined> {
+    try {
+      return await this.sourceVersions.getParsedText(
+        sourceVersionId,
+        parserVersion,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the parse of ${sourceVersionId}: ${(error as Error).message}`,
+      );
+      return undefined;
+    }
+  }
+
+  async recordParsedText(
+    sourceVersionId: string,
+    parserVersion: string,
+    text: string,
+  ): Promise<void> {
+    try {
+      await this.sourceVersions.attachParsedText(
+        sourceVersionId,
+        parserVersion,
+        text,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not record the parse of ${sourceVersionId}: ${(error as Error).message}`,
+      );
+    }
+  }
 }

@@ -14,6 +14,35 @@ export interface IOcrProviderForPdf {
     buffer: Buffer,
     mimeType: string,
   ): Promise<{ text: string }>;
+  /**
+   * What the OCR engine runs with — name, languages, preprocessing — so a
+   * recorded parse is reused only by a process OCRing the same way (K-P1).
+   * Optional: `OcrService.getProviderInfo` provides it.
+   */
+  getProviderInfo?(): unknown;
+}
+
+/**
+ * The version of the extraction cascade below — its tiers, their order, the
+ * `looksMeaningful` thresholds and the raster DPI. A parse is reused for
+ * unchanged bytes only when it was made under the same key (propositions
+ * Phase B, K-P1), so **bump this whenever the cascade's code changes what a
+ * PDF parses to**. The rest of the key is read at runtime, not remembered:
+ * the installed pdf-parse and mupdf versions and the OCR engine's own
+ * description (name, languages, preprocessing, engine version) — see
+ * `ExtractionProvider.parserKey`.
+ */
+export const PDF_EXTRACTOR_VERSION = "pdf-extractor-1";
+
+/**
+ * A parse, and whether it is the cascade's full answer. Not complete when a
+ * tier the PDF needed could not run — OCR unavailable, or OCR threw — and the
+ * text is a best-effort fallback another attempt might improve on. Only a
+ * complete parse may be reused.
+ */
+export interface PdfExtraction {
+  text: string;
+  complete: boolean;
 }
 
 /**
@@ -51,10 +80,18 @@ export class PdfExtractor {
     buffer: Buffer,
     ocrService?: IOcrProviderForPdf,
   ): Promise<string> {
+    return (await PdfExtractor.extractWithOutcome(buffer, ocrService)).text;
+  }
+
+  /** {@link extract}, saying whether the result is the cascade's full answer. */
+  static async extractWithOutcome(
+    buffer: Buffer,
+    ocrService?: IOcrProviderForPdf,
+  ): Promise<PdfExtraction> {
     // Tier 1: pdf-parse
     const t1 = await PdfExtractor.tryPdfParse(buffer);
     if (looksMeaningful(t1)) {
-      return t1;
+      return { text: t1, complete: true };
     }
     PdfExtractor.logger.debug(
       `pdf-parse returned ${t1?.length ?? 0} chars (insufficient); trying mupdf text`,
@@ -66,7 +103,7 @@ export class PdfExtractor {
       PdfExtractor.logger.debug(
         `mupdf text recovered ${t2.length} chars where pdf-parse failed`,
       );
-      return t2;
+      return { text: t2, complete: true };
     }
     PdfExtractor.logger.debug(
       `mupdf text returned ${t2?.length ?? 0} chars (insufficient); trying OCR`,
@@ -77,7 +114,7 @@ export class PdfExtractor {
       PdfExtractor.logger.warn(
         "PDF needs OCR but no OcrService injected — returning best-effort text",
       );
-      return t2 || t1 || "";
+      return { text: t2 || t1 || "", complete: false };
     }
     const startMs = Date.now();
     try {
@@ -87,17 +124,21 @@ export class PdfExtractor {
         PdfExtractor.logger.warn(
           `OCR recovered ${ocrText.length} chars from PDF in ${elapsedSec}s — image-based PDF`,
         );
-        return ocrText;
+        return { text: ocrText, complete: true };
       }
       PdfExtractor.logger.warn(
         `OCR returned ${ocrText?.length ?? 0} chars (insufficient) after ${elapsedSec}s`,
       );
-      return ocrText || t2 || t1 || "";
+      // Not complete: a blank scan and an OCR run that silently came back
+      // short look the same from here, and recording the second would pin it
+      // until the next version bump. A truly blank PDF is re-OCRed each run —
+      // the cost of never pinning a bad read.
+      return { text: ocrText || t2 || t1 || "", complete: false };
     } catch (err) {
       PdfExtractor.logger.warn(
         `OCR failed: ${(err as Error).message} — returning best-effort text`,
       );
-      return t2 || t1 || "";
+      return { text: t2 || t1 || "", complete: false };
     }
   }
 

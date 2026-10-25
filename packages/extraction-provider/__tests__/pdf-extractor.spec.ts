@@ -174,3 +174,70 @@ describe("PdfExtractor.extract — tier cascade", () => {
     expect(typeof result).toBe("string");
   });
 });
+
+describe("PdfExtractor.extractWithOutcome — what may be reused (K-P1)", () => {
+  beforeEach(() => {
+    pdfParseGetText.mockReset();
+    mupdfPageText.mockReset();
+    mupdfPageRender.mockReset();
+  });
+
+  it("is complete when a text tier found meaningful text", async () => {
+    pdfParseGetText.mockResolvedValue({ text: REAL_PROSE });
+
+    await expect(PdfExtractor.extractWithOutcome(buf)).resolves.toEqual({
+      text: REAL_PROSE,
+      complete: true,
+    });
+  });
+
+  it("is NOT complete when the PDF needed OCR and none is bound", async () => {
+    pdfParseGetText.mockResolvedValue({ text: "" });
+    mupdfPageText.mockReturnValue("");
+
+    const r = await PdfExtractor.extractWithOutcome(buf);
+
+    expect(r.complete).toBe(false);
+  });
+
+  it("is NOT complete when OCR threw — a retry may do better", async () => {
+    pdfParseGetText.mockResolvedValue({ text: "" });
+    mupdfPageText.mockReturnValue("");
+    mupdfPageRender.mockReturnValue(new Uint8Array([1]));
+    const ocr = {
+      extractFromBuffer: jest
+        .fn()
+        .mockRejectedValue(new Error("tesseract died")),
+    };
+
+    const r = await PdfExtractor.extractWithOutcome(buf, ocr);
+
+    expect(r.complete).toBe(false);
+  });
+
+  it("is complete when OCR recovered meaningful text", async () => {
+    pdfParseGetText.mockResolvedValue({ text: "" });
+    mupdfPageText.mockReturnValue("");
+    mupdfPageRender.mockReturnValue(new Uint8Array([1]));
+    const ocr = {
+      extractFromBuffer: jest.fn().mockResolvedValue({ text: REAL_PROSE }),
+    };
+
+    const r = await PdfExtractor.extractWithOutcome(buf, ocr);
+
+    expect(r.complete).toBe(true);
+  });
+
+  it("is NOT complete when OCR came back short — a blank scan and a bad read look alike", async () => {
+    pdfParseGetText.mockResolvedValue({ text: "" });
+    mupdfPageText.mockReturnValue("");
+    mupdfPageRender.mockReturnValue(new Uint8Array([1]));
+    const ocr = {
+      extractFromBuffer: jest.fn().mockResolvedValue({ text: "" }),
+    };
+
+    const r = await PdfExtractor.extractWithOutcome(buf, ocr);
+
+    expect(r.complete).toBe(false);
+  });
+});

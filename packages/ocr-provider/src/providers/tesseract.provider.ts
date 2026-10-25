@@ -7,6 +7,7 @@ import {
   OcrTextBlock,
   OcrError,
   UnsupportedMimeTypeError,
+  installedVersion,
 } from "@opuspopuli/common";
 
 /**
@@ -69,6 +70,11 @@ export class TesseractOcrProvider implements IOcrProvider {
 
   getSupportedLanguages(): string[] {
     return this.languages;
+  }
+
+  /** The installed tesseract.js — its language data is fetched per version. */
+  getEngineVersion(): string | undefined {
+    return installedVersion("tesseract.js", __filename);
   }
 
   supports(input: OcrInput): boolean {

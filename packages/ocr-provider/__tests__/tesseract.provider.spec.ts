@@ -50,6 +50,12 @@ describe("TesseractOcrProvider", () => {
       const multiLangProvider = new TesseractOcrProvider(["eng", "spa"]);
       expect(multiLangProvider.getSupportedLanguages()).toEqual(["eng", "spa"]);
     });
+
+    it("reports the installed tesseract.js, so a recorded PDF parse is keyed by it", () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { version } = require("tesseract.js/package.json");
+      expect(provider.getEngineVersion()).toBe(version);
+    });
   });
 
   describe("supports", () => {

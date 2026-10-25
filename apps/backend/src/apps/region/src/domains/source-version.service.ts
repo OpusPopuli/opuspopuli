@@ -234,6 +234,74 @@ export class SourceVersionService {
   }
 
   /**
+   * The text a PDF parser of `parserVersion` produced from an archived
+   * artifact, or undefined when none is recorded for that version
+   * (propositions Phase B, K-P1).
+   *
+   * A parse recorded under a DIFFERENT key is logged at info: two processes
+   * whose keys differ (another OCR language pack, another preset) take turns
+   * overwriting the one slot and neither ever reuses, and this line is the
+   * only signal that it is happening.
+   *
+   * @param sourceVersionId - The archived artifact
+   * @param parserVersion - The caller's parser key (`ExtractionProvider.parserKey`)
+   */
+  async getParsedText(
+    sourceVersionId: string,
+    parserVersion: string,
+  ): Promise<string | undefined> {
+    const row = await this.db.sourceVersion.findUnique({
+      where: { id: sourceVersionId },
+      select: { parsedText: true, parserVersion: true },
+    });
+    if (row?.parserVersion === parserVersion && row.parsedText !== null) {
+      return row.parsedText;
+    }
+    if (row?.parserVersion) {
+      this.logger.log(
+        `Parse of ${sourceVersionId} is recorded under ${row.parserVersion}, ` +
+          `not this process's ${parserVersion} — re-parsing. If this repeats ` +
+          `every run, two processes are OCRing differently.`,
+      );
+    }
+    return undefined;
+  }
+
+  /**
+   * Record a parser's complete output for an archived artifact (K-P1).
+   *
+   * NOT write-once, unlike {@link attachDerivedText}: nothing cites a parse,
+   * so a newer parser version simply replaces an older one. A parse over the
+   * archive cap is not stored — the PDF is parsed again next time, as before.
+   *
+   * @returns Whether the parse was stored
+   */
+  async attachParsedText(
+    sourceVersionId: string,
+    parserVersion: string,
+    parsedText: string,
+  ): Promise<boolean> {
+    if (Buffer.byteLength(parsedText, 'utf8') > MAX_ARCHIVED_BYTES) {
+      this.logger.warn(
+        `Not storing the ${parserVersion} parse of ${sourceVersionId}: over ` +
+          `the ${MAX_ARCHIVED_BYTES}-byte cap`,
+      );
+      return false;
+    }
+    await this.db.sourceVersion.update({
+      where: { id: sourceVersionId },
+      data: {
+        parsedText,
+        parsedTextHash: createHash('sha256')
+          .update(parsedText, 'utf8')
+          .digest('hex'),
+        parserVersion,
+      },
+    });
+    return true;
+  }
+
+  /**
    * Retrieve an archived artifact by its row id — the reference a subject
    * row, or a job, carries (`source_version_id`). The civics extraction
    * worker reloads its page this way (civics S3).

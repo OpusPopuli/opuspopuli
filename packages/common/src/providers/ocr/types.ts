@@ -95,6 +95,14 @@ export interface IOcrProvider {
    * Get supported languages (ISO 639-3 codes)
    */
   getSupportedLanguages(): string[];
+
+  /**
+   * The installed version of the OCR engine, where the provider can tell —
+   * so a recorded PDF parse is reused only by a process running the same
+   * engine (propositions Phase B, K-P1), and an engine upgrade re-parses
+   * without anyone bumping a constant. Optional; undefined when unknown.
+   */
+  getEngineVersion?(): string | undefined;
 }
 
 /**
