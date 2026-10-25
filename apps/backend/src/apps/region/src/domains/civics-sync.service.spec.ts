@@ -23,7 +23,7 @@ import {
   type CivicsCrawlHelpers,
   type CivicsProvider,
 } from './civics-sync.service';
-import { CivicsExtractQueue } from './civics-extract.queue';
+import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
 import { PipelineJobService } from './pipeline-job.service';
 import { SyncAbortedError } from './sync-phase-logger';
 import {
@@ -809,8 +809,11 @@ describe('CivicsSyncService — extraction off the fetch loop (S3)', () => {
 
   /** A queue whose batch is `batch`, standing in for Redis. */
   const queueOf = (batch: ChildJobBatch<unknown, string>) => ({
-    provide: CivicsExtractQueue,
-    useValue: { enabled: true, open: jest.fn().mockResolvedValue(batch) },
+    provide: ChildJobQueues,
+    useValue: {
+      enabled: () => true,
+      open: jest.fn().mockResolvedValue(batch),
+    },
   });
 
   beforeEach(() => {

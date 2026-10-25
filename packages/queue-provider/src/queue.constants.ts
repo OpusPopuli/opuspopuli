@@ -9,6 +9,12 @@ export const MINUTES_SUMMARY_QUEUE = "minutes-summary";
  * extraction here and waits for the outcome.
  */
 export const CIVICS_EXTRACT_QUEUE = "civics-extract";
+/**
+ * Per-measure proposition analysis (propositions S4,
+ * `docs/plans/propositions-phase-b.md` §3): the propositions sync queues each
+ * stale measure's analysis here and waits for the outcome.
+ */
+export const PROPOSITION_ANALYSIS_QUEUE = "proposition-analysis";
 
 export const ANALYSIS_REQUEST_SOURCE = {
   CACHE_MISS: "cache_miss",

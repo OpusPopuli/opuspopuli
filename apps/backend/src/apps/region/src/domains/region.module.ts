@@ -39,7 +39,7 @@ import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
-import { CivicsExtractQueue } from './civics-extract.queue';
+import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
 import { CountyThresholdSyncService } from './county-threshold-sync.service';
 import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { RegionPluginService } from './region-plugin.service';
@@ -271,7 +271,7 @@ const promptClientAsyncConfig = {
     RepresentativesSyncService,
     CampaignFinanceSyncService,
     CivicsSyncService,
-    CivicsExtractQueue,
+    ChildJobQueues,
     CountyThresholdSyncService,
     CountyThresholdQueryService,
     RegionQueryService,
@@ -358,6 +358,7 @@ const promptClientAsyncConfig = {
     StructuralAnalysisJobService,
     MinutesSummaryService,
     CivicsSyncService,
+    PropositionAnalysisService,
     BoundaryLoaderService,
     QueueModule,
     ScrapingPipelineModule,
