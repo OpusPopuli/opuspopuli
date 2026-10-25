@@ -192,6 +192,7 @@ describe('PropositionAnalysisService', () => {
         findMany: jest.fn().mockResolvedValue(findMany),
         update: jest.fn().mockResolvedValue(undefined),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        count: jest.fn().mockResolvedValue(0),
         // Prisma field references (#1279). The real client exposes these so a
         // query can compare two COLUMNS — `analysis_source_text_hash` against
         // the Postgres-generated `full_text_hash` — without raw SQL. Shaped
@@ -236,6 +237,7 @@ describe('PropositionAnalysisService', () => {
           findMany: jest.Mock;
           update: jest.Mock;
           updateMany: jest.Mock;
+          count: jest.Mock;
         };
       },
     };
@@ -320,6 +322,24 @@ describe('PropositionAnalysisService', () => {
         { fullText: { not: null } },
         { fullText: { not: '' } },
       ]);
+    });
+  });
+
+  describe('stampAndSelectStale — the current count (K-P2 skips)', () => {
+    it('counts the analysable measures that are NOT stale, beside the stale ones', async () => {
+      const built = await buildService({ findMany: [] });
+      built.db.proposition.count.mockResolvedValue(69);
+
+      const { current } = await built.service.stampAndSelectStale();
+
+      expect(current).toBe(69);
+      const selected = built.db.proposition.findMany.mock.calls[0][0].where;
+      const counted = built.db.proposition.count.mock.calls[0][0].where;
+      // The complement of the same selection: same analysable filter, and
+      // the stale arms negated as a whole.
+      expect(counted.AND).toEqual(selected.AND);
+      expect(counted.deletedAt).toBeNull();
+      expect(counted.NOT).toEqual({ OR: selected.OR });
     });
   });
 

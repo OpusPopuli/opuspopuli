@@ -189,3 +189,26 @@ describe("OcrModule provider selection", () => {
     );
   });
 });
+
+describe("OCR configured from env (S6 CPU-lane threads)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const {
+    createImagePreprocessor,
+    parseOcrLanguages,
+  } = require("../src/ocr-from-config");
+
+  it("switches preprocessing off for the boolean false ocrConfig produces, not only the string", () => {
+    // The module compared ocrConfig's BOOLEAN to the string "false", so
+    // OCR_PREPROCESSING_ENABLED=false never turned it off.
+    expect(createImagePreprocessor(false, "balanced")).toBeUndefined();
+    expect(createImagePreprocessor("false", "balanced")).toBeUndefined();
+    expect(createImagePreprocessor(true, "balanced")).toBeDefined();
+    expect(createImagePreprocessor(undefined, undefined)).toBeDefined();
+  });
+
+  it("parses the language list, defaulting to English", () => {
+    expect(parseOcrLanguages(undefined)).toEqual(["eng"]);
+    expect(parseOcrLanguages(" eng , spa ")).toEqual(["eng", "spa"]);
+    expect(parseOcrLanguages(",")).toEqual(["eng"]);
+  });
+});

@@ -30,6 +30,7 @@ import type { OpenMetricsContentType } from 'prom-client';
 
 import { MetricsService } from './metrics.service';
 import { PromMetricsObserver } from './prom-metrics-observer';
+import { WorkerMetricsBinding } from './worker-metrics-binding';
 import { MetricsInterceptor } from './metrics.interceptor';
 
 /**
@@ -120,6 +121,13 @@ export class MetricsModule {
       Registry.OPENMETRICS_CONTENT_TYPE,
     );
 
+    // `worker_host` on every series a worker publishes (S2's stable node
+    // identity, `WORKER_HOST`), so a multi-host node's panels split by host
+    // name rather than by scrape address. Unset — the API services — adds
+    // nothing.
+    const workerHost = process.env.WORKER_HOST?.trim();
+    if (workerHost) register.setDefaultLabels({ worker_host: workerHost });
+
     const providers: Provider[] = [
       {
         provide: 'METRICS_OPTIONS',
@@ -139,6 +147,7 @@ export class MetricsModule {
         useClass: PromMetricsObserver,
       },
       MetricsService,
+      WorkerMetricsBinding,
       // Register the interceptor globally for automatic HTTP metrics
       {
         provide: APP_INTERCEPTOR,
@@ -346,6 +355,48 @@ export class MetricsModule {
         help: 'Time a batch LLM call waited on its lane queue',
         labelNames: ['lane', 'endpoint'],
         buckets: [0.1, 1, 5, 15, 60, 300, 900, 1800, 3600],
+      }),
+      /**
+       * Every BullMQ job, per queue (`createWorker`, via
+       * `setDefaultWorkerMetrics` — bound by `WorkerMetricsBinding` below).
+       * `WorkerMetrics` had no implementation before Phase B, so retries and
+       * job times on every queue went unmeasured. `queue` is a closed set of
+       * queue names plus one lane queue per GPU endpoint we own (#1344).
+       */
+      makeCounterProvider({
+        name: 'bullmq_job_attempts_total',
+        help: 'BullMQ job attempts by queue, trigger and outcome (success, retry, failed)',
+        labelNames: ['queue', 'trigger', 'outcome'],
+      }),
+      makeHistogramProvider({
+        name: 'bullmq_job_duration_seconds',
+        help: 'BullMQ job run time, pickup to finish, by queue',
+        labelNames: ['queue', 'trigger'],
+        buckets: [
+          0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1800, 3600,
+        ],
+      }),
+      /**
+       * Queue backlog, sampled by `QueueDepthMetricsService` (region-worker).
+       * The only view of work that is WAITING — the job metrics above see a
+       * job once something has picked it up, so a queue with no consumer
+       * anywhere (a `WORKER_QUEUES` typo) reads as idle on them.
+       */
+      makeGaugeProvider({
+        name: 'bullmq_queue_jobs',
+        help: 'Jobs in a BullMQ queue, by state (waiting, active, delayed, failed)',
+        labelNames: ['queue', 'state'],
+      }),
+      makeGaugeProvider({
+        name: 'bullmq_queue_oldest_waiting_seconds',
+        help: 'Age of the oldest waiting job in a BullMQ queue (0 when none waits)',
+        labelNames: ['queue'],
+      }),
+      /** Where an archived PDF's text came from — see `PdfParseMetric`. */
+      makeCounterProvider({
+        name: 'pdf_parse_total',
+        help: 'Archived-PDF parses by source (reused, lane, in_process) and completeness',
+        labelNames: ['source', 'complete'],
       }),
       makeGaugeProvider({
         name: 'source_store_bytes',

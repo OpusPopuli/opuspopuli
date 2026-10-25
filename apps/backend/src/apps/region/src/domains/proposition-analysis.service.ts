@@ -429,9 +429,12 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
    * sync's queue (S4) act on. Stamps legacy config hashes first, so a
    * stamped row is not selected.
    */
-  async stampAndSelectStale(
-    maxPropsOverride?: number,
-  ): Promise<{ live: LiveAnalysisKey; pending: PropForAnalysis[] }> {
+  async stampAndSelectStale(maxPropsOverride?: number): Promise<{
+    live: LiveAnalysisKey;
+    pending: PropForAnalysis[];
+    /** Analysable measures already current on every axis — K-P2's skips. */
+    current: number;
+  }> {
     const cap =
       maxPropsOverride && maxPropsOverride > 0
         ? maxPropsOverride
@@ -443,19 +446,25 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
     const live = await this.liveKey();
     await this.stampLegacyConfigHash(live);
 
-    const pending = await this.db!.proposition.findMany({
-      where: {
-        deletedAt: null,
-        // Both: an empty text has nothing to analyse, and would otherwise be
-        // selected — and skipped — every run.
-        AND: [{ fullText: { not: null } }, { fullText: { not: '' } }],
-        OR: this.staleWhere(live),
-      },
-      select: ANALYSIS_ROW_SELECT,
-      orderBy: { electionDate: 'desc' },
-      take: cap,
-    });
-    return { live, pending };
+    const analysable = {
+      deletedAt: null,
+      // Both: an empty text has nothing to analyse, and would otherwise be
+      // selected — and skipped — every run.
+      AND: [{ fullText: { not: null } }, { fullText: { not: '' } }],
+    };
+    const stale = this.staleWhere(live);
+    const [pending, current] = await Promise.all([
+      this.db!.proposition.findMany({
+        where: { ...analysable, OR: stale },
+        select: ANALYSIS_ROW_SELECT,
+        orderBy: { electionDate: 'desc' },
+        take: cap,
+      }),
+      this.db!.proposition.count({
+        where: { ...analysable, NOT: { OR: stale } },
+      }),
+    ]);
+    return { live, pending, current };
   }
 
   /**

@@ -43,7 +43,11 @@ export abstract class ChildJobProcessor<T, R>
       (job) => this.process(job),
       { prefix },
     );
-    this.logger.log(`${this.queueName} worker started`);
+    // The factory already said why when this process does not consume the
+    // queue (`WORKER_QUEUES`, or the queue switched off).
+    if (this.worker.opts.autorun) {
+      this.logger.log(`${this.queueName} worker started`);
+    }
   }
 
   async onModuleDestroy() {

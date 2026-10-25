@@ -202,6 +202,34 @@ describe('propositions Phase B skip keys (real DB)', () => {
       });
     });
 
+    it('counts the current measures as the exact complement of the stale ones', async () => {
+      // `current` is `NOT (stale arms)`. In SQL a NULL column makes `<>`
+      // NULL, and NOT NULL is NULL — a row matching neither side would vanish
+      // from both counts. Each axis pairs its `<>` with an IS NULL arm; this
+      // proves it on Postgres, NULL columns included.
+      await seed('current-a');
+      await seed('current-b');
+      await seed('no-digest', { analysisLlmDigest: null });
+      await seed('never-analysed', {
+        analysisGeneratedAt: null,
+        analysisPromptHash: null,
+        analysisSourceTextHash: null,
+      });
+      await seed('other-text', { analysisSourceTextHash: 'y'.repeat(64) });
+      await seed('no-text', { fullText: '' });
+
+      const { pending, current } = await service().stampAndSelectStale();
+
+      expect(current).toBe(2);
+      expect(pending.map((p) => p.externalId).sort()).toEqual([
+        'never-analysed',
+        'no-digest',
+        'other-text',
+      ]);
+      // Every analysable row is on exactly one side; the empty text on none.
+      expect(pending.length + current).toBe(5);
+    });
+
     it('stamps a pre-K-P2 analysis that is current on every other axis, and re-analyses none', async () => {
       // The owner's backfill decision (2026-10-24).
       await seed('legacy-current', { analysisConfigHash: null });

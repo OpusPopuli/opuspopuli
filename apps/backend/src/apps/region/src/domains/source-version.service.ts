@@ -302,6 +302,21 @@ export class SourceVersionService {
   }
 
   /**
+   * What the S6 CPU lane's consumer needs of an artifact, in one read: its
+   * bytes, and the parse already recorded on it — without the derived text
+   * {@link getById} would also load, which can be megabytes.
+   *
+   * @param id - The `source_versions` row id
+   * @returns The bytes and recorded parse, or null if no such row
+   */
+  async getForParse(id: string) {
+    return this.db.sourceVersion.findUnique({
+      where: { id },
+      select: { content: true, parsedText: true, parserVersion: true },
+    });
+  }
+
+  /**
    * Retrieve an archived artifact by its row id — the reference a subject
    * row, or a job, carries (`source_version_id`). The civics extraction
    * worker reloads its page this way (civics S3).

@@ -264,7 +264,12 @@ const PAGE_OUTCOME: Record<
   created: { outcomeLabel: 'created', outcome: 'created' },
   updated: { outcomeLabel: 'updated', outcome: 'updated' },
   failed: { outcomeLabel: 'failed', outcome: 'error' },
-  skipped: { outcomeLabel: 'skipped', outcome: 'skipped' },
+  // The only path to `skipped`: a page with no civic content (#874).
+  skipped: {
+    outcomeLabel: 'skipped (no civic content)',
+    outcome: 'skipped',
+    reason: 'no_content',
+  },
   // Counted as `skipped` structurally — nothing was written — but with a
   // label that says WHY, so the phase log distinguishes a page with no civic
   // content from one whose existing extraction just failed to refresh

@@ -25,6 +25,7 @@ import {
   FallbackCache,
   HOST_RATE_LIMITER_KEY,
   OCR_SERVICE,
+  PDF_PARSE_LANE,
   SOURCE_ARCHIVE,
 } from '@opuspopuli/extraction-provider';
 import { MemoryCache } from '@opuspopuli/common';
@@ -83,6 +84,7 @@ import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
 import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repository';
 import { PrismaSourceArchive } from '../infrastructure/prisma-source-archive';
+import { QueuedPdfParseLane } from '../infrastructure/queued-pdf-parse-lane';
 import { PrismaBulkArchive } from '../infrastructure/prisma-bulk-archive';
 import { StorageModule } from '@opuspopuli/storage-provider';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
@@ -147,7 +149,13 @@ const promptClientAsyncConfig = {
         // scope — that's what ExtractionProvider injects, and providers
         // declared at ScrapingPipelineModule's scope are NOT visible to it.
         ExtractionModule.forRoot({
-          extraImports: [OcrModule],
+          // QueueModule for the S6 CPU lane below — ExtractionModule's scope
+          // sees no sibling's providers, the same reason QueueModule is
+          // imported again for the pipeline.
+          extraImports: [
+            OcrModule,
+            QueueModule.forRootAsync(queueModuleAsyncConfig),
+          ],
           extraProviders: [
             {
               provide: OCR_SERVICE,
@@ -162,6 +170,11 @@ const promptClientAsyncConfig = {
               provide: SOURCE_ARCHIVE,
               useExisting: PrismaSourceArchive,
             },
+            // S6: archived PDFs parse on the `pdf-parse` queue, on whichever
+            // host consumes it (docs/plans/propositions-phase-b.md).
+            ChildJobQueues,
+            QueuedPdfParseLane,
+            { provide: PDF_PARSE_LANE, useExisting: QueuedPdfParseLane },
           ],
         }),
         PromptClientModule.forRootAsync(promptClientAsyncConfig),
@@ -359,6 +372,8 @@ const promptClientAsyncConfig = {
     MinutesSummaryService,
     CivicsSyncService,
     PropositionAnalysisService,
+    // The S6 CPU lane's consumer (region-worker) loads and records parses.
+    SourceVersionService,
     BoundaryLoaderService,
     QueueModule,
     ScrapingPipelineModule,

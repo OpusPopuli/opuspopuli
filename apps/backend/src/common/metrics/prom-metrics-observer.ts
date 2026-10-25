@@ -64,17 +64,29 @@ export class PromMetricsObserver implements MetricsObserver {
     @Optional()
     @InjectMetric('lane_wait_seconds')
     laneWait?: Histogram<string>,
+    @Optional()
+    @InjectMetric('bullmq_job_attempts_total')
+    jobAttempts?: Counter<string>,
+    @Optional()
+    @InjectMetric('bullmq_job_duration_seconds')
+    jobDuration?: Histogram<string>,
+    @Optional()
+    @InjectMetric('pdf_parse_total')
+    pdfParses?: Counter<string>,
   ) {
     this.histograms = asMap({
       llm_request_duration_seconds: llmRequestDuration,
       pipeline_stage_duration_seconds: pipelineStageDuration,
       lane_wait_seconds: laneWait,
+      bullmq_job_duration_seconds: jobDuration,
     });
     this.counters = asMap({
       llm_tokens_total: llmTokens,
       pipeline_items_total: pipelineItems,
       pipeline_phase_aborted_total: pipelineAborts,
       pipeline_rows_deleted_total: pipelineRowsDeleted,
+      bullmq_job_attempts_total: jobAttempts,
+      pdf_parse_total: pdfParses,
     });
   }
 

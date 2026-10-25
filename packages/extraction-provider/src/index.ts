@@ -26,6 +26,15 @@ export * from "./utils/index.js";
 // Main provider
 export * from "./extraction.provider.js";
 
+// The PDF cascade, for a consumer that parses archived bytes off the event
+// loop (the S6 CPU lane's threads).
+export {
+  PdfExtractor,
+  PDF_EXTRACTOR_VERSION,
+  type PdfExtraction,
+  type IOcrProviderForPdf,
+} from "./utils/pdf-extractor.js";
+
 // Extractor implementations
 export * from "./extractors/url.extractor.js";
 

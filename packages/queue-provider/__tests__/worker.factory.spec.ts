@@ -1,6 +1,11 @@
 import { Logger } from "@nestjs/common";
 import { Worker } from "bullmq";
-import { createWorker } from "../src/worker.factory";
+import {
+  createWorker,
+  queueConcurrency,
+  setDefaultWorkerMetrics,
+  workerQueueSelected,
+} from "../src/worker.factory";
 
 jest.mock("bullmq", () => {
   class DelayedError extends Error {}
@@ -109,5 +114,127 @@ describe("createWorker — caller overrides", () => {
     expect(handler).toHaveBeenCalledWith(job, "lock-token");
     expect(error).not.toHaveBeenCalled();
     expect(metrics.incrementJobAttempts).not.toHaveBeenCalled();
+  });
+});
+
+describe("createWorker — default job metrics", () => {
+  const processor = () =>
+    (Worker as unknown as jest.Mock).mock.calls.at(-1)[1] as (
+      job: unknown,
+    ) => Promise<unknown>;
+  const job = {
+    id: "j1",
+    attemptsMade: 0,
+    opts: { attempts: 1 },
+    data: { triggerSource: "cron" },
+  };
+  const metrics = () => ({
+    incrementJobAttempts: jest.fn(),
+    recordJobDuration: jest.fn(),
+  });
+
+  afterEach(() => setDefaultWorkerMetrics(undefined));
+
+  it("reports to the process default when the caller passes none", async () => {
+    const bound = metrics();
+    setDefaultWorkerMetrics(bound);
+    createWorker("measured", {} as never, async () => "ok");
+    await processor()(job);
+
+    expect(bound.incrementJobAttempts).toHaveBeenCalledWith(
+      "measured",
+      "cron",
+      "success",
+    );
+    expect(bound.recordJobDuration).toHaveBeenCalledWith(
+      "measured",
+      "cron",
+      expect.any(Number),
+    );
+  });
+
+  it("prefers the caller's own metrics over the default", async () => {
+    const bound = metrics();
+    const own = metrics();
+    setDefaultWorkerMetrics(bound);
+    createWorker("own", {} as never, async () => "ok", { metrics: own });
+    await processor()(job);
+
+    expect(own.incrementJobAttempts).toHaveBeenCalled();
+    expect(bound.incrementJobAttempts).not.toHaveBeenCalled();
+  });
+});
+
+/** The role switch that makes multi-host a configuration change. */
+describe("workerQueueSelected (WORKER_QUEUES)", () => {
+  it.each([
+    [undefined, "pdf-parse", true],
+    ["", "region-sync", true],
+    ["*", "region-sync", true],
+    ["pdf-parse", "pdf-parse", true],
+    ["pdf-parse", "region-sync", false],
+    ["*,!pdf-parse", "pdf-parse", false],
+    ["*,!pdf-parse", "region-sync", true],
+    ["llm-lane-*", "llm-lane-host.docker.internal-11434", true],
+    ["*,!llm-lane-*", "llm-lane-host.docker.internal-11434", false],
+    [" pdf-parse , civics-extract ", "civics-extract", true],
+  ])("WORKER_QUEUES=%p → %s consumed here: %p", (spec, queue, expected) => {
+    expect(workerQueueSelected(queue, spec)).toBe(expected);
+  });
+});
+
+describe("queueConcurrency", () => {
+  afterEach(() => {
+    delete process.env.BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY;
+  });
+
+  it.each([
+    [undefined, 1],
+    ["3", 3],
+    ["0", 1],
+    ["-2", 1],
+    ["lots", 1],
+  ])("reads %p as %p", (value, expected) => {
+    if (value !== undefined)
+      process.env.BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY = value;
+    expect(queueConcurrency("pdf-parse")).toBe(expected);
+  });
+});
+
+describe("createWorker — a queue switched off everywhere", () => {
+  afterEach(() => {
+    delete process.env.BULLMQ_QUEUE_OFF_ENABLED;
+  });
+
+  it("does not run, and says the queue is disabled", () => {
+    process.env.BULLMQ_QUEUE_OFF_ENABLED = "false";
+    const warn = jest
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => {});
+    createWorker("off", {} as never, async () => "ok");
+    const opts = (Worker as unknown as jest.Mock).mock.calls.at(-1)[2];
+    expect(opts.autorun).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("disabled"));
+  });
+});
+
+describe("createWorker — a queue this process does not consume", () => {
+  afterEach(() => {
+    delete process.env.WORKER_QUEUES;
+    jest.restoreAllMocks();
+  });
+
+  it("starts the worker without running it, and says another process owns it", () => {
+    process.env.WORKER_QUEUES = "*,!pdf-parse";
+    const log = jest
+      .spyOn(Logger.prototype, "log")
+      .mockImplementation(() => {});
+
+    createWorker("pdf-parse", {} as never, async () => undefined);
+
+    expect((Worker as unknown as jest.Mock).mock.calls.at(-1)[2]).toEqual(
+      expect.objectContaining({ autorun: false }),
+    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("WORKER_QUEUES"));
   });
 });

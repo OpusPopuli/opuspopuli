@@ -97,6 +97,17 @@ export interface PropositionAnalysisJobData {
   propositionId: string;
 }
 
+/**
+ * Job data for the pdf-parse queue (S6). Ids only: the consumer loads the
+ * archived bytes and records the parse in the source store, so neither the
+ * bytes nor the text travel through Redis.
+ */
+export interface PdfParseJobData {
+  sourceVersionId: string;
+  /** The requester's parser key; the consumer records only under its own. */
+  parserKey: string;
+}
+
 export interface StructuralAnalysisJobData {
   structuralAnalysisJobId: string;
   regionId: string;
@@ -230,6 +241,15 @@ export interface QueueJobInfo {
   state: string;
   progress: number;
   failedReason?: string;
+}
+
+/** {@link QueueService.getDepth}. `waiting` includes prioritized jobs. */
+export interface QueueDepth {
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+  oldestWaitingSeconds: number;
 }
 
 export interface SchedulerInfo {

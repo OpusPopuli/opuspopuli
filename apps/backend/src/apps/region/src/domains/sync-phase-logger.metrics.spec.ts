@@ -356,4 +356,43 @@ describe('SyncPhaseTracker metrics (M1)', () => {
       expect(logger.warn).toHaveBeenCalled();
     });
   });
+
+  describe('skippedInBulk (K-P2: current analyses never reach the loop)', () => {
+    it('counts them once, with their reason, and in the phase totals', () => {
+      const tracker = propositionSyncTracker(
+        logger,
+        'analysis',
+        2,
+        undefined,
+        observer,
+      );
+
+      tracker.skippedInBulk(69, 'analysis_current');
+      tracker.item(item('updated'));
+
+      expect(counted[0]).toEqual([
+        'pipeline_items_total',
+        69,
+        {
+          data_type: 'propositions',
+          phase: 'analysis',
+          outcome: 'skipped',
+          reason: 'analysis_current',
+        },
+      ]);
+      expect(tracker.complete()).toMatchObject({ skipped: 69, updated: 1 });
+    });
+
+    it('does nothing for none', () => {
+      const tracker = propositionSyncTracker(
+        logger,
+        'analysis',
+        0,
+        undefined,
+        observer,
+      );
+      tracker.skippedInBulk(0, 'analysis_current');
+      expect(counted).toEqual([]);
+    });
+  });
 });

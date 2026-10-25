@@ -601,6 +601,90 @@ describe("ExtractionProvider", () => {
       expect(extract).toHaveBeenCalledTimes(1);
     });
 
+    describe("on the PDF parse lane (S6)", () => {
+      const withLane = (parse: jest.Mock) =>
+        new ExtractionProvider(
+          { cacheProvider: "memory" },
+          undefined,
+          archive,
+          undefined,
+          { parse },
+        );
+      const fetchVia = async (provider: ExtractionProvider) => {
+        const result = await provider.fetchPdfText(
+          "https://example.gov/m.pdf",
+          {
+            archive: { dataType: "propositions" },
+          } as never,
+        );
+        await provider.onModuleDestroy?.();
+        return result;
+      };
+
+      it("takes the lane's parse and parses nothing here", async () => {
+        const parse = jest.fn().mockResolvedValue("parsed on the lane");
+
+        const result = await fetchVia(withLane(parse));
+
+        expect(result.text).toBe("parsed on the lane");
+        expect(parse).toHaveBeenCalledWith(
+          "sv-1",
+          expect.stringMatching(/^pdf-extractor-1\+/),
+        );
+        expect(extract).not.toHaveBeenCalled();
+      });
+
+      it("parses here when the lane delivers nothing", async () => {
+        const parse = jest.fn().mockResolvedValue(undefined);
+
+        const result = await fetchVia(withLane(parse));
+
+        expect(result.text).toBe("parsed text");
+        expect(extract).toHaveBeenCalledTimes(1);
+      });
+
+      it("counts where each parse came from — the CPU lane's miss rate", async () => {
+        const metrics = { increment: jest.fn(), observe: jest.fn() };
+        const counted = (parse: jest.Mock) =>
+          new ExtractionProvider(
+            { cacheProvider: "memory" },
+            undefined,
+            archive,
+            metrics,
+            { parse },
+          );
+        const sources = () =>
+          metrics.increment.mock.calls
+            .filter(([name]) => name === "pdf_parse_total")
+            .map(([, , labels]) => `${labels.source}:${labels.complete}`);
+
+        archive.findParsedText.mockResolvedValueOnce("recorded");
+        await fetchVia(counted(jest.fn()));
+        await fetchVia(counted(jest.fn().mockResolvedValue("laned")));
+        await fetchVia(counted(jest.fn().mockResolvedValue(undefined)));
+        extract.mockResolvedValueOnce({ text: "partial", complete: false });
+        await fetchVia(counted(jest.fn().mockResolvedValue(undefined)));
+
+        expect(sources()).toEqual([
+          "reused:true",
+          "lane:true",
+          "in_process:true",
+          "in_process:false",
+        ]);
+      });
+
+      it("is not asked when a recorded parse is reused, or the bytes were not archived", async () => {
+        const parse = jest.fn();
+        archive.findParsedText.mockResolvedValueOnce("recorded");
+        await fetchVia(withLane(parse));
+
+        archive.archive.mockResolvedValueOnce({});
+        await fetchVia(withLane(parse));
+
+        expect(parse).not.toHaveBeenCalled();
+      });
+    });
+
     it("parses as before with an archive that keeps no parses", async () => {
       const plain = new ExtractionProvider(
         { cacheProvider: "memory" },

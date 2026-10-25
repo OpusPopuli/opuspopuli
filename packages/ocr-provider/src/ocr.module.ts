@@ -12,6 +12,10 @@ import {
   PreprocessingPreset,
 } from "./preprocessing/types.js";
 import { getPipelineForPreset } from "./preprocessing/presets.js";
+import {
+  createImagePreprocessor,
+  parseOcrLanguages,
+} from "./ocr-from-config.js";
 
 /**
  * OCR Module Configuration
@@ -105,10 +109,9 @@ export type OcrPromptSupplier = () => Promise<{
           promptVersion: string;
         }>,
       ): IOcrProvider => {
-        const languagesConfig = configService.get<string>("ocr.languages");
-        const languages = languagesConfig
-          ? languagesConfig.split(",").map((l) => l.trim())
-          : ["eng"];
+        const languages = parseOcrLanguages(
+          configService.get<string>("ocr.languages"),
+        );
         return selectOcrProvider(configService, languages, promptSupplier);
       },
       inject: [ConfigService, { token: "OCR_PROMPT_SUPPLIER", optional: true }],
@@ -117,27 +120,11 @@ export type OcrPromptSupplier = () => Promise<{
     // Image preprocessor
     {
       provide: ImagePreprocessor,
-      useFactory: (configService: ConfigService): ImagePreprocessor | null => {
-        const enabled =
-          configService.get<string>("ocr.preprocessing.enabled") !== "false";
-
-        if (!enabled) {
-          return null as unknown as ImagePreprocessor;
-        }
-
-        const preset =
-          (configService.get<string>(
-            "ocr.preprocessing.preset",
-          ) as PreprocessingPreset) || "balanced";
-
-        const config: PreprocessingConfig = {
-          enabled: true,
-          preset,
-          pipeline: getPipelineForPreset(preset),
-        };
-
-        return new ImagePreprocessor(config);
-      },
+      useFactory: (configService: ConfigService): ImagePreprocessor | null =>
+        createImagePreprocessor(
+          configService.get<boolean | string>("ocr.preprocessing.enabled"),
+          configService.get<string>("ocr.preprocessing.preset"),
+        ) ?? (null as unknown as ImagePreprocessor),
       inject: [ConfigService],
     },
 

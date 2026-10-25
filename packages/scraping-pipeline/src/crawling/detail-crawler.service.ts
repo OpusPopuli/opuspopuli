@@ -26,7 +26,11 @@ import type {
   SelectorFailure,
   StructuredFieldConfig,
 } from "@opuspopuli/common";
-import { htmlToReadableText } from "@opuspopuli/common";
+import {
+  envInt,
+  htmlToReadableText,
+  mapWithConcurrency,
+} from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { extractStructuredArray } from "../extraction/structured-extractor.js";
 import { extractAgSummary } from "./ag-summary.js";
@@ -34,8 +38,16 @@ import { extractAgSummary } from "./ag-summary.js";
 /** Maximum detail pages to fetch per source per sync (safety limit against runaway crawling) */
 const MAX_DETAIL_PAGES = 500;
 
-/** Delay between detail page fetches in milliseconds */
-const DETAIL_FETCH_DELAY_MS = 500;
+/**
+ * Detail pages fetched at once (the fetch lane, propositions Phase B). The
+ * per-host token bucket (S1) — not a pause — keeps each site at its
+ * configured rate: concurrency lets two hosts' budgets overlap and keeps the
+ * pipe full while one page's PDF is parsed. `DETAIL_FETCH_CONCURRENCY`
+ * overrides it.
+ */
+function detailFetchConcurrency(): number {
+  return envInt("DETAIL_FETCH_CONCURRENCY", 4);
+}
 
 /**
  * A detail page's text and the archived fetch it came from (#1306).
@@ -123,35 +135,39 @@ export class DetailCrawlerService {
     );
 
     let written = 0;
-    for (const item of items.slice(0, MAX_DETAIL_PAGES)) {
-      const url = DetailCrawlerService.resolveUrl(
-        item.summaryUrl as string,
-        source.url,
-      );
-      try {
-        // Deliberately drops the archived id: this is the AG title-and-summary
-        // PDF, which feeds `summary`, where the detail page feeds `fullText`
-        // (#1219). Claims index into `fullText`, so stamping the row with this
-        // fetch would point every citation at the wrong document.
-        const { text, reason } = extractAgSummary(
-          (await this.fetchDetailContent(url, archive)).content,
+    await mapWithConcurrency(
+      items.slice(0, MAX_DETAIL_PAGES),
+      detailFetchConcurrency(),
+      async (item) => {
+        const url = DetailCrawlerService.resolveUrl(
+          item.summaryUrl as string,
+          source.url,
         );
-        if (text) {
-          item.summary = text;
-          written += 1;
-        } else {
+        try {
+          // Deliberately drops the archived id: this is the AG title-and-summary
+          // PDF, which feeds `summary`, where the detail page feeds `fullText`
+          // (#1219). Claims index into `fullText`, so stamping the row with this
+          // fetch would point every citation at the wrong document.
+          const { text, reason } = extractAgSummary(
+            (await this.fetchDetailContent(url, archive)).content,
+          );
+          if (text) {
+            item.summary = text;
+            written += 1;
+          } else {
+            rawResult.warnings.push(
+              `AG summary rejected for ${String(item.externalId)} (${reason}): ${url}`,
+            );
+          }
+        } catch (error) {
           rawResult.warnings.push(
-            `AG summary rejected for ${String(item.externalId)} (${reason}): ${url}`,
+            `AG summary fetch failed for ${String(item.externalId)}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           );
         }
-      } catch (error) {
-        rawResult.warnings.push(
-          `AG summary fetch failed for ${String(item.externalId)}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
+      },
+    );
 
     this.logger.log(
       `Wrote ${written} of ${items.length} Attorney General summaries`,
@@ -185,14 +201,15 @@ export class DetailCrawlerService {
       );
     }
 
-    // Derive extraction plan from the first detail page, reuse for the rest
+    // Derive the extraction plan from the first detail page that yields one,
+    // serially — an LLM-derived plan would otherwise be derived once per
+    // concurrent item — then reuse it for the rest, fetched concurrently.
     let extractionPlan: Record<string, string | StructuredFieldConfig> | null =
       null;
     const detailFailures = new Map<string, SelectorFailure>();
-
-    for (let i = 0; i < toFetch.length; i++) {
-      extractionPlan = await this.enrichSingleItem(
-        toFetch[i],
+    const enrich = (item: Record<string, unknown>) =>
+      this.enrichSingleItem(
+        item,
         extractionPlan,
         source,
         llm,
@@ -201,11 +218,15 @@ export class DetailCrawlerService {
         archive,
       );
 
-      // Rate limit between fetches
-      if (i < toFetch.length - 1) {
-        await this.delay(DETAIL_FETCH_DELAY_MS);
-      }
+    let settled = 0;
+    while (settled < toFetch.length && extractionPlan === null) {
+      extractionPlan = await enrich(toFetch[settled++]);
     }
+    await mapWithConcurrency(
+      toFetch.slice(settled),
+      detailFetchConcurrency(),
+      enrich,
+    );
 
     if (detailFailures.size > 0) {
       const failures = [...detailFailures.values()];
@@ -332,10 +353,9 @@ export class DetailCrawlerService {
 
     const url = DetailCrawlerService.joinUrl(base.trim(), config.urlSuffix);
 
-    // Same politeness budget as the primary loop — a secondary hop must not
-    // double the request rate against someone's site.
-    await this.delay(DETAIL_FETCH_DELAY_MS);
-
+    // The politeness budget is the per-host token bucket (S1), which every
+    // fetch passes through — a secondary hop to the same site shares its
+    // bucket, so it cannot double the rate against it.
     try {
       const { content } = await this.fetchDetailContent(url, archive);
       const isHtml = content.trimStart().startsWith("<");
@@ -812,9 +832,5 @@ Respond with ONLY valid JSON, no explanation. Example:
     } catch {
       return url;
     }
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

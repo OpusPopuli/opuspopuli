@@ -1,6 +1,8 @@
 export { batchTransaction } from "./batch-transaction.js";
 export { htmlToReadableText } from "./html-to-text.js";
 export { installedVersion } from "./installed-version.js";
+export { mapWithConcurrency } from "./concurrency.js";
+export { envInt } from "./env-int.js";
 export {
   resolveSupabaseKey,
   initSupabaseFromConfig,

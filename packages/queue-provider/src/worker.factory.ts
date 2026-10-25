@@ -1,7 +1,11 @@
 import { Logger } from "@nestjs/common";
 import { DelayedError, Worker, Job, WorkerOptions } from "bullmq";
 import IORedis from "ioredis";
-import { resolveQueuePrefix } from "./queue.constants";
+import {
+  queueEnvInt,
+  queueEnvKey,
+  resolveQueuePrefix,
+} from "./queue.constants";
 import { withJobSpan } from "./job-tracing";
 
 export interface WorkerMetrics {
@@ -15,6 +19,86 @@ export interface WorkerMetrics {
     triggerSource: string,
     durationMs: number,
   ): void;
+}
+
+let defaultWorkerMetrics: WorkerMetrics | undefined;
+
+/**
+ * The job metrics every worker in this process reports to, unless its caller
+ * passes its own — bound once by the app's metrics module, so a new queue is
+ * measured without anyone remembering to thread an observer into it. Before
+ * this, `WorkerMetrics` had no implementation and every queue's attempts and
+ * durations went nowhere.
+ */
+export function setDefaultWorkerMetrics(
+  metrics: WorkerMetrics | undefined,
+): void {
+  defaultWorkerMetrics = metrics;
+}
+
+/**
+ * Whether THIS process consumes `queueName`, by `WORKER_QUEUES` — the role
+ * switch that makes multi-host a configuration change
+ * (`docs/plans/propositions-phase-b.md`, fetch and CPU lanes).
+ *
+ * A comma list: `*` (every queue — the default, as before), a queue name, a
+ * `prefix*`, and `!name` / `!prefix*` to exclude. A queue is consumed when
+ * some positive entry matches and no exclusion does. A CPU host runs
+ * `WORKER_QUEUES=pdf-parse`; the host that requests parses runs
+ * `WORKER_QUEUES=*,!pdf-parse`.
+ *
+ * Distinct from `BULLMQ_QUEUE_<NAME>_ENABLED`, which switches a queue off
+ * EVERYWHERE (its producers then do the work in process): this decides only
+ * which process takes the jobs.
+ */
+export function workerQueueSelected(
+  queueName: string,
+  spec: string | undefined = process.env.WORKER_QUEUES,
+): boolean {
+  const entries = (spec?.trim() ? spec : "*")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const matches = (pattern: string) =>
+    pattern.endsWith("*")
+      ? queueName.startsWith(pattern.slice(0, -1))
+      : queueName === pattern;
+  const excluded = entries.some(
+    (e) => e.startsWith("!") && matches(e.slice(1)),
+  );
+  const included = entries.some((e) => !e.startsWith("!") && matches(e));
+  return included && !excluded;
+}
+
+/**
+ * `BULLMQ_QUEUE_<NAME>_CONCURRENCY`, default 1 — how many jobs a queue's
+ * worker runs at once. Exported so a consumer that sizes its own resources to
+ * the worker (the S6 CPU lane's thread pool) reads the same number.
+ */
+export function queueConcurrency(queueName: string): number {
+  return queueEnvInt(queueName, "CONCURRENCY", 1);
+}
+
+/**
+ * Whether this process runs `queueName`'s jobs — the queue switched on
+ * everywhere, and selected here by `WORKER_QUEUES` — saying why when not.
+ */
+function resolveConsumption(queueName: string, logger: Logger): boolean {
+  const queueOn = process.env[queueEnvKey(queueName, "ENABLED")] !== "false";
+  if (!queueOn) {
+    logger.warn(
+      `Queue ${queueName} is disabled via env — worker will not process jobs`,
+    );
+    return false;
+  }
+  if (!workerQueueSelected(queueName)) {
+    // Normal on a multi-host node: another process consumes this queue.
+    logger.log(
+      `Queue ${queueName} is consumed by another process (WORKER_QUEUES) — not here`,
+    );
+    return false;
+  }
+  return true;
 }
 
 export interface CreateWorkerOptions {
@@ -60,26 +144,10 @@ export function createWorker<T>(
   opts: CreateWorkerOptions = {},
 ): Worker<T> {
   const logger = new Logger(`Worker:${queueName}`);
-  const envPrefix = queueName.toUpperCase().replace(/-/g, "_");
-
-  const concurrency =
-    Number.parseInt(
-      process.env[`BULLMQ_QUEUE_${envPrefix}_CONCURRENCY`] ?? "1",
-      10,
-    ) || 1;
-  const enabled = process.env[`BULLMQ_QUEUE_${envPrefix}_ENABLED`] !== "false";
-
-  if (!enabled) {
-    logger.warn(
-      `Queue ${queueName} is disabled via env — worker will not process jobs`,
-    );
-  }
-
-  const lockDurationMs =
-    Number.parseInt(
-      process.env[`BULLMQ_QUEUE_${envPrefix}_LOCK_DURATION_MS`] ?? "300000",
-      10,
-    ) || 300000;
+  const metrics = opts.metrics ?? defaultWorkerMetrics;
+  const concurrency = queueConcurrency(queueName);
+  const enabled = resolveConsumption(queueName, logger);
+  const lockDurationMs = queueEnvInt(queueName, "LOCK_DURATION_MS", 300000);
 
   const workerOpts: WorkerOptions = {
     connection,
@@ -113,8 +181,8 @@ export function createWorker<T>(
         );
         const durationMs = Date.now() - startMs;
 
-        opts.metrics?.incrementJobAttempts(queueName, triggerSource, "success");
-        opts.metrics?.recordJobDuration(queueName, triggerSource, durationMs);
+        metrics?.incrementJobAttempts(queueName, triggerSource, "success");
+        metrics?.recordJobDuration(queueName, triggerSource, durationMs);
 
         const succeeded = {
           queue: queueName,
@@ -136,12 +204,12 @@ export function createWorker<T>(
         const durationMs = Date.now() - startMs;
         const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
 
-        opts.metrics?.incrementJobAttempts(
+        metrics?.incrementJobAttempts(
           queueName,
           triggerSource,
           isLastAttempt ? "failed" : "retry",
         );
-        opts.metrics?.recordJobDuration(queueName, triggerSource, durationMs);
+        metrics?.recordJobDuration(queueName, triggerSource, durationMs);
 
         logger.error(
           {

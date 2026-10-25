@@ -265,6 +265,280 @@ proposition-specific part — re-checking a measure that became current — is i
 the integration spec. On UAT the crashed worker's type lock would block the
 restoring run D for an hour (S2's lock TTL).
 
+#### Fetch and CPU lanes — design (2026-10-25)
+
+**Owner decision (2026-10-25):** propositions gets all three lanes, not the
+GPU lane alone — the consistency principle applied to S6 as it was to S3.
+Further decisions: build the CPU lane for N-way parallelism but **leave the
+container limits as they are** (raising them is a later, measured change to
+the node compose); the mupdf licence question filed separately (#1410).
+
+**Revised 2026-10-25 — the goal is multi-host scaling as a flip of a switch.**
+Parallelism through a **built-in `worker_threads` pool** inside the
+`pdf-parse` consumer, not BullMQ worker-thread processors: a BullMQ sandboxed
+processor runs the whole job in the thread, so each slot would carry its own
+Prisma engine and connection pool and its own OCR stack; the pool runs only
+the CPU work (bytes in, text out). Multi-host comes from the QUEUE in either
+design — another process anywhere consumes `pdf-parse` — so the pool loses
+nothing there, and it is reusable where a queue is not (the synchronous
+petition scan, xenova embeddings). The pool sits behind a `parsePdf(bytes)`
+interface so it can become child processes if native crashes ever appear —
+the one thing a sandbox's child-process mode would buy. And the switch is made
+explicit: **`WORKER_QUEUES`** says which consumers a worker process starts,
+proved by a **two-worker UAT** in which a second container parses every PDF.
+
+**What is true today (read 2026-10-25):**
+
+- `region-worker` is capped at **1 CPU on UAT, 2 in prod** (6 GB each). The
+  14 cores on the Mac buy nothing until those limits move.
+- Everything in the PDF cascade but OCR runs **on the worker's one JS
+  thread**: pdf-parse (pdfjs's in-thread fake worker), mupdf's open,
+  render and PNG encode (synchronous WASM), and the OCR preprocessing's
+  deskew (pure JS, 61+ passes per page). OCR itself runs in a tesseract.js
+  worker thread — **one**, shared, so concurrent OCR calls serialise.
+  `createScheduler` exists and is unused.
+- The detail crawl (`detail-crawler.service.ts`) is a serial loop with a
+  fixed 500 ms pause, on top of the shared per-host Redis token bucket (S1)
+  that already bounds request starts per host across any number of callers.
+  California's limit is 1 req/s, burst 3, per host. The extraction plan is
+  resolved on the first successful item and reused. **The crawler is shared
+  with representatives** (Assembly, Senate, 29 counties).
+
+**Fetch lane.** Resolve the extraction plan on the first item alone, then
+fetch the rest **concurrently**, bounded by a per-run pool
+(`DETAIL_FETCH_CONCURRENCY`, default 4) — the token bucket, not a pause,
+keeps each host at its configured rate. Drop the fixed 500 ms pause (and the
+secondary-detail one), which only stacked on the limiter. Each item still
+gets its own content (items are enriched in place); warnings and the
+per-field failure map now fill in completion order, so their order — and
+which item's failure a field's entry names — can differ run to run.
+Expected: an unchanged propositions run ~92 s → ~50 s (two hosts overlap;
+each stays at 1 req/s). Representatives benefits the same way.
+
+*Measured 2026-10-25 — the expectation was wrong.* An unchanged run still
+takes 90 s in discover, because 94 of its 97 requests go to ONE host
+(`oag.ca.gov`), and 97 requests at 1 req/s is the run. The lane is working —
+`pipeline_stage_duration_seconds{stage="fetch"}` summed 344 busy seconds over
+those 90 s, ~3.8 fetches in flight against `DETAIL_FETCH_CONCURRENCY=4` —
+but each in-flight fetch spends its time waiting for a token. Propositions'
+unchanged run is bound by the per-host rate, which is a politeness setting
+and the owner's call, not by our concurrency. Where the lane does pay: a
+source spread over many hosts (representatives' 29 counties), and responses
+slower than the token interval.
+
+**CPU lane (S6).**
+
+- **Queue `pdf-parse`**, one job per archived PDF that has no recorded parse
+  under this process's parser key; payload `{ sourceVersionId, parserKey }`,
+  job id `<sourceVersionId>__parse__<sha256(key)[0:16]>` — so two requests
+  for one artifact under one key share a job. The
+  extraction provider gains an optional **`PDF_PARSE_LANE` port**, called in
+  `parseArchivedPdf` after the reuse check misses; unbound — or no
+  `sourceVersionId` (not archived, or over 25 MB) — it parses in process, as
+  now.
+- **The consumer** (`PdfParseProcessor`, region-worker) loads the bytes and
+  records the parse through `SourceVersionService`, and hands only the CPU
+  work to a **pool of worker threads**, each with its own mupdf and its own
+  tesseract worker, so mupdf, pdf-parse and deskew stop sharing the event
+  loop that renews every lock. Bytes are transferred, not copied. Pool size =
+  `BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY`, **default 1**; each thread has a
+  memory cap (`PDF_PARSE_THREAD_MAX_MB`) and a parse that exceeds its timeout
+  has its thread terminated. Tesseract only — `OCR_PROVIDER=vision` is an LLM
+  call, not CPU work, and keeps parsing in process.
+- **The parser key now covers the preprocessing pipeline** (found while
+  building this): `OcrService.getProviderInfo()` reported whether
+  preprocessing was on, not WHICH — two hosts on different
+  `OCR_PREPROCESSING_PRESET`s, which OCR differently, produced the same key and
+  could reuse each other's parses. It now includes the preset and the enabled
+  steps. One-time cost: every recorded parse re-parses once after deploy.
+- **The consumer computes its own parser key** and records under it. A host
+  whose OCR configuration differs from the requester's therefore never
+  records a parse under the wrong key: the key mismatch is reported and the
+  requester parses for itself.
+- **A bounded wait.** The requester waits for its parse job up to
+  `PDF_PARSE_LANE_TIMEOUT_MS` (10 min) and then parses in process, so a lane
+  with no consumer anywhere (every host's `WORKER_QUEUES` excluding it) costs
+  time, not a stuck sync.
+- **The text does not travel through Redis.** The consumer loads the bytes
+  by id, the thread parses, and the consumer records a complete parse with
+  `attachParsedText` (K-P1's store); the job's return value is one word —
+  `parsed`, `reused`, `incomplete`, `key_mismatch` or `missing`. On `parsed`
+  or `reused` the caller reads the text back with `getParsedText`. *Changed
+  in implementation:* an incomplete parse (OCR unavailable) is not returned
+  through the job — the caller parses in process, as it would with no lane.
+  That costs a second parse in the one case that is already degraded, and
+  keeps a megabyte-scale fallback text out of Redis.
+- **Waiting:** the fetch lane's concurrency is what fills the CPU lane — N
+  detail items in flight each await their own parse job.
+- **The rasteriser stays behind `PdfExtractor`**, so #1410's outcome can swap
+  mupdf without touching the lane.
+
+**The role switch — `WORKER_QUEUES`.** A comma list read by the worker
+factory: `*` (the default — every consumer, as today), queue names,
+`prefix*`, and `!name` to exclude. A CPU host is the region-worker image with
+`WORKER_QUEUES=pdf-parse` and the pool sized to its cores; the requesting host
+runs `WORKER_QUEUES=*,!pdf-parse`. Distinct from `BULLMQ_QUEUE_<NAME>_ENABLED`,
+which switches a QUEUE on or off everywhere (producers then run that work in
+process); `WORKER_QUEUES` decides only which process CONSUMES it. Committed as
+a UAT overlay (`docker-compose-uat.multihost.yml`) and a multi-host runbook.
+
+**Acceptance:** an unchanged run makes no parse job (K-P1 reuse) and fetches
+concurrently within the per-host rate; a changed-PDF run with
+`BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY=2` (prod's CPU limit) roughly halves the
+OCR wall time against one, with identical parsed text (same `parsed_text_hash`
+as an in-process parse of the same bytes); the event loop stays responsive
+during OCR (lock renewal never misses); memory per parse thread measured and
+recorded before any default above 1; representatives' sync still matches its
+gold eval (`representatives-gold-eval.md`); **two-worker UAT**: with the
+multihost overlay, every PDF a propositions sync parses is parsed by the
+second container (its logs), with the same `parsed_text_hash` as an
+in-process parse.
+
+#### Implemented (2026-10-25)
+
+| Piece | Where |
+|---|---|
+| Thread pool (respawn on exit, terminate on timeout, heap cap) | `src/common/cpu-lane/thread-pool.ts` |
+| Thread script; `PDF_PARSE_THREAD_FILE` keeps it in `nest build --tsc`'s output (nothing imports a thread script for its code) | `src/common/cpu-lane/pdf-parse.thread.ts`, `pdf-parse-thread-file.ts` |
+| Requester (`PDF_PARSE_LANE`), never throws | `region/src/infrastructure/queued-pdf-parse-lane.ts`, bound inside `ExtractionModule`'s scope |
+| Long-lived shared waiter for per-item jobs requested deep in other work | `src/common/child-jobs/child-job-waiter.ts` |
+| Consumer, pool sized by `queueConcurrency('pdf-parse')` and created on the first job | `region-worker/src/pdf-parse.processor.ts` |
+| OCR built from env without Nest, so thread and module key identically (and the `OCR_PREPROCESSING_ENABLED=false` comparison bug fixed: it compared a boolean to a string, so preprocessing could never be turned off) | `ocr-provider/src/ocr-from-config.ts` |
+| `WORKER_QUEUES` | `queue-provider/src/worker.factory.ts` |
+| Fetch lane | `scraping-pipeline/src/crawling/detail-crawler.service.ts`, `common/src/utils/concurrency.ts` |
+
+Smoke-tested from `dist/` before UAT: two parses of one PDF on a two-thread
+pool ran concurrently (337 ms) while a 10 ms main-thread timer kept firing
+(31 of ~33 ticks).
+
+**UAT, 2026-10-25** (image with every change on this branch):
+
+| Run | Layout | Discover | Parses | Notes |
+|---|---|---|---|---|
+| A — unchanged | one worker | 90 s | 95 reused, 0 jobs | Phase 3 reads **72 skipped (`analysis_current`)** where it read 0; embedding 72 `unchanged`; ~3.8 fetches in flight (rate-bound, see the fetch lane) |
+| B — every PDF re-parses (the preset fix changed the key) | two workers (`docker-compose-uat.multihost.yml`), CPU host at concurrency 2 | **270 s** (509 s for the last full in-process parse, pre-K-P1) | **94 on the CPU host, 0 in process**; `pdf_parse_total{source="lane"}` 94 = the CPU host's `bullmq_job_attempts_total{queue="pdf-parse",outcome="success"}` 94 | **94/94 `parsed_text_hash` identical** to the in-process parses saved before the run — 160 page OCRs among them; event-loop p99 max **15 ms** on the CPU host while its two threads held 2.0 CPU; CPU host RSS 1.9 GiB at two threads |
+
+The one artifact not re-parsed was not fetched by that run; it re-parses when
+it next is.
+
+**Review (2026-10-25, three lenses on the working tree — correctness/TS,
+security/data, performance/tests/consistency; no blockers; self-review, needs
+a countersign).** Fixed in this branch:
+
+- *The lane's wait counted queue time*, so with the crawl at 4 and the lane at
+  1 a backlog timed out and parsed the same PDF twice. Now, when the wait runs
+  out, a job still waiting is removed before the caller parses in process,
+  and a job already running is waited on once more for the thread's own
+  timeout (`pdfParseThreadTimeoutMs`, shared with the consumer).
+- *`pdf-parse` retried doomed parses* (default 3 attempts, ~16 min). A failed
+  parse is deterministic: `DEFAULT_QUEUE_ATTEMPTS['pdf-parse'] = 1`.
+- *A thread script that cannot load respawned forever.* Threads now post
+  `{ ready: true }`; three deaths before ready in a row stop the pool and
+  fail every task with the reason. A death after ready (a hostile PDF) is
+  replaced as before.
+- *The heap cap was oversold*: it bounds the JS heap only, not mupdf's WASM,
+  sharp or tesseract. The comment says so, and the pool is sized from
+  measured RSS.
+- *The waiter cached a failed open* (one Redis blip disabled the lane until
+  restart) and *left callers hanging on close* — both fixed.
+- *Queue depth:* oldest-waiting is the older of the two lists' heads, aged
+  from a retried job's last start; the queue list is rescanned every 10th
+  sample rather than SCANning the keyspace every 30 s; series for a vanished
+  queue are removed. `QueueBacklogStalled` alerts on a job waiting over
+  10 min — the one signal for a queue nobody consumes.
+- *Smaller:* one narrow read for the consumer (`getForParse` — bytes and
+  recorded parse, not the derived text); a key mismatch warned once per key;
+  `envInt` and `queueEnvKey`/`queueEnvInt` replace five hand-rolled env
+  parsers; `createWorker`'s consumption check extracted; thread errors
+  truncated to 200 characters; port 3008 on loopback; thread-pool overlap
+  asserted directly rather than by wall clock; an integration test on
+  `postgres_test` proves the stale/current complement, NULL columns included
+  (it fails with the digest axis's IS NULL arm removed).
+
+**Re-review of those fixes (same day, final tree; no blockers).** Fixed:
+a consumer claiming the job between the lane's look and its remove (it now
+looks again and waits); `QueueBacklogStalled` fired on healthy busy lanes, so
+it now also requires nothing ACTIVE on the queue — the no-consumer case
+alone; a broken pool now retries after a 5-minute cooldown instead of staying
+dark until restart (a spawn can fail transiently); a timed-out job's late
+outcome could settle the next caller of that id, so outcomes for an id are
+dropped before it is re-added; `close()` no longer throws when its batch
+never opened. Noted: `queueEnvInt` is stricter than the `parseInt` it
+replaced — `"300000ms"` or `"1e3"` now fall back to the default, and
+`ATTEMPTS=0` means the default — and every value in the repo's compose and
+example files is a plain integer, so nothing changes in practice.
+
+**Declined, with the reason:** *don't fall back in process after the lane's
+parse fails* (the security lens: a hostile PDF that killed its thread is then
+parsed on the requester's event loop). Not falling back leaves the measure
+with no text, and an empty `fullText` written over a good one is a worse
+outcome than one slow parse; it is also exactly pre-S6 behaviour. The
+residual risk is bounded by the archive's 25 MB cap and the requester's own
+retry and lock handling.
+
+#### Multi-host runbook
+
+The lane is a configuration change, because a job carries ids — never bytes or
+text — and every host reads the same database and Redis.
+
+1. **Same image, same OCR.** The CPU host runs the region-worker image of the
+   SAME release, with the same `OCR_LANGUAGES`, `OCR_PREPROCESSING_ENABLED`
+   and `OCR_PREPROCESSING_PRESET` as the requester. A difference changes the
+   parser key, and every job then reports `key_mismatch` (a warning naming
+   both keys) and the requester parses for itself — slower, never wrong.
+2. **Roles.** CPU host: `WORKER_QUEUES=pdf-parse`,
+   `BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY=<cores it may use>`, its own
+   `WORKER_HOST`. Requesting host: `WORKER_QUEUES=*,!pdf-parse`. Leave
+   `BULLMQ_QUEUE_PDF_PARSE_ENABLED` unset on both — `false` there switches the
+   lane off everywhere.
+3. **Reachability.** The CPU host needs `REDIS_URL` and `DATABASE_URL` for the
+   node, over the tailnet; nothing else (no prompt-service, no Ollama).
+4. **Cron.** Set `REGION_SYNC_CRON_ENABLED=false` and
+   `REGION_SYNC_RUN_ON_STARTUP=false` on the CPU host: it consumes no
+   `region-sync` jobs, and only one host should register the schedulers.
+5. **Prove it.** On the dashboard's CPU-lane row, *pdf-parse jobs by host*
+   shows only the CPU host; *PDF text by source* shows `lane`, not
+   `in_process`. In the logs, the CPU host prints `pdf-parse` successes and
+   the requester prints no `parsing in process` lines.
+6. **Back out.** Remove `WORKER_QUEUES` from the requesting host (or set it to
+   `*`): it consumes `pdf-parse` again, as before.
+
+Local rehearsal: `docker-compose-uat.multihost.yml` (committed) adds
+`region-worker-cpu` on port 3008. The git-ignored `.local` overlay's secrets do
+not reach a service defined in a later file, so locally add a
+`docker-compose-uat.multihost.local.yml` whose `region-worker-cpu` `extends`
+the local file's `region-worker`, and layer it last.
+
+#### Observability (2026-10-25, owner: "review our grafana dashboard and revise accordingly")
+
+The dashboard audit found the work unobservable: `WorkerMetrics` had no
+implementation, queues had no depth, a reused parse left no trace, embeddings
+emitted nothing, current analyses were never counted, and no custom series
+named its host. Added:
+
+| Metric | Source |
+|---|---|
+| `bullmq_job_attempts_total{queue,trigger,outcome}`, `bullmq_job_duration_seconds{queue,trigger}` | every `createWorker`, through `setDefaultWorkerMetrics` bound once by `MetricsModule` — no caller has to remember it |
+| `bullmq_queue_jobs{queue,state}`, `bullmq_queue_oldest_waiting_seconds{queue}` | `QueueDepthMetricsService` (region-worker), every 30 s; queues discovered from Redis (`<prefix>:<queue>:meta`), so a new queue needs no registration |
+| `pdf_parse_total{source,complete}` | `ExtractionProvider.parseArchivedPdf` |
+| `pipeline_items_total{reason="analysis_current"}` | K-P2's current measures, counted in bulk (`SyncPhaseTracker.skippedInBulk`) — a fully-skipped phase 3 read "0 skipped" |
+| `pipeline_items_total{stage="embed"}` | the propositions embedding pass |
+| `reason="no_content"` | civics pages with no civic content |
+| `worker_host` default label | `WORKER_HOST`, on every series a worker publishes |
+
+`ingestion-pipeline.json` (v2): the *Model loads per hour* query never matched
+(it subtracted a bucket series, which carries `le`, from a count) and now sums
+each side by model first; the stage heatmap takes a `stage` variable; item
+panels take `data_type`; new rows **Skips**, **Child-job queues**, **GPU
+lanes** (wait p95, tokens by lane), **CPU lane** (worker CPU against its limit,
+parse jobs by host), **Hosts** and **Fetch**. Every query was run against
+local Prometheus. The second worker gets its own scrape job, labelled
+`optional`, which `ServiceDown` now ignores.
+
+**Deploy order:** the node repo carries its own copy of this dashboard and of
+the Prometheus config, ported by hand. Port them after the backend release
+that emits these series, or the new panels read "No data".
+
 ### 4. Re-measure and gate
 
 - **Throughput:** an unchanged second sync makes no PDF parse and no
