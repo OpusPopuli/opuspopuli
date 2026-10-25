@@ -162,15 +162,13 @@ export class ThreadPool<Req, Res> {
       if (slot.task || this.waiting.length === 0) continue;
       const task = this.waiting.shift()!;
       slot.task = task;
-      slot.timer = setTimeout(
-        () =>
-          void this.replace(
-            slot,
-            `no result within ${this.options.timeoutMs}ms`,
-            true,
-          ),
-        this.options.timeoutMs,
-      );
+      slot.timer = setTimeout(() => {
+        this.replace(
+          slot,
+          `no result within ${this.options.timeoutMs}ms`,
+          true,
+        ).catch(() => undefined); // terminate() failing leaves nothing to do
+      }, this.options.timeoutMs);
       slot.worker.postMessage(
         { id: task.id, payload: task.payload },
         task.transfer,

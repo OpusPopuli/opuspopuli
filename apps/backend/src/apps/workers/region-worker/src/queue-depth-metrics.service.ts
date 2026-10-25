@@ -50,9 +50,14 @@ export class QueueDepthMetricsService
   onApplicationBootstrap(): void {
     const periodMs = envInt('QUEUE_DEPTH_SAMPLE_MS', 30_000, 0);
     if (periodMs === 0) return;
-    this.timer = setInterval(() => void this.sample(), periodMs);
+    // `sample` never rejects; the catch only satisfies the floating-promise
+    // rule without hiding a rejection that cannot happen.
+    const tick = () => {
+      this.sample().catch(() => undefined);
+    };
+    this.timer = setInterval(tick, periodMs);
     this.timer.unref();
-    void this.sample();
+    tick();
   }
 
   onModuleDestroy(): void {

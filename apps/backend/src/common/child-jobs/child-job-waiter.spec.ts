@@ -170,4 +170,19 @@ describe('ChildJobWaiter', () => {
     await waiter.run('a', {}, 5_000);
     await expect(waiter.close()).resolves.toBeUndefined();
   });
+
+  it('fails its callers at once when the pump dies, not at their timeouts', async () => {
+    const { batch } = scripted(null);
+    batch.waitForOutcome = () =>
+      Promise.reject(new Error('Connection is closed'));
+    const waiter = new ChildJobWaiter(async () => batch);
+
+    const started = Date.now();
+    const outcome = await waiter.run('a', {}, 60_000);
+
+    expect(outcome).toEqual(
+      expect.objectContaining({ ok: false, reason: 'Connection is closed' }),
+    );
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
 });

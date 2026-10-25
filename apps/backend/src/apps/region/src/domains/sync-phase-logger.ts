@@ -341,7 +341,7 @@ export class SyncPhaseTracker<Phase extends string> {
    * @param reason - A bounded slug, as for {@link item}
    */
   skippedInBulk(count: number, reason: string): void {
-    if (!(count > 0)) return;
+    if (!Number.isFinite(count) || count <= 0) return;
     this.skipped += count;
     this.logger.log(
       `[${this.tag}] Phase ${this.phaseIdx}/${this.phaseTotal} (${String(this.phase)}): ${count} skipped (${reason})`,

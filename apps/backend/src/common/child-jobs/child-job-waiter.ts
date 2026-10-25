@@ -52,7 +52,8 @@ export class ChildJobWaiter<T, R> {
       });
     });
     this.waiting.set(jobId, outcome);
-    void this.queue(jobId, data);
+    // `queue` settles its own failures as this caller's outcome.
+    this.queue(jobId, data).catch(() => undefined);
     return outcome;
   }
 
@@ -86,7 +87,7 @@ export class ChildJobWaiter<T, R> {
         if (early.jobId !== jobId) this.settle(early);
       }
       await batch.add(data, jobId);
-      void this.pump();
+      this.pumpSafely();
     } catch (error) {
       // A batch that failed to OPEN is not kept: caching the rejection would
       // fail every later call at once, until a restart. The next call opens
@@ -100,6 +101,18 @@ export class ChildJobWaiter<T, R> {
       }
       this.settle({ jobId, ok: false, reason: (error as Error).message });
     }
+  }
+
+  /**
+   * Run the pump, and if it fails (Redis gone mid-wait) fail its callers now
+   * rather than leave them to their timeouts.
+   */
+  private pumpSafely(): void {
+    this.pump().catch((error: unknown) => {
+      for (const jobId of [...this.resolvers.keys()]) {
+        this.settle({ jobId, ok: false, reason: (error as Error).message });
+      }
+    });
   }
 
   /** One loop, while anyone is waiting, handing each outcome to its caller. */
