@@ -167,6 +167,26 @@ export interface FetchProvenance {
  */
 export const SOURCE_ARCHIVE = "SOURCE_ARCHIVE";
 
+/**
+ * DI token for the optional PDF parse lane (S6, propositions Phase B) — bound
+ * the same way as SOURCE_ARCHIVE. Left unbound, PDFs are parsed in process.
+ */
+export const PDF_PARSE_LANE = "PDF_PARSE_LANE";
+
+/**
+ * Parses an ARCHIVED PDF somewhere else — the `pdf-parse` queue, possibly on
+ * another host — and records the parse in the source store. Returns the text
+ * when a complete parse under `parserKey` is now recorded; undefined for
+ * anything else (incomplete, another key, timed out, unavailable), and the
+ * caller then parses in process. Must not throw.
+ */
+export interface IPdfParseLane {
+  parse(
+    sourceVersionId: string,
+    parserKey: string,
+  ): Promise<string | undefined>;
+}
+
 /** Which run and which region a fetch belongs to. */
 export interface ArchiveContext {
   /** Region whose sync performed the fetch */

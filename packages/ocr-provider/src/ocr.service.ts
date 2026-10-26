@@ -149,6 +149,10 @@ export class OcrService implements OnModuleDestroy {
       name: this.provider.getName(),
       supportedLanguages: this.provider.getSupportedLanguages(),
       preprocessingEnabled: this.preprocessor?.shouldPreprocess() ?? false,
+      // In the parse key (K-P1): two hosts on different presets OCR
+      // differently, and before this both reported the same info, so each
+      // could reuse the other's parse.
+      preprocessing: this.preprocessor?.describe?.() ?? { steps: [] },
       engineVersion: this.provider.getEngineVersion?.(),
     };
   }

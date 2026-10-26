@@ -15,6 +15,47 @@ export const CIVICS_EXTRACT_QUEUE = "civics-extract";
  * stale measure's analysis here and waits for the outcome.
  */
 export const PROPOSITION_ANALYSIS_QUEUE = "proposition-analysis";
+/**
+ * The CPU lane (S6, `docs/plans/propositions-phase-b.md`): one job per
+ * archived PDF with no recorded parse under the requester's parser key. Its
+ * consumer may run on another host (`WORKER_QUEUES`).
+ */
+export const PDF_PARSE_QUEUE = "pdf-parse";
+
+/**
+ * `BULLMQ_QUEUE_<NAME>_<SUFFIX>` — every per-queue knob's env name, in one
+ * place (`pdf-parse` → `BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY`).
+ */
+export function queueEnvKey(queueName: string, suffix: string): string {
+  return `BULLMQ_QUEUE_${queueName.toUpperCase().replace(/-/g, "_")}_${suffix}`;
+}
+
+/**
+ * A per-queue integer knob, or `fallback` when it is unset, not an integer,
+ * or below `min`.
+ */
+export function queueEnvInt(
+  queueName: string,
+  suffix: string,
+  fallback: number,
+  min = 1,
+): number {
+  const raw = process.env[queueEnvKey(queueName, suffix)];
+  const parsed = Number(raw);
+  return raw?.trim() && Number.isSafeInteger(parsed) && parsed >= min
+    ? parsed
+    : fallback;
+}
+
+/**
+ * Attempts per job where the default of 3 is wrong. A `pdf-parse` failure is
+ * a thread timeout or a heap-cap death — deterministic for that PDF — and its
+ * requester has fallen back by the time a retry would run, so a retry only
+ * spends the CPU lane. `BULLMQ_QUEUE_<NAME>_ATTEMPTS` still overrides.
+ */
+export const DEFAULT_QUEUE_ATTEMPTS: Readonly<Record<string, number>> = {
+  [PDF_PARSE_QUEUE]: 1,
+};
 
 export const ANALYSIS_REQUEST_SOURCE = {
   CACHE_MISS: "cache_miss",

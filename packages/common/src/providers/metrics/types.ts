@@ -179,6 +179,35 @@ export const LaneMetric = {
 } as const;
 
 /**
+ * BullMQ job metrics, reported by every worker `createWorker` builds
+ * (queue-provider's `setDefaultWorkerMetrics`, bound by the metrics module).
+ */
+export const QueueMetric = {
+  /** Counter. Labels: `queue`, `trigger`, `outcome` (success, retry, failed). */
+  JobAttemptsTotal: "bullmq_job_attempts_total",
+  /** Histogram, seconds. Labels: `queue`, `trigger`. Pickup to finish. */
+  JobDurationSeconds: "bullmq_job_duration_seconds",
+} as const;
+
+/**
+ * Where an archived PDF's text came from (K-P1, S6). Labels: `source` —
+ * `reused` (a recorded parse), `lane` (parsed on the `pdf-parse` queue),
+ * `in_process` — and `complete` (`true`/`false`; always `true` for the first
+ * two). The share of `in_process` on a host that requests parses is the
+ * CPU lane's miss rate.
+ */
+export const PdfParseMetric = {
+  Total: "pdf_parse_total",
+} as const;
+
+/** `source` label values for {@link PdfParseMetric.Total}. */
+export const PdfParseSource = {
+  Reused: "reused",
+  Lane: "lane",
+  InProcess: "in_process",
+} as const;
+
+/**
  * The resource a stage consumes, which is the whole point of the label: the
  * plan's thesis is that network, CPU, GPU and DB work alternate within one
  * item, so each resource idles while another is busy. Grouping by stage is

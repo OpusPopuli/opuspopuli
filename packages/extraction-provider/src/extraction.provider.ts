@@ -13,6 +13,8 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import {
   installedVersion,
   METRICS_OBSERVER,
+  PdfParseMetric,
+  PdfParseSource,
   type MetricsObserver,
   PipelineStage,
   withStage,
@@ -33,6 +35,7 @@ import {
  * module to enable image-based PDF support; leave unwired to skip OCR.
  */
 export const OCR_SERVICE = "OCR_SERVICE";
+
 import {
   type ICache,
   type IHostRateLimiter,
@@ -58,12 +61,35 @@ import {
   PdfFetchResult,
   ISourceArchive,
   SOURCE_ARCHIVE,
+  type IPdfParseLane,
+  PDF_PARSE_LANE,
   ArchiveContext,
   FetchError,
   FetchFunction,
 } from "./types.js";
 import { normalizeUrl } from "./utils/url-normalize.js";
 import { decodeUtf8, hashContentBytes } from "./utils/content-bytes.js";
+
+/**
+ * The parser key for a process OCRing as `ocrInfo` describes
+ * (`OcrService.getProviderInfo()`, or null without OCR): the cascade's
+ * version plus a short hash of the installed pdf-parse and mupdf and the OCR
+ * description. Exported so a parse consumer (the S6 CPU lane, possibly on
+ * another host) keys its parses by what ITS threads run, not by what the
+ * requester assumed. Fits `source_versions.parser_version` (40 chars).
+ */
+export function pdfParserKeyFor(ocrInfo: unknown): string {
+  return `${PDF_EXTRACTOR_VERSION}+${createHash("sha256")
+    .update(
+      JSON.stringify({
+        pdfParse: installedVersion("pdf-parse", __filename) ?? "unknown",
+        mupdf: installedVersion("mupdf", __filename) ?? "unknown",
+        ocr: ocrInfo ?? null,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 12)}`;
+}
 
 /**
  * Remove NUL bytes (0x00) from extracted text. Postgres `text`/`utf8` columns
@@ -147,6 +173,15 @@ export class ExtractionProvider {
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
+    /**
+     * Optional (S6). When bound, an archived PDF with no recorded parse is
+     * parsed on the `pdf-parse` lane instead of on this process's event loop;
+     * anything the lane cannot deliver is parsed here, as before. Last, so
+     * positional construction in specs keeps its meaning.
+     */
+    @Optional()
+    @Inject(PDF_PARSE_LANE)
+    private readonly pdfParseLane?: IPdfParseLane,
   ) {
     this.config = {
       ...DEFAULT_EXTRACTION_CONFIG,
@@ -425,19 +460,38 @@ export class ExtractionProvider {
   private async parseArchivedPdf(result: BytesFetchResult): Promise<string> {
     const id = result.sourceVersionId;
     const archive = this.sourceArchive;
-    const key = this.parserKey();
+    const key = this.pdfParserKey();
     if (id && archive?.findParsedText) {
       const reused = await archive.findParsedText(id, key);
       if (reused !== undefined) {
         this.logger.debug(`Reused the ${key} parse of ${id}`);
+        this.countParse(PdfParseSource.Reused, true);
         return reused;
       }
     }
+    if (id && this.pdfParseLane) {
+      const laned = await this.pdfParseLane.parse(id, key);
+      if (laned !== undefined) {
+        this.countParse(PdfParseSource.Lane, true);
+        return laned;
+      }
+    }
     const parsed = await this.parsePdf(result.content);
+    this.countParse(PdfParseSource.InProcess, parsed.complete);
     if (id && parsed.complete && archive?.recordParsedText) {
       await archive.recordParsedText(id, key, parsed.text);
     }
     return parsed.text;
+  }
+
+  private countParse(
+    source: (typeof PdfParseSource)[keyof typeof PdfParseSource],
+    complete: boolean,
+  ): void {
+    this.metrics?.increment(PdfParseMetric.Total, 1, {
+      source,
+      complete: String(complete),
+    });
   }
 
   private cachedParserKey?: string;
@@ -451,17 +505,10 @@ export class ExtractionProvider {
    * bump re-parses without anyone remembering to bump a constant. Fits
    * `source_versions.parser_version` (40 chars).
    */
-  private parserKey(): string {
-    this.cachedParserKey ??= `${PDF_EXTRACTOR_VERSION}+${createHash("sha256")
-      .update(
-        JSON.stringify({
-          pdfParse: installedVersion("pdf-parse", __filename) ?? "unknown",
-          mupdf: installedVersion("mupdf", __filename) ?? "unknown",
-          ocr: this.ocrService?.getProviderInfo?.() ?? null,
-        }),
-      )
-      .digest("hex")
-      .slice(0, 12)}`;
+  pdfParserKey(): string {
+    this.cachedParserKey ??= pdfParserKeyFor(
+      this.ocrService?.getProviderInfo?.() ?? null,
+    );
     return this.cachedParserKey;
   }
 

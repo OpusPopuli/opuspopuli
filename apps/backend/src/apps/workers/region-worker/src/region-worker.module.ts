@@ -23,6 +23,8 @@ import { RegionSyncScheduler } from './region-sync.scheduler';
 import { MinutesSummaryProcessor } from './minutes-summary.processor';
 import { CivicsExtractProcessor } from './civics-extract.processor';
 import { PropositionAnalysisProcessor } from './proposition-analysis.processor';
+import { PdfParseProcessor } from './pdf-parse.processor';
+import { QueueDepthMetricsService } from './queue-depth-metrics.service';
 import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
 
 @Module({
@@ -72,6 +74,8 @@ import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
     MinutesSummaryProcessor,
     CivicsExtractProcessor,
     PropositionAnalysisProcessor,
+    PdfParseProcessor,
+    QueueDepthMetricsService,
   ],
 })
 export class RegionWorkerModule {}

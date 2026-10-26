@@ -1,6 +1,11 @@
 export { QueueModule } from "./queue.module";
 export { QueueService } from "./queue.service";
-export { createWorker } from "./worker.factory";
+export {
+  createWorker,
+  queueConcurrency,
+  setDefaultWorkerMetrics,
+  workerQueueSelected,
+} from "./worker.factory";
 export { JOB_TRACE_KEY, withTraceContext, traceContextOf } from "./job-tracing";
 export type { TraceCarrier } from "./job-tracing";
 export type { WorkerMetrics, CreateWorkerOptions } from "./worker.factory";
@@ -11,11 +16,14 @@ export {
   MINUTES_SUMMARY_QUEUE,
   CIVICS_EXTRACT_QUEUE,
   PROPOSITION_ANALYSIS_QUEUE,
+  PDF_PARSE_QUEUE,
   QUEUE_CONNECTION,
   TRIGGER_SOURCE,
   JOB_STATUS,
   ANALYSIS_REQUEST_SOURCE,
   DEFAULT_QUEUE_PREFIX,
+  queueEnvInt,
+  queueEnvKey,
   resolveQueuePrefix,
 } from "./queue.constants";
 export type {
@@ -31,6 +39,7 @@ export type {
   MinutesSummaryJobData,
   CivicsExtractJobData,
   PropositionAnalysisJobData,
+  PdfParseJobData,
   LlmRerankJobData,
   LlmRerankJobResult,
   LlmRerankEntityType,
@@ -38,6 +47,7 @@ export type {
   QueueModuleOptions,
   QueueModuleAsyncOptions,
   EnqueueOptions,
+  QueueDepth,
   QueueJobInfo,
   SchedulerInfo,
 } from "./queue.types";

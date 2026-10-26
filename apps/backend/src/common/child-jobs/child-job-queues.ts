@@ -4,6 +4,7 @@ import type IORedis from 'ioredis';
 import {
   QUEUE_CONNECTION,
   QueueService,
+  queueEnvKey,
   resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import { openQueueBatch, type ChildJobBatch } from './child-job-batch';
@@ -27,8 +28,7 @@ export class ChildJobQueues {
   ) {}
 
   enabled(queueName: string): boolean {
-    const envPrefix = queueName.toUpperCase().replace(/-/g, '_');
-    return process.env[`BULLMQ_QUEUE_${envPrefix}_ENABLED`] !== 'false';
+    return process.env[queueEnvKey(queueName, 'ENABLED')] !== 'false';
   }
 
   /** A batch on `queueName` for one sync run; the caller closes it. */

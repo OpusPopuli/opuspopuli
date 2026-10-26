@@ -1,5 +1,10 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
+import {
+  METRICS_OBSERVER,
+  PipelineMetric,
+  PipelineStage,
+  type MetricsObserver,
+} from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { Proposition } from '@opuspopuli/common';
 import {
@@ -377,6 +382,7 @@ export class PropositionsSyncService {
         this.logger.log(
           `Retrieval corpus: embedded=${embedResult.embedded} unchanged=${embedResult.unchanged} failed=${embedResult.failed}`,
         );
+        this.countEmbeddings(embedResult);
       } catch (error) {
         this.logger.warn(
           `Retrieval corpus refresh failed (sync continues): ${(error as Error).message}`,
@@ -412,6 +418,7 @@ export class PropositionsSyncService {
       stale?.pending.length ?? 0,
       { region: regionId },
     );
+    tracker.skippedInBulk(stale?.current ?? 0, 'analysis_current');
     if (!analysis || !stale || stale.pending.length === 0) {
       tracker.complete();
       return;
@@ -460,6 +467,39 @@ export class PropositionsSyncService {
       await batch.close();
     }
     if (written > 0) await this.cacheService?.invalidateCache('propositions:');
+  }
+
+  /**
+   * The embedding pass's outcomes as `pipeline_items_total{stage="embed"}` —
+   * the pass is not a tracked phase, so without this its skips (the hash
+   * check, #1074) and failures reached only the log. `stage`, not `phase`:
+   * one writer per item, and the tracker never sees these.
+   */
+  private countEmbeddings(result: {
+    embedded: number;
+    unchanged: number;
+    failed: number;
+  }): void {
+    const counts: [number, string, string?][] = [
+      [result.embedded, 'updated'],
+      [result.unchanged, 'skipped', 'unchanged'],
+      [result.failed, 'failed'],
+    ];
+    try {
+      for (const [count, outcome, reason] of counts) {
+        if (count <= 0) continue;
+        this.metrics?.increment(PipelineMetric.ItemsTotal, count, {
+          data_type: 'propositions',
+          stage: PipelineStage.Embed,
+          outcome,
+          ...(reason && { reason }),
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Embedding metrics failed and were ignored: ${(error as Error).message}`,
+      );
+    }
   }
 
   /** The stale selection, or null — logged — when it cannot be made. */

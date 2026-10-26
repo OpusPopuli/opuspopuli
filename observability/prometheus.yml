@@ -134,6 +134,17 @@ scrape_configs:
     metrics_path: /metrics
     metric_relabel_configs: *drop-default-noise
 
+  # Second region-worker — the S6 CPU lane on its own host
+  # (docker-compose-uat.multihost.yml). Usually not running, so it is labelled
+  # optional and ServiceDown ignores it.
+  - job_name: 'region-worker-cpu'
+    static_configs:
+      - targets: ['host.docker.internal:3008']
+        labels:
+          optional: 'true'
+    metrics_path: /metrics
+    metric_relabel_configs: *drop-default-noise
+
   # Structural Analysis Worker metrics
   - job_name: 'structural-analysis-worker'
     static_configs:

@@ -4,11 +4,14 @@ import IORedis from "ioredis";
 import {
   QUEUE_CONNECTION,
   QUEUE_MODULE_OPTIONS,
+  DEFAULT_QUEUE_ATTEMPTS,
+  queueEnvInt,
   resolveQueuePrefix,
 } from "./queue.constants";
 import { withPublishSpan, withTraceContext } from "./job-tracing";
 import {
   EnqueueOptions,
+  QueueDepth,
   QueueJobInfo,
   QueueModuleOptions,
   SchedulerInfo,
@@ -183,6 +186,74 @@ export class QueueService implements OnModuleDestroy {
     this.logger.log(`Removed scheduler ${schedulerId} from ${queueName}`);
   }
 
+  /**
+   * Every queue under this prefix that has ever been used — read from Redis,
+   * not from a list in code, so a queue added later (or a lane queue named
+   * from a GPU host) is measured without anyone registering it. BullMQ keeps
+   * a `<prefix>:<queue>:meta` hash per queue, and a queue name cannot contain
+   * `:`, so the middle segment is the name.
+   */
+  async listQueueNames(): Promise<string[]> {
+    const names = new Set<string>();
+    let cursor = "0";
+    do {
+      const [next, keys] = await this.connection.scan(
+        cursor,
+        "MATCH",
+        `${this.prefix}:*:meta`,
+        "COUNT",
+        500,
+      );
+      cursor = next;
+      for (const key of keys) {
+        const name = key.slice(this.prefix.length + 1, -":meta".length);
+        if (name && !name.includes(":")) names.add(name);
+      }
+    } while (cursor !== "0");
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }
+
+  /**
+   * A queue's backlog: jobs per state, and how long the oldest waiting job
+   * has waited (0 when none waits) — the signal that a queue has no consumer.
+   */
+  async getDepth(
+    queueName: string,
+    now: number = Date.now(),
+  ): Promise<QueueDepth> {
+    const queue = this.getQueue(queueName);
+    const counts = await queue.getJobCounts(
+      "waiting",
+      "prioritized",
+      "active",
+      "delayed",
+      "failed",
+    );
+    // Each list's head, separately: one `getJobs` over both concatenates
+    // them, so its first job is the head of `wait` even when a prioritized
+    // job is older (and the prioritized set is ordered by priority, so its
+    // head is only an estimate).
+    const heads = await Promise.all(
+      (["wait", "prioritized"] as const).map((state) =>
+        queue.getJobs([state], 0, 0, true),
+      ),
+    );
+    // Waiting since its last start, for a retried job — not since creation,
+    // which would read a healthy retry's whole life as a stall.
+    const since = heads
+      .flat()
+      .map((job) => Math.max(job.timestamp ?? 0, job.processedOn ?? 0))
+      .filter((t) => t > 0);
+    return {
+      waiting: (counts.waiting ?? 0) + (counts.prioritized ?? 0),
+      active: counts.active ?? 0,
+      delayed: counts.delayed ?? 0,
+      failed: counts.failed ?? 0,
+      oldestWaitingSeconds:
+        since.length > 0 ? Math.max(0, (now - Math.min(...since)) / 1000) : 0,
+    };
+  }
+
   async close(): Promise<void> {
     await Promise.all([...this.queues.values()].map((q) => q.close()));
     await this.connection.quit();
@@ -213,15 +284,12 @@ export class QueueService implements OnModuleDestroy {
     queueName: string,
     opts?: EnqueueOptions,
   ): JobsOptions {
-    const envPrefix = queueName.toUpperCase().replace(/-/g, "_");
-    const attempts = parseInt(
-      process.env[`BULLMQ_QUEUE_${envPrefix}_ATTEMPTS`] ?? "3",
-      10,
+    const attempts = queueEnvInt(
+      queueName,
+      "ATTEMPTS",
+      DEFAULT_QUEUE_ATTEMPTS[queueName] ?? 3,
     );
-    const backoffMs = parseInt(
-      process.env[`BULLMQ_QUEUE_${envPrefix}_BACKOFF_MS`] ?? "30000",
-      10,
-    );
+    const backoffMs = queueEnvInt(queueName, "BACKOFF_MS", 30000, 0);
 
     return {
       attempts,

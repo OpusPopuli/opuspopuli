@@ -56,6 +56,20 @@ export class ImagePreprocessor {
   }
 
   /**
+   * What this preprocessor does to an image, for a parse key (K-P1): the
+   * preset AND the enabled steps with their options, because an explicit
+   * pipeline overrides the preset and either changes the OCR text. Empty
+   * when preprocessing is off.
+   */
+  describe(): { preset?: string; steps: PreprocessingStep[] } {
+    if (!this.shouldPreprocess()) return { steps: [] };
+    return {
+      preset: this.config.preset,
+      steps: this.pipeline.filter((step) => step.enabled),
+    };
+  }
+
+  /**
    * Check if preprocessing should be performed
    */
   shouldPreprocess(): boolean {

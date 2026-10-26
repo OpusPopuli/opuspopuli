@@ -112,6 +112,88 @@ describe("DetailCrawlerService", () => {
       expect(mockLlm.generate).toHaveBeenCalledTimes(1); // AI called once only
     });
 
+    describe("the fetch lane (propositions Phase B)", () => {
+      const items = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+          externalId: `prop-${i}`,
+          title: `Measure ${i}`,
+          detailUrl: `https://example.com/prop/${i}`,
+        }));
+
+      /** Fetches that take `ms` and record how many overlap. */
+      const timedFetches = (ms: number) => {
+        const seen = { active: 0, peak: 0, order: [] as string[] };
+        mockExtraction.fetchWithRetry.mockImplementation(
+          async (url: string) => {
+            seen.order.push(url);
+            seen.active++;
+            seen.peak = Math.max(seen.peak, seen.active);
+            await new Promise((r) => setTimeout(r, ms));
+            seen.active--;
+            return {
+              content:
+                "<html><body><main><p>Full text.</p></main></body></html>",
+              fromCache: false,
+            } as never;
+          },
+        );
+        return seen;
+      };
+
+      afterEach(() => {
+        delete process.env.DETAIL_FETCH_CONCURRENCY;
+      });
+
+      it("derives the plan once, from the first page alone, then fetches the rest concurrently", async () => {
+        process.env.DETAIL_FETCH_CONCURRENCY = "3";
+        const seen = timedFetches(20);
+
+        const result = await crawler.enrichItems(
+          createRawResult(items(7)),
+          createSource(),
+          mockLlm,
+        );
+
+        // An LLM-derived plan, derived once — not once per concurrent item.
+        expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+        // The first page ran alone, before any other started.
+        expect(seen.order[0]).toBe("https://example.com/prop/0");
+        expect(seen.peak).toBe(3);
+        expect(result.items.every((item) => item.fullText)).toBe(true);
+      });
+
+      it("keeps going serially until a page yields a plan, when the first fetch fails", async () => {
+        process.env.DETAIL_FETCH_CONCURRENCY = "4";
+        timedFetches(1);
+        mockExtraction.fetchWithRetry.mockRejectedValueOnce(new Error("503"));
+
+        const result = await crawler.enrichItems(
+          createRawResult(items(5)),
+          createSource(),
+          mockLlm,
+        );
+
+        expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+        expect(result.warnings.some((w) => w.includes("503"))).toBe(true);
+        expect(result.items.slice(1).every((item) => item.fullText)).toBe(true);
+      });
+
+      it("adds no fixed pause on top of the rate limiter", async () => {
+        process.env.DETAIL_FETCH_CONCURRENCY = "1";
+        timedFetches(1);
+        const started = Date.now();
+
+        await crawler.enrichItems(
+          createRawResult(items(6)),
+          createSource(),
+          mockLlm,
+        );
+
+        // Six serial fetches used to carry five 500 ms pauses (2.5 s).
+        expect(Date.now() - started).toBeLessThan(1000);
+      });
+    });
+
     it("should pass through items without detailUrl unchanged", async () => {
       const rawResult = createRawResult([
         { externalId: "prop-1", title: "No Detail Link" },

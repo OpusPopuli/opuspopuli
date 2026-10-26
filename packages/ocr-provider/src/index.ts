@@ -20,6 +20,11 @@ export {
 // Service and module
 export { OcrService } from "./ocr.service.js";
 export { OcrModule, OcrModuleConfig } from "./ocr.module.js";
+export {
+  createTesseractOcrServiceFromEnv,
+  createImagePreprocessor,
+  parseOcrLanguages,
+} from "./ocr-from-config.js";
 
 // Preprocessing
 export {

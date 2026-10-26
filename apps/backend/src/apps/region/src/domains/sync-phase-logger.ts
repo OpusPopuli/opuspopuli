@@ -333,6 +333,30 @@ export class SyncPhaseTracker<Phase extends string> {
   }
 
   /**
+   * Items a phase skipped without visiting them one by one — K-P2's measures
+   * whose analysis is already current never reach the loop, so without this
+   * a run that correctly skipped all 71 read "0 skipped". One log line, one
+   * increment of `count`, and the skips land in the phase totals.
+   *
+   * @param reason - A bounded slug, as for {@link item}
+   */
+  skippedInBulk(count: number, reason: string): void {
+    if (!Number.isFinite(count) || count <= 0) return;
+    this.skipped += count;
+    this.logger.log(
+      `[${this.tag}] Phase ${this.phaseIdx}/${this.phaseTotal} (${String(this.phase)}): ${count} skipped (${reason})`,
+    );
+    this.publish(() =>
+      this.observer?.increment(PipelineMetric.ItemsTotal, count, {
+        data_type: this.dataType,
+        phase: String(this.phase),
+        outcome: 'skipped',
+        ...reasonLabel(reason),
+      }),
+    );
+  }
+
+  /**
    * Rows this phase deleted, for `pipeline_rows_deleted_total` (F2).
    *
    * Here rather than at the call site so it goes through {@link publish}:

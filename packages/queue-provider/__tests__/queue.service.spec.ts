@@ -10,6 +10,14 @@ jest.mock("bullmq", () => {
     upsertJobScheduler: jest.fn().mockResolvedValue(undefined),
     getJobSchedulers: jest.fn().mockResolvedValue([]),
     removeJobScheduler: jest.fn().mockResolvedValue(true),
+    getJobCounts: jest.fn().mockResolvedValue({
+      waiting: 3,
+      prioritized: 1,
+      active: 2,
+      delayed: 0,
+      failed: 5,
+    }),
+    getJobs: jest.fn().mockResolvedValue([{ timestamp: 1_000 }]),
     close: jest.fn().mockResolvedValue(undefined),
   };
   return { Queue: jest.fn(() => mockQueue) };
@@ -17,10 +25,13 @@ jest.mock("bullmq", () => {
 
 describe("QueueService", () => {
   let service: QueueService;
-  let mockConnection: { quit: jest.Mock };
+  let mockConnection: { quit: jest.Mock; scan: jest.Mock };
 
   beforeEach(async () => {
-    mockConnection = { quit: jest.fn().mockResolvedValue(undefined) };
+    mockConnection = {
+      quit: jest.fn().mockResolvedValue(undefined),
+      scan: jest.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -38,6 +49,92 @@ describe("QueueService", () => {
 
   it("is defined", () => {
     expect(service).toBeDefined();
+  });
+
+  describe("listQueueNames", () => {
+    it("reads every queue under the prefix from Redis, across scan pages", async () => {
+      mockConnection.scan
+        .mockResolvedValueOnce(["7", ["test:region-sync:meta"]])
+        .mockResolvedValueOnce([
+          "0",
+          ["test:pdf-parse:meta", "test:llm-lane.gpu-11434:meta"],
+        ]);
+
+      await expect(service.listQueueNames()).resolves.toEqual([
+        "llm-lane.gpu-11434",
+        "pdf-parse",
+        "region-sync",
+      ]);
+      expect(mockConnection.scan).toHaveBeenCalledWith(
+        "0",
+        "MATCH",
+        "test:*:meta",
+        "COUNT",
+        500,
+      );
+    });
+  });
+
+  describe("job options", () => {
+    const lastAddOpts = () => {
+      const { Queue } = jest.requireMock("bullmq");
+      const queue = Queue.mock.results.at(-1).value;
+      return queue.add.mock.calls.at(-1)[2];
+    };
+
+    it("gives pdf-parse one attempt — a failed parse is deterministic", async () => {
+      await service.enqueue("pdf-parse", { sourceVersionId: "sv" });
+      expect(lastAddOpts().attempts).toBe(1);
+    });
+
+    it("keeps three attempts elsewhere, and the env override wins", async () => {
+      await service.enqueue("civics-extract", { pageUrl: "u" });
+      expect(lastAddOpts().attempts).toBe(3);
+
+      process.env.BULLMQ_QUEUE_PDF_PARSE_ATTEMPTS = "2";
+      await service.enqueue("pdf-parse", { sourceVersionId: "sv" });
+      expect(lastAddOpts().attempts).toBe(2);
+      delete process.env.BULLMQ_QUEUE_PDF_PARSE_ATTEMPTS;
+    });
+  });
+
+  describe("getDepth", () => {
+    const queueMock = () => {
+      const { Queue } = jest.requireMock("bullmq");
+      return Queue.mock.results.at(-1).value;
+    };
+
+    it("takes the older of the two list heads, not the first list's", async () => {
+      await service.getDepth("pdf-parse", 0); // creates the queue
+      queueMock()
+        .getJobs.mockResolvedValueOnce([{ timestamp: 50_000 }])
+        .mockResolvedValueOnce([{ timestamp: 20_000 }]);
+
+      const depth = await service.getDepth("pdf-parse", 80_000);
+      expect(depth.oldestWaitingSeconds).toBe(60);
+    });
+
+    it("ages a retried job from its last start, not its creation", async () => {
+      await service.getDepth("pdf-parse", 0);
+      queueMock()
+        .getJobs.mockResolvedValueOnce([
+          { timestamp: 1_000, processedOn: 70_000 },
+        ])
+        .mockResolvedValueOnce([]);
+
+      const depth = await service.getDepth("pdf-parse", 80_000);
+      expect(depth.oldestWaitingSeconds).toBe(10);
+    });
+
+    it("counts prioritized jobs as waiting and ages the oldest one", async () => {
+      await expect(service.getDepth("pdf-parse", 61_000)).resolves.toEqual({
+        waiting: 4,
+        active: 2,
+        delayed: 0,
+        failed: 5,
+        oldestWaitingSeconds: 60,
+      });
+    });
   });
 
   describe("enqueue", () => {

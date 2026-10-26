@@ -123,4 +123,69 @@ describe('PropositionsSyncService — analysis phase (S4)', () => {
 
     expect(c.invalidateCache).not.toHaveBeenCalled();
   });
+
+  it('counts the measures already current as skipped, without visiting them (K-P2)', async () => {
+    const increment = jest.fn();
+    const a = analysis();
+    a.stampAndSelectStale.mockResolvedValue({
+      live: { promptHash: 'p', modelDigest: 'd', configHash: 'c' },
+      pending: [],
+      current: 69,
+    });
+    const service = new PropositionsSyncService(
+      {} as never,
+      a as never,
+      undefined,
+      undefined,
+      undefined,
+      { increment, observe: jest.fn() },
+    ) as unknown as { analyseStale: (r: string) => Promise<void> };
+
+    await service.analyseStale('california');
+
+    expect(increment).toHaveBeenCalledWith('pipeline_items_total', 69, {
+      data_type: 'propositions',
+      phase: 'analysis',
+      outcome: 'skipped',
+      reason: 'analysis_current',
+    });
+  });
+
+  it('publishes the embedding pass as stage=embed items', () => {
+    const increment = jest.fn();
+    const service = new PropositionsSyncService(
+      {} as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { increment, observe: jest.fn() },
+    ) as unknown as {
+      countEmbeddings: (r: {
+        embedded: number;
+        unchanged: number;
+        failed: number;
+      }) => void;
+    };
+
+    service.countEmbeddings({ embedded: 2, unchanged: 69, failed: 0 });
+
+    expect(increment.mock.calls).toEqual([
+      [
+        'pipeline_items_total',
+        2,
+        { data_type: 'propositions', stage: 'embed', outcome: 'updated' },
+      ],
+      [
+        'pipeline_items_total',
+        69,
+        {
+          data_type: 'propositions',
+          stage: 'embed',
+          outcome: 'skipped',
+          reason: 'unchanged',
+        },
+      ],
+    ]);
+  });
 });

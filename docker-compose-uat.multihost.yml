@@ -1,0 +1,39 @@
+# Two-worker UAT: the S6 CPU lane on a second region-worker
+# (docs/plans/propositions-phase-b.md, "Multi-host runbook").
+#
+# Layer it over the UAT stack:
+#
+#   docker compose -f docker-compose-uat.yml -f docker-compose-uat.local.yml \
+#     -f docker-compose-uat.multihost.yml up -d region-worker region-worker-cpu
+#
+# The two containers stand in for two hosts sharing one Redis and one
+# database: `region-worker` takes every queue but `pdf-parse`, and
+# `region-worker-cpu` takes only `pdf-parse`. Moving the lane to a real second
+# machine is the same two `WORKER_QUEUES` values on two nodes — nothing else
+# changes, because jobs carry ids, never bytes or text.
+services:
+  region-worker:
+    environment:
+      WORKER_QUEUES: "*,!pdf-parse"
+
+  region-worker-cpu:
+    extends:
+      file: docker-compose-uat.yml
+      service: region-worker
+    container_name: opuspopuli-uat-region-worker-cpu
+    environment:
+      DESCRIPTION: Region worker (CPU lane only)
+      WORKER_QUEUES: pdf-parse
+      # Distinct from the first worker's: S2's startup sweep reclaims the
+      # rows of the WORKER_HOST it runs as, and this host owns none.
+      WORKER_HOST: uat-local-cpu
+      # One parse thread per job slot (the pool is sized from this).
+      BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY: ${BULLMQ_QUEUE_PDF_PARSE_CONCURRENCY:-2}
+    ports: !override
+      # Loopback only: /metrics is unauthenticated.
+      - "127.0.0.1:3008:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 6144M

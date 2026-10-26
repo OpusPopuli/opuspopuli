@@ -252,6 +252,18 @@ describe("OcrService", () => {
       expect(info.preprocessingEnabled).toBe(true);
     });
 
+    it("describes the preprocessing pipeline, so a preset change changes the parse key", () => {
+      (mockPreprocessor as any).describe = jest.fn().mockReturnValue({
+        preset: "fast",
+        steps: [{ type: "grayscale", enabled: true }],
+      });
+
+      expect(service.getProviderInfo().preprocessing).toEqual({
+        preset: "fast",
+        steps: [{ type: "grayscale", enabled: true }],
+      });
+    });
+
     it("should report preprocessing disabled when shouldPreprocess is false", () => {
       mockPreprocessor.shouldPreprocess.mockReturnValue(false);
 
