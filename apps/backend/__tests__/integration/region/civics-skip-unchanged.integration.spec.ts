@@ -367,10 +367,21 @@ describe.each(['inline', 'queued'] as const)(
     });
 
     it('retries a page that failed, rather than remembering the failure', async () => {
-      generate.mockImplementationOnce(async () => {
-        throw new Error('runner died');
+      // Fail the CONTENT page's extraction, whichever call it is: pages are
+      // prepared concurrently on the network lane, so the order in which
+      // their extractions reach the model is not fixed.
+      const extract = generate.getMockImplementation()!;
+      let failed = false;
+      generate.mockImplementation(async (...args: unknown[]) => {
+        if (!failed && (args[0] as string).includes(CONTENT_PAGE)) {
+          failed = true;
+          throw new Error('runner died');
+        }
+        return extract(...(args as Parameters<typeof extract>));
       });
       await sync();
+      expect(failed).toBe(true);
+      generate.mockImplementation(extract);
       generate.mockClear();
 
       await sync();
