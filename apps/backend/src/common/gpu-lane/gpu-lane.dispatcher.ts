@@ -14,9 +14,9 @@ import {
   METRICS_OBSERVER,
   type GenerateResult,
   type ILLMProvider,
-  type ILlmLaneDispatcher,
-  type LlmLaneEndpoint,
-  type LlmLaneJob,
+  type IGpuLaneDispatcher,
+  type GpuLaneEndpoint,
+  type GpuLaneJob,
   type MetricsObserver,
 } from '@opuspopuli/common';
 import { createLaneProvider } from '@opuspopuli/llm-provider';
@@ -28,8 +28,8 @@ import {
 import { Job, Queue, QueueEvents, type Worker } from 'bullmq';
 import type IORedis from 'ioredis';
 
-/** Options resolved from config in `LlmLaneModule.forRoot`. */
-export interface LlmLaneOptions {
+/** Options resolved from config in `GpuLaneModule.forRoot`. */
+export interface GpuLaneOptions {
   /** BullMQ key prefix — the same one every other queue uses. */
   prefix: string;
   /** GPU slots per endpoint, across every process. 1 = `OLLAMA_NUM_PARALLEL`. */
@@ -38,11 +38,11 @@ export interface LlmLaneOptions {
   waitTimeoutMs: number;
 }
 
-export const LLM_LANE_OPTIONS = 'LLM_LANE_OPTIONS';
+export const GPU_LANE_OPTIONS = 'GPU_LANE_OPTIONS';
 
 /** Builds the provider a consumer runs a job on. Swappable for tests. */
-export const LLM_LANE_PROVIDER_FACTORY = 'LLM_LANE_PROVIDER_FACTORY';
-export type LaneProviderFactory = (endpoint: LlmLaneEndpoint) => ILLMProvider;
+export const GPU_LANE_PROVIDER_FACTORY = 'GPU_LANE_PROVIDER_FACTORY';
+export type LaneProviderFactory = (endpoint: GpuLaneEndpoint) => ILLMProvider;
 
 /**
  * What a lane job carries in Redis. The prompt is personal data — a rerank
@@ -51,9 +51,9 @@ export type LaneProviderFactory = (endpoint: LlmLaneEndpoint) => ILLMProvider;
  */
 interface LaneJobData {
   lane: string;
-  endpoint: Pick<LlmLaneEndpoint, 'url' | 'model'>;
+  endpoint: Pick<GpuLaneEndpoint, 'url' | 'model'>;
   prompt: string;
-  options?: LlmLaneJob['options'];
+  options?: GpuLaneJob['options'];
   /** Epoch ms after which nobody is waiting: the consumer skips the call. */
   deadline: number;
   /** The waiting dispatcher; gone from Redis = its process died. */
@@ -148,10 +148,10 @@ const endpointKey = (lane: string, url: string, model: string): string =>
  * Redis while it shuts down.
  */
 @Injectable()
-export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
-  private readonly logger = new Logger(LlmLaneDispatcher.name);
+export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
+  private readonly logger = new Logger(GpuLaneDispatcher.name);
   private readonly lanes = new Map<string, Promise<LaneHandles>>();
-  private readonly endpoints = new Map<string, LlmLaneEndpoint>();
+  private readonly endpoints = new Map<string, GpuLaneEndpoint>();
   private readonly providers = new Map<string, ILLMProvider>();
   /** Rejects every caller still waiting, at shutdown. */
   private readonly waiters = new Set<(error: Error) => void>();
@@ -170,12 +170,12 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
 
   constructor(
     @Inject(QUEUE_CONNECTION) private readonly connection: IORedis,
-    @Inject(LLM_LANE_OPTIONS) private readonly options: LlmLaneOptions,
+    @Inject(GPU_LANE_OPTIONS) private readonly options: GpuLaneOptions,
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
     @Optional()
-    @Inject(LLM_LANE_PROVIDER_FACTORY)
+    @Inject(GPU_LANE_PROVIDER_FACTORY)
     private readonly providerFactory: LaneProviderFactory = createLaneProvider,
   ) {}
 
@@ -184,7 +184,7 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
     return this.ownConnection;
   }
 
-  register(lane: string, endpoint: LlmLaneEndpoint): void {
+  register(lane: string, endpoint: GpuLaneEndpoint): void {
     this.endpoints.set(endpointKey(lane, endpoint.url, endpoint.model), {
       ...endpoint,
     });
@@ -199,7 +199,7 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
    * that IS thrown before the job is queued falls back to calling the
    * endpoint directly, as every process did before S7.
    */
-  async generate(job: LlmLaneJob): Promise<GenerateResult> {
+  async generate(job: GpuLaneJob): Promise<GenerateResult> {
     const name = laneQueueName(job.endpoint.url);
     let lane: LaneHandles;
     let queued: Job<LaneJobData>;
@@ -240,7 +240,7 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
-    const closing = new Error('LLM lane dispatcher is shutting down');
+    const closing = new Error('GPU lane dispatcher is shutting down');
     for (const reject of this.waiters) reject(closing);
     this.waiters.clear();
     if (this.heartbeat) clearInterval(this.heartbeat);
@@ -265,7 +265,7 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
     await this.ownConnection?.quit().catch(() => undefined);
   }
 
-  private toData(job: LlmLaneJob): LaneJobData {
+  private toData(job: GpuLaneJob): LaneJobData {
     return {
       lane: job.lane,
       endpoint: { url: job.endpoint.url, model: job.endpoint.model },
@@ -394,7 +394,7 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
       this.logger.warn(
         `Lane queue ${name}: global concurrency was ${current}, setting ` +
           `${wanted} — every worker process should share ` +
-          'LLM_LANE_GLOBAL_CONCURRENCY',
+          'GPU_LANE_GLOBAL_CONCURRENCY',
       );
     }
     await queue.setGlobalConcurrency(wanted);
@@ -540,10 +540,10 @@ export class LlmLaneDispatcher implements ILlmLaneDispatcher, OnModuleDestroy {
   }
 
   private producerKey(id = this.producerId): string {
-    return `${this.options.prefix}:llm-lane:producer:${id}`;
+    return `${this.options.prefix}:gpu-lane:producer:${id}`;
   }
 
-  private providerFor(lane: string, endpoint: LlmLaneEndpoint): ILLMProvider {
+  private providerFor(lane: string, endpoint: GpuLaneEndpoint): ILLMProvider {
     const key = endpointKey(lane, endpoint.url, endpoint.model);
     let provider = this.providers.get(key);
     if (!provider) {
@@ -613,8 +613,8 @@ function truncate(message: string, max = MAX_REASON_CHARS): string {
  * within 60 minutes.
  */
 export function safeOptions(
-  options: LlmLaneJob['options'],
-): LlmLaneJob['options'] {
+  options: GpuLaneJob['options'],
+): GpuLaneJob['options'] {
   if (!options) return undefined;
   const { temperature, topP, topK, think, seed } = options;
   return {

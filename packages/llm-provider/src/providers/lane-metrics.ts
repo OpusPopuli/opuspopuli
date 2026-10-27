@@ -12,7 +12,7 @@ import {
 } from "@opuspopuli/common";
 
 /** Which lane a provider belongs to, used as the `lane` label. */
-export type LlmLane = "analysis" | "ingestion";
+export type GpuLane = "analysis" | "ingestion";
 
 /**
  * Wrap a provider so every call reports its phase timings and token counts
@@ -40,7 +40,7 @@ export type LlmLane = "analysis" | "ingestion";
  */
 export function withLaneMetrics(
   provider: ILLMProvider,
-  lane: LlmLane,
+  lane: GpuLane,
   observer?: MetricsObserver,
 ): ILLMProvider {
   if (!observer) return provider;

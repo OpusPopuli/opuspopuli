@@ -386,6 +386,115 @@ next extracts.
   a later `htmlToReadableText` change (or another data type archiving the
   same bytes first) keeps the earlier derivation.
 
+### 3b. Network lane (2026-10-26)
+
+**Owner, 2026-10-26:** civics gets the network lane propositions got in
+#1411 ("If not we should"), and every lane is named for the resource it
+consumes — **network**, **CPU**, **GPU** — with each model a GPU sublane (the
+analysis and ingestion lanes keep their names). So the "fetch lane" becomes
+the **network lane** and the S7 "LLM lane" queue the **GPU lane**, in code,
+env, docs and the dashboard. Queues inside a lane keep work names
+(`civics-extract` in the GPU lane, `pdf-parse` in the CPU lane); pipeline
+STAGE labels (`fetch`, `llm`, …) are operations and stay, so no metric series
+breaks.
+
+**What is true today (read 2026-10-26):**
+
+- Civics has the GPU lane (S3) and no CPU work (HTML only). Its network work
+  is entirely serial: `crawlCivicsUrls` is a one-at-a-time BFS, the three
+  sources are crawled one after another, and `extractPages` fetches each
+  page's bytes one at a time before queuing its extraction.
+- California's three civics sources are on **three hosts**
+  (`assembly.ca.gov`, `senate.ca.gov`, `sos.ca.gov`), each at 1 req/s, burst
+  3 — unlike propositions, where 94 of 97 requests hit one host. Serial
+  fetching uses one host's budget at a time.
+- **Interior pages are fetched twice per run**: the crawl GETs every page
+  above `crawlDepth` for its links, then the page pass GETs the same URL
+  again for its bytes.
+- `crawlCivicsUrls` exists twice — the live copy on `RegionSyncService` (also
+  bill discovery's) and a dead one on `HttpFetcherService`, a service nothing
+  injects.
+
+**Design:**
+
+1. **One knob for the lane:** `networkLaneConcurrency()` in
+   `@opuspopuli/common`, env `NETWORK_LANE_CONCURRENCY` (default 4),
+   replacing `DETAIL_FETCH_CONCURRENCY` (#1411; dev only, set nowhere). The
+   detail crawler (propositions, representatives) and civics read the same
+   function. The per-host token bucket (S1) still sets each host's rate.
+2. **The crawl, one level at a time.** Each BFS level is fetched with up to
+   the lane's concurrency, and links are merged in the SAME parent order as
+   the serial loop, so the discovered list — which `crawlMaxPages` truncates
+   — is identical. The crawl stops fetching a level once the page cap is
+   met, as the serial loop did; it may fetch at most one window more.
+3. **Sources concurrently:** the three sources crawl at once; each keeps its
+   own page order, and pages are combined in source order as now.
+4. **Fetch once:** the crawl fetches BYTES (the page pass's own fetch) and
+   hands each page it fetched to the page pass, which skips its GET for those.
+   Text for link extraction is decoded from the bytes exactly as the page
+   pass decodes them. Bill discovery, the crawl's other caller, still gets URLs.
+5. **Pages concurrently:** `extractPages` prepares pages (fetch, K1 key,
+   archive) with the lane's concurrency and queues each extraction as soon as
+   its page is ready. Outcome counts are unchanged; log order follows
+   completion.
+6. **The dead copy goes:** `HttpFetcherService` is deleted (its one spec
+   tested the limiter it wraps, which `RegionSyncService`'s path covers).
+
+**Baseline attempt, 2026-10-26 (#1411 image): the live sites refused us.**
+`assembly.ca.gov` and `senate.ca.gov` answered **HTTP 403** to the crawler
+intermittently — the Assembly seed itself on the first run (14 pages
+discovered instead of 24, 2 failed, 11 s), 13 refusals on a second run a
+minute later, which then aborted after 5 consecutive failures. The same URLs
+answered 200 to plain curl (one 403'd a browser UA), so this is the sites' bot
+protection, not an IP block. Syncs against them were stopped; the
+before/after measurement waits until they answer reliably, and both runs are
+taken in one sitting. Fetching each page once (item 4) also means fewer
+requests to them.
+
+**Measured 2026-10-26 evening, once the sites answered again** — an unchanged
+civics sync on `main` (#1411) and then on this branch, ~2 min apart, same
+stack, same region config:
+
+| | before (`main`) | after |
+|---|---|---|
+| total | 25 s | **8 s** |
+| discover (crawl) | 6.6 s | 6.1 s |
+| page pass | 17.9 s | **2.2 s** |
+| civics fetches | 38 | **24** — the 14 interior pages the crawl fetched are reused |
+| pages per source | 11 / 3 / 10 | 11 / 3 / 10 |
+| outcomes | 24 `unchanged` | 24 `unchanged` |
+| HTTP 403 | 0 | 0 |
+
+The crawl barely moves — each source's levels are small, and each is paced by
+its own host's 1 req/s — so the gain is the page pass: three hosts in
+parallel, and a third fewer requests to sites that had just blocked us. Page
+ORDER is proven by the unit oracle (`civics-crawl.spec.ts`, against the serial
+BFS, with shared children, a failing page and out-of-scope links); on the
+stack the per-source counts and the 24 K1 matches agree.
+
+**Forced run, same evening (`resetWatermark`, this branch):** **1,654 s**
+(run 4 above: 1,642 s), **0/11/13/0**, 24 extractions through `civics-extract`
+and the renamed GPU lane (`gpu-lane-host.docker.internal-11434`, 24 lane
+waits), **197.6k in / 76.6k out — identical to run 4**. The run is GPU-bound,
+so the network lane's few seconds are all it can save here; what this run
+proves is that the concurrent page pass, fetch-once bytes and the GPU-lane
+rename change nothing about what is extracted.
+
+**Deploy note (renames):** `GPU_LANE_*` replaces `LLM_LANE_*`, and
+`NETWORK_LANE_CONCURRENCY` replaces `DETAIL_FETCH_CONCURRENCY`, with no
+fallback to the old names (set only in the UAT compose files, which move with
+them). The GPU lane's queues are renamed `gpu-lane-<host>-<port>`: drain the
+lane (no sync running) before deploying, or jobs waiting on an old
+`llm-lane-*` queue are left with no consumer.
+
+**Acceptance (UAT):** an unchanged civics run before and after on the same
+image config — identical page set and order, 24 `unchanged`, 0 LLM calls —
+and run time ~25 s → ~10 s (three hosts overlapping, fewer requests); fetch
+count (`pipeline_stage_duration_seconds_count{stage="fetch"}`) drops by the
+interior pages; a forced run makes the same 24 extractions with outcomes
+matching run 4 above. Propositions' unchanged run unaffected (one host), and
+representatives' enrichment unchanged.
+
 ### 4. Re-measure and gate
 
 - **Throughput:** a second sync on the step-1 image must skip every

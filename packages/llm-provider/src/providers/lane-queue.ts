@@ -7,7 +7,7 @@
  * wrapper: the `llm` stage a sync records is then the wait for the GPU plus
  * the inference, which is what the sync actually spent, and
  * `lane_wait_seconds` breaks out the queue's share. When no
- * dispatcher is bound (an API process, or `LLM_LANE_QUEUE_ENABLED` off) the
+ * dispatcher is bound (an API process, or `GPU_LANE_QUEUE_ENABLED` off) the
  * provider is returned untouched: interactive inference stays direct.
  */
 
@@ -15,17 +15,17 @@ import type {
   ChatMessage,
   GenerateOptions,
   ILLMProvider,
-  ILlmLaneDispatcher,
-  LlmLaneEndpoint,
+  IGpuLaneDispatcher,
+  GpuLaneEndpoint,
 } from "@opuspopuli/common";
-import type { LlmLane } from "./lane-metrics.js";
+import type { GpuLane } from "./lane-metrics.js";
 import { OllamaLLMProvider } from "./ollama.provider.js";
 
 export function withLaneQueue(
   provider: ILLMProvider,
-  dispatcher: ILlmLaneDispatcher | null | undefined,
-  lane: LlmLane,
-  endpoint: LlmLaneEndpoint,
+  dispatcher: IGpuLaneDispatcher | null | undefined,
+  lane: GpuLane,
+  endpoint: GpuLaneEndpoint,
 ): ILLMProvider {
   if (!dispatcher) return provider;
   dispatcher.register(lane, endpoint);
@@ -55,6 +55,6 @@ export function withLaneQueue(
  * GPU, one health signal, and a waiter fails fast instead of queueing behind
  * calls that cannot succeed.
  */
-export function createLaneProvider(endpoint: LlmLaneEndpoint): ILLMProvider {
+export function createLaneProvider(endpoint: GpuLaneEndpoint): ILLMProvider {
   return new OllamaLLMProvider({ ...endpoint });
 }

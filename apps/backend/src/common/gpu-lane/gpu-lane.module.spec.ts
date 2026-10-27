@@ -4,37 +4,37 @@ import { Test } from '@nestjs/testing';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import {
-  LLM_LANE_DISPATCHER,
+  GPU_LANE_DISPATCHER,
   LlmMetric,
   METRICS_OBSERVER,
   type ILLMProvider,
-  type ILlmLaneDispatcher,
+  type IGpuLaneDispatcher,
 } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
-import { LlmLaneModule, positiveInt } from './llm-lane.module';
+import { GpuLaneModule, positiveInt } from './gpu-lane.module';
 
 /**
  * S7 wiring (`docs/plans/S7-gpu-lane-queue.md`): which processes queue their
  * inference, and that LLMModule actually picks the dispatcher up.
  */
-describe('LlmLaneModule (S7)', () => {
-  const env = process.env.LLM_LANE_QUEUE_ENABLED;
+describe('GpuLaneModule (S7)', () => {
+  const env = process.env.GPU_LANE_QUEUE_ENABLED;
   afterEach(() => {
-    if (env === undefined) delete process.env.LLM_LANE_QUEUE_ENABLED;
-    else process.env.LLM_LANE_QUEUE_ENABLED = env;
+    if (env === undefined) delete process.env.GPU_LANE_QUEUE_ENABLED;
+    else process.env.GPU_LANE_QUEUE_ENABLED = env;
   });
 
   it('binds nothing unless explicitly enabled — inert by default', () => {
-    delete process.env.LLM_LANE_QUEUE_ENABLED;
-    expect(LlmLaneModule.forRoot().providers ?? []).toEqual([]);
+    delete process.env.GPU_LANE_QUEUE_ENABLED;
+    expect(GpuLaneModule.forRoot().providers ?? []).toEqual([]);
 
-    process.env.LLM_LANE_QUEUE_ENABLED = '1'; // only the literal "true"
-    expect(LlmLaneModule.forRoot().providers ?? []).toEqual([]);
+    process.env.GPU_LANE_QUEUE_ENABLED = '1'; // only the literal "true"
+    expect(GpuLaneModule.forRoot().providers ?? []).toEqual([]);
   });
 
   it('binds the dispatcher when enabled', () => {
-    process.env.LLM_LANE_QUEUE_ENABLED = 'true';
-    expect(LlmLaneModule.forRoot().exports).toEqual([LLM_LANE_DISPATCHER]);
+    process.env.GPU_LANE_QUEUE_ENABLED = 'true';
+    expect(GpuLaneModule.forRoot().exports).toEqual([GPU_LANE_DISPATCHER]);
   });
 
   it('parses its settings strictly', () => {
@@ -48,13 +48,13 @@ describe('LlmLaneModule (S7)', () => {
 
 describe('LLMModule + a globally bound dispatcher (S7)', () => {
   const lane = async (
-    dispatcher?: ILlmLaneDispatcher,
+    dispatcher?: IGpuLaneDispatcher,
     token = 'LLM_ANALYSIS_PROVIDER',
     observer?: { observe: jest.Mock; increment: jest.Mock },
   ) => {
     const bound = [
       ...(dispatcher
-        ? [{ provide: LLM_LANE_DISPATCHER, useValue: dispatcher }]
+        ? [{ provide: GPU_LANE_DISPATCHER, useValue: dispatcher }]
         : []),
       ...(observer ? [{ provide: METRICS_OBSERVER, useValue: observer }] : []),
     ];
@@ -80,7 +80,7 @@ describe('LLMModule + a globally bound dispatcher (S7)', () => {
 
   it("routes a lane's generate through the dispatcher a worker binds", async () => {
     // Resolved inside LLMModule's own scope: only a GLOBAL binding is visible
-    // there, which is why LlmLaneModule is @Global.
+    // there, which is why GpuLaneModule is @Global.
     const dispatcher = fakeDispatcher();
     const provider = await lane(dispatcher);
 
@@ -145,7 +145,7 @@ describe('LLMModule + a globally bound dispatcher (S7)', () => {
 describe('who binds the lane queue (S7)', () => {
   /**
    * The process decides batch vs interactive: an API process that imported
-   * LlmLaneModule would put citizens' RAG questions behind the backlog —
+   * GpuLaneModule would put citizens' RAG questions behind the backlog —
    * exactly what S7 exists to stop. Pinned by reading source.
    */
   const SRC = join(__dirname, '..', '..');
@@ -158,7 +158,7 @@ describe('who binds the lane queue (S7)', () => {
 
   it('is imported by the three worker modules and nothing else', () => {
     const importers = files(SRC)
-      .filter((f) => readFileSync(f, 'utf8').includes('LlmLaneModule.forRoot('))
+      .filter((f) => readFileSync(f, 'utf8').includes('GpuLaneModule.forRoot('))
       .map((f) => relative(SRC, f).split(sep).join('/'))
       .sort();
 

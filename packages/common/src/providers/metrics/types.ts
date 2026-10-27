@@ -200,6 +200,19 @@ export const PdfParseMetric = {
   Total: "pdf_parse_total",
 } as const;
 
+/**
+ * The DB lane (`docs/plans/db-lane.md`): the database as a resource. Its bound
+ * is the Prisma pool, so these measure the pool and the queries through it.
+ */
+export const DbLaneMetric = {
+  /**
+   * Counter, seconds. Labels: `table`, `statement`. Each SQL statement's
+   * engine-measured duration (Prisma's query event) — `rate()` is seconds of
+   * DB per second, by table. One series per (table, statement) pair in use.
+   */
+  BusySecondsTotal: "db_lane_busy_seconds_total",
+} as const;
+
 /** `source` label values for {@link PdfParseMetric.Total}. */
 export const PdfParseSource = {
   Reused: "reused",

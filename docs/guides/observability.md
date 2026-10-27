@@ -78,7 +78,16 @@ Circuit breaker health is also available via `promptClient.getCircuitBreakerHeal
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `db_query_duration_seconds` | Histogram | service, operation, table | Query latency |
+| `db_lane_wait_seconds` | Histogram | — | Time a query waited for a pool connection (the DB lane's queue) |
+| `db_lane_query_seconds` | Histogram | — | Time a query spent in the database |
+| `db_lane_total_seconds` | Histogram | — | A query's whole duration, as the client saw it |
+| `db_lane_busy_seconds_total` | Counter | table, statement | SQL seconds by table (1 ms resolution — ranks tables; the histograms are the totals) |
+| `db_lane_pool_size` | Gauge | service, estimated | The Prisma pool's bound |
+
+These are recorded by `DbService` itself (Prisma's own histograms, and its
+per-statement query event) — there is nothing to call. See
+`docs/plans/db-lane.md`. They replace `db_query_duration_seconds`, which was
+declared and never written.
 
 #### Node.js Runtime Metrics
 
@@ -116,13 +125,7 @@ export class MyService {
 
     // ... do work ...
 
-    // Record DB query duration
-    this.metrics.recordDbQuery(
-      'my-service',
-      'select',
-      'users',
-      (Date.now() - start) / 1000
-    );
+    // Database time needs no call: DbService records the DB lane itself.
   }
 }
 ```

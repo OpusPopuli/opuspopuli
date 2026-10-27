@@ -230,7 +230,7 @@ query {
 | `BULLMQ_QUEUE_REGION_SYNC_LOCK_DURATION_MS` | `300000` | BullMQ lock duration for `region-sync` jobs. Heartbeat is half this. Longer values tolerate slower per-bill iterations at the cost of slower stalled-job detection. |
 | `REGION_SYNC_CRON_ENABLED` | enabled | Set to `false` to stop the daily 2 AM repeatable job |
 | `REGION_SYNC_RUN_ON_STARTUP` | disabled | Set to `true` to enqueue a full sync on every worker boot |
-| `BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY` | `1` | Syncs run at once per worker — of different types only (S2). UAT runs 2; prod stays 1 until the LLM lane queue is on |
+| `BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY` | `1` | Syncs run at once per worker — of different types only (S2). UAT runs 2; prod stays 1 until the GPU lane queue is on |
 | `REGION_SYNC_LOCK_RETRY_MS` | `60000` | How long a job waits before retrying when another sync of its type is running |
 | `WORKER_HOST` | hostname | Recorded on each `pipeline_jobs` row; when set, scopes the startup sweep to this worker. Stable and unique per worker process |
 | `PIPELINE_JOB_STALE_AGE_MS` | `600000` | Age threshold for the startup sweep of stuck `RUNNING` `pipeline_jobs` rows. Set well above the BullMQ lock duration. Malformed or non-positive values fall back to the default with a warn log. See [Recovering stuck `RUNNING` rows](#recovering-stuck-running-rows-on-startup-730). |

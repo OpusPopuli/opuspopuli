@@ -57,11 +57,11 @@ describe("QueueService", () => {
         .mockResolvedValueOnce(["7", ["test:region-sync:meta"]])
         .mockResolvedValueOnce([
           "0",
-          ["test:pdf-parse:meta", "test:llm-lane.gpu-11434:meta"],
+          ["test:pdf-parse:meta", "test:gpu-lane.gpu-11434:meta"],
         ]);
 
       await expect(service.listQueueNames()).resolves.toEqual([
-        "llm-lane.gpu-11434",
+        "gpu-lane.gpu-11434",
         "pdf-parse",
         "region-sync",
       ]);

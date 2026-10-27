@@ -1,12 +1,12 @@
 import { DynamicModule, Global, Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LLM_LANE_DISPATCHER } from '@opuspopuli/common';
+import { GPU_LANE_DISPATCHER } from '@opuspopuli/common';
 import { QueueModule, resolveQueuePrefix } from '@opuspopuli/queue-provider';
 import {
-  LLM_LANE_OPTIONS,
-  LlmLaneDispatcher,
-  type LlmLaneOptions,
-} from './llm-lane.dispatcher';
+  GPU_LANE_OPTIONS,
+  GpuLaneDispatcher,
+  type GpuLaneOptions,
+} from './gpu-lane.dispatcher';
 
 const DEFAULT_WAIT_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
@@ -21,24 +21,24 @@ const DEFAULT_WAIT_TIMEOUT_MS = 6 * 60 * 60 * 1000;
  * Global, so `LLMModule` resolves the dispatcher from inside its own scope
  * however deeply it is imported — the same reason the metrics observer is.
  *
- * **Inert unless `LLM_LANE_QUEUE_ENABLED=true`**, as Phase A's "merged to
+ * **Inert unless `GPU_LANE_QUEUE_ENABLED=true`**, as Phase A's "merged to
  * main, inert" asks: off, nothing is bound and every call is direct.
  */
 @Global()
 @Module({})
-export class LlmLaneModule {
-  private static readonly logger = new Logger(LlmLaneModule.name);
+export class GpuLaneModule {
+  private static readonly logger = new Logger(GpuLaneModule.name);
 
   static forRoot(): DynamicModule {
-    if (process.env.LLM_LANE_QUEUE_ENABLED !== 'true') {
+    if (process.env.GPU_LANE_QUEUE_ENABLED !== 'true') {
       this.logger.log(
-        'LLM lane queue off (LLM_LANE_QUEUE_ENABLED is not "true"): batch ' +
+        'GPU lane queue off (GPU_LANE_QUEUE_ENABLED is not "true"): batch ' +
           'inference calls Ollama directly',
       );
-      return { module: LlmLaneModule };
+      return { module: GpuLaneModule };
     }
     return {
-      module: LlmLaneModule,
+      module: GpuLaneModule,
       imports: [
         QueueModule.forRootAsync({
           inject: [ConfigService],
@@ -50,24 +50,24 @@ export class LlmLaneModule {
       ],
       providers: [
         {
-          provide: LLM_LANE_OPTIONS,
+          provide: GPU_LANE_OPTIONS,
           inject: [ConfigService],
-          useFactory: (config: ConfigService): LlmLaneOptions => ({
+          useFactory: (config: ConfigService): GpuLaneOptions => ({
             prefix: resolveQueuePrefix(config.get('BULLMQ_PREFIX')),
             globalConcurrency: positiveInt(
-              config.get('LLM_LANE_GLOBAL_CONCURRENCY'),
+              config.get('GPU_LANE_GLOBAL_CONCURRENCY'),
               1,
             ),
             waitTimeoutMs: positiveInt(
-              config.get('LLM_LANE_WAIT_TIMEOUT_MS'),
+              config.get('GPU_LANE_WAIT_TIMEOUT_MS'),
               DEFAULT_WAIT_TIMEOUT_MS,
             ),
           }),
         },
-        LlmLaneDispatcher,
-        { provide: LLM_LANE_DISPATCHER, useExisting: LlmLaneDispatcher },
+        GpuLaneDispatcher,
+        { provide: GPU_LANE_DISPATCHER, useExisting: GpuLaneDispatcher },
       ],
-      exports: [LLM_LANE_DISPATCHER],
+      exports: [GPU_LANE_DISPATCHER],
     };
   }
 }

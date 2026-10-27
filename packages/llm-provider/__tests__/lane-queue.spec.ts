@@ -3,8 +3,8 @@ import {
   laneQueueName,
   type GenerateResult,
   type ILLMProvider,
-  type ILlmLaneDispatcher,
-  type LlmLaneJob,
+  type IGpuLaneDispatcher,
+  type GpuLaneJob,
 } from "@opuspopuli/common";
 import { withLaneQueue } from "../src/providers/lane-queue";
 
@@ -43,7 +43,7 @@ describe("withLaneQueue (S7)", () => {
 
   it("sends generate to the dispatcher with everything a consumer needs", async () => {
     const result: GenerateResult = { text: "queued" };
-    const dispatcher: ILlmLaneDispatcher = {
+    const dispatcher: IGpuLaneDispatcher = {
       register: jest.fn(),
       generate: jest.fn().mockResolvedValue(result),
     };
@@ -58,7 +58,7 @@ describe("withLaneQueue (S7)", () => {
       endpoint,
       prompt: "PROMPT",
       options: { maxTokens: 50, think: false },
-    } satisfies LlmLaneJob);
+    } satisfies GpuLaneJob);
     // Without this, this process's own consumer would refuse the job.
     expect(dispatcher.register).toHaveBeenCalledWith("ingestion", endpoint);
     // Not called directly as well — that would be two inferences.
@@ -79,14 +79,14 @@ describe("withLaneQueue (S7)", () => {
 describe("laneQueueName (S7)", () => {
   it("names one queue per endpoint, shared by lanes on one host", () => {
     expect(laneQueueName("http://host.docker.internal:11434")).toBe(
-      "llm-lane-host.docker.internal-11434",
+      "gpu-lane-host.docker.internal-11434",
     );
     expect(laneQueueName("http://HOST.docker.internal.:11434/")).toBe(
-      "llm-lane-host.docker.internal-11434",
+      "gpu-lane-host.docker.internal-11434",
     );
     expect(laneQueueName("https://gpu.example")).toBe(
-      "llm-lane-gpu.example-443",
+      "gpu-lane-gpu.example-443",
     );
-    expect(laneQueueName("not a url")).toBe("llm-lane-unknown-");
+    expect(laneQueueName("not a url")).toBe("gpu-lane-unknown-");
   });
 });

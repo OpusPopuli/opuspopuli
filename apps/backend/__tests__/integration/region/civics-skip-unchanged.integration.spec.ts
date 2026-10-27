@@ -151,7 +151,10 @@ describe.each(['inline', 'queued'] as const)(
           getDataSources: () => [source()],
         } as never,
         {
-          crawlCivicsUrls: async () => [CONTENT_PAGE, EMPTY_PAGE],
+          crawlCivicsUrls: async () => ({
+            urls: [CONTENT_PAGE, EMPTY_PAGE],
+            fetched: new Map(),
+          }),
           fetchUrlBytes: async (url: string) => ({
             body: Buffer.from(texts[url], 'utf8'),
             contentType: 'text/html',
@@ -468,7 +471,10 @@ describe('civics: queued extraction (S3)', () => {
         ],
       } as never,
       {
-        crawlCivicsUrls: async () => [CONTENT_PAGE],
+        crawlCivicsUrls: async () => ({
+          urls: [CONTENT_PAGE],
+          fetched: new Map(),
+        }),
         fetchUrlBytes: async () => ({
           body: Buffer.from('A bill is introduced.', 'utf8'),
           contentType: 'text/html',

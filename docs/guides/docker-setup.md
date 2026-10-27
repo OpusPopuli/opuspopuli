@@ -126,7 +126,7 @@ Available metrics:
 | `graphql_operations_total` | Counter | GraphQL operations by type |
 | `graphql_operation_duration_seconds` | Histogram | GraphQL latency |
 | `circuit_breaker_state` | Gauge | Circuit breaker status |
-| `db_query_duration_seconds` | Histogram | Database query latency |
+| `db_lane_query_seconds` | Histogram | Database query latency (the DB lane — `docs/plans/db-lane.md`) |
 
 Default Node.js metrics (heap, GC, event loop) are also included.
 

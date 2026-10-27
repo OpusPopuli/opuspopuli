@@ -40,7 +40,8 @@ export {
 } from "@opuspopuli/common";
 
 // Database Service and Module
-export { DbService } from "./db.service.js";
+export { DbService, statementLabels, toLaneHistogram } from "./db.service.js";
+export type { DbLaneHistogram, DbLaneHistograms } from "./db.service.js";
 export { RelationalDbModule } from "./db.module.js";
 
 // pgvector column-width introspection — the third leg of the embedding-width

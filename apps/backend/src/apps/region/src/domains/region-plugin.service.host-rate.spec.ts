@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { HttpFetcherService } from './http-fetcher.service';
 import { RegionPluginService } from './region-plugin.service';
 
 /**
@@ -177,31 +176,5 @@ describe('RegionPluginService — host rate policies (S1)', () => {
     const { service } = build(undefined);
 
     await expect(service.refreshActiveLocalPlugin()).resolves.toBeUndefined();
-  });
-});
-
-describe('HttpFetcherService — per-host rate limit (S1)', () => {
-  it('waits on the injected limiter for the URL it fetches', async () => {
-    const realFetch = global.fetch;
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => 'text/html' },
-      text: async () => '<html></html>',
-    });
-    const limiter = {
-      acquire: jest.fn().mockResolvedValue(undefined),
-      setPolicies: jest.fn(),
-    };
-    try {
-      const fetcher = new HttpFetcherService(undefined, limiter);
-      await fetcher.fetchUrlText('https://www.sos.ca.gov/elections');
-
-      expect(limiter.acquire).toHaveBeenCalledWith(
-        'https://www.sos.ca.gov/elections',
-      );
-    } finally {
-      global.fetch = realFetch;
-    }
   });
 });

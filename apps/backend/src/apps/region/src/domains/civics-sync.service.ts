@@ -8,6 +8,8 @@ import {
   extractJsonObjectSlice,
   htmlToReadableText,
   laneJobId,
+  mapWithConcurrency,
+  networkLaneConcurrency,
   stableHash,
   type DataSourceConfig,
   type ILLMProvider,
@@ -33,6 +35,7 @@ import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
 import { groundMeasureTypes } from './civics-grounding';
 import { LlmGeneratorBase } from './llm-generator.base';
 import { PipelineJobService } from './pipeline-job.service';
+import type { CivicsCrawl } from './civics-crawl';
 import { decodeFetchedText, type FetchedBytes } from './resilient-fetch';
 import { SourceVersionService } from './source-version.service';
 import { civicsSyncTracker } from './sync-phase-logger';
@@ -324,10 +327,11 @@ export interface CivicsCrawlHelpers {
    * before its extraction is queued, and the worker reloads it from there.
    */
   fetchUrlBytes(url: string): Promise<FetchedBytes>;
+  /** The pages in scope, and the bytes of those the crawl fetched for links. */
   crawlCivicsUrls(
     ds: DataSourceConfig,
     registeredHosts: Set<string>,
-  ): Promise<string[]>;
+  ): Promise<CivicsCrawl>;
 }
 
 /**
@@ -470,31 +474,56 @@ export class CivicsSyncService extends LlmGeneratorBase {
       region: regionId,
     });
     const allUrls: Array<{ url: string; ds: DataSourceConfig }> = [];
-    for (const ds of dataSources) {
-      // Once per source, before any inference is spent: say so if this source's
-      // budget and timeout contradict each other (#1329).
-      warnIfBudgetExceedsTimeout(
-        this.logger,
-        ds.url,
-        ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS,
-        ds.llmRequestTimeoutMs,
-      );
-      const urls = await helpers.crawlCivicsUrls(ds, registeredHosts);
+    // The network lane: sources crawl at once — each is usually its own host,
+    // with its own rate budget — and are combined in source order as before.
+    // Each crawl keeps up to `networkLaneConcurrency()` fetches in flight of
+    // its own; the per-host token bucket, not this, sets each host's rate.
+    const crawls = await mapWithConcurrency(
+      dataSources,
+      networkLaneConcurrency(),
+      (ds) => {
+        // Once per source, before any inference is spent: say so if this
+        // source's budget and timeout contradict each other (#1329).
+        warnIfBudgetExceedsTimeout(
+          this.logger,
+          ds.url,
+          ds.llmMaxTokens ?? CIVICS_MAX_OUTPUT_TOKENS,
+          ds.llmRequestTimeoutMs,
+        );
+        return helpers.crawlCivicsUrls(ds, registeredHosts);
+      },
+    );
+    const prefetched = new Map<string, FetchedBytes>();
+    for (const [i, crawl] of crawls.entries()) {
+      const ds = dataSources[i];
       discoverTracker.item({
         name: ds.url,
         externalId: null,
-        outcomeLabel: `${urls.length} page(s) at depth ${ds.crawlDepth ?? 0}`,
+        outcomeLabel: `${crawl.urls.length} page(s) at depth ${ds.crawlDepth ?? 0}`,
         outcome: 'updated',
       });
-      for (const url of urls) allUrls.push({ url, ds });
+      for (const url of crawl.urls) allUrls.push({ url, ds });
+      for (const [url, bytes] of crawl.fetched) prefetched.set(url, bytes);
     }
     discoverTracker.complete();
 
     // ─── Phase 2/2 — extract_and_upsert ────────────────────────────
+    // A page the crawl already fetched for its links is not fetched again.
+    // Taken, not read, so each set of bytes is held only until its page is
+    // prepared.
+    const pageHelpers: CivicsCrawlHelpers = {
+      ...helpers,
+      fetchUrlBytes: (url) => {
+        const bytes = prefetched.get(url);
+        if (!bytes) return helpers.fetchUrlBytes(url);
+        prefetched.delete(url);
+        return Promise.resolve(bytes);
+      },
+    };
     const end = await this.extractPages(
       regionId,
       allUrls,
-      helpers,
+      pageHelpers,
       options,
       counts,
     );
@@ -807,26 +836,43 @@ export class CivicsSyncService extends LlmGeneratorBase {
     const isCancelled = () => this.isCancelled(options.pipelineJobId);
     const idleTimeoutMs = laneIdleTimeoutMs();
 
-    const batch = await this.openExtractBatch();
+    const { batch, onQueue } = await this.openExtractBatch();
     try {
-      for (const { url, ds } of pages) {
-        if (await isCancelled()) break;
+      // The network lane: pages are fetched and prepared several at a time,
+      // and each extraction is queued as soon as its page is ready. Once
+      // cancelled, no further page starts. Without the queue an extraction
+      // runs INLINE, inside this loop — several at once would be several LLM
+      // calls outside any GPU bound — so then it stays one page at a time.
+      let cancelled = false;
+      const pageConcurrency = onQueue ? networkLaneConcurrency() : 1;
+      await mapWithConcurrency(pages, pageConcurrency, async (page) => {
+        if (cancelled || (await isCancelled())) {
+          cancelled = true;
+          return;
+        }
         const prepared = await this.preparePage(
           regionId,
-          url,
-          ds,
+          page.url,
+          page.ds,
           helpers,
           options.reextract,
         );
         // Counted now: a page settled without a job (unchanged, or failed
-        // before one was queued); otherwise its job's outcome counts it.
-        const settledNow =
-          'outcome' in prepared
-            ? prepared.outcome
-            : await this.queuePage(batch, queued, url, prepared);
-        if (settledNow) record(url, settledNow);
+        // before one was queued, or its job failed to queue); otherwise its
+        // job's outcome counts it.
+        if ('outcome' in prepared) {
+          record(page.url, prepared.outcome);
+        } else {
+          const failed = await this.queuePage(
+            batch,
+            queued,
+            page.url,
+            prepared,
+          );
+          for (const url of failed) record(url, 'failed');
+        }
         batch.take().forEach(onOutcome);
-      }
+      });
       const end = await settleChildJobs(batch, {
         onOutcome,
         isCancelled,
@@ -843,13 +889,21 @@ export class CivicsSyncService extends LlmGeneratorBase {
   }
 
   /** The extract queue when one is bound and on; otherwise this process. */
-  private openExtractBatch(): Promise<
-    ChildJobBatch<CivicsExtractJobData, string>
-  > {
+  private async openExtractBatch(): Promise<{
+    batch: ChildJobBatch<CivicsExtractJobData, string>;
+    /** False: extractions run inline, inside the page loop. */
+    onQueue: boolean;
+  }> {
     if (this.childQueues?.enabled(CIVICS_EXTRACT_QUEUE)) {
-      return this.childQueues.open(CIVICS_EXTRACT_QUEUE);
+      return {
+        batch: await this.childQueues.open(CIVICS_EXTRACT_QUEUE),
+        onQueue: true,
+      };
     }
-    return Promise.resolve(inlineBatch((job) => this.extractPage(job)));
+    return {
+      batch: inlineBatch((job) => this.extractPage(job)),
+      onQueue: false,
+    };
   }
 
   /**
@@ -861,22 +915,25 @@ export class CivicsSyncService extends LlmGeneratorBase {
     queued: Map<string, string[]>,
     url: string,
     page: QueuedPage,
-  ): Promise<CivicsPageOutcome | undefined> {
+  ): Promise<string[]> {
     const sharing = queued.get(page.jobId);
     if (sharing) {
       sharing.push(url);
-      return undefined;
+      return [];
     }
     queued.set(page.jobId, [url]);
     try {
       await batch.add(page.data, page.jobId);
-      return undefined;
+      return [];
     } catch (error) {
+      // Every page sharing the job failed with it — including one that joined
+      // while this add was in flight (pages are prepared concurrently).
+      const failed = queued.get(page.jobId) ?? [url];
       queued.delete(page.jobId);
       this.logger.error(
-        `Civics extraction could not be queued for ${url}: ${(error as Error).message}`,
+        `Civics extraction could not be queued for ${failed.join(', ')}: ${(error as Error).message}`,
       );
-      return 'failed';
+      return failed;
     }
   }
 

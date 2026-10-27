@@ -29,7 +29,7 @@ import { CostBudgetService } from 'src/apps/knowledge/src/domains/personalized-f
 import { LlmRerankProcessor } from './llm-rerank.processor';
 import { LlmRerankScheduler } from './llm-rerank.scheduler';
 import { RerankCandidatesService } from './rerank-candidates.service';
-import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
+import { GpuLaneModule } from 'src/common/gpu-lane/gpu-lane.module';
 
 /**
  * Worker process for the `llm-rerank` BullMQ queue (#745).
@@ -83,7 +83,7 @@ import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
     MetricsModule.forRoot({ serviceName: 'llm-rerank-worker' }),
     // Batch inference waits its turn for the GPU on the endpoint's lane queue
     // (S7). Worker modules only: an API process must not bind it.
-    LlmLaneModule.forRoot(),
+    GpuLaneModule.forRoot(),
     HealthModule.forRoot({
       serviceName: 'llm-rerank-worker',
       hasDatabase: true,

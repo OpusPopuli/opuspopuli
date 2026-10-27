@@ -112,7 +112,7 @@ describe("DetailCrawlerService", () => {
       expect(mockLlm.generate).toHaveBeenCalledTimes(1); // AI called once only
     });
 
-    describe("the fetch lane (propositions Phase B)", () => {
+    describe("the network lane (propositions Phase B)", () => {
       const items = (n: number) =>
         Array.from({ length: n }, (_, i) => ({
           externalId: `prop-${i}`,
@@ -141,11 +141,11 @@ describe("DetailCrawlerService", () => {
       };
 
       afterEach(() => {
-        delete process.env.DETAIL_FETCH_CONCURRENCY;
+        delete process.env.NETWORK_LANE_CONCURRENCY;
       });
 
       it("derives the plan once, from the first page alone, then fetches the rest concurrently", async () => {
-        process.env.DETAIL_FETCH_CONCURRENCY = "3";
+        process.env.NETWORK_LANE_CONCURRENCY = "3";
         const seen = timedFetches(20);
 
         const result = await crawler.enrichItems(
@@ -163,7 +163,7 @@ describe("DetailCrawlerService", () => {
       });
 
       it("keeps going serially until a page yields a plan, when the first fetch fails", async () => {
-        process.env.DETAIL_FETCH_CONCURRENCY = "4";
+        process.env.NETWORK_LANE_CONCURRENCY = "4";
         timedFetches(1);
         mockExtraction.fetchWithRetry.mockRejectedValueOnce(new Error("503"));
 
@@ -179,7 +179,7 @@ describe("DetailCrawlerService", () => {
       });
 
       it("adds no fixed pause on top of the rate limiter", async () => {
-        process.env.DETAIL_FETCH_CONCURRENCY = "1";
+        process.env.NETWORK_LANE_CONCURRENCY = "1";
         timedFetches(1);
         const started = Date.now();
 

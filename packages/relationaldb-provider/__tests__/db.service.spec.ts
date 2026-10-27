@@ -8,6 +8,7 @@ const mockDisconnect = jest.fn().mockResolvedValue(undefined);
 const mockQueryRaw = jest.fn();
 const mockExecuteRawUnsafe = jest.fn();
 const mockMetricsJson = jest.fn();
+const mockOn = jest.fn();
 
 jest.mock("@prisma/client", () => {
   return {
@@ -18,6 +19,7 @@ jest.mock("@prisma/client", () => {
         $queryRaw: mockQueryRaw,
         $executeRawUnsafe: mockExecuteRawUnsafe,
         $metrics: { json: mockMetricsJson },
+        $on: mockOn,
       });
       return this;
     }),
@@ -32,7 +34,7 @@ jest.mock("@opuspopuli/common", () => ({
 }));
 
 // Import DbService after mocks are set up
-import { DbService } from "../src/db.service";
+import { DbService, statementLabels, toLaneHistogram } from "../src/db.service";
 
 describe("DbService", () => {
   let service: DbService;
@@ -247,6 +249,150 @@ describe("DbService", () => {
 
       // Should not throw, just log warning
       await expect(service.cleanDatabase()).resolves.not.toThrow();
+    });
+  });
+
+  describe("the DB lane (docs/plans/db-lane.md)", () => {
+    const prismaHistogram = (sumMs: number) => ({
+      buckets: [
+        [0, 0],
+        [1, 2],
+        [5, 1],
+        [10, 0],
+      ],
+      sum: sumMs,
+      count: 3,
+    });
+
+    it("turns Prisma's ms, per-bucket histogram into seconds, cumulative", () => {
+      expect(toLaneHistogram(prismaHistogram(3.5) as never)).toEqual({
+        buckets: [
+          [0, 0],
+          [0.001, 2],
+          [0.005, 3],
+          [0.01, 3],
+        ],
+        sum: 0.0035,
+        count: 3,
+      });
+    });
+
+    it("reads wait, query and total from $metrics", async () => {
+      mockMetricsJson.mockResolvedValue({
+        histograms: [
+          {
+            key: "prisma_client_queries_wait_histogram_ms",
+            value: prismaHistogram(1),
+          },
+          {
+            key: "prisma_datasource_queries_duration_histogram_ms",
+            value: prismaHistogram(2),
+          },
+          {
+            key: "prisma_client_queries_duration_histogram_ms",
+            value: prismaHistogram(3),
+          },
+        ],
+      });
+      const lane = await service.getLaneHistograms();
+      expect([lane?.wait.sum, lane?.query.sum, lane?.total.sum]).toEqual([
+        0.001, 0.002, 0.003,
+      ]);
+    });
+
+    it("is null when a histogram is missing or metrics fail", async () => {
+      mockMetricsJson.mockResolvedValue({ histograms: [] });
+      await expect(service.getLaneHistograms()).resolves.toBeNull();
+      mockMetricsJson.mockRejectedValue(new Error("no metrics"));
+      await expect(service.getLaneHistograms()).resolves.toBeNull();
+    });
+
+    it.each([
+      [
+        'SELECT "public"."propositions"."id" FROM "public"."propositions" WHERE 1',
+        "propositions",
+        "SELECT",
+      ],
+      [
+        'INSERT INTO "public"."source_versions" ("id") VALUES ($1)',
+        "source_versions",
+        "INSERT",
+      ],
+      ['UPDATE "public"."propositions" SET "a" = $1', "propositions", "UPDATE"],
+      ['DELETE FROM "public"."claims" WHERE "id" = $1', "claims", "DELETE"],
+      ["BEGIN", "none", "BEGIN"],
+      ["WITH x AS (SELECT 1) SELECT * FROM x", "none", "OTHER"],
+    ])("labels %p as table %p, statement %p", (sql, table, statement) => {
+      expect(statementLabels(sql)).toEqual({ table, statement });
+    });
+
+    it("counts each statement's engine time once, by table", () => {
+      const increment = jest.fn();
+      new DbService({ increment, observe: jest.fn() });
+      const [event, onQuery] = mockOn.mock.calls.at(-1);
+      expect(event).toBe("query");
+
+      // A batched transaction emits one event per statement, each with its
+      // own duration — not the batch's.
+      onQuery({
+        query: 'INSERT INTO "public"."propositions" ("id") VALUES ($1)',
+        duration: 2,
+      });
+      onQuery({
+        query: 'INSERT INTO "public"."propositions" ("id") VALUES ($1)',
+        duration: 3,
+      });
+
+      expect(increment.mock.calls).toEqual([
+        [
+          "db_lane_busy_seconds_total",
+          0.002,
+          { table: "propositions", statement: "INSERT" },
+        ],
+        [
+          "db_lane_busy_seconds_total",
+          0.003,
+          { table: "propositions", statement: "INSERT" },
+        ],
+      ]);
+    });
+
+    it("never lets a metric failure surface", () => {
+      new DbService({
+        increment: () => {
+          throw new Error("registry gone");
+        },
+        observe: jest.fn(),
+      });
+      const [, onQuery] = mockOn.mock.calls.at(-1);
+      expect(() => onQuery({ query: "SELECT 1", duration: 1 })).not.toThrow();
+    });
+
+    it("listens to nothing without an observer (the eval harness's new DbService())", () => {
+      mockOn.mockClear();
+      new DbService();
+      expect(mockOn).not.toHaveBeenCalled();
+    });
+
+    it("reports the pool size it is bounded by, and when it is a guess", () => {
+      process.env.PRISMA_CONNECTION_LIMIT = "7";
+      expect(DbService.poolSize()).toEqual({ size: 7, estimated: false });
+      delete process.env.PRISMA_CONNECTION_LIMIT;
+
+      process.env.DATABASE_URL =
+        "postgresql://u:p@db:5432/x?connection_limit=9";
+      expect(DbService.poolSize()).toEqual({ size: 9, estimated: false });
+
+      process.env.DATABASE_URL = "postgresql://u:p@db:5432/x";
+      expect(DbService.poolSize()).toMatchObject({ estimated: true });
+    });
+
+    it("listens to no query event when DB_LANE_STATEMENT_METRICS=false", () => {
+      process.env.DB_LANE_STATEMENT_METRICS = "false";
+      mockOn.mockClear();
+      new DbService({ increment: jest.fn(), observe: jest.fn() });
+      expect(mockOn).not.toHaveBeenCalled();
+      delete process.env.DB_LANE_STATEMENT_METRICS;
     });
   });
 });

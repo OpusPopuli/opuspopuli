@@ -12,7 +12,6 @@ describe('MetricsService', () => {
   let mockDocumentsEmbedded: jest.Mocked<Gauge<string>>;
   let mockDocumentsTotal: jest.Mocked<Gauge<string>>;
   let mockCircuitBreakerFailures: jest.Mocked<Counter<string>>;
-  let mockDbQueryDuration: jest.Mocked<Histogram<string>>;
   let mockSubgraphRequestDuration: jest.Mocked<Histogram<string>>;
   let mockDbPoolOpen: jest.Mocked<Gauge<string>>;
   let mockDbPoolIdle: jest.Mocked<Gauge<string>>;
@@ -55,10 +54,6 @@ describe('MetricsService', () => {
     mockCircuitBreakerFailures = {
       inc: jest.fn(),
     } as unknown as jest.Mocked<Counter<string>>;
-
-    mockDbQueryDuration = {
-      observe: jest.fn(),
-    } as unknown as jest.Mocked<Histogram<string>>;
 
     mockSubgraphRequestDuration = {
       observe: jest.fn(),
@@ -125,7 +120,6 @@ describe('MetricsService', () => {
       mockDocumentsTotal,
       mockCircuitBreakerState,
       mockCircuitBreakerFailures,
-      mockDbQueryDuration,
       mockSubgraphRequestDuration,
       mockDbPoolOpen,
       mockDbPoolIdle,
@@ -320,17 +314,6 @@ describe('MetricsService', () => {
     });
   });
 
-  describe('recordDbQuery', () => {
-    it('should record database query duration', () => {
-      service.recordDbQuery('users-service', 'select', 'users', 0.005);
-
-      expect(mockDbQueryDuration.observe).toHaveBeenCalledWith(
-        { service: 'users-service', operation: 'select', table: 'users' },
-        0.005,
-      );
-    });
-  });
-
   describe('recordSubgraphRequest', () => {
     it('should record subgraph request duration', () => {
       service.recordSubgraphRequest('users', 0.025);
@@ -376,7 +359,6 @@ describe('MetricsService', () => {
         mockDocumentsTotal,
         mockCircuitBreakerState,
         mockCircuitBreakerFailures,
-        mockDbQueryDuration,
         mockSubgraphRequestDuration,
         mockDbPoolOpen,
         mockDbPoolIdle,
@@ -437,7 +419,6 @@ describe('MetricsService', () => {
         mockDocumentsTotal,
         mockCircuitBreakerState,
         mockCircuitBreakerFailures,
-        mockDbQueryDuration,
         mockSubgraphRequestDuration,
         mockDbPoolOpen,
         mockDbPoolIdle,
@@ -488,7 +469,6 @@ describe('MetricsService', () => {
         mockDocumentsTotal,
         mockCircuitBreakerState,
         mockCircuitBreakerFailures,
-        mockDbQueryDuration,
         mockSubgraphRequestDuration,
         mockDbPoolOpen,
         mockDbPoolIdle,
