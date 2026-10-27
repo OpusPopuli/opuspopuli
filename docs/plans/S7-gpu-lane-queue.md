@@ -1,5 +1,11 @@
 # S7 — one lane queue per Ollama endpoint: bounded, batch only
 
+*Renamed 2026-10-26: this is the **GPU lane** (lanes are named for the resource
+they consume). Identifiers were updated in place — `GpuLaneModule`,
+`GPU_LANE_QUEUE_ENABLED`, queues `gpu-lane-<host>-<port>`; this document was
+written as the "LLM lane". The model routes (analysis, ingestion) are GPU
+sublanes and keep their names.*
+
 Phase A, step 4 of `ingestion-resource-lanes.md` (§6 S7, §7 H5). That row
 calls for "one BullMQ queue per Ollama endpoint, bound with
 `setGlobalConcurrency`, with an interactive reserve". Reading every inference
@@ -62,9 +68,9 @@ below keeps BullMQ and removes all three:
 
 ## Design
 
-1. **One lane queue per Ollama endpoint**, `llm-lane-<host>-<port>`, named
+1. **One lane queue per Ollama endpoint**, `gpu-lane-<host>-<port>`, named
    from the lane's resolved URL — two lanes on one host share a queue, two
-   hosts get two. Bounded with `setGlobalConcurrency(LLM_LANE_GLOBAL_CONCURRENCY)`,
+   hosts get two. Bounded with `setGlobalConcurrency(GPU_LANE_GLOBAL_CONCURRENCY)`,
    default **1** (= `OLLAMA_NUM_PARALLEL`), set by every process at boot. It
    is a Redis-side bound, so it holds however many processes consume.
 2. **The process decides batch vs interactive**, not the call site. Every
@@ -74,7 +80,7 @@ below keeps BullMQ and removes all three:
    processes bind the lane dispatcher, so no call site changes and none can
    be mislabelled.
 3. **The seam is `buildLane`.** `LLMModule` injects an optional, global
-   `LLM_LANE_DISPATCHER`; when bound, `generate()` becomes: enqueue a job
+   `GPU_LANE_DISPATCHER`; when bound, `generate()` becomes: enqueue a job
    naming the lane, endpoint URL and model, with the prompt and options,
    await its result (`waitUntilFinished`), return it. Unbound, the provider
    is untouched — which is how the API processes, and every process before
@@ -107,7 +113,7 @@ below keeps BullMQ and removes all three:
    "Redis down → direct"; the connection's `maxRetriesPerRequest: null`
    makes that untrue.)
    - **No GPU time for nobody.** Each job carries a deadline (enqueue +
-     `LLM_LANE_WAIT_TIMEOUT_MS`, 6 h) and its producer's id; each producer
+     `GPU_LANE_WAIT_TIMEOUT_MS`, 6 h) and its producer's id; each producer
      keeps a 60 s liveness key refreshed every 20 s. A consumer skips a job
      whose deadline has passed or whose producer's key is gone — a killed
      sync's backlog does not occupy the only slot for hours. A missing key
@@ -164,7 +170,7 @@ below keeps BullMQ and removes all three:
    priority; manual (user-click) jobs are not, and BullMQ serves its plain
    wait list before the prioritised set — so a click is no longer behind the
    nightly run.
-8. **Inert until enabled.** `LLM_LANE_QUEUE_ENABLED` (default off), as
+8. **Inert until enabled.** `GPU_LANE_QUEUE_ENABLED` (default off), as
    Phase A's "merged to main, inert" asks. UAT turns it on; prod gets it with
    the Phase C release.
 
@@ -196,7 +202,7 @@ those flags: they sit in the `llm-rerank` job's data today. What S7 adds is
 the _rendered prompt_ — the same data, plus the candidate text — in a second
 queue. Bounded so:
 
-- **While waiting**, the prompt is whole — up to `LLM_LANE_WAIT_TIMEOUT_MS`
+- **While waiting**, the prompt is whole — up to `GPU_LANE_WAIT_TIMEOUT_MS`
   (6 h) behind a backlog, and for a dead producer's jobs until a consumer
   reaches and skips them. The consumer blanks `prompt` the moment it picks
   a job up, before any check or call; a failed blank is logged, without
@@ -245,7 +251,7 @@ is unaffected — it covers Postgres; this is short-lived queue state.
   integration run first hung on exit twice: once on the unclosed
   `QueueEvents` connection, once on BullMQ's ttl timer.
 - An error thrown at enqueue sends the call direct, warning once a minute.
-- `LlmLaneModule.forRoot()` enabled compiles with `LLMModule` against real
+- `GpuLaneModule.forRoot()` enabled compiles with `LLMModule` against real
   Redis; both lanes route through the dispatcher and register with it; the
   metrics wrapper sits outside the queue.
 - Unbound dispatcher: the provider is untouched (API processes).
@@ -264,7 +270,7 @@ is unaffected — it covers Postgres; this is short-lived queue state.
 | No consumer for a queued job                                          | Every process that enqueues also consumes; waits are capped at 6 h and reject loudly                                                                                                   |
 | Anything that can write to Redis makes a worker call an arbitrary URL | A consumer runs only endpoints its own process registered, and clamps the options a job carries                                                                                        |
 | A consumer's config differs from the producer's                       | The job fails, naming neither URL nor prompt, and the refusing process warns once per lane and model; every worker reads one environment                                               |
-| Workers disagree on `LLM_LANE_GLOBAL_CONCURRENCY`                     | The last to start wins, and a mismatch is logged at lane open                                                                                                                          |
+| Workers disagree on `GPU_LANE_GLOBAL_CONCURRENCY`                     | The last to start wins, and a mismatch is logged at lane open                                                                                                                          |
 | Batch slows because it is now strictly serial per endpoint            | It was already serial at the GPU (`OLLAMA_NUM_PARALLEL=1`); the difference is that interactive requests stop waiting behind it. Raising the bound is config, gated on the eval harness |
 | An API process accidentally binds the dispatcher                      | Bound only by the three worker modules; a test pins which modules import it                                                                                                            |
 

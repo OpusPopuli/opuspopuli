@@ -44,7 +44,6 @@ import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
 import { CountyThresholdSyncService } from './county-threshold-sync.service';
 import { CountyThresholdQueryService } from './county-threshold-query.service';
 import { RegionPluginService } from './region-plugin.service';
-import { HttpFetcherService } from './http-fetcher.service';
 import { ClaimBackfillService } from './claim-backfill.service';
 import { ClaimEvidenceMetricsService } from './claim-evidence-metrics.service';
 import { ClaimSourceResolverService } from './claim-source-resolver.service';
@@ -277,7 +276,6 @@ const promptClientAsyncConfig = {
         ),
     },
     RegionPluginService,
-    HttpFetcherService,
     RegionSyncService,
     PropositionsSyncService,
     MeetingsSyncService,

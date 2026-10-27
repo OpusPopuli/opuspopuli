@@ -3,6 +3,7 @@ export { htmlToReadableText } from "./html-to-text.js";
 export { installedVersion } from "./installed-version.js";
 export { mapWithConcurrency } from "./concurrency.js";
 export { envInt } from "./env-int.js";
+export { networkLaneConcurrency } from "./network-lane.js";
 export {
   resolveSupabaseKey,
   initSupabaseFromConfig,

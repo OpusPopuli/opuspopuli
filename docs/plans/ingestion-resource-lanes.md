@@ -777,13 +777,22 @@ source version (#1276), not carrying the content itself.
 
 | Lane | Bound by | Concurrency | Contents |
 |---|---|---|---|
-| **fetch** | Network, per host | High overall, rate-limited **per host** | List/detail pages, PDF and bulk downloads |
+| **network** | Network, per host | High overall, rate-limited **per host** | List/detail pages, PDF and bulk downloads |
 | **cpu** | Cores | ≈ cores − 2 (headroom for the event loop) | pdf-parse/mupdf/raster, Tesseract, Cheerio, `htmlToReadableText`, CSV parse, xenova embeddings |
 | **gpu-ingestion** | The ingestion model's Ollama endpoint | Its slots minus the interactive reserve (S7) | structural analysis, extraction-plan derivation, self-heal, civics, votes; bill extraction once its eval leg passes (§10.2) |
 | **gpu-analysis** | The analysis model's Ollama endpoint | Its slots minus the interactive reserve (S7) | proposition analysis, bios, committee summaries/descriptions, activity summaries, bill summaries, minutes summaries, rerank |
 | **db** | Postgres | Low; batched | upserts, campaign-finance batches, linkers |
 
-Lanes are named for their role, not their model. Which model serves each
+**Lanes are named for the resource they consume** (owner, 2026-10-26): the
+**network** lane (written "fetch" until then; `NETWORK_LANE_CONCURRENCY`),
+the **CPU** lane (the `pdf-parse` queue), the **GPU** lane (S7's queue per
+Ollama endpoint — `gpu-lane-<host>-<port>`, `GPU_LANE_QUEUE_ENABLED`, until
+then the "LLM lane"), and the **DB** lane. Each model is a GPU **sublane** —
+`gpu-ingestion` and `gpu-analysis` below — and queues inside a lane keep
+work names. The DB lane is measured rather than queued: its bound is the
+Prisma pool, and its wait is the pool's (`db-lane.md`).
+
+GPU sublanes are named for their role, not their model. Which model serves each
 lane comes from the node's `.env` (`LLM_ANALYSIS_MODEL` /
 `LLM_INGESTION_MODEL`, written by `create-op-node`) and is chosen by
 `model-selection-and-deployment-split.md`.

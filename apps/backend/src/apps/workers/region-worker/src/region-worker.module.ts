@@ -25,7 +25,7 @@ import { CivicsExtractProcessor } from './civics-extract.processor';
 import { PropositionAnalysisProcessor } from './proposition-analysis.processor';
 import { PdfParseProcessor } from './pdf-parse.processor';
 import { QueueDepthMetricsService } from './queue-depth-metrics.service';
-import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
+import { GpuLaneModule } from 'src/common/gpu-lane/gpu-lane.module';
 
 @Module({
   imports: [
@@ -42,7 +42,7 @@ import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
     MetricsModule.forRoot({ serviceName: 'region-worker' }),
     // Batch inference waits its turn for the GPU on the endpoint's lane queue
     // (S7). Worker modules only: an API process must not bind it.
-    LlmLaneModule.forRoot(),
+    GpuLaneModule.forRoot(),
     // Bulk-workload RSS threshold, not the 1 GB default.
     //
     // #642 raised this on `region-service` because the CalAccess bulk download

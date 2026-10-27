@@ -31,6 +31,7 @@ import type { OpenMetricsContentType } from 'prom-client';
 import { MetricsService } from './metrics.service';
 import { PromMetricsObserver } from './prom-metrics-observer';
 import { WorkerMetricsBinding } from './worker-metrics-binding';
+import { DbLaneCollector } from './db-lane-collector';
 import { MetricsInterceptor } from './metrics.interceptor';
 
 /**
@@ -148,6 +149,7 @@ export class MetricsModule {
       },
       MetricsService,
       WorkerMetricsBinding,
+      DbLaneCollector,
       // Register the interceptor globally for automatic HTTP metrics
       {
         provide: APP_INTERCEPTOR,
@@ -481,11 +483,22 @@ export class MetricsModule {
         help: 'Total circuit breaker failures',
         labelNames: ['service', 'circuit_name'],
       }),
-      makeHistogramProvider({
-        name: 'db_query_duration_seconds',
-        help: 'Duration of database queries in seconds',
-        labelNames: ['service', 'operation', 'table'],
-        buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      /**
+       * The DB lane (`docs/plans/db-lane.md`). Replaces
+       * `db_query_duration_seconds`, which was declared and never written —
+       * two dashboards drew it as an empty panel. Prisma's own wait, query
+       * and total histograms are republished at scrape time by
+       * `DbLaneCollector`; these two are the parts Prisma does not keep.
+       */
+      makeCounterProvider({
+        name: 'db_lane_busy_seconds_total',
+        help: 'Seconds spent in SQL statements, by table and statement type',
+        labelNames: ['table', 'statement'],
+      }),
+      makeGaugeProvider({
+        name: 'db_lane_pool_size',
+        help: "The Prisma connection pool size this process is bounded by; estimated=true when it is Prisma's num_cpus*2+1 default guessed from logical cores",
+        labelNames: ['service', 'estimated'],
       }),
       // Federation subgraph metrics for measuring gateway-to-subgraph latency
       makeHistogramProvider({

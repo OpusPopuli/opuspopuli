@@ -37,4 +37,36 @@ describe("mapWithConcurrency", () => {
       }),
     ).rejects.toThrow("boom");
   });
+
+  it("starts nothing more after a rejection — an abort stops the work", async () => {
+    const started: number[] = [];
+    await expect(
+      mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (n) => {
+        started.push(n);
+        await new Promise((r) => setTimeout(r, 5));
+        if (n === 1) throw new Error("abort");
+        return n;
+      }),
+    ).rejects.toThrow("abort");
+    await new Promise((r) => setTimeout(r, 50));
+    // 0 and 1 ran together; 1 failed, so 2.. never started (0's lane may
+    // have taken one more before seeing the failure).
+    expect(started.length).toBeLessThanOrEqual(3);
+  });
+
+  it("rejects only after the calls already running have finished", async () => {
+    let slowDone = false;
+    await expect(
+      mapWithConcurrency([0, 1], 2, async (n) => {
+        if (n === 0) {
+          await new Promise((r) => setTimeout(r, 30));
+          slowDone = true;
+          return n;
+        }
+        throw new Error("abort");
+      }),
+    ).rejects.toThrow("abort");
+    // The caller's cleanup runs with nothing still in flight.
+    expect(slowDone).toBe(true);
+  });
 });

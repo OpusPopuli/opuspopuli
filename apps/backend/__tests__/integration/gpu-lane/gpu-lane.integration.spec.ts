@@ -19,23 +19,23 @@ import { Queue, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
 import {
   laneQueueName,
-  LLM_LANE_DISPATCHER,
+  GPU_LANE_DISPATCHER,
   LLMError,
   type ILLMProvider,
 } from '@opuspopuli/common';
 import { LLMModule } from '@opuspopuli/llm-provider';
 import {
-  LlmLaneDispatcher,
+  GpuLaneDispatcher,
   type LaneProviderFactory,
-} from 'src/common/llm-lane/llm-lane.dispatcher';
-import { LlmLaneModule } from 'src/common/llm-lane/llm-lane.module';
+} from 'src/common/gpu-lane/gpu-lane.dispatcher';
+import { GpuLaneModule } from 'src/common/gpu-lane/gpu-lane.module';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-describe('LlmLaneDispatcher — integration (S7)', () => {
+describe('GpuLaneDispatcher — integration (S7)', () => {
   let prefix: string;
   let connections: IORedis[];
-  let dispatchers: LlmLaneDispatcher[];
+  let dispatchers: GpuLaneDispatcher[];
   let closers: (() => Promise<unknown>)[];
   let active: number;
   let maxActive: number;
@@ -83,7 +83,7 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
     n: string,
     observer?: { observe: jest.Mock; increment: jest.Mock },
   ) => {
-    const dispatcher = new LlmLaneDispatcher(
+    const dispatcher = new GpuLaneDispatcher(
       connect(),
       { prefix, globalConcurrency, waitTimeoutMs: 30_000 },
       observer,
@@ -117,7 +117,7 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
   };
 
   const markAlive = (id: string) =>
-    connections[0].set(`${prefix}:llm-lane:producer:${id}`, '1', 'EX', 60);
+    connections[0].set(`${prefix}:gpu-lane:producer:${id}`, '1', 'EX', 60);
 
   beforeEach(() => {
     prefix = `test-lane-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -323,7 +323,7 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
   });
 
   it('removes a job its caller gave up on before it reached the GPU', async () => {
-    const a = new LlmLaneDispatcher(
+    const a = new GpuLaneDispatcher(
       connect(),
       { prefix, globalConcurrency: 1, waitTimeoutMs: 300 },
       undefined,
@@ -377,7 +377,7 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
     // module; the dispatcher must still clear its liveness key on its own.
     const admin = connect();
     const shared = connect();
-    const a = new LlmLaneDispatcher(
+    const a = new GpuLaneDispatcher(
       shared,
       { prefix, globalConcurrency: 1, waitTimeoutMs: 30_000 },
       undefined,
@@ -385,7 +385,7 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
     );
     a.register('analysis', endpoint('order'));
     await a.generate(job('order', 'x'));
-    const keyPattern = `${prefix}:llm-lane:producer:*`;
+    const keyPattern = `${prefix}:gpu-lane:producer:*`;
     expect(await admin.keys(keyPattern)).toHaveLength(1);
 
     await shared.quit();
@@ -442,32 +442,32 @@ describe('LlmLaneDispatcher — integration (S7)', () => {
     expect(waits).toHaveLength(2);
     expect(waits[0][2]).toEqual({
       lane: 'analysis',
-      endpoint: 'llm-lane-lane-test-wait-11434',
+      endpoint: 'gpu-lane-lane-test-wait-11434',
     });
     // The second waited behind the first's ~100ms.
     expect(Math.max(...waits.map((w) => w[1] as number))).toBeGreaterThan(0.05);
   });
 });
 
-describe('LlmLaneModule.forRoot() — enabled, compiled for real (S7)', () => {
-  const env = process.env.LLM_LANE_QUEUE_ENABLED;
+describe('GpuLaneModule.forRoot() — enabled, compiled for real (S7)', () => {
+  const env = process.env.GPU_LANE_QUEUE_ENABLED;
   afterEach(() => {
-    if (env === undefined) delete process.env.LLM_LANE_QUEUE_ENABLED;
-    else process.env.LLM_LANE_QUEUE_ENABLED = env;
+    if (env === undefined) delete process.env.GPU_LANE_QUEUE_ENABLED;
+    else process.env.GPU_LANE_QUEUE_ENABLED = env;
   });
 
   it('resolves a dispatcher LLMModule routes through, and shuts down cleanly', async () => {
-    process.env.LLM_LANE_QUEUE_ENABLED = 'true';
+    process.env.GPU_LANE_QUEUE_ENABLED = 'true';
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-        LlmLaneModule.forRoot(),
+        GpuLaneModule.forRoot(),
         LLMModule,
       ],
     }).compile();
 
-    expect(moduleRef.get(LLM_LANE_DISPATCHER)).toBeInstanceOf(
-      LlmLaneDispatcher,
+    expect(moduleRef.get(GPU_LANE_DISPATCHER)).toBeInstanceOf(
+      GpuLaneDispatcher,
     );
     // The provider is the queue's wrapper, not Ollama's own class.
     expect(

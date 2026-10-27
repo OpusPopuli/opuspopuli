@@ -2,10 +2,10 @@ import { Logger, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import {
   ILLMProvider,
-  LLM_LANE_DISPATCHER,
+  GPU_LANE_DISPATCHER,
   METRICS_OBSERVER,
   setGlobalHttpPool,
-  type ILlmLaneDispatcher,
+  type IGpuLaneDispatcher,
   type MetricsObserver,
 } from "@opuspopuli/common";
 import { llmConfig } from "@opuspopuli/config-provider";
@@ -115,7 +115,7 @@ function buildLane(
   configService: ConfigService,
   lane: Lane,
   observer?: MetricsObserver,
-  dispatcher?: ILlmLaneDispatcher | null,
+  dispatcher?: IGpuLaneDispatcher | null,
 ): ILLMProvider {
   const requestTimeoutMs = Number.parseInt(
     configService.get<string>("OLLAMA_REQUEST_TIMEOUT_MS") ?? "",
@@ -230,7 +230,7 @@ function buildLane(
       useFactory: (
         configService: ConfigService,
         observer?: MetricsObserver,
-        dispatcher?: ILlmLaneDispatcher | null,
+        dispatcher?: IGpuLaneDispatcher | null,
       ): ILLMProvider =>
         buildLane(configService, "analysis", observer, dispatcher),
       // Both optional on purpose: a service that binds no observer must
@@ -239,7 +239,7 @@ function buildLane(
       inject: [
         ConfigService,
         { token: METRICS_OBSERVER, optional: true },
-        { token: LLM_LANE_DISPATCHER, optional: true },
+        { token: GPU_LANE_DISPATCHER, optional: true },
       ],
     },
     /**
@@ -262,7 +262,7 @@ function buildLane(
       useFactory: (
         configService: ConfigService,
         observer?: MetricsObserver,
-        dispatcher?: ILlmLaneDispatcher | null,
+        dispatcher?: IGpuLaneDispatcher | null,
       ): ILLMProvider =>
         buildLane(configService, "ingestion", observer, dispatcher),
       // Both optional on purpose: a service that binds no observer must
@@ -271,7 +271,7 @@ function buildLane(
       inject: [
         ConfigService,
         { token: METRICS_OBSERVER, optional: true },
-        { token: LLM_LANE_DISPATCHER, optional: true },
+        { token: GPU_LANE_DISPATCHER, optional: true },
       ],
     },
   ],

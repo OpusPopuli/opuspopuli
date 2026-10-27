@@ -39,7 +39,7 @@ export function setDefaultWorkerMetrics(
 /**
  * Whether THIS process consumes `queueName`, by `WORKER_QUEUES` — the role
  * switch that makes multi-host a configuration change
- * (`docs/plans/propositions-phase-b.md`, fetch and CPU lanes).
+ * (`docs/plans/propositions-phase-b.md`, network and CPU lanes).
  *
  * A comma list: `*` (every queue — the default, as before), a queue name, a
  * `prefix*`, and `!name` / `!prefix*` to exclude. A queue is consumed when

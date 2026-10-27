@@ -19,15 +19,15 @@ import type { GenerateOptions, GenerateResult } from "./types.js";
  * DI token for the dispatcher. Bound — globally — only in worker processes.
  * An API process never binds it, so its inference stays direct.
  */
-export const LLM_LANE_DISPATCHER = "LLM_LANE_DISPATCHER";
+export const GPU_LANE_DISPATCHER = "GPU_LANE_DISPATCHER";
 
 /**
  * The endpoint a lane calls. A job names it by `url` + `model`; the consumer
  * runs it only if its OWN process configured that lane the same way, and with
- * its own timeouts (see {@link ILlmLaneDispatcher.register}) — a job is data
+ * its own timeouts (see {@link IGpuLaneDispatcher.register}) — a job is data
  * from Redis, not an instruction to call whatever URL it carries.
  */
-export interface LlmLaneEndpoint {
+export interface GpuLaneEndpoint {
   url: string;
   model: string;
   requestTimeoutMs?: number;
@@ -35,27 +35,27 @@ export interface LlmLaneEndpoint {
   contextTokens?: number;
 }
 
-export interface LlmLaneJob {
+export interface GpuLaneJob {
   /** `analysis` or `ingestion` — for metrics, and for the consumer's log. */
   lane: string;
-  endpoint: LlmLaneEndpoint;
+  endpoint: GpuLaneEndpoint;
   prompt: string;
   options?: GenerateOptions;
 }
 
 /** Runs one generation through its endpoint's lane queue. */
-export interface ILlmLaneDispatcher {
+export interface IGpuLaneDispatcher {
   /**
    * Declare a lane this process configured. Called once per lane when the
    * provider is built; a consumer refuses any job for a lane, url and model
    * it was not told about here.
    */
-  register(lane: string, endpoint: LlmLaneEndpoint): void;
-  generate(job: LlmLaneJob): Promise<GenerateResult>;
+  register(lane: string, endpoint: GpuLaneEndpoint): void;
+  generate(job: GpuLaneJob): Promise<GenerateResult>;
 }
 
 /**
- * The lane queue for an Ollama endpoint: `llm-lane-<host>-<port>`.
+ * The lane queue for an Ollama endpoint: `gpu-lane-<host>-<port>`.
  *
  * Per endpoint, not per lane: two lanes on one host share a GPU and so must
  * share a bound; two hosts must not. No `:` — BullMQ rejects it in queue
@@ -72,5 +72,5 @@ export function laneQueueName(url: string): string {
     // An unparseable URL fails at the fetch; its jobs share one queue.
   }
   const safe = `${host}-${port}`.replace(/[^a-z0-9.-]/g, "_");
-  return `llm-lane-${safe}`;
+  return `gpu-lane-${safe}`;
 }

@@ -27,9 +27,9 @@ import type {
   StructuredFieldConfig,
 } from "@opuspopuli/common";
 import {
-  envInt,
   htmlToReadableText,
   mapWithConcurrency,
+  networkLaneConcurrency,
 } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { extractStructuredArray } from "../extraction/structured-extractor.js";
@@ -37,17 +37,6 @@ import { extractAgSummary } from "./ag-summary.js";
 
 /** Maximum detail pages to fetch per source per sync (safety limit against runaway crawling) */
 const MAX_DETAIL_PAGES = 500;
-
-/**
- * Detail pages fetched at once (the fetch lane, propositions Phase B). The
- * per-host token bucket (S1) — not a pause — keeps each site at its
- * configured rate: concurrency lets two hosts' budgets overlap and keeps the
- * pipe full while one page's PDF is parsed. `DETAIL_FETCH_CONCURRENCY`
- * overrides it.
- */
-function detailFetchConcurrency(): number {
-  return envInt("DETAIL_FETCH_CONCURRENCY", 4);
-}
 
 /**
  * A detail page's text and the archived fetch it came from (#1306).
@@ -137,7 +126,7 @@ export class DetailCrawlerService {
     let written = 0;
     await mapWithConcurrency(
       items.slice(0, MAX_DETAIL_PAGES),
-      detailFetchConcurrency(),
+      networkLaneConcurrency(),
       async (item) => {
         const url = DetailCrawlerService.resolveUrl(
           item.summaryUrl as string,
@@ -224,7 +213,7 @@ export class DetailCrawlerService {
     }
     await mapWithConcurrency(
       toFetch.slice(settled),
-      detailFetchConcurrency(),
+      networkLaneConcurrency(),
       enrich,
     );
 

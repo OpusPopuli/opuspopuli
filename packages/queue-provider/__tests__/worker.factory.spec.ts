@@ -53,7 +53,7 @@ describe("createWorker — caller overrides", () => {
 
   it("passes concurrency, lock duration and stall count through", () => {
     createWorker(
-      "llm-lane-host.docker.internal-11434",
+      "gpu-lane-host.docker.internal-11434",
       connection,
       async () => undefined,
       {
@@ -175,8 +175,8 @@ describe("workerQueueSelected (WORKER_QUEUES)", () => {
     ["pdf-parse", "region-sync", false],
     ["*,!pdf-parse", "pdf-parse", false],
     ["*,!pdf-parse", "region-sync", true],
-    ["llm-lane-*", "llm-lane-host.docker.internal-11434", true],
-    ["*,!llm-lane-*", "llm-lane-host.docker.internal-11434", false],
+    ["gpu-lane-*", "gpu-lane-host.docker.internal-11434", true],
+    ["*,!gpu-lane-*", "gpu-lane-host.docker.internal-11434", false],
     [" pdf-parse , civics-extract ", "civics-extract", true],
   ])("WORKER_QUEUES=%p → %s consumed here: %p", (spec, queue, expected) => {
     expect(workerQueueSelected(queue, spec)).toBe(expected);

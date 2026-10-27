@@ -112,7 +112,9 @@ describe('CivicsSyncService', () => {
 
   const makeHelpers = (): jest.Mocked<CivicsCrawlHelpers> => ({
     fetchUrlBytes: jest.fn(),
-    crawlCivicsUrls: jest.fn().mockResolvedValue([]),
+    crawlCivicsUrls: jest
+      .fn()
+      .mockResolvedValue({ urls: [], fetched: new Map() }),
   });
 
   /**
@@ -153,7 +155,9 @@ describe('CivicsSyncService', () => {
 
     const helpers: jest.Mocked<CivicsCrawlHelpers> = {
       fetchUrlBytes: jest.fn().mockResolvedValue(fetched()),
-      crawlCivicsUrls: jest.fn().mockResolvedValue([sourceUrl]),
+      crawlCivicsUrls: jest
+        .fn()
+        .mockResolvedValue({ urls: [sourceUrl], fetched: new Map() }),
     };
 
     const result = await service.sync(plugin, helpers);
@@ -231,7 +235,9 @@ describe('CivicsSyncService', () => {
       } as unknown as CivicsProvider;
       const helpers: jest.Mocked<CivicsCrawlHelpers> = {
         fetchUrlBytes: jest.fn().mockResolvedValue(fetched()),
-        crawlCivicsUrls: jest.fn().mockResolvedValue([sourceUrl]),
+        crawlCivicsUrls: jest
+          .fn()
+          .mockResolvedValue({ urls: [sourceUrl], fetched: new Map() }),
       };
 
       const result = await service.sync(plugin, helpers);
@@ -803,7 +809,7 @@ describe('CivicsSyncService — extraction off the fetch loop (S3)', () => {
       fetchedAt: '2026-10-24T00:00:00.000Z',
     }),
   ): CivicsCrawlHelpers => ({
-    crawlCivicsUrls: async () => urls,
+    crawlCivicsUrls: async () => ({ urls, fetched: new Map() }),
     fetchUrlBytes,
   });
 
@@ -1022,6 +1028,123 @@ describe('CivicsSyncService — extraction off the fetch loop (S3)', () => {
       service.sync(plugin([source]), helpers(urls)),
     ).rejects.toBeInstanceOf(SyncAbortedError);
     expect(dropWaiting).toHaveBeenCalled();
+  });
+
+  describe('the network lane', () => {
+    const bytesOf = (html: string) => ({
+      body: Buffer.from(html),
+      contentType: 'text/html',
+      fetchedAt: '2026-10-26T00:00:00.000Z',
+    });
+
+    it('uses the bytes the crawl fetched instead of fetching the page again', async () => {
+      const { service, sourceVersions } = await build();
+      const fetchUrlBytes = jest.fn();
+      await service.sync(plugin([source]), {
+        crawlCivicsUrls: async () => ({
+          urls: [PAGE],
+          fetched: new Map([[PAGE, bytesOf('<p>Crawled once.</p>')]]),
+        }),
+        fetchUrlBytes,
+      });
+
+      expect(fetchUrlBytes).not.toHaveBeenCalled();
+      expect(sourceVersions.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceUrl: PAGE,
+          content: Buffer.from('<p>Crawled once.</p>'),
+        }),
+      );
+    });
+
+    it('crawls sources at once but combines them in source order', async () => {
+      const { service, sourceVersions } = await build();
+      const SECOND = 'https://www.sos.ca.gov/elections/qualify';
+      const crawled: string[] = [];
+      await service.sync(plugin([source, { ...source, url: SECOND }]), {
+        // The first source is the slow one; it still comes first.
+        crawlCivicsUrls: async (ds) => {
+          await new Promise((r) => setTimeout(r, ds.url === PAGE ? 30 : 0));
+          crawled.push(ds.url);
+          return { urls: [ds.url], fetched: new Map() };
+        },
+        fetchUrlBytes: async () => bytesOf('<p>A bill is introduced.</p>'),
+      });
+
+      expect(crawled).toEqual([SECOND, PAGE]); // ran concurrently
+      expect(
+        sourceVersions.record.mock.calls.map(
+          ([r]) => (r as unknown as { sourceUrl: string }).sourceUrl,
+        ),
+      ).toEqual([PAGE, SECOND]);
+    });
+
+    it('fails every page sharing a job whose queueing failed, even one that joined mid-add', async () => {
+      let releaseAdd!: () => void;
+      const failing: ChildJobBatch<unknown, string> = {
+        ...inlineBatch(async () => 'created'),
+        add: () =>
+          new Promise<void>((_, reject) => {
+            releaseAdd = () => reject(new Error('Redis down'));
+          }),
+      };
+      const { service } = await build([queueOf(failing)]);
+      // Deterministic: the add fails only once the second page has joined
+      // the job (its queuePage call is the second one).
+      const internals = service as unknown as {
+        queuePage: (...args: unknown[]) => Promise<string[]>;
+      };
+      const queuePage = internals.queuePage.bind(service);
+      let calls = 0;
+      internals.queuePage = async (...args) => {
+        const result = queuePage(...args);
+        if (++calls === 2) releaseAdd();
+        return result;
+      };
+      const fetchUrlBytes = jest.fn(async () =>
+        bytesOf('<p>A bill is introduced.</p>'),
+      );
+      const error = jest.spyOn(Logger.prototype, 'error');
+
+      await service.sync(plugin([source, source]), {
+        crawlCivicsUrls: async () => ({ urls: [PAGE], fetched: new Map() }),
+        fetchUrlBytes,
+      });
+
+      // Both sources' copies of the page failed with the one job.
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining(`queued for ${PAGE}, ${PAGE}:`),
+      );
+    });
+
+    const peakFetches = async (extra: unknown[]) => {
+      const { service } = await build(extra);
+      let active = 0;
+      let peak = 0;
+      const urls = Array.from({ length: 6 }, (_, i) => `${PAGE}/${i}`);
+      await service.sync(plugin([source]), {
+        crawlCivicsUrls: async () => ({ urls, fetched: new Map() }),
+        fetchUrlBytes: async (url) => {
+          active++;
+          peak = Math.max(peak, active);
+          await new Promise((r) => setTimeout(r, 5));
+          active--;
+          return bytesOf(`<p>${url}</p>`);
+        },
+      });
+      return peak;
+    };
+
+    it('prepares pages several at a time when extractions are queued', async () => {
+      const queued: ChildJobBatch<unknown, string> = {
+        ...inlineBatch(async () => 'created'),
+      };
+      expect(await peakFetches([queueOf(queued)])).toBeGreaterThan(1);
+    });
+
+    it('stays one page at a time when extractions run inline — no GPU bound there', async () => {
+      expect(await peakFetches([])).toBe(1);
+    });
   });
 
   describe('extractPage (the worker job)', () => {

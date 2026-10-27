@@ -15,7 +15,7 @@ import { createWorker, resolveQueuePrefix } from '@opuspopuli/queue-provider';
  * error is a failed attempt the queue retries.
  *
  * Concurrency is the worker factory's `BULLMQ_QUEUE_<NAME>_CONCURRENCY`,
- * default 1: the LLM lane queue (S7) decides GPU concurrency on its own.
+ * default 1: the GPU lane queue (S7) decides GPU concurrency on its own.
  */
 export abstract class ChildJobProcessor<T, R>
   implements OnApplicationBootstrap, OnModuleDestroy

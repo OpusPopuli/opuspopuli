@@ -2040,17 +2040,20 @@ describe('RegionSyncService', () => {
     });
   });
 
-  describe('bills fetches go through the per-host rate limiter (S1)', () => {
+  describe('page fetches go through the per-host rate limiter (S1)', () => {
     const okHtml = () =>
       ({
         ok: true,
         status: 200,
         headers: { get: () => 'text/html' },
         text: async () => '<html></html>',
+        arrayBuffer: async () =>
+          new TextEncoder().encode('<html></html>').buffer,
       }) as unknown as Response;
 
-    it('waits on the injected limiter for the URL it fetches', async () => {
-      // Was a per-process HostThrottle: N processes, N× the rate leginfo saw.
+    const withLimiter = async (
+      run: (svc: RegionSyncService) => Promise<unknown>,
+    ) => {
       const realFetch = global.fetch;
       global.fetch = jest.fn().mockResolvedValue(okHtml());
       const limiter = {
@@ -2078,18 +2081,43 @@ describe('RegionSyncService', () => {
             RegionPluginService,
           ],
         }).compile();
-        const svc = module.get(RegionSyncService);
-        const url =
-          'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=X';
-
-        await (
-          svc as unknown as { fetchUrlText: (u: string) => Promise<string> }
-        ).fetchUrlText(url);
-
-        expect(limiter.acquire).toHaveBeenCalledWith(url);
+        await run(module.get(RegionSyncService));
+        return limiter;
       } finally {
         global.fetch = realFetch;
       }
+    };
+
+    it('waits on the injected limiter for a bills page', async () => {
+      // Was a per-process HostThrottle: N processes, N× the rate leginfo saw.
+      const url =
+        'https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=X';
+      const limiter = await withLimiter((svc) =>
+        (
+          svc as unknown as { fetchUrlText: (u: string) => Promise<string> }
+        ).fetchUrlText(url),
+      );
+      expect(limiter.acquire).toHaveBeenCalledWith(url);
+    });
+
+    it('waits on it for every civics crawl fetch too — the network lane runs several at once', async () => {
+      // The crawl fetches bytes now (fetched once, reused by the page pass);
+      // concurrency is only safe because each fetch still takes a token.
+      const seed = 'https://www.assembly.ca.gov/resources/legislative-process';
+      const limiter = await withLimiter((svc) =>
+        (
+          svc as unknown as {
+            crawlCivicsUrls: (
+              ds: { url: string; crawlDepth: number },
+              hosts: Set<string>,
+            ) => Promise<unknown>;
+          }
+        ).crawlCivicsUrls(
+          { url: seed, crawlDepth: 1 },
+          new Set(['www.assembly.ca.gov']),
+        ),
+      );
+      expect(limiter.acquire).toHaveBeenCalledWith(seed);
     });
   });
 

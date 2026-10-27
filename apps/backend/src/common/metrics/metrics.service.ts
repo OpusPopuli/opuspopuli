@@ -98,9 +98,6 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     private readonly circuitBreakerFailures: Counter<string>,
 
     // Database Metrics
-    @InjectMetric('db_query_duration_seconds')
-    private readonly dbQueryDuration: Histogram<string>,
-
     // Federation Metrics
     @InjectMetric('federation_subgraph_request_duration_seconds')
     private readonly subgraphRequestDuration: Histogram<string>,
@@ -288,21 +285,6 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
    */
   recordCircuitBreakerFailure(service: string, circuitName: string): void {
     this.circuitBreakerFailures.inc({ service, circuit_name: circuitName });
-  }
-
-  /**
-   * Record database query duration
-   */
-  recordDbQuery(
-    service: string,
-    operation: string,
-    table: string,
-    durationSeconds: number,
-  ): void {
-    this.dbQueryDuration.observe(
-      { service, operation, table },
-      durationSeconds,
-    );
   }
 
   /**

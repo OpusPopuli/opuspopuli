@@ -60,12 +60,14 @@ import { LegislativeCommitteeLinkerService } from './legislative-committee-linke
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
-import { htmlToReadableText } from '@opuspopuli/common';
+import { htmlToReadableText, networkLaneConcurrency } from '@opuspopuli/common';
 import {
   fetchBytesWithRetry,
   fetchTextWithRetry,
+  type FetchedBytes,
   type FetchTextOptions,
 } from './resilient-fetch';
+import { crawlInScope, type CivicsCrawl } from './civics-crawl';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   BILL_LIFECYCLE_SELECT,
@@ -1247,8 +1249,7 @@ export class RegionSyncService implements OnModuleDestroy {
     return this.civicsSyncService.sync(
       plugin,
       {
-        fetchUrlBytes: (url) =>
-          fetchBytesWithRetry(url, this.fetchOptions(DataType.CIVICS)),
+        fetchUrlBytes: (url) => this.fetchUrlBytes(url, DataType.CIVICS),
         crawlCivicsUrls: this.crawlCivicsUrls.bind(this),
       },
       // `resetWatermark` — "ignore the stored ingestion state for this run" —
@@ -2470,7 +2471,7 @@ export class RegionSyncService implements OnModuleDestroy {
     maxBills?: number,
   ): Promise<{ statusUrls: string[]; votesUrls: string[] }> {
     if (!ds.billDiscovery) {
-      const urls = await this.crawlCivicsUrls(ds, registeredHosts);
+      const { urls } = await this.crawlCivicsUrls(ds, registeredHosts);
       return {
         statusUrls: urls.filter((u) => u.includes('billStatusClient.xhtml')),
         votesUrls: urls.filter((u) => u.includes('billVotesClient.xhtml')),
@@ -3237,101 +3238,32 @@ export class RegionSyncService implements OnModuleDestroy {
 
   // ─── Civics sync helpers ──────────────────────────────────────────────────────
 
+  /**
+   * The civics crawl (`crawlInScope`), on the network lane. Bill discovery
+   * takes its `urls`; civics also takes the bytes it fetched, so a page is
+   * fetched once per run.
+   */
   private async crawlCivicsUrls(
     ds: DataSourceConfig,
     registeredHosts: Set<string>,
-  ): Promise<string[]> {
-    const depth = ds.crawlDepth ?? 0;
-    const maxPages = ds.crawlMaxPages ?? 20;
-
-    const seed = this.canonicalizeUrl(ds.url);
-    const seedUrl = new URL(seed);
-
-    if (
-      seedUrl.protocol !== 'https:' ||
-      !registeredHosts.has(seedUrl.hostname)
-    ) {
-      this.logger.error(
-        `Civics crawl rejected: ${seedUrl.hostname} is not a registered data source host or is non-HTTPS`,
-      );
-      return [];
-    }
-
-    const pathPrefix = seedUrl.pathname.replace(/[^/]*$/, '');
-    const inScope = (u: string): boolean => {
-      try {
-        const parsed = new URL(u);
-        return (
-          parsed.host === seedUrl.host && parsed.pathname.startsWith(pathPrefix)
-        );
-      } catch {
-        return false;
-      }
-    };
-
-    const visited = new Set<string>([seed]);
-    const order: string[] = [seed];
-    const queue: { url: string; depth: number }[] = [{ url: seed, depth: 0 }];
-
-    while (queue.length > 0 && order.length < maxPages) {
-      const { url, depth: d } = queue.shift()!;
-      if (d >= depth) continue;
-      let html: string;
-      try {
-        html = await this.fetchUrlText(url, DataType.CIVICS);
-      } catch (e) {
-        this.logger.warn(
-          `Civics crawl: fetch failed for ${url}: ${(e as Error).message}`,
-        );
-        continue;
-      }
-      for (const link of this.extractLinks(url, html)) {
-        const canonical = this.canonicalizeUrl(link);
-        if (visited.has(canonical) || !inScope(canonical)) continue;
-        visited.add(canonical);
-        order.push(canonical);
-        queue.push({ url: canonical, depth: d + 1 });
-        if (order.length >= maxPages) break;
-      }
-    }
-    return order;
+  ): Promise<CivicsCrawl> {
+    return crawlInScope({
+      seed: ds.url,
+      depth: ds.crawlDepth ?? 0,
+      maxPages: ds.crawlMaxPages ?? 20,
+      registeredHosts,
+      concurrency: networkLaneConcurrency(),
+      fetch: (url) => this.fetchUrlBytes(url, DataType.CIVICS),
+      logger: this.logger,
+    });
   }
 
-  private canonicalizeUrl(url: string): string {
-    try {
-      const u = new URL(url);
-      u.hash = '';
-      if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-        u.pathname = u.pathname.slice(0, -1);
-      }
-      return u.toString();
-    } catch {
-      return url;
-    }
-  }
-
-  private extractLinks(baseUrl: string, html: string): string[] {
-    const out: string[] = [];
-    const re = /<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"]/gi;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null) {
-      const href = m[1].trim().replace(/&amp;/g, '&');
-      if (
-        !href ||
-        href.startsWith('javascript:') ||
-        href.startsWith('mailto:') ||
-        href.startsWith('tel:') ||
-        href.startsWith('#')
-      ) {
-        continue;
-      }
-      try {
-        out.push(new URL(href, baseUrl).toString());
-      } catch {
-        // skip malformed
-      }
-    }
-    return out;
+  /** Throttled + retried byte fetch, with the shared options (see below). */
+  private fetchUrlBytes(
+    url: string,
+    dataType: DataType,
+  ): Promise<FetchedBytes> {
+    return fetchBytesWithRetry(url, this.fetchOptions(dataType));
   }
 
   /**
@@ -3364,7 +3296,7 @@ export class RegionSyncService implements OnModuleDestroy {
 
   /**
    * Delegates to @opuspopuli/common. This was a private copy, byte-identical to
-   * a second copy on the unused HttpFetcherService — two definitions of what the
+   * a second copy on the unused (since deleted) HttpFetcherService — two definitions of what the
    * model sees. The eval harness needs this exact implementation too (#1324), so
    * it now lives in one place that a package can import.
    */

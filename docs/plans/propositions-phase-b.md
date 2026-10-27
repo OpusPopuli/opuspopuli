@@ -265,7 +265,12 @@ proposition-specific part — re-checking a measure that became current — is i
 the integration spec. On UAT the crashed worker's type lock would block the
 restoring run D for an hour (S2's lock TTL).
 
-#### Fetch and CPU lanes — design (2026-10-25)
+#### Network and CPU lanes — design (2026-10-25)
+
+*Renamed 2026-10-26 (owner: lanes are named for the resource they consume): the
+"fetch lane" is the **network lane**, its knob `NETWORK_LANE_CONCURRENCY`
+(`networkLaneConcurrency()` in `@opuspopuli/common`, shared with civics), and
+the S7 "LLM lane" queue is the **GPU lane**. See `civics-phase-b.md` §3b.*
 
 **Owner decision (2026-10-25):** propositions gets all three lanes, not the
 GPU lane alone — the consistency principle applied to S6 as it was to S3.
@@ -304,9 +309,9 @@ proved by a **two-worker UAT** in which a second container parses every PDF.
   resolved on the first successful item and reused. **The crawler is shared
   with representatives** (Assembly, Senate, 29 counties).
 
-**Fetch lane.** Resolve the extraction plan on the first item alone, then
+**Network lane.** Resolve the extraction plan on the first item alone, then
 fetch the rest **concurrently**, bounded by a per-run pool
-(`DETAIL_FETCH_CONCURRENCY`, default 4) — the token bucket, not a pause,
+(`NETWORK_LANE_CONCURRENCY`, default 4) — the token bucket, not a pause,
 keeps each host at its configured rate. Drop the fixed 500 ms pause (and the
 secondary-detail one), which only stacked on the limiter. Each item still
 gets its own content (items are enriched in place); warnings and the
@@ -319,7 +324,7 @@ each stays at 1 req/s). Representatives benefits the same way.
 takes 90 s in discover, because 94 of its 97 requests go to ONE host
 (`oag.ca.gov`), and 97 requests at 1 req/s is the run. The lane is working —
 `pipeline_stage_duration_seconds{stage="fetch"}` summed 344 busy seconds over
-those 90 s, ~3.8 fetches in flight against `DETAIL_FETCH_CONCURRENCY=4` —
+those 90 s, ~3.8 fetches in flight against `NETWORK_LANE_CONCURRENCY=4` —
 but each in-flight fetch spends its time waiting for a token. Propositions'
 unchanged run is bound by the per-host rate, which is a politeness setting
 and the owner's call, not by our concurrency. Where the lane does pay: a
@@ -368,7 +373,7 @@ slower than the token interval.
   through the job — the caller parses in process, as it would with no lane.
   That costs a second parse in the one case that is already degraded, and
   keeps a megabyte-scale fallback text out of Redis.
-- **Waiting:** the fetch lane's concurrency is what fills the CPU lane — N
+- **Waiting:** the network lane's concurrency is what fills the CPU lane — N
   detail items in flight each await their own parse job.
 - **The rasteriser stays behind `PdfExtractor`**, so #1410's outcome can swap
   mupdf without touching the lane.
@@ -405,7 +410,7 @@ in-process parse.
 | Consumer, pool sized by `queueConcurrency('pdf-parse')` and created on the first job | `region-worker/src/pdf-parse.processor.ts` |
 | OCR built from env without Nest, so thread and module key identically (and the `OCR_PREPROCESSING_ENABLED=false` comparison bug fixed: it compared a boolean to a string, so preprocessing could never be turned off) | `ocr-provider/src/ocr-from-config.ts` |
 | `WORKER_QUEUES` | `queue-provider/src/worker.factory.ts` |
-| Fetch lane | `scraping-pipeline/src/crawling/detail-crawler.service.ts`, `common/src/utils/concurrency.ts` |
+| Network lane | `scraping-pipeline/src/crawling/detail-crawler.service.ts`, `common/src/utils/concurrency.ts` |
 
 Smoke-tested from `dist/` before UAT: two parses of one PDF on a two-thread
 pool ran concurrently (337 ms) while a 10 ms main-thread timer kept firing
@@ -415,7 +420,7 @@ pool ran concurrently (337 ms) while a 10 ms main-thread timer kept firing
 
 | Run | Layout | Discover | Parses | Notes |
 |---|---|---|---|---|
-| A — unchanged | one worker | 90 s | 95 reused, 0 jobs | Phase 3 reads **72 skipped (`analysis_current`)** where it read 0; embedding 72 `unchanged`; ~3.8 fetches in flight (rate-bound, see the fetch lane) |
+| A — unchanged | one worker | 90 s | 95 reused, 0 jobs | Phase 3 reads **72 skipped (`analysis_current`)** where it read 0; embedding 72 `unchanged`; ~3.8 fetches in flight (rate-bound, see the network lane) |
 | B — every PDF re-parses (the preset fix changed the key) | two workers (`docker-compose-uat.multihost.yml`), CPU host at concurrency 2 | **270 s** (509 s for the last full in-process parse, pre-K-P1) | **94 on the CPU host, 0 in process**; `pdf_parse_total{source="lane"}` 94 = the CPU host's `bullmq_job_attempts_total{queue="pdf-parse",outcome="success"}` 94 | **94/94 `parsed_text_hash` identical** to the in-process parses saved before the run — 160 page OCRs among them; event-loop p99 max **15 ms** on the CPU host while its two threads held 2.0 CPU; CPU host RSS 1.9 GiB at two threads |
 
 The one artifact not re-parsed was not fetched by that run; it re-parses when

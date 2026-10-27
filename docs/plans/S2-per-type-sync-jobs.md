@@ -24,7 +24,7 @@ safe for it. An audit of the sync path (2026-10-23) found:
 - **Different types are safe to overlap, with two exceptions.** Every
   per-type sync service keeps its per-run state in locals and parameters —
   trackers, discovery sets, indexes, counters — and the shared state
-  (rate limiter, HTTP pool, LLM lanes, manifest store, watermarks) is
+  (rate limiter, HTTP pool, GPU lanes, manifest store, watermarks) is
   either keyed by type or shared by design. Prunes and deletes are all
   scoped to their own type's tables.
   1. **`syncAll` tears down and rebuilds the local plugins at the start of
@@ -110,7 +110,7 @@ safe for it. An audit of the sync path (2026-10-23) found:
 4. **Concurrency** is the existing `BULLMQ_QUEUE_REGION_SYNC_CONCURRENCY`
    knob. **The default stays 1** — Phase A is "merged to main, inert" —
    UAT sets 2, and prod raises it in the Phase C release together with
-   `LLM_LANE_QUEUE_ENABLED`: two LLM-heavy types at once on an unbounded
+   `GPU_LANE_QUEUE_ENABLED`: two LLM-heavy types at once on an unbounded
    Ollama is the contention S7 exists to stop.
 5. **`worker_host`** (additive nullable column) is written by `markRunning`
    from `WORKER_HOST`, falling back to `os.hostname()`. **The sweep is
@@ -221,7 +221,7 @@ settling, a cancel mid-run.
 ## Owner decisions (2026-10-23)
 
 - **Concurrency:** 1 in prod, 2 on UAT; prod raises it with
-  `LLM_LANE_QUEUE_ENABLED` in the Phase C release.
+  `GPU_LANE_QUEUE_ENABLED` in the Phase C release.
 - **Same-type exclusivity:** one Redis lock per data type, across regions.
 - **`recentRegionSyncJobs`:** top-level (parent) rows only; children roll up.
 

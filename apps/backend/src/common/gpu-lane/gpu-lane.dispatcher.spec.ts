@@ -4,7 +4,7 @@ import type { ILLMProvider } from '@opuspopuli/common';
 /**
  * The dispatcher's direct fallback (S7). The queued path — global bound,
  * results, failures, the endpoint allowlist, orphans, shutdown — is proven
- * against real Redis in `__tests__/integration/llm-lane`; a thrown enqueue
+ * against real Redis in `__tests__/integration/gpu-lane`; a thrown enqueue
  * cannot easily be caused there, so BullMQ is mocked here.
  */
 const add = jest.fn();
@@ -34,9 +34,9 @@ jest.mock('@opuspopuli/queue-provider', () => ({
 }));
 
 import { createWorker } from '@opuspopuli/queue-provider';
-import { LlmLaneDispatcher, safeOptions } from './llm-lane.dispatcher';
+import { GpuLaneDispatcher, safeOptions } from './gpu-lane.dispatcher';
 
-describe('LlmLaneDispatcher — direct fallback (S7)', () => {
+describe('GpuLaneDispatcher — direct fallback (S7)', () => {
   const redis = {
     quit: jest.fn().mockResolvedValue('OK'),
     set: jest.fn().mockResolvedValue('OK'),
@@ -47,7 +47,7 @@ describe('LlmLaneDispatcher — direct fallback (S7)', () => {
   const connection = { duplicate: () => redis };
   const endpoint = { url: 'http://ollama:11434', model: 'm' };
   const job = { lane: 'analysis', endpoint, prompt: 'P' };
-  let dispatcher: LlmLaneDispatcher;
+  let dispatcher: GpuLaneDispatcher;
   let generate: jest.Mock;
   let factory: jest.Mock;
 
@@ -59,7 +59,7 @@ describe('LlmLaneDispatcher — direct fallback (S7)', () => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     generate = jest.fn().mockResolvedValue({ text: 'direct' });
     factory = jest.fn(() => ({ generate }) as unknown as ILLMProvider);
-    dispatcher = new LlmLaneDispatcher(
+    dispatcher = new GpuLaneDispatcher(
       connection as never,
       { prefix: 'bullmq', globalConcurrency: 1, waitTimeoutMs: 1000 },
       undefined,

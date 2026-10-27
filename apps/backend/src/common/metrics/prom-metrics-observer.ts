@@ -73,6 +73,9 @@ export class PromMetricsObserver implements MetricsObserver {
     @Optional()
     @InjectMetric('pdf_parse_total')
     pdfParses?: Counter<string>,
+    @Optional()
+    @InjectMetric('db_lane_busy_seconds_total')
+    dbBusy?: Counter<string>,
   ) {
     this.histograms = asMap({
       llm_request_duration_seconds: llmRequestDuration,
@@ -87,6 +90,7 @@ export class PromMetricsObserver implements MetricsObserver {
       pipeline_rows_deleted_total: pipelineRowsDeleted,
       bullmq_job_attempts_total: jobAttempts,
       pdf_parse_total: pdfParses,
+      db_lane_busy_seconds_total: dbBusy,
     });
   }
 
