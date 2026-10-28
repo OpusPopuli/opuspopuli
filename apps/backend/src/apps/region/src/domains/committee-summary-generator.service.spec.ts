@@ -5,7 +5,11 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
-import { CommitteeSummaryGeneratorService } from './committee-summary-generator.service';
+import {
+  CommitteeSummaryGeneratorService,
+  committeeSummaryConfigHash,
+} from './committee-summary-generator.service';
+import { inputHash } from './generated-output-key';
 
 describe('CommitteeSummaryGeneratorService', () => {
   async function buildService(
@@ -18,6 +22,11 @@ describe('CommitteeSummaryGeneratorService', () => {
         name: string;
         chamber: string;
         committees: unknown;
+        committeesSummary?: string | null;
+        committeesSummaryPromptHash?: string | null;
+        committeesSummaryLlmDigest?: string | null;
+        committeesSummarySourceHash?: string | null;
+        committeesSummaryConfigHash?: string | null;
       }>;
     } = {},
   ) {
@@ -34,6 +43,7 @@ describe('CommitteeSummaryGeneratorService', () => {
       promptHash: 'hash',
       promptVersion: '1.0.0',
     });
+    mockPromptClient.getPromptHash.mockResolvedValue('hash');
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
@@ -49,6 +59,10 @@ describe('CommitteeSummaryGeneratorService', () => {
     const mockDb = {
       representative: {
         findMany: jest.fn().mockResolvedValue(dbRows),
+        findFirst: jest.fn(
+          async ({ where }: { where: { id: string } }) =>
+            dbRows.find((r) => r.id === where.id) ?? null,
+        ),
         update: jest.fn().mockResolvedValue(undefined),
       },
     } as unknown as DbService;
@@ -137,24 +151,26 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledTimes(1);
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-with' },
-        data: {
+        data: expect.objectContaining({
           committeesSummary: 'Budget and fiscal policy.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
           committeesSummaryLlmDigest: 'stub-digest',
-        },
+          committeesSummarySourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          committeesSummaryConfigHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          committeesSummaryGeneratedAt: expect.any(Date),
+        }),
       });
     });
 
-    it('filters DB candidates to those missing a summary', async () => {
+    it('selects every live rep in scope — staleness, not a missing summary, decides', async () => {
+      // Before Phase B only `committeesSummary: null` was selected, so a
+      // summary was never refreshed after a committee, prompt or model change.
       const built = await buildService();
       await built.service.generateMissingSummaries();
       const findManyArgs = built.db.representative.findMany.mock.calls[0][0];
-      expect(findManyArgs.where).toMatchObject({
-        deletedAt: null,
-        committeesSummary: null,
-      });
+      expect(findManyArgs.where).toEqual({ deletedAt: null });
     });
 
     it('returns early when no candidates have committees', async () => {
@@ -302,7 +318,6 @@ describe('CommitteeSummaryGeneratorService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             deletedAt: null,
-            committeesSummary: null,
             regionId: 'california',
           }),
         }),
@@ -351,13 +366,13 @@ describe('CommitteeSummaryGeneratorService', () => {
 
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
-        data: {
+        data: expect.objectContaining({
           committeesSummary: 'Budget and fiscal policy.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
           committeesSummaryLlmDigest: 'stub-digest',
-        },
+        }),
       });
     });
 
@@ -371,13 +386,13 @@ describe('CommitteeSummaryGeneratorService', () => {
 
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
-        data: {
+        data: expect.objectContaining({
           committeesSummary: 'Fenced.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
           committeesSummaryLlmDigest: 'stub-digest',
-        },
+        }),
       });
     });
 
@@ -392,13 +407,13 @@ describe('CommitteeSummaryGeneratorService', () => {
 
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-1' },
-        data: {
+        data: expect.objectContaining({
           committeesSummary: 'Budget oversight and fiscal policy.',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
           committeesSummaryLlmDigest: 'stub-digest',
-        },
+        }),
       });
     });
 
@@ -431,12 +446,120 @@ describe('CommitteeSummaryGeneratorService', () => {
       expect(built.db.representative.update).toHaveBeenCalledTimes(1);
       expect(built.db.representative.update).toHaveBeenCalledWith({
         where: { id: 'rep-2' },
-        data: {
+        data: expect.objectContaining({
           committeesSummary: 'ok',
           committeesSummaryPromptHash: 'hash',
           committeesSummaryPromptVersion: '1.0.0',
           committeesSummaryLlmModel: 'qwen-test:9b',
           committeesSummaryLlmDigest: 'stub-digest',
+        }),
+      });
+    });
+  });
+
+  describe('the skip key (representatives Phase B)', () => {
+    const committees = [{ name: 'Budget', role: 'Member' }];
+    const sourceHash = (c: unknown = committees) =>
+      inputHash(
+        JSON.stringify({
+          name: 'Jane Doe',
+          chamber: 'Assembly',
+          committees: c,
+        }),
+      );
+    const row = (stored: Record<string, unknown> = {}) => ({
+      id: 'rep-1',
+      name: 'Jane Doe',
+      chamber: 'Assembly',
+      committees,
+      committeesSummary: 'Budget and fiscal policy.',
+      committeesSummaryPromptHash: 'hash',
+      committeesSummaryLlmDigest: 'stub-digest',
+      ...stored,
+    });
+
+    it('makes no call for a summary current on every axis', async () => {
+      const built = await buildService({
+        dbRows: [
+          row({
+            committeesSummarySourceHash: sourceHash(),
+            committeesSummaryConfigHash: committeeSummaryConfigHash(200),
+          }),
+        ],
+      });
+      const { pending, current } = await built.service.selectStale();
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('regenerates when an assignment changed', async () => {
+      const built = await buildService({
+        dbRows: [
+          row({
+            committeesSummarySourceHash: sourceHash([]),
+            committeesSummaryConfigHash: committeeSummaryConfigHash(200),
+          }),
+        ],
+      });
+      const { pending } = await built.service.selectStale();
+      expect(pending).toEqual([{ id: 'rep-1', key: expect.any(String) }]);
+    });
+
+    it('stamps a legacy summary instead of regenerating it', async () => {
+      const built = await buildService({ dbRows: [row()] });
+      const { pending, current } = await built.service.selectStale();
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(built.db.representative.update).toHaveBeenCalledWith({
+        where: { id: 'rep-1' },
+        data: {
+          committeesSummarySourceHash: sourceHash(),
+          committeesSummaryConfigHash: committeeSummaryConfigHash(200),
+        },
+      });
+    });
+
+    it('keeps a deterministic summary (no model call, no prompt hash) current on its input', async () => {
+      const built = await buildService({
+        dbRows: [
+          row({
+            committeesSummary: 'Doe chairs Budget.',
+            committeesSummaryPromptHash: null,
+            committeesSummaryLlmDigest: null,
+            committeesSummarySourceHash: sourceHash(),
+            committeesSummaryConfigHash: committeeSummaryConfigHash(200),
+          }),
+        ],
+      });
+      const { pending, current } = await built.service.selectStale();
+      expect([pending.length, current]).toEqual([0, 1]);
+    });
+
+    it('the job re-checks: no call for a summary that became current after it was queued', async () => {
+      const built = await buildService({
+        dbRows: [
+          row({
+            committeesSummarySourceHash: sourceHash(),
+            committeesSummaryConfigHash: committeeSummaryConfigHash(200),
+          }),
+        ],
+      });
+      await expect(built.service.generateOne('rep-1')).resolves.toBe(
+        'unchanged',
+      );
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('the job stamps a legacy summary and reports it unchanged', async () => {
+      const built = await buildService({ dbRows: [row()] });
+      await expect(built.service.generateOne('rep-1')).resolves.toBe(
+        'unchanged',
+      );
+      expect(built.llm.generate).not.toHaveBeenCalled();
+      expect(built.db.representative.update).toHaveBeenCalledWith({
+        where: { id: 'rep-1' },
+        data: {
+          committeesSummarySourceHash: sourceHash(),
+          committeesSummaryConfigHash: committeeSummaryConfigHash(200),
         },
       });
     });

@@ -13,6 +13,7 @@ import {
   PropositionAnalysisService,
   propositionAnalysisConfigHash,
 } from './proposition-analysis.service';
+import { outputJobId } from './output-lane';
 
 jest.mock('./claim-recorder', () => ({
   recordClaims: jest.fn().mockResolvedValue({ written: 0, byState: {} }),
@@ -343,7 +344,7 @@ describe('PropositionAnalysisService', () => {
     });
   });
 
-  describe('analysisJobId (S4)', () => {
+  describe('the analysis job id (S4)', () => {
     const live = {
       promptHash: PROMPT_HASH,
       modelDigest: 'stub-digest',
@@ -354,25 +355,29 @@ describe('PropositionAnalysisService', () => {
       fullTextHash: FULL_TEXT_HASH,
     };
 
+    // The id the sync actually queues under: the lane's, over this key.
+    const jobId = (l: typeof live | Record<string, unknown>) =>
+      outputJobId(
+        {
+          id: prop.id,
+          key: PropositionAnalysisService.analysisKey(prop, l as typeof live),
+        },
+        'analyse',
+      );
+
     it('is the measure, the stage and the skip key — equal for equal inputs', () => {
-      const id = PropositionAnalysisService.analysisJobId(prop, live);
+      const id = jobId(live);
 
       expect(id).toMatch(new RegExp(`^${prop.id}__analyse__sk1-[0-9a-f]{64}$`));
-      expect(PropositionAnalysisService.analysisJobId(prop, live)).toBe(id);
-      expect(
-        PropositionAnalysisService.analysisJobId(prop, {
-          ...live,
-          modelDigest: 'other',
-        }),
-      ).not.toBe(id);
+      expect(jobId(live)).toBe(id);
+      expect(jobId({ ...live, modelDigest: 'other' })).not.toBe(id);
     });
 
     it('is a one-off id when an axis is unknown — it never collapses', () => {
       const unknown = { ...live, modelDigest: undefined };
 
-      expect(PropositionAnalysisService.analysisJobId(prop, unknown)).not.toBe(
-        PropositionAnalysisService.analysisJobId(prop, unknown),
-      );
+      expect(PropositionAnalysisService.analysisKey(prop, unknown)).toBeNull();
+      expect(jobId(unknown)).not.toBe(jobId(unknown));
     });
   });
 

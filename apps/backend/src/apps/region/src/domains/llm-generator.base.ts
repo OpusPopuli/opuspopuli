@@ -1,9 +1,15 @@
-import { Inject, Optional } from '@nestjs/common';
+import { Inject, Optional, type Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { type ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { ClaimRecordInput, ClaimRecordOutcome } from './claim-normalisers';
+import {
+  inputHash,
+  type GeneratedOutputOutcome,
+  type LiveOutputKey,
+  type OutputTarget,
+} from './generated-output-key';
 import { recordClaims } from './claim-recorder';
 
 /**
@@ -87,6 +93,119 @@ export abstract class LlmGeneratorBase {
     protected readonly llm?: ILLMProvider,
     @Optional() protected readonly db?: DbService,
   ) {}
+
+  /**
+   * Prompt hash lookups, by template — the PROMISE, so rows assessed
+   * concurrently share one call rather than each starting their own before
+   * the first resolves. Kept a minute.
+   */
+  private readonly promptHashes = new Map<
+    string,
+    { hash: Promise<string | undefined>; at: number }
+  >();
+
+  /**
+   * The live skip key for one output (representatives Phase B): the prompt
+   * template's published hash (looked up at most once a minute per template)
+   * and the weights' digest (cached by the provider for the process), each
+   * undefined — that axis unchecked — when its lookup fails; plus the hash of
+   * exactly what the prompt will be given.
+   *
+   * @param templateName - The prompt template, `document-analysis-<type>`
+   * @param input - The text the prompt is given
+   * @param configHash - The generator's settings that shape what is stored
+   */
+  protected async liveOutputKey(
+    templateName: string,
+    input: string,
+    configHash: string,
+  ): Promise<LiveOutputKey> {
+    let digest: string | undefined;
+    try {
+      digest = await this.llm?.getModelDigest();
+    } catch {
+      // The model axis goes unchecked this run; the rest still apply.
+      digest = undefined;
+    }
+    return {
+      promptHash: await this.livePromptHash(templateName),
+      modelDigest:
+        digest && digest !== UNKNOWN_MODEL_DIGEST ? digest : undefined,
+      sourceHash: inputHash(input),
+      configHash,
+    };
+  }
+
+  private livePromptHash(templateName: string): Promise<string | undefined> {
+    const cached = this.promptHashes.get(templateName);
+    if (cached && Date.now() - cached.at < 60_000) return cached.hash;
+    const hash = (async () => {
+      try {
+        return await this.promptClient?.getPromptHash(templateName);
+      } catch {
+        // The prompt axis goes unchecked this run; the rest still apply.
+        return undefined;
+      }
+    })();
+    this.promptHashes.set(templateName, { hash, at: Date.now() });
+    return hash;
+  }
+
+  /**
+   * Run `run` over `items`, `concurrency` at a time — the generators'
+   * in-process path, when their queue is off and for the admin scripts. One
+   * item's error is that item's result (`onError`), never its batch peers'.
+   */
+  protected async runInBatches<T, R>(
+    items: readonly T[],
+    concurrency: number,
+    run: (item: T) => Promise<R>,
+    onError: (item: T, error: Error) => R,
+  ): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+      const batch = items.slice(i, i + concurrency);
+      results.push(
+        ...(await Promise.all(
+          batch.map((item) =>
+            run(item).catch((error: unknown) => onError(item, error as Error)),
+          ),
+        )),
+      );
+    }
+    return results;
+  }
+
+  /**
+   * Generate each target in this process, `concurrency` at a time, and log
+   * the tally — the in-process path of the generators whose job is one id.
+   *
+   * @param what - Plural noun for the log ("committee summaries")
+   */
+  protected async generateInProcess(
+    targets: readonly OutputTarget[],
+    concurrency: number,
+    what: string,
+    generate: (id: string) => Promise<GeneratedOutputOutcome>,
+    logger: Pick<Logger, 'log' | 'warn'>,
+  ): Promise<number> {
+    const outcomes = await this.runInBatches(
+      targets,
+      concurrency,
+      (target) => generate(target.id),
+      (target, error): GeneratedOutputOutcome => {
+        logger.warn(
+          `${what}: generation failed for ${target.id}: ${error.message}`,
+        );
+        return 'failed';
+      },
+    );
+    const succeeded = outcomes.filter(
+      (o) => o === 'created' || o === 'updated',
+    ).length;
+    logger.log(`Generated ${succeeded}/${targets.length} ${what} successfully`);
+    return succeeded;
+  }
 
   /**
    * One-line description of a refusal, for logging at `warn`.

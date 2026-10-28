@@ -1050,6 +1050,79 @@ describe("ExtractionProvider", () => {
       testProvider.onModuleDestroy();
     });
 
+    it("keeps one host's failures from opening another host's breaker", async () => {
+      // 2026-10-27: the Assembly's asmdc.org bio pages failed five in a row,
+      // opened the single shared breaker, and the Senate roster — a healthy
+      // host fetched next — was refused: 40 senators dropped.
+      const testProvider = new ExtractionProvider({
+        rateLimit: { requestsPerSecond: 100, burstSize: 100 },
+      });
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url.includes("a30.asmdc.org")) throw new Error("fetch failed");
+        return httpResponse("senators");
+      });
+
+      for (let i = 0; i < 6; i++) {
+        await testProvider
+          .fetchUrl(`https://a30.asmdc.org/biography?${i}`, {
+            bypassCache: true,
+          })
+          .catch(() => {});
+      }
+      expect(testProvider.getCircuitBreakerHealth("a30.asmdc.org").state).toBe(
+        "open",
+      );
+
+      await expect(
+        testProvider.fetchUrl("https://www.senate.ca.gov/senators", {
+          bypassCache: true,
+        }),
+      ).resolves.toMatchObject({ content: "senators" });
+      expect(
+        testProvider.getCircuitBreakerHealth("www.senate.ca.gov").state,
+      ).toBe("closed");
+      // The summary still says something is open.
+      expect(testProvider.getCircuitBreakerHealth().state).toBe("open");
+
+      testProvider.onModuleDestroy();
+    });
+
+    it("treats a trailing-dot host as the same site — one breaker, as the rate limiter does", async () => {
+      const testProvider = new ExtractionProvider({
+        rateLimit: { requestsPerSecond: 100, burstSize: 100 },
+      });
+      mockFetch.mockRejectedValue(new Error("fetch failed"));
+
+      for (let i = 0; i < 6; i++) {
+        const host = i % 2 === 0 ? "fec.gov" : "fec.gov.";
+        await testProvider
+          .fetchUrl(`https://${host}/x?${i}`, { bypassCache: true })
+          .catch(() => {});
+      }
+      // Two breakers would each have seen 3 failures, below the limit of 5.
+      expect(testProvider.getCircuitBreakerHealth("fec.gov").state).toBe(
+        "open",
+      );
+
+      testProvider.onModuleDestroy();
+    });
+
+    it("keeps an unparseable URL out of every breaker", async () => {
+      const testProvider = new ExtractionProvider({
+        rateLimit: { requestsPerSecond: 100, burstSize: 100 },
+      });
+
+      for (let i = 0; i < 6; i++) {
+        await testProvider
+          .fetchUrl(`not a url ${i}`, { bypassCache: true })
+          .catch(() => {});
+      }
+      // Six bad URLs used to share one "unparseable" breaker and trip it.
+      expect(testProvider.getCircuitBreakerHealth().state).toBe("closed");
+
+      testProvider.onModuleDestroy();
+    });
+
     it("should recover after half-open period", async () => {
       // Create provider
       const testProvider = new ExtractionProvider({

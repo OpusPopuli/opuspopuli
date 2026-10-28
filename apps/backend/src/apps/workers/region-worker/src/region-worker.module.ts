@@ -24,6 +24,12 @@ import { MinutesSummaryProcessor } from './minutes-summary.processor';
 import { CivicsExtractProcessor } from './civics-extract.processor';
 import { PropositionAnalysisProcessor } from './proposition-analysis.processor';
 import { PdfParseProcessor } from './pdf-parse.processor';
+import {
+  ActivitySummaryProcessor,
+  CommitteeDescriptionProcessor,
+  CommitteeSummaryProcessor,
+  RepresentativeBioProcessor,
+} from './representative-output.processors';
 import { QueueDepthMetricsService } from './queue-depth-metrics.service';
 import { GpuLaneModule } from 'src/common/gpu-lane/gpu-lane.module';
 
@@ -75,6 +81,10 @@ import { GpuLaneModule } from 'src/common/gpu-lane/gpu-lane.module';
     CivicsExtractProcessor,
     PropositionAnalysisProcessor,
     PdfParseProcessor,
+    RepresentativeBioProcessor,
+    CommitteeSummaryProcessor,
+    CommitteeDescriptionProcessor,
+    ActivitySummaryProcessor,
     QueueDepthMetricsService,
   ],
 })

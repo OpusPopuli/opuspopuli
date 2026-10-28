@@ -1,10 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
   buildSkipKey,
   extractJsonObjectSlice,
-  laneJobId,
   stableHash,
   type JsonRepairClass,
   parseJsonWithRepair,
@@ -303,24 +302,21 @@ export class PropositionAnalysisService extends LlmGeneratorBase {
   }
 
   /**
-   * The job id for a stale measure's analysis (S4): its id, and the skip key
-   * over the four axes it is judged on, so a job collapses onto one in
-   * flight only for identical inputs. An unknown prompt hash or digest gives
-   * no key — a one-off id that never collapses.
+   * The skip key a stale measure's analysis job is named by (S4): the four
+   * axes it is judged on, so a job collapses onto one in flight only for
+   * identical inputs. Null — a one-off job that never collapses — when the
+   * prompt hash or digest is unknown.
    */
-  static analysisJobId(
-    prop: Pick<PropForAnalysis, 'id' | 'fullTextHash'>,
+  static analysisKey(
+    prop: Pick<PropForAnalysis, 'fullTextHash'>,
     live: LiveAnalysisKey,
-  ): string {
-    const skipKey = buildSkipKey({
+  ): string | null {
+    return buildSkipKey({
       sourceHash: prop.fullTextHash ?? '',
       promptHash: live.promptHash ?? '',
       modelDigest: live.modelDigest ?? '',
       configHash: live.configHash,
     });
-    return skipKey
-      ? laneJobId(prop.id, 'analyse', skipKey)
-      : `proposition-analysis-${randomUUID()}`;
   }
 
   /** A measure with text to analyse, or null — logged — when there is none. */

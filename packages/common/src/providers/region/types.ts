@@ -307,6 +307,12 @@ export interface Representative {
   bio?: string;
   bioSource?: BioSource;
   bioClaims?: BioClaim[];
+  /**
+   * The archived detail page this rep was extracted from (representatives
+   * Phase B §2) — {@link RowProvenance.sourceVersionId}, stamped per item at
+   * the fetch. Absent when no detail page was fetched for this rep.
+   */
+  sourceVersionId?: string;
 }
 
 // ============================================

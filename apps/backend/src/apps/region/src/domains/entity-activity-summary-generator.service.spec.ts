@@ -5,13 +5,21 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
-import { EntityActivitySummaryGeneratorService } from './entity-activity-summary-generator.service';
+import {
+  EntityActivitySummaryGeneratorService,
+  activitySummaryConfigHash,
+} from './entity-activity-summary-generator.service';
 
 interface RepRow {
   id: string;
   name: string;
   chamber: string;
   activitySummaryGeneratedAt: Date | null;
+  activitySummary?: string | null;
+  activitySummaryPromptHash?: string | null;
+  activitySummaryLlmDigest?: string | null;
+  activitySummarySourceHash?: string | null;
+  activitySummaryConfigHash?: string | null;
 }
 
 interface CommitteeRow {
@@ -56,6 +64,7 @@ describe('EntityActivitySummaryGeneratorService', () => {
       promptHash: 'hash',
       promptVersion: '1.0.0',
     });
+    mockPromptClient.getPromptHash.mockResolvedValue('hash');
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
@@ -85,10 +94,18 @@ describe('EntityActivitySummaryGeneratorService', () => {
     const mockDb = {
       representative: {
         findMany: jest.fn().mockResolvedValue(reps),
+        findFirst: jest.fn(
+          async ({ where }: { where: { id: string } }) =>
+            reps.find((r) => r.id === where.id) ?? null,
+        ),
         update: repUpdate,
       },
       legislativeCommittee: {
         findMany: jest.fn().mockResolvedValue(committees),
+        findFirst: jest.fn(
+          async ({ where }: { where: { id: string } }) =>
+            committees.find((c) => c.id === where.id) ?? null,
+        ),
         update: cmtUpdate,
       },
       legislativeAction: {
@@ -374,5 +391,145 @@ describe('EntityActivitySummaryGeneratorService', () => {
     const result = await service.generateAll(30);
     // Result returns the windowDays the service used.
     expect(result.repsUpdated).toBe(1);
+  });
+
+  describe('K2: the skip key', () => {
+    const action = {
+      date: new Date(),
+      actionType: 'amendment',
+      rawSubject: 'AB 1',
+      text: 't',
+    };
+    const rep = (stored: Partial<RepRow> = {}): RepRow => ({
+      id: 'rep-1',
+      name: 'Jane Doe',
+      chamber: 'Assembly',
+      activitySummaryGeneratedAt: new Date('2026-10-20T00:00:00Z'),
+      activitySummary: 'existing',
+      activitySummaryPromptHash: 'hash',
+      activitySummaryLlmDigest: 'stub-digest',
+      ...stored,
+    });
+
+    /** The input hash the generator will compute for `rep()` + `action`. */
+    const liveSourceHash = async () => {
+      const { service, repUpdate } = await buildService({
+        reps: [rep({ activitySummaryPromptHash: null })],
+        actions: [action],
+      });
+      await service.generateAll();
+      return repUpdate.mock.calls[0][0].data
+        .activitySummarySourceHash as string;
+    };
+
+    it('writes the input and config hashes with a generated summary', async () => {
+      const { service, repUpdate } = await buildService({
+        reps: [rep({ activitySummaryPromptHash: null })],
+        actions: [action],
+      });
+      await service.generateAll();
+      const data = repUpdate.mock.calls[0][0].data;
+      expect(data.activitySummarySourceHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(data.activitySummaryConfigHash).toBe(
+        activitySummaryConfigHash(400, 90),
+      );
+    });
+
+    it('makes no LLM call for a summary current on every axis', async () => {
+      const sourceHash = await liveSourceHash();
+      const { service, llm } = await buildService({
+        reps: [
+          rep({
+            activitySummarySourceHash: sourceHash,
+            activitySummaryConfigHash: activitySummaryConfigHash(400, 90),
+          }),
+        ],
+        actions: [action],
+      });
+
+      const { pending, current } = await service.selectStale();
+
+      expect(pending).toEqual([]);
+      expect(current).toBe(1);
+      expect(llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('the job re-checks: no call for a summary that became current after it was queued', async () => {
+      const sourceHash = await liveSourceHash();
+      const { service, llm } = await buildService({
+        reps: [
+          rep({
+            activitySummarySourceHash: sourceHash,
+            activitySummaryConfigHash: activitySummaryConfigHash(400, 90),
+          }),
+        ],
+        actions: [action],
+      });
+
+      await expect(
+        service.generateOne('representative', 'rep-1'),
+      ).resolves.toBe('unchanged');
+      expect(llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('the job stamps a legacy summary and reports it unchanged', async () => {
+      const { service, llm, repUpdate } = await buildService({
+        reps: [rep()],
+        actions: [action],
+      });
+
+      await expect(
+        service.generateOne('representative', 'rep-1'),
+      ).resolves.toBe('unchanged');
+      expect(llm.generate).not.toHaveBeenCalled();
+      expect(repUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('stamps a legacy summary instead of regenerating it (owner, 2026-10-27)', async () => {
+      const { service, llm, repUpdate } = await buildService({
+        reps: [rep()],
+        actions: [action],
+      });
+
+      const { pending, current } = await service.selectStale();
+
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(llm.generate).not.toHaveBeenCalled();
+      expect(repUpdate).toHaveBeenCalledWith({
+        where: { id: 'rep-1' },
+        data: {
+          activitySummarySourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          activitySummaryConfigHash: activitySummaryConfigHash(400, 90),
+        },
+      });
+    });
+
+    it('regenerates when the activity in the window changed', async () => {
+      const sourceHash = await liveSourceHash();
+      const { service } = await buildService({
+        reps: [
+          rep({
+            activitySummarySourceHash: sourceHash,
+            activitySummaryConfigHash: activitySummaryConfigHash(400, 90),
+          }),
+        ],
+        actions: [action, { ...action, rawSubject: 'AB 2' }],
+      });
+
+      const { pending } = await service.selectStale();
+
+      expect(pending).toEqual([
+        { entityType: 'representative', id: 'rep-1', key: expect.any(String) },
+      ]);
+    });
+
+    it('regenerates a legacy summary made on other weights', async () => {
+      const { service } = await buildService({
+        reps: [rep({ activitySummaryLlmDigest: 'sha256:other-weights' })],
+        actions: [action],
+      });
+      const { pending } = await service.selectStale();
+      expect(pending).toHaveLength(1);
+    });
   });
 });

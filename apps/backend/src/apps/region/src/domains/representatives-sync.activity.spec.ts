@@ -51,7 +51,19 @@ describe('representatives sync — activity summaries', () => {
     regionId: 'california',
   } as never;
 
-  const run = async (activity?: { generateAll: jest.Mock }): Promise<void> => {
+  /** An activity generator whose selection finds `pending` stale and `current` current. */
+  const generator = (
+    pending: { entityType: string; id: string; key: string | null }[],
+    current = 0,
+    generateOne: jest.Mock = jest.fn().mockResolvedValue('updated'),
+  ) => ({
+    selectStale: jest.fn().mockResolvedValue({ pending, current }),
+    generateOne,
+  });
+
+  const run = async (
+    activity?: ReturnType<typeof generator> | { selectStale: jest.Mock },
+  ): Promise<void> => {
     const deps = buildDeps();
     const service = new RepresentativesSyncService(
       deps.db as never,
@@ -72,16 +84,37 @@ describe('representatives sync — activity summaries', () => {
     );
   };
 
-  it('invokes the activity summary generator', async () => {
-    const generateAll = jest
-      .fn()
-      .mockResolvedValue({ repsUpdated: 3, committeesUpdated: 2, skipped: 0 });
+  const logged = (spy: jest.SpyInstance, text: string): string | undefined =>
+    spy.mock.calls
+      .map((c) => c[0])
+      .filter((a): a is string => typeof a === 'string')
+      .find((a) => a.includes(text));
 
-    await run({ generateAll });
+  it('generates each stale summary from the sync', async () => {
+    const activity = generator([
+      { entityType: 'representative', id: 'rep-1', key: null },
+      { entityType: 'committee', id: 'com-1', key: null },
+    ]);
+
+    await run(activity);
 
     // The regression: this was never called from any sync, so the column sat
     // empty while every other AI field on the table was populated.
-    expect(generateAll).toHaveBeenCalled();
+    expect(activity.selectStale).toHaveBeenCalled();
+    expect(activity.generateOne.mock.calls).toEqual([
+      ['representative', 'rep-1'],
+      ['committee', 'com-1'],
+    ]);
+  });
+
+  it('generates nothing when every summary is current (K2)', async () => {
+    // The Gate 0 finding: 84 of the baseline's 87 LLM calls regenerated
+    // activity summaries nothing had changed.
+    const activity = generator([], 84);
+
+    await run(activity);
+
+    expect(activity.generateOne).not.toHaveBeenCalled();
   });
 
   it('reports the counts it produced', async () => {
@@ -89,20 +122,20 @@ describe('representatives sync — activity summaries', () => {
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => {});
     try {
-      await run({
-        generateAll: jest.fn().mockResolvedValue({
-          repsUpdated: 3,
-          committeesUpdated: 2,
-          skipped: 0,
-        }),
-      });
+      await run(
+        generator(
+          [
+            { entityType: 'representative', id: 'rep-1', key: null },
+            { entityType: 'committee', id: 'com-1', key: null },
+          ],
+          3,
+        ),
+      );
 
-      const line = log.mock.calls
-        .map((c) => c[0])
-        .filter((a): a is string => typeof a === 'string')
-        .find((a) => a.includes('Activity summaries'));
-      expect(line).toContain('3 representative(s)');
-      expect(line).toContain('2 committee(s)');
+      const line = logged(log, 'Activity summaries');
+      expect(line).toContain('2 written');
+      expect(line).toContain('3 current');
+      expect(logged(log, '3 skipped (activity_summary_current)')).toBeDefined();
     } finally {
       log.mockRestore();
     }
@@ -117,19 +150,9 @@ describe('representatives sync — activity summaries', () => {
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => {});
     try {
-      await run({
-        generateAll: jest.fn().mockResolvedValue({
-          repsUpdated: 0,
-          committeesUpdated: 0,
-          skipped: 0,
-        }),
-      });
+      await run(generator([], 0));
 
-      const line = log.mock.calls
-        .map((c) => c[0])
-        .filter((a): a is string => typeof a === 'string')
-        .find((a) => a.includes('Activity summaries'));
-      expect(line).toContain(
+      expect(logged(log, 'Activity summaries')).toContain(
         'no entity had legislative actions inside the window',
       );
     } finally {
@@ -137,24 +160,45 @@ describe('representatives sync — activity summaries', () => {
     }
   });
 
-  it('does not fail the roster sync when summary generation throws', async () => {
-    // Matches its two siblings in this method: a roster sync that worked must
-    // not be reported as failed because a summary pass did not.
+  it('does not fail the roster sync when the selection throws', async () => {
+    // A roster sync that worked must not be reported as failed because a
+    // summary pass did not.
     const warn = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => {});
     try {
       await expect(
         run({
-          generateAll: jest.fn().mockRejectedValue(new Error('ollama down')),
+          selectStale: jest.fn().mockRejectedValue(new Error('ollama down')),
         }),
       ).resolves.toBeUndefined();
 
-      const line = warn.mock.calls
-        .map((c) => c[0])
-        .filter((a): a is string => typeof a === 'string')
-        .find((a) => a.includes('Activity summary generation failed'));
-      expect(line).toContain('ollama down');
+      expect(logged(warn, 'activity summary selection failed')).toContain(
+        'ollama down',
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('counts a summary that failed as failed, and finishes the sync', async () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    try {
+      await expect(
+        run(
+          generator(
+            [{ entityType: 'representative', id: 'rep-1', key: null }],
+            0,
+            jest.fn().mockRejectedValue(new Error('llm_error')),
+          ),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(logged(warn, 'activity-summary failed for rep-1')).toContain(
+        'llm_error',
+      );
     } finally {
       warn.mockRestore();
     }
@@ -169,19 +213,26 @@ describe('representatives sync — activity summaries', () => {
     const log = jest
       .spyOn(Logger.prototype, 'log')
       .mockImplementation((message: unknown) => {
-        if (typeof message === 'string' && message.includes('(summaries)')) {
+        if (
+          typeof message === 'string' &&
+          /\(summaries\) (starting|complete)/.test(message)
+        ) {
           events.push(message.includes('starting') ? 'start' : 'complete');
         }
       });
     try {
-      await run({
-        generateAll: jest.fn().mockImplementation(async () => {
-          events.push('generateAll');
-          return { repsUpdated: 1, committeesUpdated: 0, skipped: 0 };
-        }),
-      });
+      await run(
+        generator(
+          [{ entityType: 'representative', id: 'rep-1', key: null }],
+          0,
+          jest.fn().mockImplementation(async () => {
+            events.push('generateOne');
+            return 'updated';
+          }),
+        ),
+      );
 
-      expect(events).toEqual(['start', 'generateAll', 'complete']);
+      expect(events).toEqual(['start', 'generateOne', 'complete']);
     } finally {
       log.mockRestore();
     }
@@ -642,5 +693,309 @@ describe('representatives sync — a scraped bio supersedes the AI claims (#1391
     expect(
       (recordClaims as jest.Mock).mock.calls.map(([, i]) => i.subjectId),
     ).toEqual(['rep-uuid-7', 'rep-uuid-8']);
+  });
+});
+
+/**
+ * Bios, committee summaries and committee descriptions on their queues
+ * (representatives S4): each stale output is one job, and an output current
+ * on every axis is skipped without one.
+ */
+describe('representatives sync — generator lanes (S4)', () => {
+  const rep = {
+    externalId: 'ca-assembly-1',
+    name: 'Test Member',
+    chamber: 'Assembly',
+    district: '1',
+  };
+
+  const generatorOf = (
+    pending: { id: string; key: string | null }[],
+    current = 0,
+  ) => ({
+    selectStale: jest.fn().mockResolvedValue({ pending, current }),
+    generateOne: jest.fn().mockResolvedValue('updated'),
+    resolveScope: jest.fn().mockReturnValue('california'),
+  });
+
+  const run = async (generators: {
+    bio?: ReturnType<typeof generatorOf>;
+    summary?: ReturnType<typeof generatorOf>;
+    linker?: { linkAll: jest.Mock };
+    description?: ReturnType<typeof generatorOf>;
+  }) => {
+    const service = new RepresentativesSyncService(
+      {
+        representative: {
+          findMany: jest.fn().mockResolvedValue([]),
+          count: jest.fn().mockResolvedValue(1),
+        },
+      } as never,
+      generators.bio as never,
+      generators.summary as never,
+      generators.linker as never,
+      generators.description as never,
+      undefined,
+    );
+    await service.sync(
+      {
+        fetchRepresentatives: jest.fn().mockResolvedValue([rep]),
+        getName: jest.fn().mockReturnValue('california'),
+      } as never,
+      7,
+      'california',
+      { regionName: 'California', regionId: 'california' } as never,
+      jest
+        .fn()
+        .mockResolvedValue({ processed: 1, created: 1, updated: 0 }) as never,
+      () => '1',
+    );
+  };
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('selects bios in this region, under the cap, and generates each stale one', async () => {
+    const bio = generatorOf([{ id: 'rep-1', key: null }], 4);
+
+    await run({ bio });
+
+    expect(bio.resolveScope).toHaveBeenCalledWith('california', [
+      expect.objectContaining({ externalId: 'ca-assembly-1' }),
+    ]);
+    expect(bio.selectStale).toHaveBeenCalledWith('California', 'california', 7);
+    expect(bio.generateOne.mock.calls).toEqual([['rep-1', 'California']]);
+  });
+
+  it('generates no bio when every bio is current', async () => {
+    const bio = generatorOf([], 120);
+
+    await run({ bio });
+
+    expect(bio.generateOne).not.toHaveBeenCalled();
+  });
+
+  it('generates each stale committee summary, under the cap', async () => {
+    const summary = generatorOf([{ id: 'rep-1', key: null }]);
+
+    await run({ summary });
+
+    expect(summary.selectStale).toHaveBeenCalledWith('california', 7);
+    expect(summary.generateOne.mock.calls).toEqual([['rep-1']]);
+  });
+
+  it('queues each generator on its own queue when the queues are on', async () => {
+    const opened: string[] = [];
+    const childQueues = {
+      enabled: jest.fn().mockReturnValue(true),
+      open: jest.fn(async (name: string) => {
+        opened.push(name);
+        // A batch whose jobs report at once — enough to see the wiring.
+        let pending = 0;
+        const arrived: unknown[] = [];
+        return {
+          async add(_data: unknown, jobId: string) {
+            pending++;
+            arrived.push({ jobId, ok: true, value: 'updated' });
+          },
+          take: () => {
+            pending -= arrived.length;
+            return arrived.splice(0);
+          },
+          get pending() {
+            return pending;
+          },
+          waitForOutcome: async () => undefined,
+          dropWaiting: async () => 0,
+          failPending: async () => undefined,
+          close: async () => undefined,
+        };
+      }),
+    };
+    const one = () => generatorOf([{ id: 'x-1', key: null }]);
+    const activity = {
+      selectStale: jest.fn().mockResolvedValue({
+        pending: [{ entityType: 'committee', id: 'c-1', key: null }],
+        current: 0,
+      }),
+      generateOne: jest.fn(),
+    };
+    const service = new RepresentativesSyncService(
+      {
+        representative: {
+          findMany: jest.fn().mockResolvedValue([]),
+          count: jest.fn().mockResolvedValue(1),
+        },
+      } as never,
+      one() as never,
+      one() as never,
+      undefined,
+      one() as never,
+      activity as never,
+      undefined,
+      childQueues as never,
+    );
+    await service.sync(
+      {
+        fetchRepresentatives: jest.fn().mockResolvedValue([rep]),
+        getName: jest.fn().mockReturnValue('california'),
+      } as never,
+      undefined,
+      'california',
+      { regionName: 'California', regionId: 'california' } as never,
+      jest
+        .fn()
+        .mockResolvedValue({ processed: 1, created: 1, updated: 0 }) as never,
+      () => '1',
+    );
+
+    expect(opened.sort()).toEqual([
+      'activity-summary',
+      'committee-description',
+      'committee-summary',
+      'representative-bio',
+    ]);
+    // Queued, not run here.
+    expect(activity.generateOne).not.toHaveBeenCalled();
+  });
+
+  it('totals the summaries phase as the work it will do, and counts the current', async () => {
+    const lines: string[] = [];
+    jest.spyOn(Logger.prototype, 'log').mockImplementation((m: unknown) => {
+      lines.push(String(m));
+    });
+
+    await run({
+      summary: generatorOf([{ id: 'r-1', key: null }], 3),
+      description: generatorOf(
+        [
+          { id: 'c-1', key: null },
+          { id: 'c-2', key: null },
+        ],
+        4,
+      ),
+    });
+
+    expect(lines.some((l) => /\(summaries\) starting: 3 items/.test(l))).toBe(
+      true,
+    );
+    expect(
+      lines.some((l) => l.includes('3 skipped (committee_summary_current)')),
+    ).toBe(true);
+    expect(
+      lines.some((l) =>
+        l.includes('4 skipped (committee_description_current)'),
+      ),
+    ).toBe(true);
+  });
+
+  it('links committees before selecting the descriptions it creates', async () => {
+    const order: string[] = [];
+    const linker = {
+      linkAll: jest.fn().mockImplementation(async () => {
+        order.push('link');
+      }),
+    };
+    const description = generatorOf([{ id: 'com-1', key: null }]);
+    description.selectStale.mockImplementation(async () => {
+      order.push('select');
+      return { pending: [{ id: 'com-1', key: null }], current: 0 };
+    });
+
+    await run({ linker, description });
+
+    expect(order).toEqual(['link', 'select']);
+    expect(description.selectStale).toHaveBeenCalledWith(7);
+    expect(description.generateOne.mock.calls).toEqual([['com-1']]);
+  });
+});
+
+describe('representatives sync — the archived page (Phase B §2)', () => {
+  const run = async (
+    rep: Record<string, unknown>,
+    archived: string[] = ['sv-1'],
+  ) => {
+    const upsert = jest.fn().mockResolvedValue({});
+    const service = new RepresentativesSyncService(
+      {
+        representative: {
+          findMany: jest.fn().mockResolvedValue([]),
+          count: jest.fn().mockResolvedValue(1),
+          upsert,
+        },
+        sourceVersion: {
+          findMany: jest.fn(
+            async ({ where }: { where: { id: { in: string[] } } }) =>
+              where.id.in
+                .filter((id) => archived.includes(id))
+                .map((id) => ({ id })),
+          ),
+        },
+      } as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+    await service.sync(
+      {
+        fetchRepresentatives: jest.fn().mockResolvedValue([rep]),
+        getName: jest.fn().mockReturnValue('california'),
+      } as never,
+      undefined,
+      'california',
+      { regionName: 'California', regionId: 'california' } as never,
+      (async (
+        reps: unknown[],
+        _find: unknown,
+        map: (items: unknown[]) => unknown[],
+      ) => {
+        await Promise.all(map(reps) as Promise<unknown>[]);
+        return { processed: reps.length, created: 0, updated: reps.length };
+      }) as never,
+      () => '1',
+    );
+    return upsert.mock.calls[0][0] as {
+      update: Record<string, unknown>;
+      create: Record<string, unknown>;
+    };
+  };
+
+  const base = {
+    externalId: 'ca-assembly-4',
+    name: 'Test Member',
+    chamber: 'Assembly',
+    district: '4',
+  };
+
+  it('links the rep to the page it was extracted from', async () => {
+    const { update, create } = await run({ ...base, sourceVersionId: 'sv-1' });
+
+    expect(update.sourceVersion).toEqual({ connect: { id: 'sv-1' } });
+    expect(create.sourceVersion).toEqual({ connect: { id: 'sv-1' } });
+  });
+
+  it('drops an id with no archived row, rather than fail the whole roster write', async () => {
+    // `connect` to a missing row throws inside the batch transaction and
+    // rolls back every rep — one bad id must cost one link, not 120 rows.
+    const { update, create } = await run(
+      { ...base, sourceVersionId: 'sv-gone' },
+      [],
+    );
+
+    expect(update.sourceVersion).toBeUndefined();
+    expect(create.sourceVersion).toBeUndefined();
+  });
+
+  it('leaves the stored link alone when no page was fetched', async () => {
+    // A capped smoke test fetches no detail page for most reps; nulling the
+    // pointer there would orphan the page the stored bio came from.
+    const { update } = await run(base);
+
+    expect(update.sourceVersion).toBeUndefined();
   });
 });

@@ -328,6 +328,13 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     return allItems;
   }
 
+  /**
+   * One source through the pipeline. Throws on failure — the callers' per-
+   * source isolation (#801) depends on it: this used to catch every error and
+   * return no items, so a source that failed outright was counted as
+   * SUCCEEDED. On 2026-10-27 the Senate roster failed every attempt and the
+   * sync logged "Fetched 80 representatives items from 2/2 source(s)".
+   */
   private async fetchSource<T>(
     source: DataSourceConfig,
     dataType: string,
@@ -335,33 +342,26 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     pipelineJobId?: string,
     options?: PipelineExecuteOptions,
   ): Promise<{ items: T[]; batched: number }> {
-    try {
-      const category = source.category ? " (" + source.category + ")" : "";
-      this.logger.log(`Fetching ${dataType} from ${source.url}` + category);
+    const category = source.category ? " (" + source.category + ")" : "";
+    this.logger.log(`Fetching ${dataType} from ${source.url}` + category);
 
-      const useBatch =
-        onBatch &&
-        (source.sourceType === "bulk_download" || source.sourceType === "api");
-      const result = await this.pipeline.execute<T>(
-        source,
-        this.regionConfig.regionId,
-        useBatch ? onBatch : undefined,
-        pipelineJobId,
-        options,
-      );
+    const useBatch =
+      onBatch &&
+      (source.sourceType === "bulk_download" || source.sourceType === "api");
+    const result = await this.pipeline.execute<T>(
+      source,
+      this.regionConfig.regionId,
+      useBatch ? onBatch : undefined,
+      pipelineJobId,
+      options,
+    );
 
-      this.logResultDiagnostics(source.url, result);
+    this.logResultDiagnostics(source.url, result);
 
-      if (useBatch) {
-        return { items: [], batched: result.itemCount ?? 0 };
-      }
-      return { items: result.items, batched: 0 };
-    } catch (error) {
-      this.logger.error(
-        `Failed to fetch ${dataType} from ${source.url}: ${(error as Error).message}`,
-      );
-      return { items: [], batched: 0 };
+    if (useBatch) {
+      return { items: [], batched: result.itemCount ?? 0 };
     }
+    return { items: result.items, batched: 0 };
   }
 
   private logResultDiagnostics<T>(

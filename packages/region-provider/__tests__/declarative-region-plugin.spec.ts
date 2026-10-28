@@ -400,6 +400,47 @@ describe("DeclarativeRegionPlugin", () => {
       expect(result[0]).toMatchObject({ externalId: "S-1", chamber: "Senate" });
     });
 
+    it("counts a source that failed as failed — not as fetched", async () => {
+      // 2026-10-27: the Senate roster failed every attempt and the sync
+      // logged "Fetched 80 representatives items from 2/2 source(s)".
+      const config = createMockConfig({
+        dataSources: [
+          {
+            url: "https://a.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "x",
+            category: "Assembly",
+          },
+          {
+            url: "https://b.example.gov/members",
+            dataType: DataType.REPRESENTATIVES,
+            contentGoal: "y",
+            category: "Senate",
+          },
+        ],
+      });
+      plugin = new DeclarativeRegionPlugin(config, pipeline);
+      const log = jest.spyOn(
+        (plugin as unknown as { logger: { log: () => void } }).logger,
+        "log",
+      );
+      pipeline.execute
+        .mockResolvedValueOnce(
+          createExtractionResult([
+            { externalId: "A-1", name: "A", district: "1" },
+          ]),
+        )
+        .mockRejectedValueOnce(
+          new Error("Circuit breaker open for Extraction"),
+        );
+
+      await plugin.fetchRepresentatives();
+
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining("from 1/2 source(s) (1 source(s) failed"),
+      );
+    });
+
     it("returns an empty array (rather than throwing) when ALL sources fail (#801)", async () => {
       // Edge of per-source isolation: if every source errors, the caller
       // still gets a resolved promise with [] — not a rejection.

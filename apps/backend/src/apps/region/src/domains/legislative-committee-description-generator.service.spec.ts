@@ -5,7 +5,11 @@ import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider } from '@opuspopuli/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
-import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
+import {
+  LegislativeCommitteeDescriptionGeneratorService,
+  committeeDescriptionConfigHash,
+} from './legislative-committee-description-generator.service';
+import { inputHash } from './generated-output-key';
 
 describe('LegislativeCommitteeDescriptionGeneratorService', () => {
   async function buildService(
@@ -13,7 +17,16 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
       withDeps?: boolean;
       withDb?: boolean;
       configValues?: Record<string, string | undefined>;
-      dbRows?: Array<{ id: string; name: string; chamber: string }>;
+      dbRows?: Array<{
+        id: string;
+        name: string;
+        chamber: string;
+        description?: string | null;
+        descriptionPromptHash?: string | null;
+        descriptionLlmDigest?: string | null;
+        descriptionSourceHash?: string | null;
+        descriptionConfigHash?: string | null;
+      }>;
     } = {},
   ) {
     const {
@@ -29,6 +42,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
       promptHash: 'hash',
       promptVersion: '1.0.0',
     });
+    mockPromptClient.getPromptHash.mockResolvedValue('hash');
 
     const mockLlm = {
       getModelName: jest.fn().mockReturnValue('qwen-test:9b'),
@@ -44,6 +58,10 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
     const mockDb = {
       legislativeCommittee: {
         findMany: jest.fn().mockResolvedValue(dbRows),
+        findFirst: jest.fn(
+          async ({ where }: { where: { id: string } }) =>
+            dbRows.find((r) => r.id === where.id) ?? null,
+        ),
         update: jest.fn().mockResolvedValue(undefined),
       },
     } as unknown as DbService;
@@ -94,15 +112,12 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
   });
 
   describe('candidate selection', () => {
-    it('queries only committees missing a description and not soft-deleted', async () => {
+    it('selects every live committee — staleness, not a missing description, decides', async () => {
       const built = await buildService();
       await built.service.generateMissingDescriptions();
       const findManyArgs =
         built.db.legislativeCommittee.findMany.mock.calls[0][0];
-      expect(findManyArgs.where).toMatchObject({
-        deletedAt: null,
-        description: null,
-      });
+      expect(findManyArgs.where).toEqual({ deletedAt: null });
     });
 
     it('returns early when no candidates exist', async () => {
@@ -120,12 +135,12 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
       { id: 'c', name: 'Education', chamber: 'Assembly' },
     ];
 
-    it('passes the env-default cap into the DB query as `take`', async () => {
+    it('caps the stale committees it generates at the env default', async () => {
       const built = await buildService({
         configValues: {
           LEGISLATIVE_COMMITTEE_DESCRIPTION_MAX_COMMITTEES: '2',
         },
-        dbRows: three.slice(0, 2),
+        dbRows: three,
       });
       built.llm.generate.mockResolvedValue({
         text: '{"description":"ok"}',
@@ -133,9 +148,6 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       await built.service.generateMissingDescriptions();
 
-      expect(built.db.legislativeCommittee.findMany.mock.calls[0][0].take).toBe(
-        2,
-      );
       expect(built.llm.generate).toHaveBeenCalledTimes(2);
     });
 
@@ -144,7 +156,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
         configValues: {
           LEGISLATIVE_COMMITTEE_DESCRIPTION_MAX_COMMITTEES: '5',
         },
-        dbRows: three.slice(0, 1),
+        dbRows: three,
       });
       built.llm.generate.mockResolvedValue({
         text: '{"description":"ok"}',
@@ -152,12 +164,10 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       await built.service.generateMissingDescriptions(1);
 
-      expect(built.db.legislativeCommittee.findMany.mock.calls[0][0].take).toBe(
-        1,
-      );
+      expect(built.llm.generate).toHaveBeenCalledTimes(1);
     });
 
-    it('omits `take` when no cap is configured', async () => {
+    it('generates every stale committee when no cap is configured', async () => {
       const built = await buildService({ dbRows: three });
       built.llm.generate.mockResolvedValue({
         text: '{"description":"ok"}',
@@ -165,9 +175,7 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       await built.service.generateMissingDescriptions();
 
-      expect(
-        'take' in built.db.legislativeCommittee.findMany.mock.calls[0][0],
-      ).toBe(false);
+      expect(built.llm.generate).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -203,17 +211,17 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
-        data: {
+        data: expect.objectContaining({
           description: 'Reviews the state budget.',
           descriptionPromptHash: 'hash',
           descriptionPromptVersion: '1.0.0',
           descriptionLlmModel: 'qwen-test:9b',
           descriptionLlmDigest: 'stub-digest',
-        },
+        }),
       });
     });
 
-    it('tier-1: explicit `null` description means "name too generic" and is not persisted', async () => {
+    it('tier-1: explicit `null` ("name too generic") stores no description, but records the verdict', async () => {
       const built = await buildService({ dbRows: [base] });
       built.llm.generate.mockResolvedValue({
         text: '{"description":null}',
@@ -221,7 +229,10 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       await built.service.generateMissingDescriptions();
 
-      expect(built.db.legislativeCommittee.update).not.toHaveBeenCalled();
+      expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ description: null }),
+      });
     });
 
     it('tier-2: salvages description field from a truncated response', async () => {
@@ -234,13 +245,13 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
 
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
-        data: {
+        data: expect.objectContaining({
           description: 'Considers fiscal-impact legislation',
           descriptionPromptHash: 'hash',
           descriptionPromptVersion: '1.0.0',
           descriptionLlmModel: 'qwen-test:9b',
           descriptionLlmDigest: 'stub-digest',
-        },
+        }),
       });
     });
 
@@ -273,12 +284,115 @@ describe('LegislativeCommitteeDescriptionGeneratorService', () => {
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledTimes(1);
       expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
         where: { id: 'c2' },
-        data: {
+        data: expect.objectContaining({
           description: 'ok',
           descriptionPromptHash: 'hash',
           descriptionPromptVersion: '1.0.0',
           descriptionLlmModel: 'qwen-test:9b',
           descriptionLlmDigest: 'stub-digest',
+        }),
+      });
+    });
+  });
+
+  describe('the skip key (representatives Phase B)', () => {
+    const sourceHash = inputHash('Chamber: Assembly\nCommittee Name: Budget');
+    const row = (stored: Record<string, unknown> = {}) => ({
+      id: 'c-1',
+      name: 'Budget',
+      chamber: 'Assembly',
+      description: 'Reviews the state budget.',
+      descriptionPromptHash: 'hash',
+      descriptionLlmDigest: 'stub-digest',
+      ...stored,
+    });
+
+    it('makes no call for a description current on every axis', async () => {
+      const built = await buildService({
+        dbRows: [
+          row({
+            descriptionSourceHash: sourceHash,
+            descriptionConfigHash: committeeDescriptionConfigHash(200),
+          }),
+        ],
+      });
+      const { pending, current } = await built.service.selectStale();
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('stamps a legacy description instead of regenerating it', async () => {
+      const built = await buildService({ dbRows: [row()] });
+      const { pending, current } = await built.service.selectStale();
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
+        where: { id: 'c-1' },
+        data: {
+          descriptionSourceHash: sourceHash,
+          descriptionConfigHash: committeeDescriptionConfigHash(200),
+        },
+      });
+    });
+
+    it('records a declined description, so the committee is not asked again', async () => {
+      // Before: a deliberate null ("name too generic") left description NULL,
+      // and the committee was asked again every run.
+      const built = await buildService({
+        dbRows: [{ id: 'c-2', name: 'Rules', chamber: 'Senate' }],
+      });
+      built.llm.generate.mockResolvedValue({
+        text: '{"description":null}',
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+
+      await expect(built.service.generateOne('c-2')).resolves.toBe('skipped');
+      expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
+        where: { id: 'c-2' },
+        data: expect.objectContaining({
+          description: null,
+          descriptionPromptHash: 'hash',
+          descriptionSourceHash: inputHash(
+            'Chamber: Senate\nCommittee Name: Rules',
+          ),
+        }),
+      });
+    });
+
+    it('keeps an existing description the model declines to rewrite', async () => {
+      // A decline over text we have is the model failing: recording it would
+      // erase the description, or stamp the old text with this prompt.
+      const built = await buildService({
+        dbRows: [row({ descriptionPromptHash: 'older-prompt' })],
+      });
+      built.llm.generate.mockResolvedValue({
+        text: '{"description":null}',
+      } as Awaited<ReturnType<ILLMProvider['generate']>>);
+
+      await expect(built.service.generateOne('c-1')).resolves.toBe('failed');
+      expect(built.db.legislativeCommittee.update).not.toHaveBeenCalled();
+    });
+
+    it('the job re-checks: no call for a description that became current after it was queued', async () => {
+      const built = await buildService({
+        dbRows: [
+          row({
+            descriptionSourceHash: sourceHash,
+            descriptionConfigHash: committeeDescriptionConfigHash(200),
+          }),
+        ],
+      });
+      await expect(built.service.generateOne('c-1')).resolves.toBe('unchanged');
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('the job stamps a legacy description and reports it unchanged', async () => {
+      const built = await buildService({ dbRows: [row()] });
+      await expect(built.service.generateOne('c-1')).resolves.toBe('unchanged');
+      expect(built.llm.generate).not.toHaveBeenCalled();
+      expect(built.db.legislativeCommittee.update).toHaveBeenCalledWith({
+        where: { id: 'c-1' },
+        data: {
+          descriptionSourceHash: sourceHash,
+          descriptionConfigHash: committeeDescriptionConfigHash(200),
         },
       });
     });

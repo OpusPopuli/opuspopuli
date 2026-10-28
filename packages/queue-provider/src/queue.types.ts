@@ -108,6 +108,29 @@ export interface PdfParseJobData {
   parserKey: string;
 }
 
+/** A representative's bio (`representative-bio`). Ids only. */
+export interface RepresentativeBioJobData {
+  representativeId: string;
+  /** The sync's region display name — part of the prompt's jurisdiction. */
+  regionName?: string;
+}
+
+/** A representative's committee summary (`committee-summary`). */
+export interface CommitteeSummaryJobData {
+  representativeId: string;
+}
+
+/** A legislative committee's description (`committee-description`). */
+export interface CommitteeDescriptionJobData {
+  committeeId: string;
+}
+
+/** An entity's activity summary (`activity-summary`). */
+export interface ActivitySummaryJobData {
+  entityType: "representative" | "committee";
+  entityId: string;
+}
+
 export interface StructuralAnalysisJobData {
   structuralAnalysisJobId: string;
   regionId: string;
