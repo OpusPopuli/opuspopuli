@@ -1,0 +1,180 @@
+{
+  "kind": "baseline",
+  "note": "Scores of the gold reps' rows as main's code wrote them, read 2026-10-27 after the first Phase B UAT sync (job 141). That sync regenerated no bio or committee summary for these reps (all current on every axis), so these are the pre-change outputs. The committee summaries are #1393's condensed prose ('memberships cover\u2026'), which is why select-committee recall is low: it measures condensation by design. The gate (`--baseline`) is no worse per rep and field, never an aggregate.",
+  "ranAt": "2026-10-27T22:45:29.445Z",
+  "candidate": "database rows",
+  "matcher": "content-word containment per sentence",
+  "reps": [
+    {
+      "rep": "Heather Hadwick",
+      "found": true,
+      "committees": {
+        "standingCommittees": {
+          "found": 6,
+          "total": 6,
+          "missed": [],
+          "roles": [
+            {
+              "committee": "Agriculture",
+              "role": "Vice Chair",
+              "kept": true
+            },
+            {
+              "committee": "Emergency Management",
+              "role": "Vice Chair",
+              "kept": true
+            }
+          ]
+        },
+        "subcommittees": {
+          "found": 0,
+          "total": 1,
+          "missed": ["Subcommittee No. 3 on Education Finance"],
+          "roles": []
+        },
+        "jointCommittees": {
+          "found": 1,
+          "total": 1,
+          "missed": [],
+          "roles": []
+        }
+      },
+      "counties": {
+        "found": 0,
+        "total": 11,
+        "missed": [
+          "alpine",
+          "amador",
+          "el dorado",
+          "lassen",
+          "modoc",
+          "nevada",
+          "placer",
+          "plumas",
+          "shasta",
+          "sierra",
+          "siskiyou"
+        ]
+      },
+      "emptied": [],
+      "labelling": {
+        "exercised": false,
+        "reason": "the bio is generated from structured fields, not a source page (#1381)"
+      },
+      "attribution": {
+        "bio": {
+          "promptHash": "c4c7219319fa531dd044bc0ae7d2355b14ee9ec4b764b888ff64a7e46db01a09",
+          "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2"
+        },
+        "committeesSummary": {
+          "promptHash": "d71560390e8ccafc9ebd63a34f8f63925066be5a1c4666379558f3e883d71e65",
+          "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2"
+        }
+      }
+    },
+    {
+      "rep": "Cecilia M. Aguiar-Curry",
+      "found": true,
+      "committees": {
+        "standingCommittees": {
+          "found": 3,
+          "total": 3,
+          "missed": [],
+          "roles": []
+        },
+        "selectCommittees": {
+          "found": 3,
+          "total": 9,
+          "missed": [
+            "Alternative Protein Innovation",
+            "CalFresh Enrollment and Nutrition",
+            "Effective Postsecondary Career Technical Education and Workforce Development Programs",
+            "Latina Inequities",
+            "Ports and Goods Movement",
+            "Youth Mental Health and Treatment Accessibility"
+          ],
+          "roles": [
+            {
+              "committee": "Child Care Costs",
+              "role": "Co-Chair",
+              "kept": true
+            }
+          ]
+        },
+        "jointCommittees": {
+          "found": 0,
+          "total": 1,
+          "missed": ["Joint Committee on Rules"],
+          "roles": []
+        }
+      },
+      "counties": {
+        "found": 0,
+        "total": 5,
+        "missed": ["colusa", "lake", "napa", "sonoma", "yolo"]
+      },
+      "emptied": [],
+      "labelling": {
+        "exercised": false,
+        "reason": "the bio is generated from structured fields, not a source page (#1381)"
+      },
+      "attribution": {
+        "bio": {
+          "promptHash": "c4c7219319fa531dd044bc0ae7d2355b14ee9ec4b764b888ff64a7e46db01a09",
+          "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2"
+        },
+        "committeesSummary": {
+          "promptHash": "d71560390e8ccafc9ebd63a34f8f63925066be5a1c4666379558f3e883d71e65",
+          "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2"
+        }
+      }
+    },
+    {
+      "rep": "Michelle Rodriguez",
+      "found": true,
+      "committees": {
+        "standingCommittees": {
+          "found": 5,
+          "total": 7,
+          "missed": [
+            "Economic Development, Growth, and Household Impact",
+            "Rules"
+          ],
+          "roles": []
+        },
+        "selectCommittees": {
+          "found": 0,
+          "total": 1,
+          "missed": ["Domestic Violence"],
+          "roles": []
+        },
+        "jointCommittees": {
+          "found": 0,
+          "total": 1,
+          "missed": ["Joint Committee on Rules"],
+          "roles": []
+        }
+      },
+      "counties": {
+        "found": 0,
+        "total": 2,
+        "missed": ["los angeles", "san bernardino"]
+      },
+      "emptied": [],
+      "labelling": {
+        "exercised": false,
+        "reason": "the bio is generated from structured fields, not a source page (#1381)"
+      },
+      "attribution": {
+        "bio": {
+          "promptHash": "c4c7219319fa531dd044bc0ae7d2355b14ee9ec4b764b888ff64a7e46db01a09",
+          "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2"
+        },
+        "committeesSummary": {
+          "promptHash": "d71560390e8ccafc9ebd63a34f8f63925066be5a1c4666379558f3e883d71e65",
+          "digest": "e7a64ff15fb174c42b4f463e5c888c4f2c7b9cabf9e8d65a1c0874405426c1b2"
+        }
+      }
+    }
+  ]
+}

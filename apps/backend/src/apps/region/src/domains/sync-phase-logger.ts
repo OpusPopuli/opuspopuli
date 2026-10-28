@@ -168,8 +168,14 @@ export class SyncPhaseTracker<Phase extends string> {
   private updated = 0;
   private skipped = 0;
   private errors = 0;
-  /** Reset by any created/updated item; see {@link SyncAbortedError}. */
-  private consecutiveFailures = 0;
+  /**
+   * Consecutive failures per streak — reset by any non-error item in the same
+   * streak; see {@link SyncAbortedError}. One streak unless an item names its
+   * own: lanes running together in one phase each keep theirs, so one lane's
+   * success cannot mask another's run of failures, nor one lane's abort make
+   * the others abort on their next single failure.
+   */
+  private readonly streaks = new Map<string, number>();
   private lastFailure = '(none)';
   private readonly failureLimit = consecutiveFailureLimit();
   private readonly extras = new Map<string, number>();
@@ -252,6 +258,8 @@ export class SyncPhaseTracker<Phase extends string> {
      * Anything that is not a short slug is replaced rather than trusted.
      */
     reason?: string;
+    /** The failure streak this item counts in — a lane's name. */
+    streak?: string;
   }): void {
     this.current++;
     const idSlot = this.formatIdSlot(args.name, args.externalId);
@@ -271,7 +279,7 @@ export class SyncPhaseTracker<Phase extends string> {
     }
 
     if (args.outcome === 'error') {
-      this.recordFailure(args.outcomeLabel);
+      this.recordFailure(args.outcomeLabel, args.streak ?? '');
     } else {
       // ANY non-error outcome clears the counter, `skipped` included. A skip
       // means the item was handled and needed no work — the pipeline
@@ -279,17 +287,18 @@ export class SyncPhaseTracker<Phase extends string> {
       // separated by hundreds of skips accumulate into an abort, which on the
       // bills sync (5,019 rows, most of them unchanged and therefore skipped)
       // would stop a perfectly healthy run.
-      this.consecutiveFailures = 0;
+      this.streaks.set(args.streak ?? '', 0);
     }
   }
 
   /**
    * Count a failure and abandon the phase if they are running back-to-back.
    */
-  private recordFailure(label: string): void {
-    this.consecutiveFailures++;
+  private recordFailure(label: string, streak: string): void {
+    const failures = (this.streaks.get(streak) ?? 0) + 1;
+    this.streaks.set(streak, failures);
     this.lastFailure = label;
-    if (this.consecutiveFailures >= this.failureLimit) {
+    if (failures >= this.failureLimit) {
       // Published BEFORE the throw. An abort is the one sync outcome that
       // leaves no trace in the item counts — everything after it was never
       // attempted — so if this line does not run, nothing records that the
@@ -302,7 +311,7 @@ export class SyncPhaseTracker<Phase extends string> {
       );
       throw new SyncAbortedError(
         this.tag,
-        this.consecutiveFailures,
+        failures,
         this.current,
         this.lastFailure,
       );
@@ -329,7 +338,7 @@ export class SyncPhaseTracker<Phase extends string> {
     this.count('skipped', 'unidentified');
     // Same reasoning as a `skipped` item above: this is a handled item, so it
     // clears the consecutive-failure counter rather than sitting neutral.
-    this.consecutiveFailures = 0;
+    this.streaks.set('', 0);
   }
 
   /**

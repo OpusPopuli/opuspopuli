@@ -44,6 +44,39 @@ describe('sync phase tracker — runaway abort', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
+  describe('streaks — lanes running together in one phase', () => {
+    const inLane = (
+      t: ReturnType<typeof track>,
+      lane: string,
+      outcome: 'error' | 'created',
+    ) =>
+      t.item({
+        name: lane,
+        externalId: null,
+        outcomeLabel: outcome,
+        outcome,
+        streak: lane,
+      });
+
+    it("one lane's success does not reset another lane's failures", () => {
+      const t = track(24);
+
+      for (let i = 0; i < 4; i++) {
+        inLane(t, 'a', 'error');
+        inLane(t, 'b', 'created');
+      }
+      expect(() => inLane(t, 'a', 'error')).toThrow(SyncAbortedError);
+    });
+
+    it("one lane's abort does not abort another lane on its next failure", () => {
+      const t = track(24);
+
+      for (let i = 0; i < 4; i++) inLane(t, 'a', 'error');
+      expect(() => inLane(t, 'a', 'error')).toThrow(SyncAbortedError);
+      expect(() => inLane(t, 'b', 'error')).not.toThrow();
+    });
+  });
+
   it('aborts once failures run back-to-back', () => {
     const t = track(24);
 

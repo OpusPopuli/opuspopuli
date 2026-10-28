@@ -21,6 +21,15 @@ export const PROPOSITION_ANALYSIS_QUEUE = "proposition-analysis";
  * consumer may run on another host (`WORKER_QUEUES`).
  */
 export const PDF_PARSE_QUEUE = "pdf-parse";
+/**
+ * Representatives Phase B (`docs/plans/representatives-phase-b.md`): one
+ * queue per generator, each in the GPU lane — the representatives sync
+ * selects the stale outputs and queues one job per row.
+ */
+export const REPRESENTATIVE_BIO_QUEUE = "representative-bio";
+export const COMMITTEE_SUMMARY_QUEUE = "committee-summary";
+export const COMMITTEE_DESCRIPTION_QUEUE = "committee-description";
+export const ACTIVITY_SUMMARY_QUEUE = "activity-summary";
 
 /**
  * `BULLMQ_QUEUE_<NAME>_<SUFFIX>` — every per-queue knob's env name, in one

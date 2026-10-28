@@ -1035,7 +1035,7 @@ export class RegionSyncService implements OnModuleDestroy {
       [DataType.MEETINGS]: () =>
         this.syncMeetings(provider, pipelineJobId, archiveOptions),
       [DataType.REPRESENTATIVES]: () =>
-        this.syncRepresentatives(provider, maxReps, regionId),
+        this.syncRepresentatives(provider, maxReps, regionId, pipelineJobId),
       [DataType.CAMPAIGN_FINANCE]: () =>
         this.syncCampaignFinance(provider, pipelineJobId),
       [DataType.CIVICS]: () =>
@@ -1198,6 +1198,7 @@ export class RegionSyncService implements OnModuleDestroy {
     provider: DataFetcher = this.regionService,
     maxReps?: number,
     regionId?: string,
+    pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
     if (!this.representativesSyncService) {
       return { processed: 0, created: 0, updated: 0 };
@@ -1215,6 +1216,7 @@ export class RegionSyncService implements OnModuleDestroy {
       },
       this.upsertByExternalId.bind(this),
       deriveDistrictFromExternalId,
+      pipelineJobId,
     );
   }
 

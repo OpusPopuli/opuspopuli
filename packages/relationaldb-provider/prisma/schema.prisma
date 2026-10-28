@@ -1049,45 +1049,58 @@ model AbuseReport {
 // ============================================
 
 model Representative {
-  id                             String    @id @default(uuid())
-  externalId                     String    @unique @map("external_id")
-  regionId                       String    @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
+  id                             String         @id @default(uuid())
+  externalId                     String         @unique @map("external_id")
+  regionId                       String         @default("california") @map("region_id") @db.VarChar(100) /// e.g. "california", "california-sonoma", "federal"
   name                           String
-  lastName                       String    @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
+  lastName                       String         @default("") @map("last_name") /// derived from `name`, used for alphabetical sorting
   chamber                        String
   district                       String
   party                          String?
-  photoUrl                       String?   @map("photo_url")
-  contactInfo                    Json?     @map("contact_info")
-  committees                     Json?     @map("committees") /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
-  committeesSummary              String?   @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
-  bio                            String?   @db.Text
-  bioSource                      String?   @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
-  bioClaims                      Json?     @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
-  bioPromptHash                  String?   @map("bio_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `bio`
-  bioPromptVersion               String?   @map("bio_prompt_version") @db.VarChar(20)
-  bioLlmModel                    String?   @map("bio_llm_model") @db.VarChar(80)
-  bioLlmDigest                   String?   @map("bio_llm_digest") @db.VarChar(80)
-  committeesSummaryPromptHash    String?   @map("committees_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `committeesSummary`
-  committeesSummaryPromptVersion String?   @map("committees_summary_prompt_version") @db.VarChar(20)
-  committeesSummaryLlmModel      String?   @map("committees_summary_llm_model") @db.VarChar(80)
-  committeesSummaryLlmDigest     String?   @map("committees_summary_llm_digest") @db.VarChar(80)
+  photoUrl                       String?        @map("photo_url")
+  contactInfo                    Json?          @map("contact_info")
+  committees                     Json?          @map("committees") /// CommitteeAssignment[] as JSON — canonical source for the LegislativeCommittee backfill
+  committeesSummary              String?        @map("committees_summary") @db.Text /// AI-generated preamble describing the policy areas touched by committee assignments
+  bio                            String?        @db.Text
+  bioSource                      String?        @map("bio_source") @db.VarChar(20) /// 'scraped' | 'ai-generated'
+  bioClaims                      Json?          @map("bio_claims") /// BioClaim[] — per-sentence attribution for ai-generated bios
+  bioPromptHash                  String?        @map("bio_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `bio`
+  bioPromptVersion               String?        @map("bio_prompt_version") @db.VarChar(20)
+  bioLlmModel                    String?        @map("bio_llm_model") @db.VarChar(80)
+  bioLlmDigest                   String?        @map("bio_llm_digest") @db.VarChar(80)
+  /// Representatives Phase B — the skip key's input and config axes, and when
+  /// the bio was produced (docs/plans/representatives-phase-b.md §1)
+  bioSourceHash                  String?        @map("bio_source_hash") @db.VarChar(64)
+  bioConfigHash                  String?        @map("bio_config_hash") @db.VarChar(64)
+  bioGeneratedAt                 DateTime?      @map("bio_generated_at") @db.Timestamptz
+  committeesSummaryPromptHash    String?        @map("committees_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `committeesSummary`
+  committeesSummaryPromptVersion String?        @map("committees_summary_prompt_version") @db.VarChar(20)
+  committeesSummaryLlmModel      String?        @map("committees_summary_llm_model") @db.VarChar(80)
+  committeesSummaryLlmDigest     String?        @map("committees_summary_llm_digest") @db.VarChar(80)
+  committeesSummarySourceHash    String?        @map("committees_summary_source_hash") @db.VarChar(64)
+  committeesSummaryConfigHash    String?        @map("committees_summary_config_hash") @db.VarChar(64)
+  committeesSummaryGeneratedAt   DateTime?      @map("committees_summary_generated_at") @db.Timestamptz
   /// AI-generated 2-3 sentence summary of recent legislative activity
   /// (presence + amendments + hearings + reports linked to this rep).
   /// Refreshed by run-generate-activity-summaries when new minutes
   /// ingest. Issue #665.
-  activitySummary                String?   @map("activity_summary") @db.Text
-  activitySummaryGeneratedAt     DateTime? @map("activity_summary_generated_at") @db.Timestamptz
+  activitySummary                String?        @map("activity_summary") @db.Text
+  activitySummaryGeneratedAt     DateTime?      @map("activity_summary_generated_at") @db.Timestamptz
   /// Window the summary covers, in days. Default 90 to match the L3
   /// stats counters; overridable per-call.
-  activitySummaryWindowDays      Int?      @map("activity_summary_window_days")
-  activitySummaryPromptHash      String?   @map("activity_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `activitySummary`
-  activitySummaryPromptVersion   String?   @map("activity_summary_prompt_version") @db.VarChar(20)
-  activitySummaryLlmModel        String?   @map("activity_summary_llm_model") @db.VarChar(80)
-  activitySummaryLlmDigest       String?   @map("activity_summary_llm_digest") @db.VarChar(80)
-  createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt                      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt                      DateTime? @map("deleted_at") @db.Timestamptz
+  activitySummaryWindowDays      Int?           @map("activity_summary_window_days")
+  activitySummaryPromptHash      String?        @map("activity_summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `activitySummary`
+  activitySummaryPromptVersion   String?        @map("activity_summary_prompt_version") @db.VarChar(20)
+  activitySummaryLlmModel        String?        @map("activity_summary_llm_model") @db.VarChar(80)
+  activitySummaryLlmDigest       String?        @map("activity_summary_llm_digest") @db.VarChar(80)
+  activitySummarySourceHash      String?        @map("activity_summary_source_hash") @db.VarChar(64)
+  activitySummaryConfigHash      String?        @map("activity_summary_config_hash") @db.VarChar(64)
+  /// The archived page this rep was extracted from (attribution; the civics shape)
+  sourceVersionId                String?        @map("source_version_id")
+  sourceVersion                  SourceVersion? @relation(fields: [sourceVersionId], references: [id], onDelete: SetNull)
+  createdAt                      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt                      DateTime?      @map("deleted_at") @db.Timestamptz
 
   committeeAssignments RepresentativeCommitteeAssignment[]
   legislativeActions   LegislativeAction[]
@@ -1103,6 +1116,7 @@ model Representative {
   @@index([party])
   @@index([regionId])
   @@index([regionId, chamber])
+  @@index([sourceVersionId])
   @@map("representatives")
 }
 
@@ -1123,6 +1137,10 @@ model LegislativeCommittee {
   descriptionPromptVersion     String?   @map("description_prompt_version") @db.VarChar(20)
   descriptionLlmModel          String?   @map("description_llm_model") @db.VarChar(80)
   descriptionLlmDigest         String?   @map("description_llm_digest") @db.VarChar(80)
+  /// Representatives Phase B skip key (docs/plans/representatives-phase-b.md §1)
+  descriptionSourceHash        String?   @map("description_source_hash") @db.VarChar(64)
+  descriptionConfigHash        String?   @map("description_config_hash") @db.VarChar(64)
+  descriptionGeneratedAt       DateTime? @map("description_generated_at") @db.Timestamptz
   /// AI-generated 2-3 sentence summary of recent committee activity
   /// (hearings, bill reports, amendments). Refreshed by
   /// run-generate-activity-summaries when new minutes ingest.
@@ -1134,6 +1152,8 @@ model LegislativeCommittee {
   activitySummaryPromptVersion String?   @map("activity_summary_prompt_version") @db.VarChar(20)
   activitySummaryLlmModel      String?   @map("activity_summary_llm_model") @db.VarChar(80)
   activitySummaryLlmDigest     String?   @map("activity_summary_llm_digest") @db.VarChar(80)
+  activitySummarySourceHash    String?   @map("activity_summary_source_hash") @db.VarChar(64)
+  activitySummaryConfigHash    String?   @map("activity_summary_config_hash") @db.VarChar(64)
   createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt                    DateTime? @map("deleted_at") @db.Timestamptz
@@ -1189,7 +1209,7 @@ model Proposition {
   embedding Unsupported("vector(768)")?
 
   /// Model that produced `embedding` — see Document.embeddingModel.
-  embeddingModel String? @map("embedding_model") @db.VarChar(80)
+  embeddingModel       String? @map("embedding_model") @db.VarChar(80)
   /// The weights behind `embeddingModel` (Ollama's digest; null for xenova,
   /// whose model id is the whole identity). Propositions Phase B.
   embeddingModelDigest String? @map("embedding_model_digest") @db.VarChar(80)
@@ -2316,44 +2336,44 @@ model Contribution {
 
 /// Campaign expenditure — money spent by a committee.
 model Expenditure {
-  id                 String   @id @default(uuid())
-  externalId         String   @unique @map("external_id")
+  id                 String    @id @default(uuid())
+  externalId         String    @unique @map("external_id")
   /// Nullable + resolved post-sync by the cover-page linker: EXPN_CD line items
   /// carry no filer, so committeeId is stamped by joining filingId -> the
   /// campaign-disclosure cover page (cvr_filings) -> committee (#980). The
   /// CMTE_ID on EXPN_CD is the *payee*, not the spender.
-  committeeId        String?  @map("committee_id")
+  committeeId        String?   @map("committee_id")
   /// CalAccess FILING_ID from EXPN_CD — the join key to the cover page.
-  filingId           String?  @map("filing_id") @db.VarChar(50)
+  filingId           String?   @map("filing_id") @db.VarChar(50)
   /// CalAccess AMEND_ID — see Contribution.amendId (#992).
-  amendId            Int?     @map("amend_id")
+  amendId            Int?      @map("amend_id")
   /// CalAccess EXPN_CD.FORM_TYPE — the SCHEDULE, see Contribution.scheduleCode.
   /// `E` is payments made (Form 460 line 6). `D` is a MEMO schedule restating
   /// payments already counted in `E`, so summing the two double-counts 4.8M
   /// rows — reconciling line 6 must filter to `E` alone (#992, #991).
-  scheduleCode       String?  @map("schedule_code") @db.VarChar(20)
+  scheduleCode       String?   @map("schedule_code") @db.VarChar(20)
   /// Nullable (#991): CAL-ACCESS leaves PAYEE_NAML blank on 3,811,692 of
   /// 16,061,732 EXPN_CD rows, carrying $2.11B. Requiring it rejected every one,
   /// and an expenditure with no payee label still has an amount, a filing and a
   /// committee. The gap is disclosed rather than dropped.
-  payeeName          String?  @map("payee_name")
-  amount             Decimal  @db.Decimal(12, 2)
+  payeeName          String?   @map("payee_name")
+  amount             Decimal   @db.Decimal(12, 2)
   /// Nullable (#991): blank EXPN_DATE on 5,232,951 rows carrying $9.75B. See
   /// the migration for the full measurement. `ORDER BY date DESC` defaults to
   /// NULLS FIRST in Postgres, so readers must order `nulls: 'last'` or the
   /// undated rows take the first page.
   date               DateTime? @db.Date
-  purposeDescription String?  @map("purpose_description") @db.Text
-  expenditureCode    String?  @map("expenditure_code") @db.VarChar(10)
-  candidateName      String?  @map("candidate_name")
-  propositionTitle   String?  @map("proposition_title")
+  purposeDescription String?   @map("purpose_description") @db.Text
+  expenditureCode    String?   @map("expenditure_code") @db.VarChar(10)
+  candidateName      String?   @map("candidate_name")
+  propositionTitle   String?   @map("proposition_title")
   /// Resolved by the proposition-finance-linker from propositionTitle. Nullable
   /// because resolution requires the matching Proposition row to exist.
-  propositionId      String?  @map("proposition_id")
-  supportOrOppose    String?  @map("support_or_oppose") @db.VarChar(10)
-  sourceSystem       String   @map("source_system") @db.VarChar(20)
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  propositionId      String?   @map("proposition_id")
+  supportOrOppose    String?   @map("support_or_oppose") @db.VarChar(10)
+  sourceSystem       String    @map("source_system") @db.VarChar(20)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   committee   Committee?   @relation(fields: [committeeId], references: [id], onDelete: Restrict)
   proposition Proposition? @relation(fields: [propositionId], references: [id], onDelete: SetNull)
@@ -2503,12 +2523,13 @@ model SourceVersion {
   parsedTextHash  String? @map("parsed_text_hash") @db.VarChar(64)
   parserVersion   String? @map("parser_version") @db.VarChar(40)
 
-  execution    PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
-  manifest     StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
-  evidence     Evidence[]
-  propositions Proposition[]
-  minutes      Minutes[]
-  civicsBlocks CivicsBlock[]
+  execution       PipelineExecution?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  manifest        StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  evidence        Evidence[]
+  propositions    Proposition[]
+  minutes         Minutes[]
+  civicsBlocks    CivicsBlock[]
+  representatives Representative[]
 
   @@index([derivedTextHash])
   @@index([sourceUrl, fetchedAt])
@@ -2536,21 +2557,21 @@ model SourceVersion {
 /// time that #1217 measured. It has no off-node copy — a host loss degrades
 /// provenance to "we know which snapshot, we cannot re-read it".
 model BulkSnapshot {
-  id            String    @id @default(uuid())
-  contentHash   String    @unique @map("content_hash") @db.VarChar(64)
-  sourceUrl     String    @map("source_url") @db.VarChar(1000)
-  regionId      String?   @map("region_id") @db.VarChar(100)
-  dataType      String?   @map("data_type") @db.VarChar(50)
-  byteSize      BigInt    @map("byte_size")
-  contentType   String?   @map("content_type") @db.VarChar(255)
+  id               String    @id @default(uuid())
+  contentHash      String    @unique @map("content_hash") @db.VarChar(64)
+  sourceUrl        String    @map("source_url") @db.VarChar(1000)
+  regionId         String?   @map("region_id") @db.VarChar(100)
+  dataType         String?   @map("data_type") @db.VarChar(50)
+  byteSize         BigInt    @map("byte_size")
+  contentType      String?   @map("content_type") @db.VarChar(255)
   /// Object-storage bucket and key. Null once pruned.
-  storageBucket String?   @map("storage_bucket") @db.VarChar(255)
-  storageKey    String?   @map("storage_key") @db.VarChar(1000)
-  fetchedAt     DateTime  @map("fetched_at") @db.Timestamptz
-  etag          String?   @db.Text
-  lastModified  String?   @map("last_modified") @db.VarChar(255)
+  storageBucket    String?   @map("storage_bucket") @db.VarChar(255)
+  storageKey       String?   @map("storage_key") @db.VarChar(1000)
+  fetchedAt        DateTime  @map("fetched_at") @db.Timestamptz
+  etag             String?   @db.Text
+  lastModified     String?   @map("last_modified") @db.VarChar(255)
   /// Set when the payload was pruned by the retention sweep. The row remains.
-  prunedAt      DateTime? @map("pruned_at") @db.Timestamptz
+  prunedAt         DateTime? @map("pruned_at") @db.Timestamptz
   /// Set when a payload this row CLAIMS could not be found in storage — data
   /// loss or an outage, not retention.
   ///
@@ -2570,9 +2591,9 @@ model BulkSnapshot {
   /// comes back. Set and cleared by the retention sweep, so recovery heals it.
   payloadMissingAt DateTime? @map("payload_missing_at") @db.Timestamptz
   /// Marks the snapshot the retention sweep keeps for its calendar month.
-  isMonthly     Boolean   @default(false) @map("is_monthly")
-  executionId   String?   @map("execution_id")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  isMonthly        Boolean   @default(false) @map("is_monthly")
+  executionId      String?   @map("execution_id")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   execution PipelineExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
 
@@ -2891,8 +2912,8 @@ model PipelineJob {
   workerHost     String?   @map("worker_host")
 
   executions PipelineExecution[]
-  parent     PipelineJob?  @relation("PipelineJobChildren", fields: [parentJobId], references: [id], onDelete: Cascade)
-  children   PipelineJob[] @relation("PipelineJobChildren")
+  parent     PipelineJob?        @relation("PipelineJobChildren", fields: [parentJobId], references: [id], onDelete: Cascade)
+  children   PipelineJob[]       @relation("PipelineJobChildren")
 
   @@index([status, enqueuedAt])
   @@index([parentJobId])

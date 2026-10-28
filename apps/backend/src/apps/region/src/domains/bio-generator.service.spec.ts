@@ -4,9 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { createMock, type DeepMocked } from '@golevelup/ts-jest';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import type { ILLMProvider, Representative } from '@opuspopuli/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 
-import { BioGeneratorService } from './bio-generator.service';
+import { BioGeneratorService, bioConfigHash } from './bio-generator.service';
+import { inputHash } from './generated-output-key';
 import { recordClaims } from './claim-recorder';
 
 jest.mock('./claim-recorder', () => ({
@@ -38,7 +39,8 @@ async function enrichWith(
 ): Promise<Representative[]> {
   // `DeepMocked` does not surface the mock type through Prisma's generated
   // delegate signature, so the cast is needed to set a return value.
-  (built.db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
+  seedCandidates(
+    built.db,
     reps.filter((r) => !r.bio || r.bio.trim() === ''),
   );
   return built.service.enrichBios(reps, regionName, regionId);
@@ -52,9 +54,23 @@ async function enrichWith(
  */
 function seedCandidates(
   db: DeepMocked<DbService>,
-  rows: Partial<Representative>[],
+  // Loosely typed on purpose: a seeded row stands for a DATABASE row, whose
+  // columns (`bioPromptHash`, `bioSourceHash`, …) `Representative` lacks.
+  rows: ReadonlyArray<object>,
 ): void {
-  (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(rows);
+  // Each row needs an id — the job reloads its rep by it (representatives
+  // Phase B); `externalId` stands in where a test gives none.
+  const withIds = rows.map((r) => {
+    const row = r as { id?: string; externalId?: string };
+    return { ...r, id: row.id ?? row.externalId };
+  });
+  (db.representative.findMany as unknown as jest.Mock).mockResolvedValue(
+    withIds,
+  );
+  (db.representative.findFirst as unknown as jest.Mock).mockImplementation(
+    async ({ where }: { where: { id: string } }) =>
+      withIds.find((r) => r.id === where.id) ?? null,
+  );
 }
 
 describe('BioGeneratorService', () => {
@@ -624,9 +640,9 @@ describe('BioGeneratorService', () => {
       expect(recordClaimsMock).toHaveBeenCalledTimes(1);
       const input = recordClaimsMock.mock.calls[0][1];
       expect(input.subjectType).toBe('representative');
-      // The row id from the write, not the external id — claims join on the
-      // table's own key.
-      expect(input.subjectId).toBe('rep-row-1');
+      // The row's own id (seeded as `sen-5`), not anything the write returns —
+      // claims join on the table's key.
+      expect(input.subjectId).toBe('sen-5');
       expect(input.claims).toHaveLength(2);
     });
 
@@ -665,17 +681,24 @@ describe('BioGeneratorService', () => {
       expect(recordClaimsMock.mock.calls[0][1].claims).toEqual([]);
     });
 
-    it('leaves claims alone when parsing salvaged only the bio text', async () => {
-      // Tier-2 salvage: no `claims` key at all. The blob KEEPS its previous
-      // claims here, so the mirror must leave the rows alone rather than
-      // clearing them — the opposite of the empty-array case above.
+    it('clears the claims when parsing salvaged only the bio text', async () => {
+      // Tier-2 salvage: no `claims` key at all. Keeping the previous claims
+      // was right while a bio was written once; now a bio is regenerated, and
+      // the last generation's claims would sit beside text that no longer
+      // says them.
       llm.generate.mockResolvedValue({
         text: JSON.stringify({ bio: 'Salvaged bio only.' }),
       } as Awaited<ReturnType<ILLMProvider['generate']>>);
 
       await enrichWith({ service, db }, [baseRep({ externalId: 'sen-5' })]);
 
-      expect(recordClaimsMock).not.toHaveBeenCalled();
+      expect(db.representative.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ bioClaims: Prisma.DbNull }),
+        }),
+      );
+      expect(recordClaimsMock).toHaveBeenCalledTimes(1);
+      expect(recordClaimsMock.mock.calls[0][1].claims).toEqual([]);
     });
 
     it('keeps the bio when the dual-write fails', async () => {
@@ -776,7 +799,8 @@ describe('BioGeneratorService', () => {
           where: expect.objectContaining({
             deletedAt: null,
             regionId: 'california',
-            OR: [{ bio: null }, { bio: '' }],
+            // Missing, or ours — a scraped bio is never selected.
+            OR: [{ bio: null }, { bio: '' }, { bioSource: 'ai-generated' }],
           }),
         }),
       );
@@ -904,9 +928,7 @@ describe('BioGeneratorService', () => {
         district: '1',
         party: null,
       } as unknown as Representative;
-      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
-        rep,
-      ]);
+      seedCandidates(db, [rep]);
 
       await service.enrichBios([], 'Sonoma County', 'california-sonoma');
 
@@ -921,7 +943,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('omits a blank field as well as a missing one', async () => {
-      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
+      seedCandidates(db, [
         baseRep({ externalId: 'r1', party: '   ', district: '' }),
       ]);
 
@@ -932,9 +954,7 @@ describe('BioGeneratorService', () => {
     });
 
     it('keeps every field that does have a value', async () => {
-      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
-        baseRep({ externalId: 'r1' }),
-      ]);
+      seedCandidates(db, [baseRep({ externalId: 'r1' })]);
 
       await service.enrichBios([], 'California', 'california');
 
@@ -1095,9 +1115,7 @@ describe('BioGeneratorService', () => {
       (db.regionPlugin.findMany as unknown as jest.Mock).mockResolvedValue(
         plugins,
       );
-      (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
-        rep,
-      ]);
+      seedCandidates(db, [rep]);
     };
 
     const promptText = () =>
@@ -1206,6 +1224,279 @@ describe('BioGeneratorService', () => {
       await service.enrichBios([], 'California', 'california');
 
       expect(promptText()).toContain('Jurisdiction: California State Senate');
+    });
+  });
+
+  describe('the skip key (representatives Phase B)', () => {
+    // What the prompt is handed for this rep (formatRepData), and therefore
+    // what the input hash is taken over.
+    const INPUT =
+      'Name: Jane Smith\nJurisdiction: California State Senate\nDistrict: 5\nParty: Democrat';
+    const stored = (over: Record<string, unknown> = {}) => ({
+      ...baseRep(),
+      id: 'rep-1',
+      regionId: 'california',
+      bio: 'Jane Smith represents District 5.',
+      bioSource: 'ai-generated',
+      bioPromptHash: 'hash',
+      bioLlmDigest: 'stub-digest',
+      ...over,
+    });
+    let built: Awaited<ReturnType<typeof buildService>>;
+    beforeEach(async () => {
+      built = await buildService(true);
+      built.promptClient.getPromptHash.mockResolvedValue('hash');
+      (
+        built.db.regionPlugin.findMany as unknown as jest.Mock
+      ).mockResolvedValue([]);
+    });
+
+    it('makes no call for a bio current on every axis', async () => {
+      seedCandidates(built.db, [
+        stored({
+          bioSourceHash: inputHash(INPUT),
+          bioConfigHash: bioConfigHash(800),
+        }),
+      ]);
+      const { pending, current } = await built.service.selectStale(
+        'California',
+        'california',
+      );
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    it('stamps a legacy bio instead of regenerating it', async () => {
+      seedCandidates(built.db, [stored()]);
+      const { pending, current } = await built.service.selectStale(
+        'California',
+        'california',
+      );
+      expect([pending.length, current]).toEqual([0, 1]);
+      expect(built.db.representative.update).toHaveBeenCalledWith({
+        where: { id: 'rep-1' },
+        data: {
+          bioSourceHash: inputHash(INPUT),
+          bioConfigHash: bioConfigHash(800),
+        },
+      });
+    });
+
+    it('regenerates a bio made by another prompt', async () => {
+      seedCandidates(built.db, [
+        stored({
+          bioPromptHash: 'older-prompt',
+          bioSourceHash: inputHash(INPUT),
+          bioConfigHash: bioConfigHash(800),
+        }),
+      ]);
+      const { pending } = await built.service.selectStale(
+        'California',
+        'california',
+      );
+      expect(pending).toEqual([{ id: 'rep-1', key: expect.any(String) }]);
+    });
+
+    it('never touches a scraped bio, even when asked to directly', async () => {
+      seedCandidates(built.db, [
+        stored({ bioSource: 'scraped', bioPromptHash: null }),
+      ]);
+      await expect(
+        built.service.generateOne('rep-1', 'California'),
+      ).resolves.toBe('skipped');
+      expect(built.llm.generate).not.toHaveBeenCalled();
+    });
+
+    describe('the job re-checks before it generates', () => {
+      it('makes no call for a bio that became current after it was queued', async () => {
+        // A duplicate or late job must not regenerate a current bio.
+        seedCandidates(built.db, [
+          stored({
+            bioSourceHash: inputHash(INPUT),
+            bioConfigHash: bioConfigHash(800),
+          }),
+        ]);
+
+        await expect(
+          built.service.generateOne('rep-1', 'California'),
+        ).resolves.toBe('unchanged');
+        expect(built.llm.generate).not.toHaveBeenCalled();
+      });
+
+      it('stamps a legacy bio and reports it unchanged', async () => {
+        seedCandidates(built.db, [stored()]);
+
+        await expect(
+          built.service.generateOne('rep-1', 'California'),
+        ).resolves.toBe('unchanged');
+        expect(built.llm.generate).not.toHaveBeenCalled();
+        expect(built.db.representative.update).toHaveBeenCalledWith({
+          where: { id: 'rep-1' },
+          data: {
+            bioSourceHash: inputHash(INPUT),
+            bioConfigHash: bioConfigHash(800),
+          },
+        });
+      });
+    });
+
+    describe('a failed lookup leaves its axis unchecked', () => {
+      const current = () =>
+        stored({
+          bioSourceHash: inputHash(INPUT),
+          bioConfigHash: bioConfigHash(800),
+        });
+
+      it('counts a bio current when the prompt hash cannot be resolved', async () => {
+        built.promptClient.getPromptHash.mockRejectedValue(new Error('down'));
+        seedCandidates(built.db, [current()]);
+
+        const { pending, current: n } = await built.service.selectStale(
+          'California',
+          'california',
+        );
+        expect([pending.length, n]).toEqual([0, 1]);
+      });
+
+      it('counts a bio current when the model digest cannot be resolved', async () => {
+        (built.llm.getModelDigest as jest.Mock).mockRejectedValue(
+          new Error('ollama down'),
+        );
+        seedCandidates(built.db, [current()]);
+
+        const { pending, current: n } = await built.service.selectStale(
+          'California',
+          'california',
+        );
+        expect([pending.length, n]).toEqual([0, 1]);
+      });
+
+      it('looks the prompt hash up once for many rows, not once per row', async () => {
+        seedCandidates(built.db, [
+          { ...current(), id: 'rep-1' },
+          { ...current(), id: 'rep-2' },
+          { ...current(), id: 'rep-3' },
+        ]);
+
+        await built.service.selectStale('California', 'california');
+        expect(built.promptClient.getPromptHash).toHaveBeenCalledTimes(1);
+      });
+
+      it('gives a stale bio a one-off job id when the key cannot be known', async () => {
+        built.promptClient.getPromptHash.mockRejectedValue(new Error('down'));
+        seedCandidates(built.db, [stored({ bioLlmDigest: 'older-weights' })]);
+
+        const { pending } = await built.service.selectStale(
+          'California',
+          'california',
+        );
+        expect(pending).toEqual([{ id: 'rep-1', key: null }]);
+      });
+    });
+
+    describe('a decline — the model returns an empty bio', () => {
+      const VACANT =
+        'Name: Member Vacant\nJurisdiction: California State Senate\nDistrict: 5\nParty: Democrat';
+      const vacant = (over: Record<string, unknown> = {}) =>
+        stored({
+          name: 'Member Vacant',
+          bio: null,
+          bioSource: null,
+          bioPromptHash: null,
+          bioLlmDigest: null,
+          ...over,
+        });
+      beforeEach(() => {
+        built.llm.generate.mockResolvedValue({
+          text: '{ "bio": "", "wordCount": 0, "claims": [] }',
+        } as Awaited<ReturnType<ILLMProvider['generate']>>);
+      });
+
+      it('records its key, and is not a failure', async () => {
+        // A vacant seat has no one to write about; the 2026-10-27 UAT run
+        // counted both of California's as errors and would have asked again
+        // every sync.
+        seedCandidates(built.db, [vacant()]);
+
+        await expect(
+          built.service.generateOne('rep-1', 'California'),
+        ).resolves.toBe('skipped');
+        expect(built.db.representative.update).toHaveBeenCalledWith({
+          where: { id: 'rep-1' },
+          data: expect.objectContaining({
+            bioPromptHash: 'hash',
+            bioLlmDigest: 'stub-digest',
+            bioSourceHash: inputHash(VACANT),
+            bioConfigHash: bioConfigHash(800),
+          }),
+        });
+      });
+
+      it('is current next run — the seat is not asked about again', async () => {
+        seedCandidates(built.db, [
+          vacant({
+            bioPromptHash: 'hash',
+            bioLlmDigest: 'stub-digest',
+            bioSourceHash: inputHash(VACANT),
+            bioConfigHash: bioConfigHash(800),
+          }),
+        ]);
+
+        const { pending, current } = await built.service.selectStale(
+          'California',
+          'california',
+        );
+        expect([pending.length, current]).toEqual([0, 1]);
+      });
+
+      it("clears the last member's AI bio from a seat that fell vacant", async () => {
+        seedCandidates(built.db, [
+          vacant({
+            bio: 'Jane Smith represents District 5.',
+            bioSource: 'ai-generated',
+          }),
+        ]);
+
+        await built.service.generateOne('rep-1', 'California');
+
+        expect(built.db.representative.update).toHaveBeenCalledWith({
+          where: { id: 'rep-1' },
+          data: expect.objectContaining({
+            bio: null,
+            bioSource: null,
+            bioClaims: Prisma.DbNull,
+          }),
+        });
+        // And its claims stop being current — the bio they described is gone.
+        expect(recordClaims).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ subjectId: 'rep-1', claims: [] }),
+        );
+      });
+
+      it('fails — and keeps the bio — for a seat that is not vacant', async () => {
+        // The review finding: an empty answer for a sitting member is a model
+        // error. Treating it as a verdict would delete their bio and record
+        // the deletion as current.
+        seedCandidates(built.db, [stored({ bioPromptHash: 'older-prompt' })]);
+
+        await expect(
+          built.service.generateOne('rep-1', 'California'),
+        ).resolves.toBe('failed');
+        expect(built.db.representative.update).not.toHaveBeenCalled();
+      });
+
+      it('still fails a response that does not parse at all', async () => {
+        built.llm.generate.mockResolvedValue({
+          text: 'I cannot help with that.',
+        } as Awaited<ReturnType<ILLMProvider['generate']>>);
+        seedCandidates(built.db, [vacant()]);
+
+        await expect(
+          built.service.generateOne('rep-1', 'California'),
+        ).resolves.toBe('failed');
+        expect(built.db.representative.update).not.toHaveBeenCalled();
+      });
     });
   });
 });

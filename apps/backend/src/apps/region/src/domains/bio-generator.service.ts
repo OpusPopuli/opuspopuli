@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   extractFieldString,
   extractJsonObjectSlice,
+  stableHash,
   type BioClaim,
   type Representative,
 } from '@opuspopuli/common';
@@ -10,6 +11,87 @@ import { dropUnsupportedSentences } from './bio-source-guard';
 import { normaliseBioClaims } from './claim-normalisers';
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
+import {
+  outputCurrency,
+  partitionStale,
+  type GeneratedOutputOutcome,
+  type LiveOutputKey,
+  type OutputCurrency,
+  type OutputTarget,
+} from './generated-output-key';
+
+/** Bumped when what this generator stores changes shape (the source-year guard included). */
+const BIO_GENERATOR_VERSION = 'bio-1';
+
+/** The config axis of the skip key: everything that shapes what is stored. */
+export function bioConfigHash(maxTokens: number): string {
+  return stableHash({
+    generator: BIO_GENERATOR_VERSION,
+    maxTokens,
+    temperature: 0.2,
+  });
+}
+
+const BIO_TEMPLATE = 'document-analysis-representative-bio';
+
+/**
+ * Whether the roster lists this seat as vacant ("Member Vacant", "Vacant").
+ * The only case in which an empty bio is an answer rather than a failure.
+ */
+export function isVacantSeat(name: string | null | undefined): boolean {
+  return /\bvacant\b/i.test(name ?? '');
+}
+
+/** What a bio's key and input are read from. */
+const BIO_SELECT = {
+  id: true,
+  externalId: true,
+  name: true,
+  chamber: true,
+  district: true,
+  party: true,
+  regionId: true,
+  bio: true,
+  bioSource: true,
+  bioPromptHash: true,
+  bioLlmDigest: true,
+  bioSourceHash: true,
+  bioConfigHash: true,
+} as const;
+
+interface BioRow {
+  id: string;
+  externalId: string;
+  name: string;
+  chamber: string;
+  district: string | null;
+  party: string | null;
+  regionId: string | null;
+  bio: string | null;
+  bioSource: string | null;
+  bioPromptHash: string | null;
+  bioLlmDigest: string | null;
+  bioSourceHash: string | null;
+  bioConfigHash: string | null;
+}
+
+/**
+ * The rep a bio is generated for — mapped, not cast: `Representative`
+ * declares `district` and `party` as plain strings and `regionId` as
+ * `string | undefined`, while all three are nullable in the database
+ * (Sonoma's supervisors carry no party; county offices are non-partisan).
+ * `formatRepData` omits an empty field rather than rendering "Party: null".
+ */
+function toRepresentative(row: BioRow): Representative {
+  return {
+    externalId: row.externalId,
+    name: row.name,
+    chamber: row.chamber,
+    district: row.district ?? '',
+    party: row.party ?? '',
+    regionId: row.regionId ?? undefined,
+  };
+}
 
 /**
  * Sentinels the pipeline writes where a value is simply not known.
@@ -36,6 +118,8 @@ function isPresent(value: string | null | undefined): boolean {
  * Tunable via env vars (useful for dev/prod balance):
  * - BIO_GENERATOR_MAX_TOKENS (default 800) — LLM output budget per bio
  * - BIO_GENERATOR_CONCURRENCY (default 1) — how many bios to generate in parallel
+ *   on the in-process path (`enrichBios`). The sync queues bios instead
+ *   (`representative-bio`), bounded by the queue worker and the GPU lane
  * - BIO_GENERATOR_MAX_REPS (default unlimited) — cap on how many reps get a bio
  *   per run. Useful in dev to verify end-to-end plumbing quickly without
  *   waiting for a full-batch LLM run. Leave unset in production.
@@ -49,7 +133,6 @@ function isPresent(value: string | null | undefined): boolean {
 @Injectable()
 export class BioGeneratorService extends LlmGeneratorBase {
   private readonly logger = new Logger(BioGeneratorService.name);
-  private activeRegionName: string | undefined;
   // Field initializers run after super(), so this.config is already set.
   private readonly maxTokens = readPositiveInt(
     this.config,
@@ -125,22 +208,15 @@ export class BioGeneratorService extends LlmGeneratorBase {
     if (!this.promptClient || !this.llm) {
       return reps;
     }
-    this.activeRegionName = regionName;
-
     const scope = this.resolveScope(regionId, reps);
-    await this.loadRegionNames();
-    const candidates = await this.findCandidates(scope);
-    const cap = this.resolveCap(maxRepsOverride);
-    const needsBio = cap ? candidates.slice(0, cap) : candidates;
-
-    if (needsBio.length > 0) {
-      await this.runBatchGeneration(
-        needsBio,
-        candidates.length,
-        cap,
-        maxRepsOverride,
-      );
-      this.applyTo(reps, needsBio);
+    const { pending } = await this.selectStale(
+      regionName,
+      scope,
+      maxRepsOverride,
+    );
+    if (pending.length > 0) {
+      const generated = await this.runBatchGeneration(pending, regionName);
+      this.applyTo(reps, generated);
     }
 
     // Mark scraped bios that were present on arrival
@@ -154,15 +230,160 @@ export class BioGeneratorService extends LlmGeneratorBase {
   }
 
   /**
+   * Reps in scope whose AI bio is stale on some axis — or missing — up to the
+   * cap, and how many are current. A scraped bio is never a candidate. A
+   * legacy bio (the live prompt and weights, no input or config hash yet) is
+   * stamped current (owner, 2026-10-27). Before Phase B a bio was written once
+   * and never again, whatever changed.
+   *
+   * @param regionName - The sync's region display name, for the jurisdiction
+   * @param scope - The region id to select in, or undefined for all
+   * @param maxRepsOverride - Per-call cap over BIO_GENERATOR_MAX_REPS
+   */
+  async selectStale(
+    regionName: string | undefined,
+    scope: string | undefined,
+    maxRepsOverride?: number,
+  ): Promise<{ pending: OutputTarget[]; current: number }> {
+    if (!this.db) {
+      this.logger.warn(
+        'No DbService available — cannot select bio candidates from the database',
+      );
+      return { pending: [], current: 0 };
+    }
+    if (!this.promptClient || !this.llm) return { pending: [], current: 0 };
+    await this.loadRegionNames();
+    const cap = this.resolveCap(maxRepsOverride);
+    const rows: BioRow[] = await this.db.representative.findMany({
+      where: {
+        deletedAt: null,
+        ...(scope ? { regionId: scope } : {}),
+        // Missing, or ours — never a scraped bio.
+        OR: [{ bio: null }, { bio: '' }, { bioSource: 'ai-generated' }],
+      },
+      select: BIO_SELECT,
+      // A capped run takes the same reps each time — `findMany` guarantees
+      // no ordering, and an unordered cap would cover a different slice.
+      orderBy: { externalId: 'asc' },
+    });
+
+    return partitionStale(rows, {
+      assess: (row) => this.assess(row, regionName),
+      stamp: (row, live) => this.stamp(row.id, live),
+      target: (row, key) => ({ id: row.id, key }),
+      cap,
+    });
+  }
+
+  /**
+   * One rep's bio — the `representative-bio` job (S4). Re-checks currency
+   * first, and never touches a scraped bio. A transient LLM failure throws,
+   * so the queue retries it.
+   *
+   * @param regionName - The sync's region display name, for the jurisdiction
+   */
+  async generateOne(
+    id: string,
+    regionName: string | undefined,
+  ): Promise<GeneratedOutputOutcome> {
+    return (await this.generateAndPersist(id, regionName)).outcome;
+  }
+
+  /** {@link generateOne}, also handing back the rep it generated for. */
+  private async generateAndPersist(
+    id: string,
+    regionName: string | undefined,
+  ): Promise<{ outcome: GeneratedOutputOutcome; rep?: Representative }> {
+    if (!this.db || !this.promptClient || !this.llm) {
+      return { outcome: 'skipped' };
+    }
+    const row: BioRow | null = await this.db.representative.findFirst({
+      where: { id, deletedAt: null },
+      select: BIO_SELECT,
+    });
+    if (!row) return { outcome: 'skipped' };
+    if (row.bio && row.bioSource !== 'ai-generated') {
+      return { outcome: 'skipped' };
+    }
+    await this.loadRegionNames();
+    const { live, currency } = await this.assess(row, regionName);
+    if (currency !== 'stale') {
+      if (currency === 'legacy') await this.stamp(id, live);
+      return { outcome: 'unchanged' };
+    }
+
+    const rep = toRepresentative(row);
+    const generated = await this.generateBio(rep, regionName);
+    if (generated?.parsed === null && isVacantSeat(row.name)) {
+      // A vacant seat has no one to write about. Recorded with its key, so
+      // the seat is not asked about again until its input changes (someone
+      // fills it); retrying an identical prompt every sync was two LLM calls
+      // and two errors a run. The seat is vacant because the ROSTER says so —
+      // an empty answer for a sitting member is a model error, and must not
+      // delete their bio (below).
+      await this.recordDecline(row, generated.provenance, live);
+      return { outcome: 'skipped' };
+    }
+    if (!generated?.parsed?.bio) {
+      // Nothing usable: unparseable, every sentence dropped by the
+      // source-year guard, or an empty answer for a seat that is not vacant.
+      // Nothing stored and no key recorded, so the next sync asks again.
+      return { outcome: 'failed' };
+    }
+    rep.bio = generated.parsed.bio;
+    rep.bioSource = 'ai-generated';
+    // The full claims array (#602); undefined on tier-2 salvage, where only
+    // the bio string survived parsing — and `persistBio` then clears the
+    // stored claims rather than keep the last generation's.
+    rep.bioClaims = generated.parsed.claims;
+    await this.persistBio(id, rep, generated.provenance, live);
+    return { outcome: row.bio ? 'updated' : 'created', rep };
+  }
+
+  /** The live key — over exactly the prompt's input — and how the stored bio compares. */
+  private async assess(
+    row: BioRow,
+    regionName: string | undefined,
+  ): Promise<{ live: LiveOutputKey; currency: OutputCurrency }> {
+    const live = await this.liveOutputKey(
+      BIO_TEMPLATE,
+      this.formatRepData(toRepresentative(row), regionName),
+      bioConfigHash(this.maxTokens),
+    );
+    const currency = outputCurrency(
+      {
+        promptHash: row.bioPromptHash,
+        llmDigest: row.bioLlmDigest,
+        sourceHash: row.bioSourceHash,
+        configHash: row.bioConfigHash,
+      },
+      live,
+    );
+    return { live, currency };
+  }
+
+  /** Record a legacy bio's input and config as current (decision 2). */
+  private async stamp(id: string, live: LiveOutputKey): Promise<void> {
+    await this.db!.representative.update({
+      where: { id },
+      data: { bioSourceHash: live.sourceHash, bioConfigHash: live.configHash },
+    });
+  }
+
+  /**
    * Display name per region id, read once per run from `region_plugins`.
    *
    * Empty when no database is bound, in which case {@link deriveJurisdiction}
    * falls back to the active plugin's name as before.
    */
   private readonly regionNames = new Map<string, string>();
+  private regionNamesAt = 0;
 
+  /** At most once a minute — every job used to re-read the table. */
   private async loadRegionNames(): Promise<void> {
     if (!this.db) return;
+    if (Date.now() - this.regionNamesAt < 60_000) return;
+    this.regionNamesAt = Date.now();
     const rows = await this.db.regionPlugin.findMany({
       select: { name: true, displayName: true },
     });
@@ -184,7 +405,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * done quietly, because unscoped means another region's reps could be
    * stamped with this sync's jurisdiction.
    */
-  private resolveScope(
+  resolveScope(
     regionId: string | undefined,
     reps: Representative[],
   ): string | undefined {
@@ -202,63 +423,10 @@ export class BioGeneratorService extends LlmGeneratorBase {
   }
 
   /**
-   * Representatives in the region whose stored bio is empty.
-   *
-   * Ordered by `externalId` so a capped run takes the same reps each time —
-   * `findMany` guarantees no ordering, and an unordered cap would make a
-   * smoke run cover a different arbitrary slice every time.
-   */
-  private async findCandidates(
-    regionId: string | undefined,
-  ): Promise<Representative[]> {
-    if (!this.db) {
-      this.logger.warn(
-        'No DbService available — cannot select bio candidates from the database',
-      );
-      return [];
-    }
-
-    const rows = await this.db.representative.findMany({
-      where: {
-        deletedAt: null,
-        ...(regionId ? { regionId } : {}),
-        OR: [{ bio: null }, { bio: '' }],
-      },
-      select: {
-        externalId: true,
-        name: true,
-        chamber: true,
-        district: true,
-        party: true,
-        regionId: true,
-      },
-      orderBy: { externalId: 'asc' },
-    });
-
-    // Mapped, not cast. `Representative` declares `district` and `party` as
-    // plain strings and `regionId` as `string | undefined`, while all three
-    // are nullable in the database — Sonoma's supervisors carry no party at
-    // all, county offices being non-partisan. An `as unknown as
-    // Representative[]` asserted the shapes matched and let a `null` flow
-    // into a field typed `string`; `formatRepData` then omits the empty
-    // field rather than rendering "Party: null".
-    return rows.map((row) => ({
-      externalId: row.externalId,
-      name: row.name,
-      chamber: row.chamber,
-      district: row.district ?? '',
-      party: row.party ?? '',
-      regionId: row.regionId ?? undefined,
-    }));
-  }
-
-  /**
-   * Copy generated bios onto the scraped batch, matched by `externalId`.
-   *
-   * `runBatchGeneration` persists each bio itself, so this is only so that
-   * callers holding `reps` — and the phases after this one — see what was
-   * generated. A candidate absent from `reps` (the roster-flake case this
-   * change exists to cover) simply has nothing to copy onto.
+   * Copy generated bios onto the scraped batch, matched by `externalId`, so
+   * callers holding `reps` — and the phases after this one — see them. A rep
+   * absent from `reps` (the roster-flake case #1394 covers) simply has
+   * nothing to copy onto.
    */
   private applyTo(reps: Representative[], generated: Representative[]): void {
     const byExternalId = new Map(reps.map((rep) => [rep.externalId, rep]));
@@ -283,62 +451,76 @@ export class BioGeneratorService extends LlmGeneratorBase {
   }
 
   /**
-   * Run the bounded-concurrency batch that turns a list of bio candidates
-   * into generated bios. Mutates the reps in place and logs a summary.
+   * Generate the stale bios in this process, `BIO_GENERATOR_CONCURRENCY` at a
+   * time — the inline path, when the `representative-bio` queue is off.
+   * One failed rep does not cancel its batch peers.
    */
   private async runBatchGeneration(
-    needsBio: Representative[],
-    candidatesTotal: number,
-    cap: number | undefined,
-    maxRepsOverride: number | undefined,
-  ): Promise<void> {
-    const capSource =
-      maxRepsOverride && maxRepsOverride > 0 ? 'mutation arg' : 'env default';
-    const capNote =
-      cap && candidatesTotal > cap
-        ? ` (capped from ${candidatesTotal} by ${capSource}=${cap})`
-        : '';
+    pending: OutputTarget[],
+    regionName: string | undefined,
+  ): Promise<Representative[]> {
     this.logger.log(
-      `Generating AI bios for ${needsBio.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
+      `Generating AI bios for ${pending.length} representatives (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
     );
-
-    let succeeded = 0;
-    for (let i = 0; i < needsBio.length; i += this.concurrency) {
-      const batch = needsBio.slice(i, i + this.concurrency);
-      const results = await Promise.all(
-        batch.map((rep) => this.tryGenerateBio(rep)),
-      );
-      succeeded += results.filter(Boolean).length;
-    }
-
+    const results = await this.runInBatches(
+      pending,
+      this.concurrency,
+      (target) => this.generateAndPersist(target.id, regionName),
+      (target, error) => {
+        this.logger.warn(
+          `Bio generation failed for ${target.id}: ${error.message}`,
+        );
+        return { outcome: 'failed' as const, rep: undefined };
+      },
+    );
+    const generated = results.flatMap(({ rep }) => (rep ? [rep] : []));
     this.logger.log(
-      `Generated ${succeeded}/${needsBio.length} AI bios successfully`,
+      `Generated ${generated.length}/${pending.length} AI bios successfully`,
     );
+    return generated;
   }
 
   /**
-   * Generate a bio for one rep, mutating it in place on success.
-   * Returns true if a bio was successfully generated and applied.
-   * Swallows errors so one failed rep doesn't cancel its batch peers.
+   * A declined bio: the key and attribution of the answer "nothing", and no
+   * bio. A seat that falls vacant still carries its last member's AI bio, so
+   * that bio is cleared and its claims superseded — the generator just said
+   * there is no one to describe.
    */
-  private async tryGenerateBio(rep: Representative): Promise<boolean> {
-    try {
-      const generated = await this.generateBio(rep);
-      if (generated?.parsed.bio) {
-        rep.bio = generated.parsed.bio;
-        rep.bioSource = 'ai-generated';
-        // Persist the full claims array (#602). Undefined on tier-2
-        // salvage since only the bio string survived parsing.
-        rep.bioClaims = generated.parsed.claims;
-        await this.persistBio(rep, generated.provenance);
-        return true;
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Bio generation failed for ${rep.name}: ${(error as Error).message}`,
+  private async recordDecline(
+    row: BioRow,
+    provenance: AiOutputProvenance,
+    live: LiveOutputKey,
+  ): Promise<void> {
+    const hadBio = Boolean(row.bio);
+    await this.db!.representative.update({
+      where: { id: row.id },
+      data: {
+        ...(hadBio && {
+          bio: null,
+          bioSource: null,
+          bioClaims: Prisma.DbNull,
+        }),
+        bioPromptHash: provenance.promptHash,
+        bioPromptVersion: provenance.promptVersion,
+        bioLlmModel: provenance.llmModel,
+        bioLlmDigest: provenance.llmModelDigest,
+        bioSourceHash: live.sourceHash,
+        bioConfigHash: live.configHash,
+        bioGeneratedAt: new Date(),
+      },
+    });
+    if (hadBio) {
+      await this.mirrorClaims(
+        {
+          subjectType: 'representative',
+          subjectId: row.id,
+          claims: [],
+          sourceText: null,
+          sourceTextHash: null,
+        },
+        (message) => this.logger.error(message),
       );
     }
-    return false;
   }
 
   /**
@@ -351,8 +533,10 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * bios). See #881.
    */
   private async persistBio(
+    id: string,
     rep: Representative,
     provenance: AiOutputProvenance,
+    live: LiveOutputKey,
   ): Promise<void> {
     if (!this.db) {
       this.logger.warn(
@@ -360,20 +544,22 @@ export class BioGeneratorService extends LlmGeneratorBase {
       );
       return;
     }
-    const updated = await this.db.representative.update({
+    await this.db.representative.update({
       where: { externalId: rep.externalId },
       data: {
         bio: rep.bio,
         bioSource: rep.bioSource,
-        ...(rep.bioClaims
-          ? { bioClaims: rep.bioClaims as unknown as Prisma.InputJsonValue }
-          : {}),
+        bioClaims: rep.bioClaims
+          ? (rep.bioClaims as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
         bioPromptHash: provenance.promptHash,
         bioPromptVersion: provenance.promptVersion,
         bioLlmModel: provenance.llmModel,
         bioLlmDigest: provenance.llmModelDigest,
+        bioSourceHash: live.sourceHash,
+        bioConfigHash: live.configHash,
+        bioGeneratedAt: new Date(),
       },
-      select: { id: true },
     });
 
     // Dual-write into the evidence graph (#1293), after the authoritative
@@ -385,39 +571,40 @@ export class BioGeneratorService extends LlmGeneratorBase {
     // `unsourced` and `origin: 'source'` lands `unverified`, which is exactly
     // the distinction #1208 requires to survive: a model's recollection must
     // never read as a citation that merely failed a check.
-    // `bioClaims` rather than `bioClaims?.length`: an empty array means the
-    // generation produced no claims, and the blob above writes that — so the
-    // mirror must clear the superseded rows too, or the relational model keeps
-    // claims the blob no longer has. `undefined` is the different case (tier-2
-    // salvage, where only the bio string survived parsing): the blob KEEPS its
-    // previous claims, so the mirror must leave them alone. The condition
-    // tracks the blob's own exactly.
-    if (rep.bioClaims) {
-      await this.mirrorClaims(
-        {
-          subjectType: 'representative',
-          subjectId: updated.id,
-          claims: normaliseBioClaims(rep.bioClaims),
-          sourceText: null,
-          sourceTextHash: null,
-        },
-        // `error`, not `warn`: the claims were not written. A systematic
-        // failure here is otherwise invisible until something reads the
-        // tables, which nothing does yet (#1296).
-        (message) => this.logger.error(message),
-      );
-    }
+    // Always, and always matching the blob: the claims describe the bio just
+    // written or none at all. Tier-2 salvage (only the bio string survived
+    // parsing, `bioClaims` undefined) used to KEEP the previous claims, which
+    // was right while a bio was written once — now a bio is regenerated when
+    // its key moves, and keeping them would attach the last generation's
+    // claims to text that no longer says them.
+    await this.mirrorClaims(
+      {
+        subjectType: 'representative',
+        subjectId: id,
+        claims: rep.bioClaims ? normaliseBioClaims(rep.bioClaims) : [],
+        sourceText: null,
+        sourceTextHash: null,
+      },
+      // `error`, not `warn`: the claims were not written. A systematic
+      // failure here is otherwise invisible until something reads the
+      // tables, which nothing does yet (#1296).
+      (message) => this.logger.error(message),
+    );
   }
 
   /**
    * Generate a bio for a single representative via the prompt service + LLM.
+   *
+   * @returns `parsed: null` when the model returned a well-formed, empty bio
+   *   — a decline, not a failure; undefined when nothing usable came back
    */
   private async generateBio(
     rep: Representative,
+    regionName: string | undefined,
   ): Promise<
-    { parsed: BioResponse; provenance: AiOutputProvenance } | undefined
+    { parsed: BioResponse | null; provenance: AiOutputProvenance } | undefined
   > {
-    const structuredText = this.formatRepData(rep);
+    const structuredText = this.formatRepData(rep, regionName);
 
     // Full destructure on purpose (#1149): dropping hash/version here is
     // what left every persisted bio unattributable.
@@ -433,6 +620,9 @@ export class BioGeneratorService extends LlmGeneratorBase {
     });
 
     const parsed = this.parseBioFromResponse(result.text);
+    if (parsed === null) {
+      return { parsed, provenance: await this.outputProvenance(prompt) };
+    }
     if (!parsed) return undefined;
     const guarded = this.enforceSourceYears(rep, structuredText, parsed);
     if (!guarded) return undefined;
@@ -453,8 +643,11 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * and hallucinates biographies of wrong-state namesakes. We derive
    * the jurisdiction from externalId (e.g., "ca-assembly-4" → California).
    */
-  private formatRepData(rep: Representative): string {
-    const jurisdiction = this.deriveJurisdiction(rep);
+  private formatRepData(
+    rep: Representative,
+    activeRegionName: string | undefined,
+  ): string {
+    const jurisdiction = this.deriveJurisdiction(rep, activeRegionName);
 
     // A field with no value is OMITTED, never rendered as its own absence.
     // Template interpolation turned a null party into the literal line
@@ -483,7 +676,10 @@ export class BioGeneratorService extends LlmGeneratorBase {
    * externalId prefix + chamber. Gives the LLM enough context to
    * refuse or correctly identify a representative.
    */
-  private deriveJurisdiction(rep: Representative): string {
+  private deriveJurisdiction(
+    rep: Representative,
+    activeRegionName: string | undefined,
+  ): string {
     // The rep's OWN region names its jurisdiction, not the sync's active
     // plugin. `getPluginRegionName()` returns the parent — "California" —
     // for a county sync, so the county test below failed and five Sonoma
@@ -496,17 +692,17 @@ export class BioGeneratorService extends LlmGeneratorBase {
         : `${regionName} State ${rep.chamber}`;
     }
 
-    if (!this.activeRegionName) {
+    if (!activeRegionName) {
       // Federal or unknown — fall back to bare chamber so the prompt
       // can still decide whether to trust training knowledge.
       return rep.chamber;
     }
     // County regions (e.g. "Sonoma County") don't need "State" inserted —
     // "Sonoma County Board of Supervisors" is already correct.
-    const isCounty = /county/i.test(this.activeRegionName);
+    const isCounty = /county/i.test(activeRegionName);
     return isCounty
-      ? `${this.activeRegionName} ${rep.chamber}`
-      : `${this.activeRegionName} State ${rep.chamber}`;
+      ? `${activeRegionName} ${rep.chamber}`
+      : `${activeRegionName} State ${rep.chamber}`;
   }
 
   /**
@@ -576,9 +772,11 @@ export class BioGeneratorService extends LlmGeneratorBase {
    *   Claims are logged-only today (#602) — don't let their fragility
    *   block bio persistence.
    *
-   * Returns undefined only when neither tier finds a usable bio string.
+   * Returns null for a well-formed response whose bio is empty — the model
+   * declining, as for a vacant seat — and undefined when neither tier finds
+   * a usable bio string.
    */
-  private parseBioFromResponse(text: string): BioResponse | undefined {
+  private parseBioFromResponse(text: string): BioResponse | null | undefined {
     // Tier 1: full structured parse
     const candidate = extractJsonObjectSlice(text);
     if (candidate) {
@@ -589,6 +787,7 @@ export class BioGeneratorService extends LlmGeneratorBase {
           claims?: BioClaim[];
         };
         const bio = parsed.bio?.trim();
+        if (typeof parsed.bio === 'string' && bio === '') return null;
         if (bio && bio.length > 0) {
           return {
             bio,

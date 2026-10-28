@@ -25,9 +25,71 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { extractFieldString, extractJsonObjectSlice } from '@opuspopuli/common';
+import {
+  extractFieldString,
+  extractJsonObjectSlice,
+  stableHash,
+} from '@opuspopuli/common';
 import { readPositiveInt } from './config-helpers';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
+import {
+  outputCurrency,
+  partitionStale,
+  type GeneratedOutputOutcome,
+  type LiveOutputKey,
+  type StoredOutputKey,
+  type OutputTarget,
+} from './generated-output-key';
+
+/** Bumped when what this generator stores changes shape. */
+const ACTIVITY_SUMMARY_GENERATOR_VERSION = 'activity-summary-1';
+
+/** The config axis of the skip key: everything that shapes what is stored. */
+export function activitySummaryConfigHash(
+  maxTokens: number,
+  windowDays: number,
+): string {
+  return stableHash({
+    generator: ACTIVITY_SUMMARY_GENERATOR_VERSION,
+    maxTokens,
+    windowDays,
+    temperature: 0.2,
+  });
+}
+
+export type ActivityEntityType = 'representative' | 'committee';
+
+/** One stale summary, as the sync queues it. */
+export interface ActivityTarget extends OutputTarget {
+  entityType: ActivityEntityType;
+}
+
+const TEMPLATE: Record<ActivityEntityType, string> = {
+  representative: 'representative-activity-summary',
+  committee: 'committee-activity-summary',
+};
+
+/** The columns an entity's stored summary key is read from. */
+const STORED_KEY_SELECT = {
+  activitySummaryPromptHash: true,
+  activitySummaryLlmDigest: true,
+  activitySummarySourceHash: true,
+  activitySummaryConfigHash: true,
+} as const;
+
+function storedKey(row: {
+  activitySummaryPromptHash: string | null;
+  activitySummaryLlmDigest: string | null;
+  activitySummarySourceHash: string | null;
+  activitySummaryConfigHash: string | null;
+}): StoredOutputKey {
+  return {
+    promptHash: row.activitySummaryPromptHash,
+    llmDigest: row.activitySummaryLlmDigest,
+    sourceHash: row.activitySummarySourceHash,
+    configHash: row.activitySummaryConfigHash,
+  };
+}
 
 /** Structured shape we feed the prompt. */
 interface ActivityBundle {
@@ -67,130 +129,208 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
   );
 
   /**
-   * Regenerate summaries for every active representative + every
-   * legislative committee that has at least one LegislativeAction in
-   * the configured window. Skips entities whose existing summary is
-   * fresher than the newest action (no work to do).
-   *
-   * Returns {repsUpdated, committeesUpdated, skipped} so the admin
-   * script can log progress.
+   * Every entity with a `legislativeAction` in the window whose summary is
+   * stale on some axis (K2: this used to regenerate all of them every run —
+   * `activitySummaryGeneratedAt` was selected and never compared), and how
+   * many are current. A legacy summary — the live prompt and weights, but no
+   * input or config hash yet — is stamped and counted current (owner,
+   * 2026-10-27).
+   */
+  async selectStale(
+    windowDays: number = this.windowDays,
+  ): Promise<{ pending: ActivityTarget[]; current: number }> {
+    if (!this.db || !this.promptClient || !this.llm) {
+      this.logger.warn(
+        'Activity summary generator missing DB / promptClient / LLM — skipping',
+      );
+      return { pending: [], current: 0 };
+    }
+    const since = this.windowStart(windowDays);
+    const where = {
+      deletedAt: null,
+      legislativeActions: { some: { date: { gte: since } } },
+    };
+    const select = {
+      id: true,
+      name: true,
+      chamber: true,
+      ...STORED_KEY_SELECT,
+    };
+    const [reps, committees] = await Promise.all([
+      this.db.representative.findMany({ where, select }),
+      this.db.legislativeCommittee.findMany({ where, select }),
+    ]);
+    const candidates = [
+      ...reps.map((r) => ({ ...r, entityType: 'representative' as const })),
+      ...committees.map((c) => ({ ...c, entityType: 'committee' as const })),
+    ];
+
+    return partitionStale(candidates, {
+      assess: (entity) => this.assess(entity, storedKey(entity), windowDays),
+      stamp: (entity, live) => this.stamp(entity.entityType, entity.id, live),
+      target: (entity, key) => ({
+        entityType: entity.entityType,
+        id: entity.id,
+        key,
+      }),
+    });
+  }
+
+  /**
+   * One entity's summary — the `activity-summary` job (S4). Re-checks
+   * currency first: a summary made current since it was selected is left
+   * alone. A transient LLM failure throws, so the queue retries it.
+   */
+  async generateOne(
+    entityType: ActivityEntityType,
+    id: string,
+    windowDays: number = this.windowDays,
+  ): Promise<GeneratedOutputOutcome> {
+    if (!this.db || !this.promptClient || !this.llm) return 'skipped';
+    const select = {
+      id: true,
+      name: true,
+      chamber: true,
+      activitySummary: true,
+      ...STORED_KEY_SELECT,
+    };
+    const entity =
+      entityType === 'representative'
+        ? await this.db.representative.findFirst({
+            where: { id, deletedAt: null },
+            select,
+          })
+        : await this.db.legislativeCommittee.findFirst({
+            where: { id, deletedAt: null },
+            select,
+          });
+    if (!entity) return 'skipped';
+    const assessed = await this.assess(
+      { ...entity, entityType },
+      storedKey(entity),
+      windowDays,
+    );
+    if (!assessed) return 'skipped';
+    if (assessed.currency !== 'stale') {
+      if (assessed.currency === 'legacy') {
+        await this.stamp(entityType, id, assessed.live);
+      }
+      return 'unchanged';
+    }
+
+    const generated = await this.runPrompt(assessed.bundle);
+    if (!generated) {
+      this.logger.warn(
+        `Activity summary for ${entityType} ${id}: the model returned no summary`,
+      );
+      return 'failed';
+    }
+    const data = {
+      ...this.activitySummaryData(generated, windowDays),
+      activitySummarySourceHash: assessed.live.sourceHash,
+      activitySummaryConfigHash: assessed.live.configHash,
+    };
+    if (entityType === 'representative') {
+      await this.db.representative.update({ where: { id }, data });
+    } else {
+      await this.db.legislativeCommittee.update({ where: { id }, data });
+    }
+    this.logger.log(
+      `Updated activity summary for ${entityType} ${entity.name} (${id})`,
+    );
+    return entity.activitySummary ? 'updated' : 'created';
+  }
+
+  /**
+   * Regenerate every stale summary in this process, one at a time — what the
+   * admin script runs. The sync queues them instead.
    */
   async generateAll(overrideWindowDays?: number): Promise<{
     repsUpdated: number;
     committeesUpdated: number;
     skipped: number;
   }> {
-    if (!this.db || !this.promptClient || !this.llm) {
-      this.logger.warn(
-        'Activity summary generator missing DB / promptClient / LLM — skipping',
-      );
-      return { repsUpdated: 0, committeesUpdated: 0, skipped: 0 };
-    }
     const windowDays = overrideWindowDays ?? this.windowDays;
+    const { pending, current } = await this.selectStale(windowDays);
+    let repsUpdated = 0;
+    let committeesUpdated = 0;
+    for (const target of pending) {
+      try {
+        const outcome = await this.generateOne(
+          target.entityType,
+          target.id,
+          windowDays,
+        );
+        if (outcome !== 'created' && outcome !== 'updated') continue;
+        if (target.entityType === 'representative') repsUpdated++;
+        else committeesUpdated++;
+      } catch (e) {
+        this.logger.warn(
+          `Activity summary failed for ${target.entityType} ${target.id}: ${(e as Error).message}`,
+        );
+      }
+    }
+    return { repsUpdated, committeesUpdated, skipped: current };
+  }
+
+  private windowStart(windowDays: number): Date {
     const since = new Date();
     since.setDate(since.getDate() - windowDays);
+    return since;
+  }
 
-    const repsUpdated = await this.generateForReps(since, windowDays);
-    const committeesUpdated = await this.generateForCommittees(
-      since,
+  /**
+   * The entity's bundle and how its stored summary compares with the live
+   * key, or undefined when it has no action in the window (nothing to say).
+   */
+  private async assess(
+    entity: {
+      id: string;
+      name: string;
+      chamber: string;
+      entityType: ActivityEntityType;
+    },
+    stored: StoredOutputKey,
+    windowDays: number,
+  ): Promise<
+    | {
+        bundle: ActivityBundle;
+        live: LiveOutputKey;
+        currency: ReturnType<typeof outputCurrency>;
+      }
+    | undefined
+  > {
+    const bundle = await this.buildBundle(
+      entity.id,
+      entity.entityType,
+      entity.name,
+      entity.chamber,
       windowDays,
     );
-
-    return { repsUpdated, committeesUpdated, skipped: 0 };
+    if (bundle.recentActions.length === 0) return undefined;
+    const live = await this.liveOutputKey(
+      `document-analysis-${TEMPLATE[entity.entityType]}`,
+      this.formatBundle(bundle),
+      activitySummaryConfigHash(this.maxTokens, windowDays),
+    );
+    return { bundle, live, currency: outputCurrency(stored, live) };
   }
 
-  private async generateForReps(
-    since: Date,
-    windowDays: number,
-  ): Promise<number> {
-    if (!this.db) return 0;
-    // Only reps with at least one linked action in the window.
-    const candidates = await this.db.representative.findMany({
-      where: {
-        deletedAt: null,
-        legislativeActions: { some: { date: { gte: since } } },
-      },
-      select: {
-        id: true,
-        name: true,
-        chamber: true,
-        activitySummaryGeneratedAt: true,
-      },
-    });
-
-    let updated = 0;
-    for (const rep of candidates) {
-      try {
-        const bundle = await this.buildBundle(
-          rep.id,
-          'representative',
-          rep.name,
-          rep.chamber,
-          windowDays,
-        );
-        if (bundle.recentActions.length === 0) continue;
-        const generated = await this.runPrompt(bundle);
-        if (!generated) continue;
-
-        await this.db.representative.update({
-          where: { id: rep.id },
-          data: this.activitySummaryData(generated, windowDays),
-        });
-        updated += 1;
-        this.logger.log(
-          `Updated activity summary for rep ${rep.name} (${rep.id})`,
-        );
-      } catch (e) {
-        this.logger.warn(
-          `Activity summary failed for rep ${rep.id}: ${(e as Error).message}`,
-        );
-      }
+  /** Record a legacy summary's input and config as current (decision 2). */
+  private async stamp(
+    entityType: ActivityEntityType,
+    id: string,
+    live: LiveOutputKey,
+  ): Promise<void> {
+    const data = {
+      activitySummarySourceHash: live.sourceHash,
+      activitySummaryConfigHash: live.configHash,
+    };
+    if (entityType === 'representative') {
+      await this.db!.representative.update({ where: { id }, data });
+    } else {
+      await this.db!.legislativeCommittee.update({ where: { id }, data });
     }
-    return updated;
-  }
-
-  private async generateForCommittees(
-    since: Date,
-    windowDays: number,
-  ): Promise<number> {
-    if (!this.db) return 0;
-    const candidates = await this.db.legislativeCommittee.findMany({
-      where: {
-        deletedAt: null,
-        legislativeActions: { some: { date: { gte: since } } },
-      },
-      select: { id: true, name: true, chamber: true },
-    });
-
-    let updated = 0;
-    for (const cmt of candidates) {
-      try {
-        const bundle = await this.buildBundle(
-          cmt.id,
-          'committee',
-          cmt.name,
-          cmt.chamber,
-          windowDays,
-        );
-        if (bundle.recentActions.length === 0) continue;
-        const generated = await this.runPrompt(bundle);
-        if (!generated) continue;
-
-        await this.db.legislativeCommittee.update({
-          where: { id: cmt.id },
-          data: this.activitySummaryData(generated, windowDays),
-        });
-        updated += 1;
-        this.logger.log(
-          `Updated activity summary for committee ${cmt.name} (${cmt.id})`,
-        );
-      } catch (e) {
-        this.logger.warn(
-          `Activity summary failed for committee ${cmt.id}: ${(e as Error).message}`,
-        );
-      }
-    }
-    return updated;
   }
 
   /**
@@ -282,10 +422,7 @@ export class EntityActivitySummaryGeneratorService extends LlmGeneratorBase {
     bundle: ActivityBundle,
   ): Promise<{ summary: string; provenance: AiOutputProvenance } | undefined> {
     if (!this.promptClient || !this.llm) return undefined;
-    const documentType =
-      bundle.entityType === 'representative'
-        ? 'representative-activity-summary'
-        : 'committee-activity-summary';
+    const documentType = TEMPLATE[bundle.entityType];
 
     const text = this.formatBundle(bundle);
     const prompt = await this.promptClient.getDocumentAnalysisPrompt({

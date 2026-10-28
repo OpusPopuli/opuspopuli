@@ -370,6 +370,11 @@ const promptClientAsyncConfig = {
     MinutesSummaryService,
     CivicsSyncService,
     PropositionAnalysisService,
+    // The representatives S4 queues' consumers (region-worker).
+    BioGeneratorService,
+    CommitteeSummaryGeneratorService,
+    LegislativeCommitteeDescriptionGeneratorService,
+    EntityActivitySummaryGeneratorService,
     // The S6 CPU lane's consumer (region-worker) loads and records parses.
     SourceVersionService,
     BoundaryLoaderService,

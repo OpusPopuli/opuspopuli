@@ -50,9 +50,13 @@ describe('committee summary — the deterministic split', () => {
     // service reaching for a delegate the mock lacks would compile and only
     // fail at runtime. The sibling spec for this service already does this.
     const db = createMock<DbService>();
+    const row = { id: 'r1', name, chamber: 'Assembly', committees };
     (db.representative.findMany as unknown as jest.Mock).mockResolvedValue([
-      { id: 'r1', name, chamber: 'Assembly', committees },
+      row,
     ]);
+    (db.representative.findFirst as unknown as jest.Mock).mockResolvedValue(
+      row,
+    );
     (db.representative.update as unknown as jest.Mock).mockImplementation(
       update,
     );

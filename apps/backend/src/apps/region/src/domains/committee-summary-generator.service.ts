@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   extractFieldString,
   extractJsonObjectSlice,
+  stableHash,
   type CommitteeAssignment,
 } from '@opuspopuli/common';
 import {
@@ -13,6 +14,64 @@ import {
 import { readOptionalPositiveInt, readPositiveInt } from './config-helpers';
 import { extractLastName } from './region.service';
 import { AiOutputProvenance, LlmGeneratorBase } from './llm-generator.base';
+import {
+  outputCurrency,
+  partitionStale,
+  type GeneratedOutputOutcome,
+  type LiveOutputKey,
+  type OutputCurrency,
+  type OutputTarget,
+} from './generated-output-key';
+
+/** Bumped when what this generator stores changes shape. */
+const COMMITTEE_SUMMARY_GENERATOR_VERSION = 'committee-summary-1';
+
+/** The config axis of the skip key: everything that shapes what is stored. */
+export function committeeSummaryConfigHash(maxTokens: number): string {
+  return stableHash({
+    generator: COMMITTEE_SUMMARY_GENERATOR_VERSION,
+    maxTokens,
+    temperature: 0.2,
+  });
+}
+
+const SUMMARY_TEMPLATE = 'document-analysis-representative-committees-summary';
+
+/** The columns a rep's stored summary key is read from. */
+const SUMMARY_SELECT = {
+  id: true,
+  name: true,
+  chamber: true,
+  committees: true,
+  committeesSummary: true,
+  committeesSummaryPromptHash: true,
+  committeesSummaryLlmDigest: true,
+  committeesSummarySourceHash: true,
+  committeesSummaryConfigHash: true,
+} as const;
+
+interface SummaryRow {
+  id: string;
+  name: string;
+  chamber: string;
+  committees: unknown;
+  committeesSummary: string | null;
+  committeesSummaryPromptHash: string | null;
+  committeesSummaryLlmDigest: string | null;
+  committeesSummarySourceHash: string | null;
+  committeesSummaryConfigHash: string | null;
+}
+
+function toRepForSummary(row: SummaryRow): RepForSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    chamber: row.chamber,
+    committees: Array.isArray(row.committees)
+      ? (row.committees as CommitteeAssignment[])
+      : [],
+  };
+}
 
 /**
  * The sync's sentinel for "could not resolve a region id".
@@ -38,7 +97,8 @@ interface RepForSummary {
  *
  * Tunable via env vars:
  * - COMMITTEE_SUMMARY_GENERATOR_MAX_TOKENS (default 200)
- * - COMMITTEE_SUMMARY_GENERATOR_CONCURRENCY (default 1)
+ * - COMMITTEE_SUMMARY_GENERATOR_CONCURRENCY (default 1) — the in-process
+ *   path only; the sync queues summaries (`committee-summary`)
  * - COMMITTEE_SUMMARY_GENERATOR_MAX_REPS (default unlimited) — cap in dev so
  *   end-to-end plumbing can be verified on 5 reps instead of the full roster.
  *
@@ -69,120 +129,162 @@ export class CommitteeSummaryGeneratorService extends LlmGeneratorBase {
   );
 
   /**
-   * Query the DB for representatives that have committees but no summary,
-   * generate summaries for up to `cap` candidates, and persist the
-   * result directly to the DB. Idempotent: reruns are no-ops once all
-   * candidates are summarized.
+   * Representatives with committees whose summary is stale on some axis, up
+   * to `cap`, and how many are current. A legacy summary (the live prompt and
+   * weights, no input or config hash yet) is stamped current (owner,
+   * 2026-10-27). Before Phase B a summary was written once and never again —
+   * a new committee assignment, prompt or model left it as it was.
    *
-   * @param regionId - Scopes candidate selection to the region being synced.
-   * @param maxRepsOverride — per-call cap that takes precedence over the
-   *   COMMITTEE_SUMMARY_GENERATOR_MAX_REPS env default. Wired to the
-   *   syncRegionData mutation's `maxReps` arg.
+   * @param regionId - Scopes selection to the region being synced
+   * @param maxRepsOverride - Per-call cap over COMMITTEE_SUMMARY_GENERATOR_MAX_REPS
+   */
+  async selectStale(
+    regionId?: string,
+    maxRepsOverride?: number,
+  ): Promise<{ pending: OutputTarget[]; current: number }> {
+    if (!this.promptClient || !this.llm || !this.db) {
+      return { pending: [], current: 0 };
+    }
+    const cap =
+      maxRepsOverride && maxRepsOverride > 0 ? maxRepsOverride : this.maxReps;
+    const rows: SummaryRow[] = await this.db.representative.findMany({
+      where: {
+        deletedAt: null,
+        // Scoped to the region being synced (#1394). `'unknown'` is the
+        // sync's sentinel for an unresolved region; scoping on it would
+        // silently summarise nothing.
+        ...(regionId && regionId !== UNRESOLVED_REGION ? { regionId } : {}),
+      },
+      select: SUMMARY_SELECT,
+      orderBy: { lastName: 'asc' },
+    });
+
+    return partitionStale(rows, {
+      // Filtered in code: Prisma's JSON filters cannot say "non-empty array".
+      assess: async (row) => {
+        const rep = toRepForSummary(row);
+        return rep.committees.length > 0 ? this.assess(rep, row) : undefined;
+      },
+      stamp: (row, live) => this.stamp(row.id, live),
+      target: (row, key) => ({ id: row.id, key }),
+      cap,
+    });
+  }
+
+  /**
+   * One rep's summary — the `committee-summary` job (S4). Re-checks currency
+   * first. A transient LLM failure throws, so the queue retries it.
+   */
+  async generateOne(id: string): Promise<GeneratedOutputOutcome> {
+    if (!this.promptClient || !this.llm || !this.db) return 'skipped';
+    const row: SummaryRow | null = await this.db.representative.findFirst({
+      where: { id, deletedAt: null },
+      select: SUMMARY_SELECT,
+    });
+    if (!row) return 'skipped';
+    const rep = toRepForSummary(row);
+    if (rep.committees.length === 0) return 'skipped';
+    const { live, currency } = await this.assess(rep, row);
+    if (currency !== 'stale') {
+      if (currency === 'legacy') await this.stamp(id, live);
+      return 'unchanged';
+    }
+
+    const generated = await this.generateSummary(rep);
+    if (!generated) return 'failed';
+    // Explicit nulls, not omission: Prisma reads `undefined` as "leave
+    // alone", which on a re-summarised rep would keep a previous run's AI
+    // attribution against text that is now wholly deterministic.
+    const { provenance } = generated;
+    await this.db.representative.update({
+      where: { id },
+      data: {
+        committeesSummary: generated.summary,
+        committeesSummaryPromptHash: provenance?.promptHash ?? null,
+        committeesSummaryPromptVersion: provenance?.promptVersion ?? null,
+        committeesSummaryLlmModel: provenance?.llmModel ?? null,
+        committeesSummaryLlmDigest: provenance?.llmModelDigest ?? null,
+        committeesSummarySourceHash: live.sourceHash,
+        committeesSummaryConfigHash: live.configHash,
+        committeesSummaryGeneratedAt: new Date(),
+      },
+    });
+    return row.committeesSummary ? 'updated' : 'created';
+  }
+
+  /**
+   * Summarise every stale rep in this process — the inline path, when the
+   * `committee-summary` queue is off. The sync queues them otherwise.
    */
   async generateMissingSummaries(
     regionId?: string,
     maxRepsOverride?: number,
   ): Promise<void> {
-    if (!this.promptClient || !this.llm || !this.db) {
-      return;
-    }
-
-    const cap =
-      maxRepsOverride && maxRepsOverride > 0 ? maxRepsOverride : this.maxReps;
-
-    // Filter by JSON shape in code rather than in the DB: Prisma's JSON
-    // filters don't cleanly express "array is non-empty", and the dataset
-    // is small enough (O(hundreds)) that a single indexed scan is fine.
-    const pending = await this.db.representative.findMany({
-      where: {
-        deletedAt: null,
-        committeesSummary: null,
-        // Scoped to the region being synced, for the reason #1394 gives for
-        // the bio generator: unscoped, a California sync summarises another
-        // region's reps, and the prompt is handed this chamber's context.
-        // Latent rather than observed only because the one other enabled
-        // region has no committee data scraped yet.
-        //
-        // `'unknown'` is the sync's sentinel for an unresolved region
-        // (`regionId ?? provider.getName?.() ?? 'unknown'`). Scoping on it
-        // matches no row, which would silently summarise nothing — the
-        // failure #1394 documents for bios on the `run-rep-sync` path.
-        ...(regionId && regionId !== UNRESOLVED_REGION ? { regionId } : {}),
-      },
-      select: { id: true, name: true, chamber: true, committees: true },
-      orderBy: { lastName: 'asc' },
-    });
-
-    const candidates: RepForSummary[] = pending
-      .map(
-        (p: {
-          id: string;
-          name: string;
-          chamber: string;
-          committees: unknown;
-        }) => ({
-          id: p.id,
-          name: p.name,
-          chamber: p.chamber,
-          committees: Array.isArray(p.committees)
-            ? (p.committees as CommitteeAssignment[])
-            : [],
-        }),
-      )
-      .filter((p: RepForSummary) => p.committees.length > 0)
-      .slice(0, cap ?? Number.POSITIVE_INFINITY);
-
-    if (candidates.length === 0) {
-      return;
-    }
-
-    const capSource =
-      maxRepsOverride && maxRepsOverride > 0 ? 'mutation arg' : 'env default';
-    const capNote = cap ? ` (cap ${capSource}=${cap})` : '';
+    const { pending } = await this.selectStale(regionId, maxRepsOverride);
+    if (pending.length === 0) return;
     this.logger.log(
-      `Generating AI committee summaries for ${candidates.length} representatives${capNote} (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
+      `Generating AI committee summaries for ${pending.length} representatives (concurrency=${this.concurrency}, maxTokens=${this.maxTokens})`,
     );
-
-    let succeeded = 0;
-    for (let i = 0; i < candidates.length; i += this.concurrency) {
-      const batch = candidates.slice(i, i + this.concurrency);
-      const results = await Promise.all(
-        batch.map((rep) => this.tryGenerateAndPersist(rep)),
-      );
-      succeeded += results.filter(Boolean).length;
-    }
-
-    this.logger.log(
-      `Generated ${succeeded}/${candidates.length} committee summaries successfully`,
+    await this.generateInProcess(
+      pending,
+      this.concurrency,
+      'committee summaries',
+      (id) => this.generateOne(id),
+      this.logger,
     );
   }
 
-  /** Generate + persist a summary for one rep; swallow errors. */
-  private async tryGenerateAndPersist(rep: RepForSummary): Promise<boolean> {
-    try {
-      const generated = await this.generateSummary(rep);
-      if (!generated) return false;
-      // Explicit nulls, not omission: Prisma reads `undefined` as "leave
-      // alone", which on a re-summarised rep would keep a previous run's AI
-      // attribution against text that is now wholly deterministic.
-      const { provenance } = generated;
-      await this.db!.representative.update({
-        where: { id: rep.id },
-        data: {
-          committeesSummary: generated.summary,
-          committeesSummaryPromptHash: provenance?.promptHash ?? null,
-          committeesSummaryPromptVersion: provenance?.promptVersion ?? null,
-          committeesSummaryLlmModel: provenance?.llmModel ?? null,
-          committeesSummaryLlmDigest: provenance?.llmModelDigest ?? null,
-        },
-      });
-      return true;
-    } catch (error) {
-      this.logger.warn(
-        `Committee summary generation failed for ${rep.name}: ${(error as Error).message}`,
-      );
-      return false;
-    }
+  /**
+   * The live key and how the stored summary compares. The input is the whole
+   * assignment list — names AND roles — plus name and chamber: the model sees
+   * the names, and the role clause is rendered from the roles, so either
+   * changing changes the summary.
+   *
+   * A summary with no prompt hash is deterministic (a rep holding only named
+   * roles: rendered from the data, no model call) and is current on its input
+   * and config alone.
+   */
+  private async assess(
+    rep: RepForSummary,
+    row: SummaryRow,
+  ): Promise<{ live: LiveOutputKey; currency: OutputCurrency }> {
+    const live = await this.liveOutputKey(
+      SUMMARY_TEMPLATE,
+      JSON.stringify({
+        name: rep.name,
+        chamber: rep.chamber,
+        committees: rep.committees,
+      }),
+      committeeSummaryConfigHash(this.maxTokens),
+    );
+    const deterministicCurrent =
+      row.committeesSummary !== null &&
+      row.committeesSummaryPromptHash === null &&
+      row.committeesSummarySourceHash === live.sourceHash &&
+      row.committeesSummaryConfigHash === live.configHash;
+    const currency = deterministicCurrent
+      ? 'current'
+      : outputCurrency(
+          {
+            promptHash: row.committeesSummaryPromptHash,
+            llmDigest: row.committeesSummaryLlmDigest,
+            sourceHash: row.committeesSummarySourceHash,
+            configHash: row.committeesSummaryConfigHash,
+          },
+          live,
+        );
+    return { live, currency };
+  }
+
+  /** Record a legacy summary's input and config as current (decision 2). */
+  private async stamp(id: string, live: LiveOutputKey): Promise<void> {
+    await this.db!.representative.update({
+      where: { id },
+      data: {
+        committeesSummarySourceHash: live.sourceHash,
+        committeesSummaryConfigHash: live.configHash,
+      },
+    });
   }
 
   private async generateSummary(rep: RepForSummary): Promise<

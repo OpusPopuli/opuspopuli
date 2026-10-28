@@ -15,6 +15,42 @@ import {
 } from './region.service';
 import { recordClaims } from './claim-recorder';
 import type { UpsertByExternalId } from './propositions-sync.service';
+import {
+  ACTIVITY_SUMMARY_QUEUE,
+  COMMITTEE_DESCRIPTION_QUEUE,
+  COMMITTEE_SUMMARY_QUEUE,
+  REPRESENTATIVE_BIO_QUEUE,
+  type ActivitySummaryJobData,
+  type CommitteeDescriptionJobData,
+  type CommitteeSummaryJobData,
+  type RepresentativeBioJobData,
+} from '@opuspopuli/queue-provider';
+import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
+import { PipelineJobService } from './pipeline-job.service';
+import {
+  cancellationOf,
+  runOutputLane,
+  type LaneResult,
+  type OutputLaneDeps,
+  type OutputTarget,
+} from './output-lane';
+import type { ActivityTarget } from './entity-activity-summary-generator.service';
+
+/** A generator's stale outputs, and how many were already current. */
+interface Selection<T extends OutputTarget> {
+  readonly pending: readonly T[];
+  readonly current: number;
+}
+
+const EMPTY_SELECTION: Selection<never> = Object.freeze({
+  pending: Object.freeze([]),
+  current: 0,
+});
+
+type RepTracker = ReturnType<typeof repSyncTracker>;
+
+/** A generator that is not bound ran no lane. */
+const NO_LANE: LaneResult = Object.freeze({ written: 0, aborted: false });
 
 /**
  * Minimal provider contract for representatives data type.
@@ -38,6 +74,15 @@ export interface RepresentativesPluginContext {
   /** Plugin-supplied noise regexes used to discard junk bio scrapes. */
   bioNoisePatterns: RegExp[];
   bioTrimPatterns: RegExp[];
+}
+
+/** The rep's archived page as a relation write, or nothing to write. */
+function archivedPage(
+  rep: Representative,
+): { connect: { id: string } } | undefined {
+  return rep.sourceVersionId
+    ? { connect: { id: rep.sourceVersionId } }
+    : undefined;
 }
 
 /**
@@ -260,6 +305,10 @@ export class RepresentativesSyncService {
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
+    /** Absent (or a queue disabled): that generator runs in this process (S4). */
+    @Optional() private readonly childQueues?: ChildJobQueues,
+    /** Read for an operator's cancel while the run waits on its outputs. */
+    @Optional() private readonly pipelineJobs?: PipelineJobService,
   ) {}
 
   async sync(
@@ -269,7 +318,9 @@ export class RepresentativesSyncService {
     pluginContext: RepresentativesPluginContext,
     upsertByExternalId: UpsertByExternalId,
     deriveDistrictFromExternalId: (externalId: string) => string | undefined,
+    pipelineJobId?: string,
   ): Promise<{ processed: number; created: number; updated: number }> {
+    const lane = this.laneDeps(pipelineJobId);
     const resolvedRegionId = regionId ?? provider.getName?.() ?? 'unknown';
 
     // ─── Phase 1/6 — discover ──────────────────────────────────────
@@ -300,6 +351,7 @@ export class RepresentativesSyncService {
     for (const r of reps) {
       this.normalizeRep(r, pluginContext);
     }
+    await this.dropUnknownSourceVersions(reps);
 
     // ─── Phase 2/6 — extract_and_upsert ────────────────────────────
     // Pre-fetch existing externalIds so the per-item line can report
@@ -367,6 +419,11 @@ export class RepresentativesSyncService {
               // that found none must leave the existing bio and its attribution
               // entirely alone.
               ...clearedAiAttribution(rep),
+              // The page this sync read the rep from (Phase B §2). Left alone
+              // when no detail page was fetched — a capped smoke test, a
+              // declined archive — since the stored pointer still names the
+              // bytes the stored bio and committees came from.
+              sourceVersion: archivedPage(rep),
             },
             create: {
               externalId: rep.externalId,
@@ -383,6 +440,7 @@ export class RepresentativesSyncService {
               bio: rep.bio,
               bioSource: rep.bioSource,
               bioClaims: rep.bioClaims as object[] | undefined,
+              sourceVersion: archivedPage(rep),
             },
           });
         }),
@@ -410,29 +468,16 @@ export class RepresentativesSyncService {
     detailCrawlTracker.complete();
 
     // ─── Phase 4/6 — bio_generation ────────────────────────────────
-    const bioTracker = this.repTracker(
-      'bio_generation',
-      this.bioGenerator ? reps.length : 0,
-      { region: resolvedRegionId },
+    await this.generateBios(
+      reps,
+      pluginContext.regionName,
+      resolvedRegionId,
+      maxReps,
+      lane,
     );
-    if (this.bioGenerator) {
-      await this.bioGenerator.enrichBios(
-        reps,
-        pluginContext.regionName,
-        // Scopes candidate selection to this region (#1394). Omitting it
-        // would hand another region's reps California's jurisdiction.
-        resolvedRegionId,
-        maxReps,
-      );
-      // BioGeneratorService is opaque about per-rep outcomes from out
-      // here — it logs its own per-rep DEBUG lines. We just record the
-      // batch boundary as one aggregate item.
-      bioTracker.note(`enrichBios pass complete for ${reps.length} reps`);
-    }
-    bioTracker.complete();
 
     // ─── Phase 5/6 — summaries ─────────────────────────────────────
-    await this.runSummaries(resolvedRegionId, maxReps);
+    await this.runSummaries(resolvedRegionId, maxReps, lane);
 
     // ─── Phase 6/6 — prune_stale ───────────────────────────────────
     // Stale-rep pruning isn't currently wired (reps don't go inactive
@@ -450,103 +495,286 @@ export class RepresentativesSyncService {
   }
 
   /**
-   * Phase 5/6 — every AI pass that runs after the bios.
+   * Keep only archived-page ids that exist. The upserts run in one batch
+   * transaction, and a `connect` to a missing row (P2025) would roll back the
+   * whole roster to attribute one rep — so a missing id is dropped, and
+   * logged, before any write. One query.
+   */
+  private async dropUnknownSourceVersions(
+    reps: Representative[],
+  ): Promise<void> {
+    const ids = [
+      ...new Set(
+        reps.flatMap((r) => (r.sourceVersionId ? [r.sourceVersionId] : [])),
+      ),
+    ];
+    if (ids.length === 0) return;
+    const found = new Set(
+      (
+        await this.db.sourceVersion.findMany({
+          where: { id: { in: ids } },
+          select: { id: true },
+        })
+      ).map((row: { id: string }) => row.id),
+    );
+    const unknown = reps.filter(
+      (r) => r.sourceVersionId && !found.has(r.sourceVersionId),
+    );
+    for (const r of unknown) r.sourceVersionId = undefined;
+    if (unknown.length > 0) {
+      this.logger.warn(
+        `${unknown.length} representative(s) named an archived page that does ` +
+          `not exist; left unattributed rather than fail the roster write`,
+      );
+    }
+  }
+
+  /**
+   * Phase 4/6 (S4): every rep in scope whose AI bio is stale on some axis
+   * becomes one `representative-bio` job, and the phase counts each outcome.
+   * Bios current under the live prompt, weights, input and settings are
+   * skipped in bulk — before Phase B a bio was written once and never again.
+   */
+  private async generateBios(
+    reps: Representative[],
+    regionName: string | undefined,
+    regionId: string,
+    maxReps: number | undefined,
+    lane: OutputLaneDeps,
+  ): Promise<void> {
+    const generator = this.bioGenerator;
+    const stale = generator
+      ? await this.selectSafely('bio', () =>
+          generator.selectStale(
+            regionName,
+            // Scoped to this region (#1394): unscoped would hand another
+            // region's reps this sync's jurisdiction.
+            generator.resolveScope(regionId, reps),
+            maxReps,
+          ),
+        )
+      : EMPTY_SELECTION;
+    const tracker = this.repTracker('bio_generation', stale.pending.length, {
+      region: regionId,
+    });
+    tracker.skippedInBulk(stale.current, 'bio_current');
+    const result = await (generator
+      ? runOutputLane<OutputTarget, RepresentativeBioJobData>(lane, tracker, {
+          queueName: REPRESENTATIVE_BIO_QUEUE,
+          work: 'bio',
+          targets: stale.pending,
+          jobData: (target) => ({ representativeId: target.id, regionName }),
+          runInline: (job) =>
+            generator.generateOne(job.representativeId, job.regionName),
+        })
+      : NO_LANE);
+    // Not "complete" after an abort: the abort line is the phase's last word.
+    if (!result.aborted) tracker.complete();
+  }
+
+  /**
+   * Phase 5/6 — every AI pass after the bios (S4): committee summaries,
+   * committee descriptions and activity summaries, each on its own queue.
    *
-   * These four steps ran between `bio_generation` and `prune_stale` with no
-   * phase around them, so the phase-complete lines accounted for none of
-   * their time. On the 2026-10-22 state-reps baseline that was most of the
-   * job's 83 LLM calls against 2 bios — minutes of inference attributed to
-   * nothing (`docs/plans/ingestion-resource-lanes.md`, Gate 0).
-   *
-   * One phase rather than four: the generators report their own per-entity
-   * lines and none returns per-item outcomes, so a phase each would be four
-   * markers with no counts. `total` is 0 for the same reason — the phase
-   * carries the duration, and counting each step as an item would publish
-   * steps into `pipeline_items_total` as though they were representatives.
-   * The LLM calls inside are already timed per call by the lane providers.
+   * The stale rows are selected first, so the phase's total is the work it
+   * will do and the current outputs are counted as skipped; then the three
+   * lanes run together — the GPU lane decides what runs on the model, and a
+   * lane that waits on another for no reason is the serialisation Phase B
+   * removes. On the 2026-10-26 baseline this phase was 6 of the job's 10
+   * minutes, 84 of its 87 LLM calls regenerating activity summaries nothing
+   * had changed.
    */
   private async runSummaries(
     regionId: string,
     maxReps: number | undefined,
+    lane: OutputLaneDeps,
   ): Promise<void> {
-    const tracker = this.repTracker('summaries', 0, { region: regionId });
+    // Before the descriptions are selected: it creates the committees they
+    // describe.
+    await this.linkCommittees();
+    const [summaries, descriptions, activity] = await Promise.all([
+      this.selectCommitteeSummaries(regionId, maxReps),
+      this.selectCommitteeDescriptions(maxReps),
+      this.selectActivitySummaries(),
+    ]);
+    const tracker = this.repTracker(
+      'summaries',
+      summaries.pending.length +
+        descriptions.pending.length +
+        activity.pending.length,
+      { region: regionId },
+    );
+    tracker.skippedInBulk(summaries.current, 'committee_summary_current');
+    tracker.skippedInBulk(
+      descriptions.current,
+      'committee_description_current',
+    );
+    tracker.skippedInBulk(activity.current, 'activity_summary_current');
 
-    if (this.committeeSummaryGenerator) {
-      await this.committeeSummaryGenerator.generateMissingSummaries(
-        regionId,
-        maxReps,
+    const [summarised, described, activityLane] = await Promise.all([
+      this.summariseCommittees(lane, tracker, summaries.pending),
+      this.describeCommittees(lane, tracker, descriptions.pending),
+      this.summariseActivity(lane, tracker, activity.pending),
+    ]);
+    this.reportActivity(activity, activityLane.written);
+    if (![summarised, described, activityLane].some((r) => r.aborted)) {
+      tracker.complete();
+    }
+  }
+
+  private async linkCommittees(): Promise<void> {
+    if (!this.legislativeCommitteeLinker) return;
+    try {
+      await this.legislativeCommitteeLinker.linkAll();
+    } catch (error) {
+      this.logger.warn(
+        `Legislative committee linker failed: ${(error as Error).message}`,
       );
-      tracker.note('committee summaries pass complete');
     }
+  }
 
-    if (this.legislativeCommitteeLinker) {
-      try {
-        await this.legislativeCommitteeLinker.linkAll();
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee linker failed: ${(error as Error).message}`,
-        );
-      }
-    }
+  private selectCommitteeSummaries(
+    regionId: string,
+    maxReps: number | undefined,
+  ): Promise<Selection<OutputTarget>> {
+    const generator = this.committeeSummaryGenerator;
+    if (!generator) return Promise.resolve(EMPTY_SELECTION);
+    return this.selectSafely('committee summary', () =>
+      generator.selectStale(regionId, maxReps),
+    );
+  }
 
-    if (this.legislativeCommitteeDescriptions) {
-      try {
-        await this.legislativeCommitteeDescriptions.generateMissingDescriptions(
-          maxReps,
-        );
-        tracker.note('committee descriptions pass complete');
-      } catch (error) {
-        this.logger.warn(
-          `Legislative committee description generation failed: ${(error as Error).message}`,
-        );
-      }
-    }
+  private selectCommitteeDescriptions(
+    maxReps: number | undefined,
+  ): Promise<Selection<OutputTarget>> {
+    const generator = this.legislativeCommitteeDescriptions;
+    if (!generator) return Promise.resolve(EMPTY_SELECTION);
+    return this.selectSafely('committee description', () =>
+      generator.selectStale(maxReps),
+    );
+  }
 
-    await this.generateActivitySummaries();
+  private selectActivitySummaries(): Promise<Selection<ActivityTarget>> {
+    const generator = this.entityActivitySummaries;
+    if (!generator) return Promise.resolve(EMPTY_SELECTION);
+    return this.selectSafely('activity summary', () => generator.selectStale());
+  }
 
-    tracker.complete();
+  private summariseCommittees(
+    lane: OutputLaneDeps,
+    tracker: RepTracker,
+    targets: readonly OutputTarget[],
+  ): Promise<LaneResult> {
+    const generator = this.committeeSummaryGenerator;
+    if (!generator) return Promise.resolve(NO_LANE);
+    return runOutputLane<OutputTarget, CommitteeSummaryJobData>(lane, tracker, {
+      queueName: COMMITTEE_SUMMARY_QUEUE,
+      work: 'committee-summary',
+      targets,
+      jobData: (target) => ({ representativeId: target.id }),
+      runInline: (job) => generator.generateOne(job.representativeId),
+    });
+  }
+
+  private describeCommittees(
+    lane: OutputLaneDeps,
+    tracker: RepTracker,
+    targets: readonly OutputTarget[],
+  ): Promise<LaneResult> {
+    const generator = this.legislativeCommitteeDescriptions;
+    if (!generator) return Promise.resolve(NO_LANE);
+    return runOutputLane<OutputTarget, CommitteeDescriptionJobData>(
+      lane,
+      tracker,
+      {
+        queueName: COMMITTEE_DESCRIPTION_QUEUE,
+        work: 'committee-description',
+        targets,
+        jobData: (target) => ({ committeeId: target.id }),
+        runInline: (job) => generator.generateOne(job.committeeId),
+      },
+    );
   }
 
   /**
-   * Activity summaries, which until now ran ONLY from a hand-invoked script
-   * (#665) and had therefore never run at all: 0 of 125 representatives,
-   * against 125 bios and 79 committee summaries produced by the generators
-   * beside it in `sync()`. It was the one AI generator in this domain that no
-   * sync reached, and a feature whose only trigger is someone remembering it
-   * exists is a feature that stays empty.
-   *
-   * It summarises the `legislative_actions` ALREADY stored, not any arriving
-   * in the same run — those are ingested by a different path. That is fine for
-   * a 90-day window, and stated here so it is not mistaken for a freshness
-   * bug.
-   *
-   * Extracted rather than inlined because inlining it took `sync()` from 15 to
-   * 17 cognitive complexity, past the Sonar gate.
+   * Activity summaries — which once ran only from a hand-invoked
+   * script (#665) and had never run at all. They summarise the
+   * `legislative_actions` ALREADY stored, not any arriving in the same run;
+   * fine for a 90-day window, and stated so it is not mistaken for a
+   * freshness bug.
    */
-  private async generateActivitySummaries(): Promise<void> {
-    if (!this.entityActivitySummaries) return;
+  private summariseActivity(
+    lane: OutputLaneDeps,
+    tracker: RepTracker,
+    targets: readonly ActivityTarget[],
+  ): Promise<LaneResult> {
+    const generator = this.entityActivitySummaries;
+    if (!generator) return Promise.resolve(NO_LANE);
+    return runOutputLane<ActivityTarget, ActivitySummaryJobData>(
+      lane,
+      tracker,
+      {
+        queueName: ACTIVITY_SUMMARY_QUEUE,
+        work: 'activity-summary',
+        targets,
+        jobData: (target) => ({
+          entityType: target.entityType,
+          entityId: target.id,
+        }),
+        runInline: (job) => generator.generateOne(job.entityType, job.entityId),
+      },
+    );
+  }
 
+  /**
+   * Worded to separate "no entity had activity in the window" from "this
+   * never ran": the window closes ~2026-11-10 for the current corpus (actions
+   * stop 2026-08-12, default window 90 days), after which the honest answer
+   * is zero and the two are indistinguishable without this line.
+   */
+  private reportActivity(
+    activity: Selection<ActivityTarget>,
+    written: number,
+  ): void {
+    if (!this.entityActivitySummaries) return;
+    const inWindow = activity.pending.length + activity.current;
+    this.logger.log(
+      `Activity summaries: ${written} written, ${activity.current} current` +
+        (inWindow === 0
+          ? ' — no entity had legislative actions inside the window'
+          : ''),
+    );
+  }
+
+  /**
+   * A generator's stale selection, or nothing — logged — when it cannot be
+   * made: a roster sync that worked must not be reported as failed because a
+   * summary pass did not.
+   */
+  private async selectSafely<T extends OutputTarget>(
+    work: string,
+    select: () => Promise<Selection<T>>,
+  ): Promise<Selection<T>> {
     try {
-      const activity = await this.entityActivitySummaries.generateAll();
-      // Reported even when zero, and worded to separate "no entity had
-      // activity in the window" from "this never ran". The window closes
-      // ~2026-11-10 for the current corpus (actions stop 2026-08-12, default
-      // window 90 days), after which the honest answer becomes zero and the
-      // two are indistinguishable without this line.
-      this.logger.log(
-        `Activity summaries: ${activity.repsUpdated} representative(s) and ` +
-          `${activity.committeesUpdated} committee(s) updated` +
-          (activity.repsUpdated === 0 && activity.committeesUpdated === 0
-            ? ' — no entity had legislative actions inside the window'
-            : ''),
-      );
+      return await select();
     } catch (error) {
-      // Non-fatal, like its two siblings in `sync()`: a roster sync that
-      // worked must not be reported as failed because a summary pass did not.
       this.logger.warn(
-        `Activity summary generation failed: ${(error as Error).message}`,
+        `${work} selection failed (sync continues): ${(error as Error).message}`,
       );
+      return EMPTY_SELECTION;
     }
+  }
+
+  private laneDeps(pipelineJobId: string | undefined): OutputLaneDeps {
+    return {
+      childQueues: this.childQueues,
+      logger: this.logger,
+      isCancelled: cancellationOf(
+        this.pipelineJobs,
+        pipelineJobId,
+        this.logger,
+      ),
+    };
   }
 
   /**

@@ -41,6 +41,8 @@ import {
   type IHostRateLimiter,
   type CircuitBreakerHealth,
   CircuitBreakerManager,
+  CircuitState,
+  hostOf,
   createCircuitBreaker,
   DEFAULT_CIRCUIT_CONFIGS,
   withRetry,
@@ -122,6 +124,21 @@ export interface SelectedElement {
 /**
  * Main extraction provider for fetching and parsing web content
  */
+/** Open beats half-open beats closed. */
+function worstState(states: CircuitState[]): CircuitState {
+  if (states.includes(CircuitState.OPEN)) return CircuitState.OPEN;
+  if (states.includes(CircuitState.HALF_OPEN)) return CircuitState.HALF_OPEN;
+  return CircuitState.CLOSED;
+}
+
+/**
+ * Breakers kept at once. Hosts come from scraped pages, so the set is not
+ * ours to bound; past this, the oldest CLOSED breaker is dropped — it holds
+ * no state worth keeping, and an open one is never evicted (that would
+ * reopen the host it is protecting).
+ */
+const MAX_BREAKERS = 1000;
+
 @Injectable()
 export class ExtractionProvider {
   private readonly logger = new Logger(ExtractionProvider.name);
@@ -132,7 +149,16 @@ export class ExtractionProvider {
    * each site waited behind every other and fetch concurrency could not help.
    */
   private readonly hostRateLimiter: IHostRateLimiter;
-  private readonly circuitBreaker: CircuitBreakerManager;
+  /**
+   * One circuit breaker per HOST, created on first use. It was one breaker
+   * for every fetch: on 2026-10-27 the Assembly's `a*.asmdc.org` biography
+   * pages (an incomplete TLS chain, #1383) failed five times in a row, opened
+   * it, and the Senate roster — a healthy host, fetched next — was refused
+   * for its whole 60 s: 40 senators dropped while the sync reported success.
+   * A host that is failing must stop only its own requests, as the per-host
+   * token bucket already bounds only its own rate.
+   */
+  private readonly circuitBreakers = new Map<string, CircuitBreakerManager>();
   private readonly fetchFn: FetchFunction;
   private readonly cacheProvider: string;
 
@@ -218,32 +244,6 @@ export class ExtractionProvider {
     this.cache = CacheFactory.createCache<CachedFetchResult>(cacheConfig);
     this.hostRateLimiter = CacheFactory.createHostRateLimiter(cacheConfig);
     this.cacheProvider = cacheConfig.provider;
-
-    // Initialize circuit breaker for external URL fetching
-    this.circuitBreaker = createCircuitBreaker(
-      DEFAULT_CIRCUIT_CONFIGS.extraction,
-    );
-
-    // Log circuit state changes
-    this.circuitBreaker.addListener((event) => {
-      switch (event) {
-        case "break":
-          this.logger.warn(
-            `Circuit breaker OPENED for Extraction - external URLs unavailable`,
-          );
-          break;
-        case "reset":
-          this.logger.log(
-            `Circuit breaker RESET for Extraction - external URLs recovered`,
-          );
-          break;
-        case "half_open":
-          this.logger.log(
-            `Circuit breaker HALF-OPEN for Extraction - testing recovery`,
-          );
-          break;
-      }
-    });
 
     this.logger.log("ExtractionProvider initialized", {
       cacheProvider: this.cacheProvider,
@@ -599,7 +599,7 @@ export class ExtractionProvider {
     options: FetchOptions,
     decodeBody: (bytes: Buffer) => T,
   ): Promise<FetchedArtifact<T>> {
-    const fetched = await this.circuitBreaker.execute(async () => {
+    const fetched = await this.guarded(url, async () => {
       const timeout = options.timeout ?? this.config.defaultTimeout;
       const response = await this.fetchFn(url, {
         headers: options.headers,
@@ -743,9 +743,88 @@ export class ExtractionProvider {
   }
 
   /**
-   * Get circuit breaker health status
+   * Run a fetch behind its host's breaker. A URL with no host has none: it
+   * fails at the fetch on its own, rather than sharing one breaker with every
+   * other bad URL and tripping it for them.
    */
-  getCircuitBreakerHealth(): CircuitBreakerHealth {
-    return this.circuitBreaker.getHealth();
+  private guarded<T>(url: string, fetch: () => Promise<T>): Promise<T> {
+    const host = hostOf(url);
+    return host ? this.breakerFor(host).execute(fetch) : fetch();
+  }
+
+  /**
+   * The breaker for a host, created (and wired to the log) on first use. The
+   * host is the rate limiter's (`hostOf`: lower-cased, no trailing dot), so
+   * the two agree on what one site is.
+   */
+  private breakerFor(host: string): CircuitBreakerManager {
+    let breaker = this.circuitBreakers.get(host);
+    if (!breaker) {
+      this.evictClosedBreaker();
+      breaker = createCircuitBreaker({
+        ...DEFAULT_CIRCUIT_CONFIGS.extraction,
+        serviceName: `Extraction ${host}`,
+      });
+      breaker.addListener((event) => {
+        if (event === "break") {
+          this.logger.warn(
+            `Circuit breaker OPENED for ${host} — its requests fail fast for ` +
+              `${DEFAULT_CIRCUIT_CONFIGS.extraction.halfOpenAfterMs / 1000}s; other hosts are unaffected`,
+          );
+        } else if (event === "reset") {
+          this.logger.log(`Circuit breaker RESET for ${host}`);
+        } else if (event === "half_open") {
+          this.logger.log(
+            `Circuit breaker HALF-OPEN for ${host} — testing recovery`,
+          );
+        }
+      });
+      this.circuitBreakers.set(host, breaker);
+    }
+    return breaker;
+  }
+
+  /**
+   * At the cap, drop the oldest closed breaker (Map keeps insertion order).
+   * With every one open or half-open nothing is dropped and the map runs
+   * over the cap — deliberately: evicting an open breaker would reopen its
+   * host, and each one closes or half-opens within its 60 s window.
+   */
+  private evictClosedBreaker(): void {
+    if (this.circuitBreakers.size < MAX_BREAKERS) return;
+    for (const [host, breaker] of this.circuitBreakers) {
+      if (breaker.getHealth().state === CircuitState.CLOSED) {
+        this.circuitBreakers.delete(host);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Circuit breaker health — one host's, or, with no host, the worst across
+   * every host fetched so far (open beats half-open beats closed), named
+   * "Extraction" as the single breaker was.
+   */
+  getCircuitBreakerHealth(host?: string): CircuitBreakerHealth {
+    if (host !== undefined) {
+      // The same normalisation the breakers are keyed by: `FEC.gov.` is fec.gov.
+      const key = hostOf(`https://${host}/`) ?? host;
+      return (
+        this.circuitBreakers.get(key)?.getHealth() ?? {
+          serviceName: `Extraction ${host}`,
+          state: CircuitState.CLOSED,
+          isHealthy: true,
+          failureCount: 0,
+        }
+      );
+    }
+    const all = [...this.circuitBreakers.values()].map((b) => b.getHealth());
+    const state = worstState(all.map((h) => h.state));
+    return {
+      serviceName: "Extraction",
+      state,
+      isHealthy: state !== CircuitState.OPEN,
+      failureCount: Math.max(0, ...all.map((h) => h.failureCount)),
+    };
   }
 }
