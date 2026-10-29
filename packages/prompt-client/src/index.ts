@@ -36,6 +36,7 @@ export type { PromptClientModuleOptions } from "./prompt-client.module.js";
 export type {
   PromptClientConfig,
   StructuralAnalysisParams,
+  PdfTextRulesParams,
   DocumentAnalysisParams,
   RAGParams,
   CivicsExtractionParams,

@@ -1155,6 +1155,13 @@ export interface ExtractionResult<T> {
   executionId?: string;
   /** The `StructuralManifest` the extraction ran under, when one exists. */
   manifestId?: string;
+  /**
+   * Attestation for a prompt this extraction sent directly, when the path has
+   * no manifest to carry it — the `pdf` path, whose rules are derived on every
+   * run (#1414). The HTML path's prompt hash lives on its manifest instead.
+   */
+  promptHash?: string;
+  promptVersion?: string;
   /** Whether extraction succeeded fully */
   success: boolean;
   /** Per-item extraction warnings (non-fatal) */

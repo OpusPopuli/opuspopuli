@@ -56,6 +56,7 @@ interface RemoteCachedTemplate {
 import type {
   PromptClientConfig,
   StructuralAnalysisParams,
+  PdfTextRulesParams,
   DocumentAnalysisParams,
   RAGParams,
   OcrTranscriptionParams,
@@ -246,6 +247,21 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     params: StructuralAnalysisParams,
   ): Promise<PromptServiceResponse> {
     return this.composeStructuralAnalysis(params);
+  }
+
+  /**
+   * Get the prompt that asks a model for text extraction rules over a PDF's
+   * extracted text (#1414) — the scraping pipeline's `sourceType: "pdf"`
+   * path. Formerly built inline in `PdfExtractHandler`.
+   *
+   * `promptHash`/`promptVersion` are those of `pdf-text-rules`, the main
+   * template, as `getStructuralAnalysisPrompt` attests `structural-analysis`
+   * and not its schema template. Throws when unseeded (#1246).
+   */
+  async getPdfTextRulesPrompt(
+    params: PdfTextRulesParams,
+  ): Promise<PromptServiceResponse> {
+    return this.composePdfTextRules(params);
   }
 
   async getDocumentAnalysisPrompt(
@@ -618,6 +634,36 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
       HINTS_SECTION: hintsSection,
       SCHEMA_DESCRIPTION: schemaTemplate.templateText,
       HTML: params.html,
+    });
+
+    return {
+      promptText,
+      promptHash: this.hash(template.templateText),
+      promptVersion: `v${template.version}`,
+    };
+  }
+
+  private async composePdfTextRules(
+    params: PdfTextRulesParams,
+  ): Promise<PromptServiceResponse> {
+    const template = await this.getTemplate("pdf-text-rules");
+    const fieldsTemplate = await this.getTemplate(
+      `pdf-text-rules-fields-${params.dataType}`,
+      "pdf-text-rules-fields-default",
+    );
+
+    const hintsSection = params.hints?.length
+      ? "## Hints\n" + params.hints.map((h) => "- " + h).join("\n") + "\n\n"
+      : "";
+
+    const promptText = this.interpolate(template.templateText, {
+      CONTENT_GOAL: params.contentGoal,
+      DATA_TYPE: params.dataType,
+      HINTS_SECTION: hintsSection,
+      REQUIRED_FIELDS: this.interpolate(fieldsTemplate.templateText, {
+        DATA_TYPE: params.dataType,
+      }),
+      TEXT: params.text,
     });
 
     return {

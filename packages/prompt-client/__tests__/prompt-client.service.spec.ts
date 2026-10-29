@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { DataType } from "@opuspopuli/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { PromptClientService } from "../src/prompt-client.service.js";
 import { DbService } from "@opuspopuli/relationaldb-provider";
@@ -223,6 +225,103 @@ describe("PromptClientService", () => {
       expect(result.promptText).toContain("The sky is blue.");
       expect(result.promptText).toContain("What color is the sky?");
       expect(result.promptVersion).toBe("v1");
+    });
+  });
+
+  describe("getPdfTextRulesPrompt (#1414)", () => {
+    // Cross-service contract guard. prompt-service's
+    // seed-pdf-text-rules.spec.ts renders the REAL seed with these same rules
+    // and pins the result against the inline builder this replaced, so each
+    // rule pinned here is one half of that byte contract.
+    const MAIN =
+      "Goal {{CONTENT_GOAL}} / {{DATA_TYPE}}\n{{HINTS_SECTION}}Fields:\n{{REQUIRED_FIELDS}}\n{{TEXT}}";
+    const BASE = {
+      dataType: DataType.MEETINGS,
+      contentGoal: "Extract hearings",
+      text: "MONDAY, OCTOBER 26",
+    };
+
+    it("composes the main template around the type's fields template, attesting the main one", async () => {
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(mockTemplate("pdf-text-rules", MAIN, 3))
+        .mockResolvedValueOnce(
+          mockTemplate("pdf-text-rules-fields-meetings", "- scheduledAt"),
+        );
+
+      const result = await service.getPdfTextRulesPrompt(BASE);
+
+      expect(result.promptText).toBe(
+        "Goal Extract hearings / meetings\nFields:\n- scheduledAt\nMONDAY, OCTOBER 26",
+      );
+      expect(result.promptVersion).toBe("v3");
+      expect(result.promptHash).toBe(
+        createHash("sha256").update(MAIN).digest("hex"),
+      );
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: { name: "pdf-text-rules-fields-meetings", isActive: true },
+        }),
+      );
+    });
+
+    it("falls back to the default fields, with DATA_TYPE interpolated into them", async () => {
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(mockTemplate("pdf-text-rules", MAIN))
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          mockTemplate(
+            "pdf-text-rules-fields-default",
+            "- relevant fields for {{DATA_TYPE}}",
+          ),
+        );
+
+      const result = await service.getPdfTextRulesPrompt({
+        ...BASE,
+        dataType: "lobbying" as any,
+      });
+
+      expect(result.promptText).toContain("- relevant fields for lobbying");
+    });
+
+    it("renders hints as the handler did: a '## Hints' block ending in a blank line", async () => {
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(mockTemplate("pdf-text-rules", MAIN))
+        .mockResolvedValueOnce(
+          mockTemplate("pdf-text-rules-fields-meetings", "f"),
+        );
+
+      const result = await service.getPdfTextRulesPrompt({
+        ...BASE,
+        hints: ["Days start with a weekday", "Times are Pacific"],
+      });
+
+      expect(result.promptText).toContain(
+        "\n## Hints\n- Days start with a weekday\n- Times are Pacific\n\nFields:",
+      );
+    });
+
+    it("leaves placeholder syntax in the PDF text literal", async () => {
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(mockTemplate("pdf-text-rules", MAIN))
+        .mockResolvedValueOnce(
+          mockTemplate("pdf-text-rules-fields-meetings", "f"),
+        );
+
+      const result = await service.getPdfTextRulesPrompt({
+        ...BASE,
+        text: "item {{CONTENT_GOAL}}",
+      });
+
+      expect(result.promptText).toMatch(/item \{\{CONTENT_GOAL\}\}$/);
+    });
+
+    it("throws rather than falling back to an unpublished inline prompt", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValue(null);
+
+      await expect(service.getPdfTextRulesPrompt(BASE)).rejects.toThrow(
+        /pdf-text-rules/,
+      );
     });
   });
 

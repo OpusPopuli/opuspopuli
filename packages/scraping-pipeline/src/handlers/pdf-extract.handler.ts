@@ -8,6 +8,10 @@
  *
  * Unlike the HTML scrape handler, this uses TextExtractorService
  * (regex/line-based) instead of ManifestExtractorService (CSS selectors).
+ *
+ * The prompt is served by prompt-service (`pdf-text-rules`, #1414), and its
+ * hash and version travel out on the result, since this path keeps no
+ * manifest to record them on.
  */
 
 import { Injectable, Logger } from "@nestjs/common";
@@ -19,6 +23,7 @@ import {
   type ExtractionResult,
   type TextExtractionRuleSet,
 } from "@opuspopuli/common";
+import { PromptClientService } from "../analysis/prompt-client.service.js";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
 import { TextExtractorService } from "../extraction/text-extractor.service.js";
 
@@ -32,6 +37,7 @@ export class PdfExtractHandler {
   constructor(
     private readonly mapper: DomainMapperService,
     private readonly textExtractor: TextExtractorService,
+    private readonly promptClient: PromptClientService,
   ) {}
 
   async execute<T>(
@@ -48,6 +54,10 @@ export class PdfExtractHandler {
     const pipelineStart = Date.now();
     const warnings: string[] = [];
     const errors: string[] = [];
+    let attestation: Pick<
+      ExtractionResult<T>,
+      "promptHash" | "promptVersion"
+    > = {};
 
     try {
       // 1. Resolve the actual PDF URL (may need to follow a gateway page link)
@@ -75,8 +85,17 @@ export class PdfExtractHandler {
           : pdfText;
 
       // 4. Ask AI to produce text extraction rules
-      const prompt = this.buildAnalysisPrompt(source, truncated);
-      const llmResult = await llm.generate(prompt, {
+      const prompt = await this.promptClient.getPdfTextRulesPrompt({
+        dataType: source.dataType,
+        contentGoal: source.contentGoal,
+        hints: source.hints,
+        text: truncated,
+      });
+      attestation = {
+        promptHash: prompt.promptHash,
+        promptVersion: prompt.promptVersion,
+      };
+      const llmResult = await llm.generate(prompt.promptText, {
         maxTokens: 2048,
         temperature: 0.1,
         topP: 0.95,
@@ -86,11 +105,14 @@ export class PdfExtractHandler {
       const rules = this.parseTextExtractionRules(llmResult.text);
       if (!rules) {
         errors.push("AI failed to produce valid text extraction rules");
-        return this.emptyResult(errors, warnings, pipelineStart);
+        return {
+          ...this.emptyResult<T>(errors, warnings, pipelineStart),
+          ...attestation,
+        };
       }
 
       this.logger.log(
-        `AI produced ${rules.fieldMappings.length} field mappings for text extraction`,
+        `AI produced ${rules.fieldMappings.length} field mappings for text extraction (pdf-text-rules ${prompt.promptVersion} ${prompt.promptHash.slice(0, 12)})`,
       );
 
       // 6. Extract items using text extractor
@@ -99,10 +121,13 @@ export class PdfExtractHandler {
       // 7. Map through domain mapper
       const result = this.mapper.map<T>(rawResult, source);
       result.extractionTimeMs = Date.now() - pipelineStart;
-      return result;
+      return { ...result, ...attestation };
     } catch (error) {
       errors.push((error as Error).message);
-      return this.emptyResult(errors, warnings, pipelineStart);
+      return {
+        ...this.emptyResult<T>(errors, warnings, pipelineStart),
+        ...attestation,
+      };
     }
   }
 
@@ -132,61 +157,6 @@ export class PdfExtractHandler {
     // Resolve relative URL
     const base = new URL(gatewayUrl);
     return new URL(pdfLink, base).toString();
-  }
-
-  /**
-   * Build the AI prompt for text extraction rule generation.
-   */
-  private buildAnalysisPrompt(source: DataSourceConfig, text: string): string {
-    const hintsSection = source.hints?.length
-      ? "## Hints\n" + source.hints.map((h) => "- " + h).join("\n") + "\n\n"
-      : "";
-
-    return `You are a data extraction specialist. Analyze the following PDF text content and produce JSON extraction rules.
-
-## Goal
-${source.contentGoal}
-
-## Data type
-${source.dataType}
-
-${hintsSection}## Instructions
-Produce a JSON object with these fields:
-- "itemDelimiter": A regex pattern that separates individual items/records in the text
-- "fieldMappings": An array of field extraction rules, each with:
-  - "fieldName": The domain model field name (e.g., "title", "scheduledAt", "externalId", "location")
-  - "pattern": A regex pattern with capture groups to extract the value from each item block
-  - "captureGroup": Which capture group contains the value (default: 1)
-  - "required": Whether this field must be present (true/false)
-  - "defaultValue": Optional default if pattern doesn't match
-- "dataSectionStart": Optional regex to find where the actual data begins (skip headers/preamble)
-- "dataSectionEnd": Optional regex to find where the data ends
-- "skipLines": Number of lines to skip from the top
-- "analysisNotes": Brief notes about the text structure
-
-Required fields for "${source.dataType}":
-${this.getRequiredFields(source.dataType)}
-
-Respond with ONLY valid JSON, no markdown fences or explanation.
-
-## PDF Text Content
-${text}`;
-  }
-
-  /**
-   * Get required fields for a data type.
-   */
-  private getRequiredFields(dataType: string): string {
-    switch (dataType) {
-      case "meetings":
-        return "- externalId (unique identifier)\n- title (committee/meeting name)\n- scheduledAt (date and time)\n- body (e.g., 'Senate', 'Assembly')\n- location (room/address, optional)";
-      case "propositions":
-        return "- externalId (bill/measure ID)\n- title\n- status (optional)";
-      case "representatives":
-        return "- externalId\n- name\n- chamber\n- district\n- party";
-      default:
-        return "- externalId\n- relevant fields for " + dataType;
-    }
   }
 
   /**

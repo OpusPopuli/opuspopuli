@@ -64,6 +64,19 @@ export interface StructuralAnalysisParams {
 }
 
 /**
+ * Parameters for a PDF text-rules prompt (#1414) — the PDF counterpart of
+ * structural analysis: the model reads a PDF's extracted text and returns an
+ * item delimiter plus regex field mappings, not content.
+ */
+export interface PdfTextRulesParams {
+  dataType: DataType;
+  contentGoal: string;
+  hints?: string[];
+  /** Extracted PDF text, already truncated to the caller's budget. */
+  text: string;
+}
+
+/**
  * Parameters for document analysis prompt.
  */
 export interface DocumentAnalysisParams {
