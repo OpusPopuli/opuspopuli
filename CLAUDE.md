@@ -238,12 +238,18 @@ Two things about the build worth knowing before changing it:
 
 The `op-*` workflow commands — `/op-review`, `/op-issue-plan`, `/op-release`, `/op-verify`, `/op-data-scan`, `/op-trace`, `/op-change-record`, `/op-validate`, and the rest — ship as the shared **[opuspopuli-sdlc](https://github.com/OpusPopuli/opuspopuli-sdlc)** Claude Code plugin. It's auto-enabled in every session (local or remote) via the committed `.claude/settings.json`; the only per-developer step is trusting the repo folder once. Repo-specific commands (`/op-migration`) live in `.claude/skills/`. The plugin's `docs/compliance-model.md` maps the lifecycle to HIPAA / SOC 2 / 21 CFR Part 11 controls.
 
+- **Compliance profile:** `.sdlc/compliance-profile.yaml` declares `us-state-privacy` + `soc2`, so the data lens is CCPA personal information, not HIPAA PHI. It moved from `.claude/` in plugin 0.3.0; the path belongs to no single coding agent.
+- **Gate review criteria:** `.sdlc/review/code.md` and `.sdlc/review/security.md` hold this repo's checks for the pre-push AI review (GPL deps, Federation/HMAC contracts, inline prompts, the security list). Edit them there, not in `.husky/pre-push`.
+- **`scripts/review-gate.ts`** is vendored from the plugin. Don't edit it here: change it upstream, then copy it again.
+
 ## Pre-push workflow (mandatory)
 
 Before running any `git push`, always:
 1. Run `/op-review` (from the opuspopuli-sdlc plugin) — fix any blocking findings before proceeding
 2. Run `/security-review` — fix any security issues before proceeding
 3. Only push after both pass cleanly
+
+The `.husky/pre-push` hook then runs the same two AI reviews as an enforced gate (stages 7–8). It **fails closed**: if the `claude` CLI is missing, crashes, times out or returns an answer it can't parse, the push is blocked rather than waved through. Set `SDLC_REVIEW_PROVIDER=codex` to run the gate with Codex instead.
 
 Use `git push --no-verify` only for explicit WIP/draft pushes to your own branch where no review was intended.
 

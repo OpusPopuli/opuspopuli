@@ -143,84 +143,34 @@ else
   echo "Warning: gitleaks not found — install with: brew install gitleaks"
 fi
 
-# ── 7. Load claude CLI ────────────────────────────────────────────────────────
+# ── 7–8. AI code review and security review (fail-closed) ────────────────────
+# Runs scripts/review-gate.ts, vendored from opuspopuli-sdlc (hooks/review-gate.ts). It replaces the
+# inline `claude --print` stages, which failed OPEN three ways:
+#   - no claude CLI      → the review was skipped with a warning and the push went through
+#   - anything but FAIL: → a crash, an empty answer or prose all counted as a pass
+#   - head -c 30000      → a large diff was silently reviewed in part
+# Now a review that does not complete blocks: missing CLI, non-zero exit, timeout, unparseable or
+# empty answer, or a failed git diff. A critical/high finding blocks whatever the verdict says.
+#
+# Criteria specific to this repo (GPL deps, Federation/HMAC contracts, the security list) live in
+# .sdlc/review/code.md and .sdlc/review/security.md. The compliance profile (.sdlc/) scopes the
+# personal-data lens to CCPA, not HIPAA.
+#
+# Provider: claude by default. Set SDLC_REVIEW_PROVIDER=codex to review with Codex instead (needs
+# `codex login`). Override the whole gate only with --no-verify, as before.
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use
 
-CLAUDE=$(command -v claude 2>/dev/null)
+PROVIDER="${SDLC_REVIEW_PROVIDER:-claude}"
 
-BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~1")
-DIFF=$(git diff "$BASE"..HEAD 2>/dev/null | head -c 30000)
-
-# ── 8. AI code review gate ────────────────────────────────────────────────────
-if [ -z "$CLAUDE" ]; then
-  echo "Warning: claude CLI not found — skipping AI review."
-elif [ -z "$DIFF" ]; then
-  echo "No diff to review."
-else
+for LENS in code security; do
   echo ""
-  echo "Running AI code review..."
-
-  RESULT=$("$CLAUDE" --print "You are a pre-push code review gate for the Opus Populi platform (NestJS/GraphQL/Next.js, AGPL-3.0).
-
-Review the following git diff for BLOCKING issues only:
-1. Critical bugs that would break production (unhandled nulls on hot paths, wrong DB writes)
-2. GPL-licensed dependency additions (violates AGPL dual-license structure)
-3. Breaking changes to GraphQL schema or HMAC authentication contracts
-
-Minor code quality issues are NOT blocking — only flag things that would cause a production outage.
-
-Respond with EXACTLY one of:
-  PASS
-  FAIL: <one sentence describing the blocking issue>
-
-Diff:
-$DIFF" 2>/dev/null)
-
-  echo "$RESULT"
-
-  if printf '%s' "$RESULT" | grep -q "^FAIL:"; then
-    printf '\nPush blocked by AI review. Fix the issue above or use git push --no-verify to override.\n'
+  echo "Running AI $LENS review ($PROVIDER)..."
+  if ! node --experimental-strip-types scripts/review-gate.ts \
+      --provider "$PROVIDER" --lens "$LENS" --base origin/main; then
+    printf '\nPush blocked by the AI %s review. Fix the finding above, or if the review\n' "$LENS"
+    printf 'could not run, install/sign in to the %s CLI and push again.\n' "$PROVIDER"
+    printf 'git push --no-verify skips the whole gate; log it as an exception for /op-validate.\n'
     exit 1
   fi
-fi
-
-# ── 9. Security review gate ───────────────────────────────────────────────────
-if [ -z "$CLAUDE" ]; then
-  echo "Warning: claude CLI not found — skipping security review."
-elif [ -z "$DIFF" ]; then
-  echo "No diff to review."
-else
-  echo ""
-  echo "Running AI security review..."
-
-  SEC_RESULT=$("$CLAUDE" --print "You are a security-focused pre-push gate for the Opus Populi platform (NestJS/GraphQL/Next.js).
-
-Analyze the following git diff for HIGH-CONFIDENCE security vulnerabilities only. Ignore theoretical issues, rate limiting, and DoS concerns.
-
-Check for:
-1. SQL injection, NoSQL injection, command injection
-2. XSS via dangerouslySetInnerHTML or direct DOM manipulation
-3. SSRF — user-controlled URLs fetched by the server without host validation
-4. Authentication bypass or missing HMAC/CSRF validation
-5. Hardcoded credentials, API keys, or tokens committed in code
-6. Path traversal in file operations
-7. Insecure deserialization (eval, Function constructor with user input)
-8. PHI/PII exposure (HIPAA) — real personal/health data (names, DOB, SSN, medical/insurance IDs,
-   addresses) written to logs, error messages, OpenTelemetry attributes, test fixtures, or seed data
-   without masking, or interpolated into a model prompt. Synthetic/faker data is fine; real data is not.
-
-Respond with EXACTLY one of:
-  PASS
-  FAIL: <one sentence describing the specific vulnerability and file/line>
-
-Diff:
-$DIFF" 2>/dev/null)
-
-  echo "$SEC_RESULT"
-
-  if printf '%s' "$SEC_RESULT" | grep -q "^FAIL:"; then
-    printf '\nPush blocked by security review. Fix the vulnerability above or use git push --no-verify to override.\n'
-    exit 1
-  fi
-fi
+done
