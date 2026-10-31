@@ -143,6 +143,19 @@ else
   echo "Warning: gitleaks not found — install with: brew install gitleaks"
 fi
 
+# ── 6b. Deterministic data scan (fail-closed) ─────────────────────────────────
+# scripts/data-scan.ts, vendored from opuspopuli-sdlc (hooks/data-scan.ts). Rules, not a model: card
+# numbers, SSNs, Medicare IDs and sensitive fields reaching a log/error/telemetry/prompt call, scoped to
+# .sdlc/compliance-profile.yaml (CCPA here). Critical/high findings block; so does a scan that cannot
+# run. Accepted false positives go in .sdlc/data-scan-allow.yaml, each with a reason.
+echo ""
+echo "Running deterministic data scan..."
+if ! node --experimental-strip-types scripts/data-scan.ts --base origin/main; then
+  printf '\nPush blocked by the data scan. Remove the regulated data, mask it, or record an\n'
+  printf 'accepted exception with a reason in .sdlc/data-scan-allow.yaml.\n'
+  exit 1
+fi
+
 # ── 7–8. AI code review and security review (fail-closed) ────────────────────
 # Runs scripts/review-gate.ts, vendored from opuspopuli-sdlc (hooks/review-gate.ts). It replaces the
 # inline `claude --print` stages, which failed OPEN three ways:

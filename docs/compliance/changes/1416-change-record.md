@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | **Change ID** | `1416-sdlc-gate-migration` |
-| **Linked issues** | [#1416](https://github.com/OpusPopuli/opuspopuli/issues/1416); upstream OpusPopuli/opuspopuli-sdlc #56, #58, #63 |
+| **Linked issues** | [#1416](https://github.com/OpusPopuli/opuspopuli/issues/1416); upstream OpusPopuli/opuspopuli-sdlc #56, #58, #63, #70 |
 | **Date** | 2026-10-31 |
 | **Branch** | `opuspopuli @ chore/sdlc-gate-migration-1416` |
 | **Author** | Claude Code (Anthropic Claude), directed by Rodney Gagnon — AI-assisted, human-approved in-session 2026-10-31 |
@@ -33,7 +33,8 @@ personal-data check re-scoped to California personal information. The compliance
 | `.claude/compliance-profile.yaml` → `.sdlc/compliance-profile.yaml` | Moved, content unchanged |
 | `.sdlc/review/code.md`, `.sdlc/review/security.md` | Repo criteria, carried over from the old inline prompts |
 | `scripts/review-gate.ts` | Vendored runner (opuspopuli-sdlc v0.5.1) |
-| `.husky/pre-push` | Stages 7–9 replaced by a two-lens call to the runner; stages 0–6 untouched |
+| `scripts/data-scan.ts` | Vendored deterministic data scanner (opuspopuli-sdlc v0.8.0), gate stage 6b |
+| `.husky/pre-push` | New stage 6b (data scan); stages 7–9 replaced by a two-lens call to the runner; stages 0–6 untouched |
 | `.gitignore` | Comment no longer tells contributors to force-add the profile under `.claude/` |
 | `CLAUDE.md` | Profile path, criteria files, fail-closed gate, Codex option |
 
@@ -58,6 +59,7 @@ diff to the configured hosted model, which is the same exposure as the previous 
   answer; the security prompt contains the CCPA profile and the repo's California personal-information
   check; with no `claude` on PATH the push is blocked.
 - Runner unit tests (fail-closed cases, criteria ordering): 26 tests in opuspopuli-sdlc, green.
+- Data scan on this repo: this branch's diff passes (0 findings); `--all` over every tracked file passes with 0 blocking and 38 non-blocking reports. Those are realistic Gmail addresses in tests, and emails reaching log calls: `SecureLogger` masks them, but `SupabaseAuthProvider`'s logger redacts only in production. Left as reports, not allowlisted.
 - **PENDING:** one real push through the gate with a signed-in `claude` CLI.
 
 ## Rollback
