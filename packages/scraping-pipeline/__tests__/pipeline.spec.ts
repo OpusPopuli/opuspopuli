@@ -605,6 +605,127 @@ describe("ScrapingPipelineService", () => {
     });
   });
 
+  describe("a heal whose re-analysis fails (meetings-phase-b.md review)", () => {
+    const partial = {
+      items: [{ id: "kept-1" }, { id: "kept-2" }],
+      manifestVersion: 0,
+      success: true,
+      warnings: [],
+      errors: [],
+      extractionTimeMs: 1,
+      selectorFailures: [
+        { kind: "schema_reject" as const, missRatio: 0.6, message: "rejected" },
+      ],
+    };
+
+    it("keeps the partial result the mapping heal was trying to improve", async () => {
+      (mockHealing.evaluateMapping as jest.Mock).mockReturnValueOnce({
+        shouldHeal: true,
+        reason: "Domain mapping rejected 60% of extracted items",
+        validation: { valid: false, issues: [] },
+      });
+      (mockMapper.map as jest.Mock).mockReturnValueOnce(partial);
+      mockAnalyzer.analyze.mockRejectedValue(
+        new Error(
+          "LLM output does not name the representatives fields externalId",
+        ),
+      );
+
+      const result = await pipeline.execute(createSource(), "california");
+
+      expect(result.items).toEqual(partial.items);
+      expect(result.manifestVersion).toBe(1);
+      expect(
+        result.warnings.some((w) => w.includes("Self-heal re-analysis failed")),
+      ).toBe(true);
+      expect(mockStore.save).not.toHaveBeenCalled();
+    });
+
+    it("does not fail the source when the pre-mapping heal cannot re-analyse", async () => {
+      mockHealing.evaluate.mockReturnValueOnce({
+        shouldHeal: true,
+        reason: "Manifest does not name the meetings fields scheduledAt",
+        validation: { valid: false, issues: [] },
+      });
+      mockAnalyzer.analyze.mockRejectedValue(new Error("contract"));
+
+      const result = await pipeline.execute(createSource(), "california");
+
+      expect(result.manifestVersion).toBe(1);
+      expect(result.items).toEqual([{ externalId: "1", title: "Test" }]);
+      expect(mockStore.save).not.toHaveBeenCalled();
+      // The stale extraction is mapped, carrying the warning that the heal
+      // could not run.
+      const mappedRaw = (mockMapper.map as jest.Mock).mock.calls[0][0];
+      expect(mappedRaw.items).toEqual([{ name: "Test" }]);
+      expect(
+        mappedRaw.warnings.some((w: string) =>
+          w.includes("Self-heal re-analysis failed"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("dateQueryParams (meetings-phase-b.md step 2)", () => {
+    const SENATE = "https://www.senate.ca.gov/calendar?committeeHearings=1";
+
+    it("fetches the windowed URL but keys the manifest by the source URL", async () => {
+      await pipeline.execute(
+        createSource({
+          url: SENATE,
+          dataType: DataType.MEETINGS,
+          timezone: "America/Los_Angeles",
+          dateQueryParams: { startDate: "-30d", endDate: "+60d" },
+        }),
+        "california",
+      );
+
+      const fetched = new URL(mockExtraction.fetchWithRetry.mock.calls[0][0]);
+      expect(fetched.searchParams.get("startDate")).toMatch(
+        /^\d{4}-\d{2}-\d{2}$/,
+      );
+      expect(fetched.searchParams.get("endDate")).toMatch(
+        /^\d{4}-\d{2}-\d{2}$/,
+      );
+      expect(mockStore.findLatest).toHaveBeenCalledWith(
+        "california",
+        SENATE,
+        DataType.MEETINGS,
+      );
+    });
+
+    it("analyses the fetch URL and saves the manifest under the source URL", async () => {
+      const fetchUrl = `${SENATE}&startDate=2026-10-01&endDate=2026-12-30`;
+      await pipeline.performManifestAnalysis(
+        "california",
+        SENATE,
+        DataType.MEETINGS,
+        "goal",
+        undefined,
+        undefined,
+        fetchUrl,
+      );
+
+      expect(mockExtraction.fetchWithRetry).toHaveBeenCalledWith(fetchUrl);
+      expect(mockAnalyzer.analyze.mock.calls[0][1].url).toBe(SENATE);
+    });
+
+    it("refuses a fetch URL on another host", async () => {
+      await expect(
+        pipeline.performManifestAnalysis(
+          "california",
+          SENATE,
+          DataType.MEETINGS,
+          "goal",
+          undefined,
+          undefined,
+          "http://169.254.169.254/latest/meta-data/",
+        ),
+      ).rejects.toThrow("is not the page of source");
+      expect(mockExtraction.fetchWithRetry).not.toHaveBeenCalled();
+    });
+  });
+
   describe("linkDiscovery routing (#1164)", () => {
     const LEAF_A = "https://example.com/elections/nov-2026-measures";
     const LEAF_B = "https://example.com/elections/jun-2026-measures";

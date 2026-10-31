@@ -349,7 +349,10 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
       onBatch &&
       (source.sourceType === "bulk_download" || source.sourceType === "api");
     const result = await this.pipeline.execute<T>(
-      source,
+      {
+        ...source,
+        timezone: source.timezone ?? this.regionConfig.timezone,
+      },
       this.regionConfig.regionId,
       useBatch ? onBatch : undefined,
       pipelineJobId,

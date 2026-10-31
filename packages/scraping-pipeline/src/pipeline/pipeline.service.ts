@@ -48,6 +48,7 @@ import {
   type ExecutionSession,
 } from "./execution-tracker.service.js";
 import type { ArchiveContext } from "@opuspopuli/extraction-provider";
+import { assertSamePage, resolveFetchUrl } from "./fetch-url.js";
 
 /**
  * Stamp each item with the run that produced it (#1280).
@@ -139,6 +140,10 @@ function preserveSourceVersionIds<T>(
   };
 }
 
+/** Surfaced on the result, so a heal that could not run is not silent. */
+const HEAL_FAILED =
+  "Self-heal re-analysis failed — kept this run's result; the reason is in the warning log";
+
 @Injectable()
 export class ScrapingPipelineService {
   private readonly logger = new Logger(ScrapingPipelineService.name);
@@ -196,8 +201,10 @@ export class ScrapingPipelineService {
     contentGoal = "",
     category?: string,
     hints?: string[],
+    fetchUrl: string = sourceUrl,
   ): Promise<{ manifestId: string; manifestVersion: number }> {
-    const fetchResult = await this.extraction.fetchWithRetry(sourceUrl);
+    assertSamePage(fetchUrl, sourceUrl);
+    const fetchResult = await this.extraction.fetchWithRetry(fetchUrl);
     const html = fetchResult.content;
 
     const source = {
@@ -485,7 +492,9 @@ export class ScrapingPipelineService {
     );
 
     // Fetch HTML
-    const fetchResult = await this.extraction.fetchWithRetry(source.url);
+    const fetchResult = await this.extraction.fetchWithRetry(
+      resolveFetchUrl(source),
+    );
     const html = fetchResult.content;
 
     // Stage 1+2: Get or derive manifest
@@ -549,7 +558,13 @@ export class ScrapingPipelineService {
       this.logger.warn(
         `Self-healing: re-analyzing ${source.url} — ${healingDecision.reason}`,
       );
-      const healed = await this.healManifest(source, regionId, html, manifest);
+      const healed = await this.healManifest(
+        source,
+        regionId,
+        html,
+        manifest,
+        rawResult,
+      );
       rawResult = healed.rawResult;
       effectiveVersion = healed.version;
       healAttempted = true;
@@ -597,29 +612,16 @@ export class ScrapingPipelineService {
       this.logger.warn(
         `Self-healing: re-analyzing ${source.url} — ${mappingDecision.reason}`,
       );
-      const healed = await this.healManifest(source, regionId, html, manifest);
       healAttempted = true;
-      const healedRaw = await this.enrichWithDetails(
-        healed.rawResult,
+      ({ result, effectiveVersion } = await this.healAfterMapping<T>(
         source,
-        {
-          regionId,
-          dataType: source.dataType,
-          manifestId: manifest.id,
-          ...(session?.executionId && { executionId: session.executionId }),
-        },
+        regionId,
+        html,
+        manifest,
+        { result, effectiveVersion, rawResult },
         maxItems,
-      );
-      const remapped = preserveSourceVersionIds(
-        healedRaw,
-        this.mapper.map<T>(healedRaw, source),
-      );
-      // Keep whichever outcome mapped more items — a failed heal must not
-      // discard the (partial) original result.
-      if (remapped.items.length > result.items.length) {
-        result = remapped;
-        effectiveVersion = healed.version;
-      }
+        session,
+      ));
     }
     result.manifestVersion = effectiveVersion;
     // The manifest a row was extracted under. Region config is baked into the
@@ -869,22 +871,101 @@ export class ScrapingPipelineService {
   }
 
   /**
+   * Stage 4.5's heal: re-derive, then enrich and map the re-extraction the
+   * same way the first pass was. Keeps whichever outcome mapped more items, so
+   * a heal that fails or does no better never discards the original.
+   */
+  private async healAfterMapping<T>(
+    source: DataSourceConfig,
+    regionId: string,
+    html: string,
+    manifest: StructuralManifest,
+    current: {
+      result: ExtractionResult<T>;
+      effectiveVersion: number;
+      rawResult: RawExtractionResult;
+    },
+    maxItems: number | undefined,
+    session: ExecutionSession | undefined,
+  ): Promise<{ result: ExtractionResult<T>; effectiveVersion: number }> {
+    const kept = {
+      result: current.result,
+      effectiveVersion: current.effectiveVersion,
+    };
+    const healed = await this.healManifest(
+      source,
+      regionId,
+      html,
+      manifest,
+      current.rawResult,
+    );
+    if (healed.failed) {
+      current.result.warnings.push(HEAL_FAILED);
+      return kept;
+    }
+    const enriched = await this.enrichWithDetails(
+      healed.rawResult,
+      source,
+      {
+        regionId,
+        dataType: source.dataType,
+        manifestId: manifest.id,
+        ...(session?.executionId && { executionId: session.executionId }),
+      },
+      maxItems,
+    );
+    const remapped = preserveSourceVersionIds(
+      enriched,
+      this.mapper.map<T>(enriched, source),
+    );
+    return remapped.items.length > current.result.items.length
+      ? { result: remapped, effectiveVersion: healed.version }
+      : kept;
+  }
+
+  /**
    * Re-derive a manifest for a source whose cached rules produced degraded
    * output, then re-extract with the fresh manifest. Bounded to a single
    * re-analysis per run (healAttempted=true) so a genuinely-empty or
    * genuinely-shrunken source can't loop. Records the new drift baseline on
    * success. Returns the re-extracted result and the new manifest version.
    * See #911.
+   *
+   * When the re-analysis itself fails (malformed output, or a manifest that
+   * breaks the field contract) it returns the stale result, marked `failed`
+   * and carrying a warning, so the run keeps what it already has. Throwing
+   * would fail the whole source and lose a partial result the heal was only
+   * trying to improve.
    */
   private async healManifest(
     source: DataSourceConfig,
     regionId: string,
     html: string,
     staleManifest: StructuralManifest,
-  ): Promise<{ rawResult: RawExtractionResult; version: number }> {
+    staleResult: RawExtractionResult,
+  ): Promise<{
+    rawResult: RawExtractionResult;
+    version: number;
+    failed?: true;
+  }> {
     await this.manifestStore.incrementFailure(staleManifest.id);
 
-    const newManifest = await this.analyzer.analyze(html, source);
+    let newManifest: StructuralManifest;
+    try {
+      newManifest = await this.analyzer.analyze(html, source);
+    } catch (error) {
+      this.logger.warn(
+        `Self-heal re-analysis failed for ${source.url}: ${(error as Error).message}`,
+      );
+      return {
+        rawResult: {
+          ...staleResult,
+          warnings: [...staleResult.warnings, HEAL_FAILED],
+        },
+        version: staleManifest.version,
+        failed: true,
+      };
+    }
     newManifest.regionId = regionId;
     newManifest.version = await this.manifestStore.getNextVersion(
       regionId,
@@ -971,9 +1052,11 @@ export class ScrapingPipelineService {
       this.logger.log(
         `Manifest ${requestedBy} for ${source.url}: ${missReason} — enqueuing analysis`,
       );
+      const fetchUrl = resolveFetchUrl(source);
       await this.onManifestMissing({
         regionId,
         sourceUrl: source.url,
+        ...(fetchUrl !== source.url && { fetchUrl }),
         dataType: source.dataType,
         contentGoal: source.contentGoal,
         category: source.category,

@@ -153,4 +153,49 @@ describe('StructuralAnalysisProcessor', () => {
       );
     });
   });
+
+  describe('process', () => {
+    it('analyses the fetch URL, not the source URL, when the job carries one', async () => {
+      // A dateQueryParams source: its sourceUrl alone is the calendar's empty
+      // default view (meetings-phase-b.md step 2).
+      const pipeline = {
+        performManifestAnalysis: jest
+          .fn()
+          .mockResolvedValue({ manifestId: 'mf-1', manifestVersion: 1 }),
+      };
+      const jobService = {
+        markRunning: jest.fn().mockResolvedValue(undefined),
+        markSucceeded: jest.fn().mockResolvedValue(undefined),
+      };
+      const svc = buildProcessor({ pipeline, jobService });
+      const sourceUrl =
+        'https://www.senate.ca.gov/calendar?committeeHearings=1';
+      const fetchUrl = `${sourceUrl}&startDate=2026-10-01&endDate=2026-12-30`;
+
+      await (
+        svc as unknown as Record<string, (job: unknown) => Promise<unknown>>
+      ).process({
+        id: 'j-1',
+        attemptsMade: 0,
+        data: {
+          structuralAnalysisJobId: 'sa-1',
+          regionId: 'california',
+          sourceUrl,
+          fetchUrl,
+          dataType: 'meetings',
+          requestedBy: 'cache_miss',
+        },
+      });
+
+      expect(pipeline.performManifestAnalysis).toHaveBeenCalledWith(
+        'california',
+        sourceUrl,
+        'meetings',
+        undefined,
+        undefined,
+        undefined,
+        fetchUrl,
+      );
+    });
+  });
 });

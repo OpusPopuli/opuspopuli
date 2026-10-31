@@ -114,6 +114,9 @@ export class PdfExtractHandler {
       this.logger.log(
         `AI produced ${rules.fieldMappings.length} field mappings for text extraction (pdf-text-rules ${prompt.promptVersion} ${prompt.promptHash.slice(0, 12)})`,
       );
+      // This path keeps no manifest, so the log is the only record of the
+      // rules a run used. They are derived from a public civic PDF.
+      this.logger.debug(`Text extraction rules: ${JSON.stringify(rules)}`);
 
       // 6. Extract items using text extractor
       const rawResult = this.textExtractor.extract(pdfText, rules, source.url);

@@ -240,6 +240,7 @@ const promptClientAsyncConfig = {
                     structuralAnalysisJobId: jobId,
                     regionId: args.regionId,
                     sourceUrl: args.sourceUrl,
+                    ...(args.fetchUrl && { fetchUrl: args.fetchUrl }),
                     dataType: args.dataType,
                     contentGoal: args.contentGoal,
                     category: args.category,

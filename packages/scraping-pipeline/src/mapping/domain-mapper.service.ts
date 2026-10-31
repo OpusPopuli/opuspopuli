@@ -9,6 +9,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import { detectSummaryEcho } from "./summary-echo.js";
+import { zonedWallClockToISO } from "../extraction/composite-template.js";
 import {
   DataType,
   PropositionStatus,
@@ -237,7 +238,7 @@ export class DomainMapperService {
       case DataType.PROPOSITIONS:
         return this.mapProposition(record, diag);
       case DataType.MEETINGS:
-        return this.mapMeeting(record, diag, source.category);
+        return this.mapMeeting(record, diag, source.category, source.timezone);
       case DataType.REPRESENTATIVES:
         return this.mapRepresentative(record, diag, source.category);
       case DataType.CAMPAIGN_FINANCE:
@@ -346,12 +347,15 @@ export class DomainMapperService {
     record: Record<string, unknown>,
     diag: MappingDiagnostics,
     category?: string,
+    timezone?: string,
   ): Meeting | null {
     const title = typeof record.title === "string" ? record.title : undefined;
     const body =
       typeof record.body === "string" ? record.body : (category ?? "Unknown");
-    const scheduledAt =
-      typeof record.scheduledAt === "string" ? record.scheduledAt : undefined;
+    const { scheduledAt, idDate } = readScheduledAt(
+      record.scheduledAt,
+      timezone,
+    );
     const rawExternalId =
       typeof record.externalId === "string" ? record.externalId : undefined;
 
@@ -370,7 +374,7 @@ export class DomainMapperService {
     const externalId = composeMeetingExternalId({
       rawExternalId,
       title,
-      scheduledAt,
+      scheduledAt: idDate,
       body,
     });
 
@@ -383,7 +387,12 @@ export class DomainMapperService {
 
     return this.parseOrCollect(
       MeetingSchema,
-      { ...record, body, externalId },
+      {
+        ...record,
+        body,
+        externalId,
+        ...(scheduledAt !== undefined && { scheduledAt }),
+      },
       "Meeting",
       diag,
     );
@@ -862,6 +871,50 @@ function looksLikeCompositeId(value: string): boolean {
   if (hasDate) return true;
   const segments = value.split(/[-_]/).filter((s) => s.length > 0);
   return segments.length >= 2;
+}
+
+/**
+ * An ISO timestamp ending in `Z` or an offset: the value is already an
+ * instant. Anchored to the whole ISO shape, because a bare trailing
+ * `-hh:mm` also ends a naive time RANGE ("2026-10-29 9:00-11:00"), which read
+ * as an offset would store a 9 a.m. hearing at 1 p.m. Pacific.
+ */
+const HAS_ZONE_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * A meeting's `scheduledAt`, and the date to build its id from.
+ *
+ * A value with no zone ("2026-10-29 5pm", composed from a page's date and
+ * time cells) is wall-clock time where the source publishes, so it is read in
+ * the source's zone. Handed to `new Date()` it would be read in the
+ * container's (UTC), and a 5 p.m. Pacific hearing would be stored seven hours
+ * early. A naive value this cannot parse becomes an empty string, so the
+ * schema rejects the row and the reason is counted.
+ *
+ * The id takes the date as printed, `YYYY-MM-DD`, whichever form the value
+ * came in, so a manifest that switches between `date_parse` and a composite
+ * does not file the same hearing under two ids. For a naive value that is its
+ * first ten characters, taken before conversion: 5 p.m. Pacific on Oct 29 is
+ * Oct 30 in UTC. For a zoned value it is also the first ten: `date_parse`
+ * emits the printed date at UTC midnight. (A true instant only comes from an
+ * API composite, and those sources carry their own ids.)
+ *
+ * With no zone known, the value and its id are left as they always were.
+ */
+function readScheduledAt(
+  value: unknown,
+  timeZone?: string,
+): { scheduledAt?: string; idDate?: string } {
+  if (typeof value !== "string") return {};
+  if (!timeZone) return { scheduledAt: value, idDate: value };
+  const trimmed = value.trim();
+  if (HAS_ZONE_RE.test(trimmed)) {
+    return { scheduledAt: value, idDate: trimmed.slice(0, 10) };
+  }
+  const instant = zonedWallClockToISO(trimmed, timeZone);
+  if (!instant) return { scheduledAt: "", idDate: value };
+  return { scheduledAt: instant, idDate: trimmed.slice(0, 10) };
 }
 
 /**

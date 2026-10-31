@@ -73,6 +73,21 @@ function resolveAgainstBaseHref(
   }
 }
 
+/**
+ * The element a mapping reads from: the item, the container, or the item's
+ * nearest ancestor matching `closest` (a per-group heading).
+ */
+function fieldScope(
+  element: Cheerio<Element>,
+  container: Cheerio<Element>,
+  mapping: FieldMapping,
+): Cheerio<Element> {
+  if (mapping.closest) {
+    return element.closest(mapping.closest) as Cheerio<Element>;
+  }
+  return mapping.scope === "container" ? container : element;
+}
+
 @Injectable()
 export class ManifestExtractorService {
   private readonly logger = new Logger(ManifestExtractorService.name);
@@ -305,7 +320,7 @@ export class ManifestExtractorService {
         requiredTotal++;
       }
 
-      const scope = mapping.scope === "container" ? container : element;
+      const scope = fieldScope(element, container, mapping);
       const { value, selectorMiss } = this.resolveFieldValue(
         $,
         scope,

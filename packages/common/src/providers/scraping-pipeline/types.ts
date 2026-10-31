@@ -164,6 +164,14 @@ export interface FieldMapping {
   /** Search scope: 'item' (default) searches within the item element,
    *  'container' searches from the container element (for sibling data like headings) */
   scope?: "item" | "container";
+  /**
+   * Read the field from the item's nearest ancestor matching this selector,
+   * instead of from the item. For a value printed once per GROUP of items:
+   * a calendar that heads each day's hearings with the date, so no hearing
+   * carries its own (meetings-phase-b.md). Takes precedence over `scope`. An
+   * item with no such ancestor is a selector miss for this field.
+   */
+  closest?: string;
   /** For 'structured' method: per-child extraction config. Each value is
    *  either a string selector (legacy DSL with `_text` / `_regex:` / `|attr:`
    *  shortcuts) or a full ChildFieldConfig object that supports
@@ -353,6 +361,21 @@ export interface DataSourceConfig {
   hints?: string[];
   /** Optional: override rate limit for this specific source */
   rateLimitOverride?: number;
+  /**
+   * IANA zone for wall-clock values the source prints with no offset, such as
+   * a hearing at "10/29/26 5pm". Defaults to the region's `timezone`, which the
+   * declarative plugin stamps on before the pipeline runs. Set it only for a
+   * source that publishes in another zone.
+   */
+  timezone?: string;
+  /**
+   * Query parameters set to a date relative to today, resolved at fetch time
+   * in the source's `timezone` as `YYYY-MM-DD`. Each value is a day offset:
+   * `{ "startDate": "-30d", "endDate": "+60d" }`. For a calendar that lists
+   * only the dates its query names. `url` stays the key the source is cached
+   * and tracked under, so the moving window does not mint a manifest per day.
+   */
+  dateQueryParams?: Record<string, string>;
 
   /** Source type determines the extraction strategy. Defaults to 'html_scrape'. */
   sourceType?: "html_scrape" | "bulk_download" | "api" | "pdf" | "pdf_archive";
