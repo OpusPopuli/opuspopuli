@@ -39,10 +39,10 @@ playwright/.cache/
 .DS_Store
 
 # Claude Code per-project state (worktrees, tool results, local settings)
-# Team config here is force-added deliberately: settings.json (marketplace + enabled plugins) and
-# compliance-profile.yaml (which control families apply to this repo — an auditable declaration,
-# so it must be in the repo, not a local-only file):
-#   git add -f .claude/settings.json .claude/compliance-profile.yaml
+# Team config here is force-added deliberately: settings.json (marketplace + enabled plugins):
+#   git add -f .claude/settings.json
+# The compliance profile is NOT here: it lives at .sdlc/compliance-profile.yaml, which is tracked
+# normally and read by every coding agent (opuspopuli-sdlc >= 0.3.0).
 .claude/
 tmp/
 
