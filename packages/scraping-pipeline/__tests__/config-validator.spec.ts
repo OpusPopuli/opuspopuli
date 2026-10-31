@@ -1,6 +1,9 @@
 import { ConfigValidator } from "../src/validation/config-validator";
 import { DataType } from "@opuspopuli/common";
-import type { DeclarativeRegionConfig } from "@opuspopuli/common";
+import type {
+  DataSourceConfig,
+  DeclarativeRegionConfig,
+} from "@opuspopuli/common";
 
 function createValidConfig(
   overrides?: Partial<DeclarativeRegionConfig>,
@@ -80,6 +83,66 @@ describe("ConfigValidator", () => {
   });
 
   describe("invalid configs", () => {
+    it("rejects a misspelt region timezone", () => {
+      const result = ConfigValidator.validate(
+        createValidConfig({ timezone: "America/LosAngeles" }),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.path === "timezone")).toBe(true);
+    });
+
+    it("rejects a misspelt source timezone and an unreadable date offset", () => {
+      const config = createValidConfig();
+      config.dataSources[0] = {
+        ...config.dataSources[0],
+        timezone: "Pacific Time",
+        dateQueryParams: { endDate: "60 days" },
+      };
+      const paths = ConfigValidator.validate(config).errors.map((e) => e.path);
+      expect(paths).toEqual(
+        expect.arrayContaining([
+          "dataSources.0.timezone",
+          "dataSources.0.dateQueryParams.endDate",
+        ]),
+      );
+    });
+
+    it.each([
+      ["a pdf source", { sourceType: "pdf" as const }],
+      [
+        "a link-discovery hub",
+        {
+          linkDiscovery: {
+            steps: [],
+          } as unknown as DataSourceConfig["linkDiscovery"],
+        },
+      ],
+    ])(
+      "rejects a date window on %s, which would never apply it",
+      (_l, extra) => {
+        const config = createValidConfig();
+        config.dataSources[0] = {
+          ...config.dataSources[0],
+          ...extra,
+          dateQueryParams: { endDate: "+60d" },
+        };
+        const result = ConfigValidator.validate(config);
+        expect(result.errors.map((e) => e.path)).toContain(
+          "dataSources[0].dateQueryParams",
+        );
+      },
+    );
+
+    it("accepts a valid source timezone and date window", () => {
+      const config = createValidConfig();
+      config.dataSources[0] = {
+        ...config.dataSources[0],
+        timezone: "America/New_York",
+        dateQueryParams: { startDate: "-30d", endDate: "+60d" },
+      };
+      expect(ConfigValidator.validate(config).valid).toBe(true);
+    });
+
     it("should reject empty regionId", () => {
       const result = ConfigValidator.validate(
         createValidConfig({ regionId: "" }),

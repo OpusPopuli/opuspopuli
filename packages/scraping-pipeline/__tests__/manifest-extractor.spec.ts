@@ -1330,3 +1330,70 @@ describe("<base href> resolution for URL attributes", () => {
     expect(result.items[0].label).toBe("About Measure H");
   });
 });
+
+describe("closest-ancestor fields (meetings-phase-b.md)", () => {
+  // The Senate calendar's shape: each day's hearings sit under one date
+  // heading, and no hearing repeats the date.
+  const html = `
+    <div class="dailyfile-search-results">
+      <div class="page-events--day-wrapper">
+        <h2 class="page-events__date">Oct 28, 2026</h2>
+        <div class="page-events__item"><h4 class="page-events__title">RULES</h4>
+          <div class="page-events__time-location"><p>3:30 p.m. - 1021 O Street, Room 2200</p></div></div>
+      </div>
+      <div class="page-events--day-wrapper">
+        <h2 class="page-events__date">Oct 29, 2026</h2>
+        <div class="page-events__item"><h4 class="page-events__title">JOINT LEGISLATIVE AUDIT</h4>
+          <div class="page-events__time-location"><p>5 p.m. - Castaic</p></div></div>
+        <div class="page-events__item"><h4 class="page-events__title">HEALTH</h4>
+          <div class="page-events__time-location"><p>9 a.m. - Room 1200</p></div></div>
+      </div>
+    </div>`;
+
+  const manifest = (closest?: string) =>
+    createTestManifest({
+      dataType: "meetings" as DataType,
+      extractionRules: {
+        containerSelector: ".dailyfile-search-results",
+        itemSelector: ".page-events__item",
+        fieldMappings: [
+          {
+            fieldName: "title",
+            selector: ".page-events__title",
+            extractionMethod: "text",
+            required: true,
+          },
+          {
+            fieldName: "hearingDate",
+            selector: ".page-events__date",
+            extractionMethod: "text",
+            required: true,
+            ...(closest && { closest }),
+          },
+        ],
+      },
+    });
+
+  it("gives each item the heading of its own group", () => {
+    const result = new ManifestExtractorService().extract(
+      html,
+      manifest(".page-events--day-wrapper"),
+    );
+
+    expect(result.items.map((i) => [i.title, i.hearingDate])).toEqual([
+      ["RULES", "Oct 28, 2026"],
+      ["JOINT LEGISLATIVE AUDIT", "Oct 29, 2026"],
+      ["HEALTH", "Oct 29, 2026"],
+    ]);
+  });
+
+  it("finds nothing inside the item without it — the heading is not there", () => {
+    const result = new ManifestExtractorService().extract(html, manifest());
+    // hearingDate is required, so items lacking it are dropped: the miss is
+    // recorded against that field rather than passing as an empty result.
+    expect(result.items.some((i) => i.hearingDate !== undefined)).toBe(false);
+    expect(result.selectorFailures).toContainEqual(
+      expect.objectContaining({ kind: "field_miss", field: "hearingDate" }),
+    );
+  });
+});

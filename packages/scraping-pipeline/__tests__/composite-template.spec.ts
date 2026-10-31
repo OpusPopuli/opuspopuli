@@ -1,4 +1,7 @@
-import { resolveCompositeTemplate } from "../src/extraction/composite-template";
+import {
+  resolveCompositeTemplate,
+  zonedWallClockToISO,
+} from "../src/extraction/composite-template";
 import { FieldTransformer } from "../src/extraction/field-transformer";
 
 /**
@@ -147,5 +150,46 @@ describe("resolveCompositeTemplate (#1164)", () => {
       district: 5,
     });
     expect(value).toBe("district-5");
+  });
+});
+
+describe("zonedWallClockToISO", () => {
+  const LA = "America/Los_Angeles";
+
+  it.each([
+    // The forms the Legistar API already sends.
+    ["2026-10-29 2:45 PM", "2026-10-29T21:45:00.000Z"],
+    ["2026-10-29T14:45:00", "2026-10-29T21:45:00.000Z"],
+    ["2026-10-29", "2026-10-29T07:00:00.000Z"],
+    // The forms the Assembly daily file and the Senate calendar print.
+    ["2026-10-29 5pm", "2026-10-30T00:00:00.000Z"],
+    ["2026-10-29 11am", "2026-10-29T18:00:00.000Z"],
+    ["2026-10-28 3:30 p.m.", "2026-10-28T22:30:00.000Z"],
+    ["2026-10-29 5 p.m.", "2026-10-30T00:00:00.000Z"],
+    ["2026-10-29 12 a.m.", "2026-10-29T07:00:00.000Z"],
+    // The Senate prints the time and the room on one line.
+    [
+      "2026-10-28 3:30 p.m. - (Closed Session) - 1021 O Street, Room 2200",
+      "2026-10-28T22:30:00.000Z",
+    ],
+    // After the DST change on 2026-11-01, Pacific is UTC-8.
+    ["2026-11-05 9am", "2026-11-05T17:00:00.000Z"],
+  ])("reads %p as Pacific wall-clock", (naive, expected) => {
+    expect(zonedWallClockToISO(naive, LA)).toBe(expected);
+  });
+
+  it("refuses an hour with neither minutes nor a meridiem", () => {
+    expect(zonedWallClockToISO("2026-10-29 5", LA)).toBeUndefined();
+  });
+
+  it.each(["2026-10-29 TBD", "2026-10-29 Upon adjournment"])(
+    "refuses %p rather than read it as midnight",
+    (naive) => {
+      expect(zonedWallClockToISO(naive, LA)).toBeUndefined();
+    },
+  );
+
+  it("refuses a date it would have to guess at", () => {
+    expect(zonedWallClockToISO("10/29/26 5pm", LA)).toBeUndefined();
   });
 });

@@ -21,6 +21,12 @@ function createManifest(
       itemSelector: ".item",
       fieldMappings: [
         {
+          fieldName: "externalId",
+          selector: ".id",
+          extractionMethod: "text",
+          required: false,
+        },
+        {
           fieldName: "name",
           selector: ".name",
           extractionMethod: "text",
@@ -195,6 +201,12 @@ describe("ExtractionValidator", () => {
         itemSelector: ".item",
         fieldMappings: [
           {
+            fieldName: "externalId",
+            selector: ".id",
+            extractionMethod: "text",
+            required: false,
+          },
+          {
             fieldName: "name",
             selector: ".name",
             extractionMethod: "text",
@@ -262,5 +274,64 @@ describe("field selector failures (#966 W1)", () => {
     expect(
       result.issues.filter((i) => i.message.includes("matched nothing")),
     ).toHaveLength(0);
+  });
+});
+
+describe("field contract on a cached manifest (meetings-phase-b.md M1)", () => {
+  let validator: ExtractionValidator;
+
+  beforeEach(() => {
+    validator = new ExtractionValidator();
+  });
+
+  const meetingsManifest = (fieldNames: string[]) =>
+    createManifest({
+      dataType: "meetings" as DataType,
+      extractionRules: {
+        containerSelector: "tbody",
+        itemSelector: "tr",
+        fieldMappings: fieldNames.map((fieldName) => ({
+          fieldName,
+          selector: `td.${fieldName}`,
+          extractionMethod: "text" as const,
+          required: true,
+        })),
+      },
+    });
+
+  it("fails a manifest saved with the wrong field names, even when every item is complete", () => {
+    // Manifest v12 passed its own required-field check: every item had the
+    // date, time and committeeName it asked for. The mapper needed none of them.
+    const result = validator.validate(
+      createResult({
+        items: [
+          { date: "10/29/26", time: "9 a.m.", committeeName: "Budget" },
+          { date: "10/29/26", time: "1 p.m.", committeeName: "Health" },
+        ],
+      }),
+      meetingsManifest(["date", "time", "committeeName"]),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual({
+      severity: "error",
+      message:
+        "Manifest does not name the meetings fields scheduledAt, title|externalId",
+    });
+  });
+
+  it("does not fail a correctly named manifest whose items carry no identity", () => {
+    // A recess page of placeholder rows: the contract is about names, never
+    // values, so this must not trigger a re-analysis every run (#966 W1).
+    const result = validator.validate(
+      createResult({
+        items: [{ title: "", scheduledAt: "" }],
+      }),
+      meetingsManifest(["title", "scheduledAt"]),
+    );
+
+    expect(
+      result.issues.some((i) => i.message.startsWith("Manifest does not name")),
+    ).toBe(false);
   });
 });

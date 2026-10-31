@@ -153,13 +153,41 @@ describe("DeclarativeRegionPlugin", () => {
 
       expect(pipeline.execute).toHaveBeenCalledTimes(1);
       expect(pipeline.execute).toHaveBeenCalledWith(
-        config.dataSources[0],
+        { ...config.dataSources[0], timezone: "America/Los_Angeles" },
         "california",
         undefined,
         undefined,
         undefined,
       );
       expect(result).toEqual(mockProps);
+    });
+
+    it("stamps the region's timezone on a source that names none", async () => {
+      // A meeting printed as "10/29/26 5pm" is Pacific wall-clock; the
+      // mapper reads it in this zone (meetings-phase-b.md).
+      pipeline.execute.mockResolvedValue(createExtractionResult([]));
+
+      await plugin.fetchPropositions();
+
+      expect(pipeline.execute.mock.calls[0][0].timezone).toBe(
+        "America/Los_Angeles",
+      );
+    });
+
+    it("keeps a source's own timezone over the region's", async () => {
+      const ownZone = createMockConfig({
+        dataSources: [
+          { ...config.dataSources[0], timezone: "America/New_York" },
+        ],
+      });
+      const p = new DeclarativeRegionPlugin(ownZone, pipeline);
+      pipeline.execute.mockResolvedValue(createExtractionResult([]));
+
+      await p.fetchPropositions();
+
+      expect(pipeline.execute.mock.calls[0][0].timezone).toBe(
+        "America/New_York",
+      );
     });
 
     it("should return empty array when no proposition sources configured", async () => {

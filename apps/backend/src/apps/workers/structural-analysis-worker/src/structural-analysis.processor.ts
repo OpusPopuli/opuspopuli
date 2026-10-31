@@ -70,6 +70,7 @@ export class StructuralAnalysisProcessor
       structuralAnalysisJobId,
       regionId,
       sourceUrl,
+      fetchUrl,
       dataType,
       contentGoal,
       category,
@@ -110,6 +111,7 @@ export class StructuralAnalysisProcessor
           contentGoal,
           category,
           hints,
+          fetchUrl,
         );
 
       const analysisTimeMs = Date.now() - startTime;

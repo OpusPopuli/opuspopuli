@@ -12,6 +12,13 @@ function createMockLLM(responseText?: string): jest.Mocked<ILLMProvider> {
     itemSelector: ".member-card",
     fieldMappings: [
       {
+        fieldName: "externalId",
+        selector: "h3 a",
+        attribute: "href",
+        extractionMethod: "attribute",
+        required: true,
+      },
+      {
         fieldName: "name",
         selector: "h3 a",
         extractionMethod: "text",
@@ -105,7 +112,7 @@ describe("StructuralAnalyzerService", () => {
 
       expect(manifest.extractionRules.containerSelector).toBe(".members-list");
       expect(manifest.extractionRules.itemSelector).toBe(".member-card");
-      expect(manifest.extractionRules.fieldMappings).toHaveLength(2);
+      expect(manifest.extractionRules.fieldMappings).toHaveLength(3);
     });
 
     it("should call prompt client with correct params", async () => {
@@ -157,7 +164,7 @@ describe("StructuralAnalyzerService", () => {
 
     it("should handle LLM response wrapped in markdown code block", async () => {
       const wrappedJson =
-        '```json\n{"containerSelector":".list","itemSelector":".item","fieldMappings":[{"fieldName":"name","selector":".name","extractionMethod":"text","required":true}]}\n```';
+        '```json\n{"containerSelector":".list","itemSelector":".item","fieldMappings":[{"fieldName":"externalId","selector":".id","extractionMethod":"text","required":true},{"fieldName":"name","selector":".name","extractionMethod":"text","required":true}]}\n```';
       mockLLM = createMockLLM(wrappedJson);
       analyzer = new StructuralAnalyzerService(
         mockLLM,
@@ -203,7 +210,12 @@ describe("StructuralAnalyzerService", () => {
       const badJson = JSON.stringify({
         containerSelector: ".list",
         fieldMappings: [
-          { fieldName: "x", selector: ".x", extractionMethod: "text" },
+          {
+            fieldName: "externalId",
+            selector: ".id",
+            extractionMethod: "text",
+          },
+          { fieldName: "name", selector: ".x", extractionMethod: "text" },
         ],
       });
       mockLLM = createMockLLM(badJson);
@@ -231,6 +243,56 @@ describe("StructuralAnalyzerService", () => {
       await expect(
         analyzer.analyze(SIMPLE_HTML, createSource()),
       ).rejects.toThrow("fieldMappings");
+    });
+  });
+
+  describe("field contract (meetings-phase-b.md M1)", () => {
+    const meetingsRules = (fieldNames: string[]) =>
+      JSON.stringify({
+        containerSelector: "table.committee-hearing-table tbody",
+        itemSelector: "tr.committee-hearing-details",
+        fieldMappings: fieldNames.map((fieldName) => ({
+          fieldName,
+          selector: `td.${fieldName}`,
+          extractionMethod: "text",
+          required: true,
+        })),
+      });
+    const meetingsSource = () =>
+      createSource({
+        url: "https://www.assembly.ca.gov/schedules-publications/daily-file",
+        dataType: DataType.MEETINGS,
+      });
+
+    it("refuses a manifest whose field names the meetings mapper cannot use", async () => {
+      // Manifest v12's names: right selectors, wrong vocabulary.
+      mockLLM = createMockLLM(
+        meetingsRules(["date", "time", "committeeName", "location"]),
+      );
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
+
+      await expect(
+        analyzer.analyze(SIMPLE_HTML, meetingsSource()),
+      ).rejects.toThrow(
+        "does not name the meetings fields scheduledAt, title|externalId " +
+          "(named: date, time, committeeName, location)",
+      );
+    });
+
+    it("accepts a meetings manifest that names a title and scheduledAt", async () => {
+      mockLLM = createMockLLM(
+        meetingsRules(["title", "scheduledAt", "location"]),
+      );
+      analyzer = new StructuralAnalyzerService(
+        mockLLM,
+        mockPromptClient as unknown as PromptClientService,
+      );
+
+      const manifest = await analyzer.analyze(SIMPLE_HTML, meetingsSource());
+      expect(manifest.dataType).toBe(DataType.MEETINGS);
     });
   });
 
@@ -294,13 +356,13 @@ describe("StructuralAnalyzerService", () => {
         itemSelector: ".item",
         fieldMappings: [
           {
-            fieldName: "a",
+            fieldName: "externalId",
             selector: ".a",
             extractionMethod: "text",
             required: true,
           },
           {
-            fieldName: "b",
+            fieldName: "name",
             selector: ".b",
             extractionMethod: "text",
             required: false,
