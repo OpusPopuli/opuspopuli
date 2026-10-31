@@ -16,6 +16,7 @@ import type {
   ExtractionRuleSet,
   StructuralManifest,
 } from "@opuspopuli/common";
+import { findFieldContractGaps } from "../mapping/field-contract.js";
 import { computeStructureHash } from "./structure-hasher.js";
 import { PromptClientService } from "./prompt-client.service.js";
 
@@ -86,6 +87,7 @@ export class StructuralAnalyzerService {
 
     // 5. Parse and validate the JSON response
     const rules = this.parseExtractionRules(result.text);
+    this.assertFieldContract(rules, source);
 
     const analysisTimeMs = Date.now() - startTime;
 
@@ -253,6 +255,29 @@ export class StructuralAnalyzerService {
     }
 
     return rules as unknown as ExtractionRuleSet;
+  }
+
+  /**
+   * Refuse a manifest whose field names cannot produce a single row, so that
+   * it fails the way malformed JSON does (no save, the caller's error path)
+   * rather than being activated and dropping every item downstream.
+   */
+  private assertFieldContract(
+    rules: ExtractionRuleSet,
+    source: DataSourceConfig,
+  ): void {
+    // The model's output is only parsed, not schema-checked, so an entry can
+    // be null or lack a name.
+    const named = rules.fieldMappings
+      .map((m: unknown) => (m as { fieldName?: unknown } | null)?.fieldName)
+      .filter((name): name is string => typeof name === "string");
+    const gaps = findFieldContractGaps(source.dataType, named);
+    if (gaps.length > 0) {
+      throw new Error(
+        `LLM output does not name the ${source.dataType} fields ` +
+          `${gaps.join(", ")} (named: ${named.join(", ")})`,
+      );
+    }
   }
 
   /**

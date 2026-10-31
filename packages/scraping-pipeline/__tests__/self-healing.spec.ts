@@ -21,6 +21,12 @@ function createManifest(
       itemSelector: ".item",
       fieldMappings: [
         {
+          fieldName: "externalId",
+          selector: ".id",
+          extractionMethod: "text",
+          required: false,
+        },
+        {
           fieldName: "name",
           selector: ".name",
           extractionMethod: "text",
@@ -131,10 +137,7 @@ describe("SelfHealingService", () => {
 describe("evaluateMapping (#966 W1)", () => {
   let healing: SelfHealingService;
 
-  function createMapped(
-    missRatio: number | undefined,
-    items: unknown[] = [],
-  ) {
+  function createMapped(missRatio: number | undefined, items: unknown[] = []) {
     return {
       items,
       manifestVersion: 0,

@@ -140,6 +140,10 @@ function partsInZone(instant: Date, timeZone: string): number {
   );
 }
 
+const NAIVE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+const NAIVE_TIME_RE =
+  /^[T ]+(\d{1,2})(?::(\d{2})(?::(\d{2}))?)?\s*(?:([ap])\.?\s?m\b\.?)?/i;
+
 /**
  * Read a naive timestamp's calendar/clock components into a UTC epoch — the
  * components as written, with no zone applied yet.
@@ -148,29 +152,53 @@ function partsInZone(instant: Date, timeZone: string): number {
  * doesn't recognise as ISO in the HOST's zone and would silently reintroduce
  * the host dependence this whole function exists to remove. Accepts
  * `YYYY-MM-DD` with an optional `H:MM[:SS]` and optional AM/PM — the shapes
- * `date_parse` and civic APIs actually emit.
+ * `date_parse` and civic APIs actually emit — and the hour-only and dotted
+ * forms legislatures print ("5pm", "9 a.m.", "3:30 p.m.").
  */
 function parseNaiveWallClock(naive: string): number | undefined {
-  const m =
-    /^(\d{4})-(\d{2})-(\d{2})(?:[T ]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?/.exec(
-      naive.trim(),
-    );
-  if (!m) return undefined;
-
-  let hour = m[4] ? Number(m[4]) : 0;
-  const meridiem = m[7]?.toLowerCase();
-  if (meridiem === "pm" && hour < 12) hour += 12;
-  if (meridiem === "am" && hour === 12) hour = 0;
-  if (hour > 23) return undefined;
+  const trimmed = naive.trim();
+  const date = NAIVE_DATE_RE.exec(trimmed);
+  if (!date) return undefined;
+  const clock = readNaiveClock(trimmed.slice(date[0].length));
+  if (!clock) return undefined;
 
   return Date.UTC(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    hour,
-    m[5] ? Number(m[5]) : 0,
-    m[6] ? Number(m[6]) : 0,
+    Number(date[1]),
+    Number(date[2]) - 1,
+    Number(date[3]),
+    clock.hour,
+    clock.minute,
+    clock.second,
   );
+}
+
+/**
+ * The time of day after a naive date: midnight when nothing follows it,
+ * undefined when what follows is not a time.
+ */
+function readNaiveClock(
+  rest: string,
+): { hour: number; minute: number; second: number } | undefined {
+  const time = NAIVE_TIME_RE.exec(rest);
+  // Text after the date that is not a time ("TBD", "Upon adjournment") must
+  // not quietly become midnight: a wrong time stated with confidence is worse
+  // than none.
+  if (!time)
+    return rest.trim() === "" ? { hour: 0, minute: 0, second: 0 } : undefined;
+
+  const [, h, min, sec, meridiem] = time;
+  // An hour with neither minutes nor a meridiem ("2026-10-29 5") is not a
+  // time anyone prints; refuse it rather than guess 5 a.m.
+  if (!min && !meridiem) return undefined;
+  const hour = to24Hour(Number(h), meridiem?.toLowerCase());
+  if (hour > 23) return undefined;
+  return { hour, minute: min ? Number(min) : 0, second: sec ? Number(sec) : 0 };
+}
+
+function to24Hour(hour: number, meridiem?: string): number {
+  if (meridiem === "p" && hour < 12) return hour + 12;
+  if (meridiem === "a" && hour === 12) return 0;
+  return hour;
 }
 
 /**
@@ -259,4 +287,24 @@ export function resolveCompositeTemplate(
 
   if (missing.length > 0) return { value: undefined, missing };
   return { value, missing };
+}
+
+/** The calendar date of `now` in `timeZone`, shifted by `days`, as YYYY-MM-DD. */
+export function calendarDayInZone(
+  now: Date,
+  timeZone: string,
+  days: number,
+): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  const shifted = new Date(
+    Date.UTC(get("year"), get("month") - 1, get("day") + days),
+  );
+  return shifted.toISOString().slice(0, 10);
 }

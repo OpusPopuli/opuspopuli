@@ -41,6 +41,12 @@ import { LinkDiscoveryService } from "./crawling/link-discovery.service.js";
 export interface ManifestMissingArgs {
   regionId: string;
   sourceUrl: string;
+  /**
+   * Where to fetch the page from, when that differs from `sourceUrl` (a
+   * `dateQueryParams` window). Analysing `sourceUrl` itself would analyse the
+   * calendar's empty default view.
+   */
+  fetchUrl?: string;
   dataType: string;
   contentGoal?: string;
   category?: string;

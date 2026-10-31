@@ -7,6 +7,24 @@
 
 import { z } from "zod";
 import { DataType, type DeclarativeRegionConfig } from "@opuspopuli/common";
+import { parseDayOffset } from "../pipeline/fetch-url.js";
+
+/**
+ * A misspelt zone does not fail loudly downstream: `zonedWallClockToISO`
+ * returns nothing, and a meeting's time is then rejected rather than placed.
+ * Catch it when the config loads instead.
+ */
+const ianaZone = z
+  .string()
+  .min(1, "Timezone is required")
+  .refine((tz) => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Must be an IANA timezone such as America/Los_Angeles");
 
 const DataSourceConfigSchema = z.object({
   url: z.string().url("Invalid URL format"),
@@ -20,6 +38,19 @@ const DataSourceConfigSchema = z.object({
   category: z.string().optional(),
   hints: z.array(z.string()).optional(),
   rateLimitOverride: z.number().positive().optional(),
+  timezone: ianaZone.optional(),
+  dateQueryParams: z
+    .record(
+      z.string(),
+      z
+        .string()
+        .refine(
+          (offset) => parseDayOffset(offset) !== undefined,
+          'Must be a day offset such as "+60d", "-30d" or "0d"',
+        ),
+    )
+    .refine((params) => Object.keys(params).length > 0, "Must name a parameter")
+    .optional(),
 });
 
 const DeclarativeRegionConfigSchema = z.object({
@@ -32,7 +63,7 @@ const DeclarativeRegionConfigSchema = z.object({
     ),
   regionName: z.string().min(1, "Region name is required"),
   description: z.string().min(1, "Description is required"),
-  timezone: z.string().min(1, "Timezone is required"),
+  timezone: ianaZone,
   dataSources: z
     .array(DataSourceConfigSchema)
     .min(1, "At least one data source is required"),
@@ -68,9 +99,16 @@ export class ConfigValidator {
 
     if (result.success) {
       // Additional semantic validations
-      const semanticErrors = ConfigValidator.validateSemantics(
-        result.data as DeclarativeRegionConfig,
-      );
+      const semanticErrors = [
+        ...ConfigValidator.validateSemantics(
+          result.data as DeclarativeRegionConfig,
+        ),
+        // Reads the input, not result.data: the schema strips sourceType and
+        // linkDiscovery, which this check is about.
+        ...ConfigValidator.validateDateWindows(
+          config as DeclarativeRegionConfig,
+        ),
+      ];
       return {
         valid: semanticErrors.length === 0,
         errors: semanticErrors,
@@ -84,6 +122,31 @@ export class ConfigValidator {
         message: issue.message,
       })),
     };
+  }
+
+  /**
+   * `dateQueryParams` is applied only where a plain html_scrape source fetches
+   * its own page. A link-discovery hub is fetched without it and its leaves
+   * would inherit the window, and the pdf/api/bulk handlers never read it, so
+   * anywhere else it would be a silent no-op or worse.
+   */
+  private static validateDateWindows(
+    config: DeclarativeRegionConfig,
+  ): ConfigValidationError[] {
+    return config.dataSources.flatMap((source, i) => {
+      const plainHtml =
+        (source.sourceType ?? "html_scrape") === "html_scrape" &&
+        !source.linkDiscovery;
+      return source.dateQueryParams && !plainHtml
+        ? [
+            {
+              path: "dataSources[" + i + "].dateQueryParams",
+              message:
+                "dateQueryParams applies only to an html_scrape source without linkDiscovery",
+            },
+          ]
+        : [];
+    });
   }
 
   /**

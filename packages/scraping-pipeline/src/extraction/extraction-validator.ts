@@ -11,6 +11,7 @@ import type {
   RawExtractionResult,
   StructuralManifest,
 } from "@opuspopuli/common";
+import { findFieldContractGaps } from "../mapping/field-contract.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -37,6 +38,7 @@ export class ExtractionValidator {
     const issues: ValidationIssue[] = [];
 
     this.checkCompleteness(result, issues);
+    this.checkFieldContract(manifest, issues);
     this.checkRequiredFieldCoverage(result, manifest, issues);
     this.checkItemCountDrift(result, previousItemCount, issues);
     this.checkWarningCount(result, issues);
@@ -71,6 +73,28 @@ export class ExtractionValidator {
     }
     if (result.items.length === 0) {
       issues.push({ severity: "error", message: "Zero items extracted" });
+    }
+  }
+
+  /**
+   * A cached manifest saved before the analyzer enforced the field contract
+   * can still name its fields wrongly. It passes `checkRequiredFieldCoverage`,
+   * which only checks the manifest's own required fields, so it is caught here
+   * and re-derived on its next use.
+   */
+  private checkFieldContract(
+    manifest: StructuralManifest,
+    issues: ValidationIssue[],
+  ): void {
+    const gaps = findFieldContractGaps(
+      manifest.dataType,
+      manifest.extractionRules.fieldMappings.map((m) => m.fieldName),
+    );
+    if (gaps.length > 0) {
+      issues.push({
+        severity: "error",
+        message: `Manifest does not name the ${manifest.dataType} fields ${gaps.join(", ")}`,
+      });
     }
   }
 

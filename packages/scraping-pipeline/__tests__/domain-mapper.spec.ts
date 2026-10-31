@@ -559,6 +559,121 @@ describe("DomainMapperService", () => {
       expect(result.items).toHaveLength(0);
     });
 
+    describe("wall-clock times (meetings-phase-b.md)", () => {
+      const assemblySource = (timezone?: string) =>
+        createSource({
+          dataType: DataType.MEETINGS,
+          category: "Assembly",
+          ...(timezone && { timezone }),
+        });
+
+      it("reads a time with no zone in the source's zone, and ids it by the wall-clock day", () => {
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              {
+                title: "Joint Legislative Audit",
+                scheduledAt: "2026-10-29 5pm",
+              },
+            ],
+          }),
+          assemblySource("America/Los_Angeles"),
+        );
+
+        expect(result.items).toHaveLength(1);
+        const meeting = result.items[0] as {
+          scheduledAt: Date;
+          externalId: string;
+        };
+        // 5 p.m. Pacific is midnight UTC the next day...
+        expect(meeting.scheduledAt.toISOString()).toBe(
+          "2026-10-30T00:00:00.000Z",
+        );
+        // ...but the hearing is on the 29th.
+        expect(meeting.externalId).toBe(
+          "assembly-joint-legislative-audit-2026-10-29",
+        );
+      });
+
+      it("gives a hearing one id whether its manifest used date_parse or a composite", () => {
+        const map = (scheduledAt: string) =>
+          (
+            mapper.map(
+              createRawResult({ items: [{ title: "Health", scheduledAt }] }),
+              assemblySource("America/Los_Angeles"),
+            ).items[0] as { externalId: string }
+          ).externalId;
+
+        expect(map("2026-10-29T00:00:00.000Z")).toBe(map("2026-10-29 9am"));
+      });
+
+      it("reads a naive time range as wall-clock, not as a UTC offset", () => {
+        const meeting = mapper.map(
+          createRawResult({
+            items: [{ title: "Health", scheduledAt: "2026-10-29 9:00-11:00" }],
+          }),
+          assemblySource("America/Los_Angeles"),
+        ).items[0] as { scheduledAt: Date };
+        // 9 a.m. Pacific, the start of the range.
+        expect(meeting.scheduledAt.toISOString()).toBe(
+          "2026-10-29T16:00:00.000Z",
+        );
+      });
+
+      it("keeps the legacy value and id when no zone is known", () => {
+        const meeting = mapper.map(
+          createRawResult({
+            items: [
+              { title: "Health", scheduledAt: "2026-08-04T00:00:00.000Z" },
+            ],
+          }),
+          assemblySource(),
+        ).items[0] as { externalId: string };
+        expect(meeting.externalId).toBe(
+          "assembly-health-2026-08-04T00:00:00.000Z",
+        );
+      });
+
+      it("rejects a naive time it cannot read, visibly, rather than read it as UTC", () => {
+        const result = mapper.map(
+          createRawResult({
+            items: [{ title: "Health", scheduledAt: "2026-10-29 5" }],
+          }),
+          assemblySource("America/Los_Angeles"),
+        );
+
+        expect(result.items).toHaveLength(0);
+        expect(
+          (result.selectorFailures ?? []).find(
+            (f) => f.kind === "schema_reject",
+          ),
+        ).toBeDefined();
+      });
+
+      it("leaves a value that already carries a zone, and ids it by the printed day", () => {
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              { title: "Health", scheduledAt: "2026-08-04T00:00:00.000Z" },
+            ],
+          }),
+          assemblySource("America/Los_Angeles"),
+        );
+
+        const meeting = result.items[0] as {
+          scheduledAt: Date;
+          externalId: string;
+        };
+        expect(meeting.scheduledAt.toISOString()).toBe(
+          "2026-08-04T00:00:00.000Z",
+        );
+        // The printed day, as for a composite: the same hearing under either
+        // form gets one id. (The 13 pre-existing Assembly rows embed the full
+        // timestamp; they are past hearings and are never re-scraped.)
+        expect(meeting.externalId).toBe("assembly-health-2026-08-04");
+      });
+    });
+
     it("should reject meetings missing scheduledAt", () => {
       const result = mapper.map(
         createRawResult({

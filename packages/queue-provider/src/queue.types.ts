@@ -135,6 +135,8 @@ export interface StructuralAnalysisJobData {
   structuralAnalysisJobId: string;
   regionId: string;
   sourceUrl: string;
+  /** Fetch from here rather than `sourceUrl` (a resolved `dateQueryParams` window). */
+  fetchUrl?: string;
   dataType: string;
   contentGoal?: string;
   category?: string;
