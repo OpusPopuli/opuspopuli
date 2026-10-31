@@ -203,8 +203,8 @@ describe('PII Masker', () => {
       const testCases = [
         'user@example.com',
         'john.doe@company.org',
-        'test+tag@gmail.com',
-        'name_123@sub.domain.co',
+        'test+tag@mail.example.com',
+        'name_123@company.co',
       ];
       testCases.forEach((email) => {
         PII_PATTERNS.email.lastIndex = 0; // Reset regex state

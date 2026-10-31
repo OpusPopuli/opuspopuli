@@ -46,7 +46,7 @@ export const config = {
 export const users = [
   {
     id: '1',
-    email: 'user.one@gmail.com',
+    email: 'user.one@example.com',
     firstName: 'user',
     lastName: 'one',
     created: new Date(),
@@ -54,7 +54,7 @@ export const users = [
   },
   {
     id: '2',
-    email: 'user.two@gmail.com',
+    email: 'user.two@example.com',
     firstName: 'user',
     lastName: 'two',
     created: new Date(),
