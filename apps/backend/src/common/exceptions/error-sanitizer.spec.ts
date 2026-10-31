@@ -106,7 +106,7 @@ describe('ErrorSanitizer', () => {
         containsSensitiveInfo('postgresql://user:password@localhost:5432/db'),
       ).toBe(true);
       expect(
-        containsSensitiveInfo('mongodb+srv://admin:secret@cluster.mongodb.net'),
+        containsSensitiveInfo('mongodb+srv://admin:secret@cluster.example.net'),
       ).toBe(true);
     });
 

@@ -72,10 +72,10 @@ describe('SecureLogger', () => {
 
   describe('debug method', () => {
     it('should sanitize debug messages', () => {
-      logger.debug('Debug: user test@debug.com');
+      logger.debug('Debug: user test@example.com');
 
       expect(redactPiiFromStringSpy).toHaveBeenCalledWith(
-        'Debug: user test@debug.com',
+        'Debug: user test@example.com',
       );
     });
   });

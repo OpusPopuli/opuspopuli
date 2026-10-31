@@ -22,10 +22,10 @@ const expectOk = (a: unknown, _msg?: string): void => {
 describe("redactContactDetails", () => {
   test("removes an email address", () => {
     const r = redactContactDetails(
-      "Contact ForCalifornians@gmail.com for more.",
+      "Contact campaign@example.org for more.",
     );
     expectMatch(r.text, /\[REDACTED-EMAIL\]/);
-    expectOk(!r.text.includes("@gmail.com"));
+    expectOk(!r.text.includes("@example.org"));
     expectEqual(r.hits[0].kind, "email");
   });
 
@@ -70,13 +70,13 @@ describe("redactContactDetails", () => {
   test("does not pad the placeholder to the original length", () => {
     // Preserving length would imply the original is recoverable from the
     // fixture. It should not be.
-    const r = redactContactDetails("a-very-long-address@example-domain.org");
+    const r = redactContactDetails("a-very-long-address@example.org");
     expectEqual(r.text, "[REDACTED-EMAIL]");
   });
 
   test("reports every hit it made", () => {
     const r = redactContactDetails(
-      "645 Taraval Street, call 628-243-1808 or ForCalifornians@gmail.com",
+      "645 Taraval Street, call 628-243-1808 or campaign@example.org",
     );
     expectDeepEqual(r.hits.map((h) => h.kind).sort(), [
       "email",
