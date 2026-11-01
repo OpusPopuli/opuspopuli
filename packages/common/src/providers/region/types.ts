@@ -237,6 +237,8 @@ export interface Meeting extends RowProvenance {
   agendaUrl?: string;
   videoUrl?: string;
   minutes?: string;
+  /** The source's key URL — the list page the row came from. */
+  sourceUrl?: string;
 }
 
 /**

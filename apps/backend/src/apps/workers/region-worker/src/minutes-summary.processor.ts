@@ -15,6 +15,7 @@ import {
   resolveQueuePrefix,
 } from '@opuspopuli/queue-provider';
 import type { MinutesSummaryJobData } from '@opuspopuli/queue-provider';
+import type { GeneratedOutputOutcome } from 'src/apps/region/src/domains/generated-output-key';
 import { MinutesSummaryService } from 'src/apps/region/src/domains/minutes-summary.service';
 
 /**
@@ -56,15 +57,15 @@ export class MinutesSummaryProcessor
     }
   }
 
-  private async process(job: Job<MinutesSummaryJobData>): Promise<boolean> {
+  private async process(
+    job: Job<MinutesSummaryJobData>,
+  ): Promise<GeneratedOutputOutcome> {
     const { minutesId, externalId, force } = job.data;
-    const wrote = await this.minutesSummary.summarize(
+    const outcome = await this.minutesSummary.summarize(
       minutesId,
       force ?? false,
     );
-    this.logger.debug(
-      `minutes-summary ${externalId ?? minutesId}: ${wrote ? 'written' : 'skipped'}`,
-    );
-    return wrote;
+    this.logger.debug(`minutes-summary ${externalId ?? minutesId}: ${outcome}`);
+    return outcome;
   }
 }

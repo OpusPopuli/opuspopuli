@@ -133,6 +133,44 @@ sorting `EventDate desc` and paginating.
   (`meetings-sync.service.ts:359`), so a prompt change never regenerates them.
   That is the same gap reps bios had.
 
+### Finding M5 — minutes summaries have had no prompt since 2026-09-13 (found in step 3)
+
+`#1246` (`f7502a98`) removed every inline prompt from this repo.
+`document-analysis-minutes-summary` was among them, and it was never seeded in
+prompt-service: it is in neither repo's history after that commit. The
+prompt-client falls back to `document-analysis-generic` when a
+`document-analysis-*` name is missing, so every minutes summary since then was
+written from the generic prompt. That prompt asks for `keyPoints` and
+`entities`, not `claims`, so those summaries have no claims. Nothing logged an
+error.
+
+On UAT, before step 3:
+
+| Summaries | Prompt hash | Claims |
+|---|---|---|
+| 38 | none (pre-attribution) | yes, from the original template |
+| 10 | none (pre-attribution) | no |
+| 8 | `0b981bb5…` (= `document-analysis-generic` v1) | no |
+| 2 | `d793db60…` | yes |
+
+This is why step 3 cannot ship its skip key alone. The key reads all 58 as
+stale. Regenerated under the fallback, the 38 claim-bearing summaries would
+lose their claims. Production has run v1.28.0 since 2026-09-16, which includes
+`f7502a98`, so its minutes summaries are presumably the same. That is unverified
+here: there are no Studio reads in this phase.
+
+**Owner, 2026-10-31:**
+- Restore the template in prompt-service, with its literal examples neutralised,
+  because nemotron copies a prompt example into its answer.
+- Guard the summarizer, so it refuses a prompt that is not its own template.
+
+Searched `minutes summary` and `document-analysis-generic fallback` in both
+repos: not filed. #1246 is the closed migration that dropped it. This plan is
+the record.
+
+Only `minutes-summary` is affected. Every other `documentType` requested in
+this repo has its template, and `unknown` falls back to generic by design.
+
 ### What already works
 
 - **Minutes** (`pdf_archive`: Assembly daily journals and weekly histories)
@@ -261,6 +299,12 @@ window, and a second sync updates rather than duplicates them.
 - **Minutes summaries:** the skip key in step 3 replaces "has a summary".
 - **Meetings `html_scrape`:** already skips on the manifest structure hash.
   Measure the LLM calls per sync before and after to confirm.
+- **Minutes summaries that fail on every attempt** (added after step 3): 5 of
+  64 on UAT. Three hit the 4000-token cap again on retry, and two produce JSON
+  the shared repair cannot fix. They are always the same documents, they store
+  no key, and each sync retries them at about a minute each. Diagnosing them
+  needs the raw responses. Those are not logged, because minutes name members
+  of the public.
 
 ### 5. Lanes — S6 (CPU lane)
 
@@ -450,3 +494,209 @@ and `>=18.3.1 <19.0.0`. The lockfile diff is 53 lines, including pnpm dropping
 a duplicate `serwist` entry keyed to `browserslist@4.29.0` in favour of the
 `4.28.8` one already present. The audit now shows no HIGH, and the one
 CRITICAL is the suppressed maplibre-gl advisory.
+
+## As built: step 3 (2026-10-31, UAT)
+
+### What landed
+
+- **Meetings carry attribution.** Each meeting stores its source's key URL, the
+  pipeline run and the manifest version. The Senate rows record the calendar
+  URL without its daily window. All 12 current hearings are stamped. The other
+  520 rows predate attribution and stay null until they are next scraped.
+- **Minutes summaries have a skip key.** It covers prompt, model weights, input
+  text and settings: the representatives rule, via `outputCurrency`. It
+  replaced "has a summary".
+- **The template guard.** The summarizer refuses any prompt that is not
+  `document-analysis-minutes-summary`, so finding M5 cannot recur silently.
+- **The template.** prompt-service#125 restored it, merged on 2026-10-31.
+- **The output cap is 4000 tokens, up from 2000** (owner, 2026-10-31). At 2000,
+  7 of 37 summaries were cut off mid-JSON. It is exposed as
+  `MINUTES_SUMMARY_MAX_TOKENS`, documented in `.env.example`, and set on
+  region and region-worker in the UAT compose file.
+- **Node repos.** opuspopuli-node-us-ca#45 and opuspopuli-node#65 (both
+  merged) expose the cap the same way. They also give the four background LLM
+  services the 600s request timeout that UAT already had. Production ran them
+  on the provider's 60s default, and one summary took 66s at the old cap.
+  `documents` and `knowledge` keep 60s. create-op-node needed no change: it
+  creates nodes from the template and manages only model keys.
+
+### Not as planned
+
+- **No `source_version_id` on meetings.** Meetings come from list pages, and
+  list pages are not archived, so the column would always be null. Adding it
+  is additive once they are.
+- **Selection covers every active minutes row, not only the rows a sync
+  wrote.** The archive ingest skips PDFs it has already seen, so a summary
+  that goes stale under a new prompt would otherwise wait for its PDF to
+  change. The representatives generators also select over every candidate,
+  but they cap the selection and this does not. The key covers the text, so
+  every row's `rawText` is read, in pages of 50 so memory does not grow with
+  the corpus. The phase also runs when discovery finds no new PDFs. Before,
+  it returned early. A failed selection warns and does not fail the sync, as
+  the representatives `selectSafely` does. Unlike that rule, it falls back to
+  queueing the rows this sync wrote, because each job re-checks currency.
+- **Summary jobs are not retained.** BullMQ keeps finished jobs for a week. A
+  summary that reported `failed` kept its skip-key id, so the next sync's
+  retry was dropped as a duplicate. This was measured on UAT: the 12 failed
+  rows were not requeued. With `removeOnFinish`, the id collapses only work
+  still in flight, which is what the GPU-lane batches already do. The bare
+  row id the key replaced had the same flaw. Failed jobs go too, so there is
+  no 30-day failed-job history for this queue. The outcome is in the worker
+  log and on the row (no key).
+- **The guard refuses the fallback, not "a different hash".** An A/B variant
+  is served under its own hash, while `getPromptHash` reports the canonical
+  template's. Exact equality would have refused every variant-bucketed
+  summary. The guard refuses when the template is not found, when the served
+  hash is the generic template's, or when the generic hash cannot be looked
+  up: then a variant and the fallback look alike, so it fails closed.
+- **Failure logs carry no model or document text.** V8's "Unexpected token"
+  parse message quotes about 20 characters of its input, which here is the
+  minutes quoted verbatim. A Prisma validation error prints the write's
+  arguments, including the summary. The parse logs now give the position
+  where V8 reports one, and "an unknown position" where it does not. The
+  write-failure log gives the error's name and code. Found in review. The
+  parse `debug` line on main logged the message too.
+- **The prompt-client cached a fallback under the name asked for.** In DB
+  mode, the first fallback to `document-analysis-generic` was cached as
+  `document-analysis-minutes-summary`. Every later `getPromptHash` for the
+  minutes template then returned the generic hash, which defeats the guard.
+  The template is now cached under the name of the row found. Found in
+  re-review.
+- **Ceiling and repair logging.** The summarizer now warns when output hits
+  the cap. It also parses through the shared JSON repair that civics uses.
+  The repair has not yet fired on minutes. The two parse failures that
+  recurred were neither of the classes it repairs.
+- **`summarizeMissing` is removed.** It had no callers, and it still encoded
+  the old rule. So are `MINUTES_SUMMARY_CONCURRENCY` and
+  `MINUTES_SUMMARY_MAX_ROWS`, which only it read and nothing sets.
+
+### Recorded, not changed
+
+- **A/B variants read as stale on every sync, for every generator.**
+  `outputCurrency` compares the stored prompt hash, which is the variant's,
+  against `getPromptHash`, which is canonical. Any output served under an
+  experiment is regenerated on every sync. That covers bios, committee and
+  activity summaries, and now minutes. It predates this step, and no
+  experiment runs on these templates today. The fix belongs to the shared key
+  (compare against the variant the row was assigned), not to one generator.
+
+### Migration
+
+`20261031120000_meetings_phase_b_attribution`, additive and nullable:
+
+- `meetings` gains `source_url`, `pipeline_execution_id` (indexed, FK
+  SET NULL), `manifest_id` (FK SET NULL) and `manifest_version`.
+- `minutes` gains `summary_source_hash` and `summary_config_hash`.
+
+Applied locally with `prisma migrate deploy`. `migrate diff` shows no drift on
+either table. Neither table has RLS, and no column holds personal data.
+
+### UAT measurements
+
+| Run | Queued | Written | Failed | Notes |
+|---|---|---|---|---|
+| Restored prompt, cap 2000, rows from one ingest | 12 | 8 | 4 | All 4 cut off. Found the selection gap |
+| Restored prompt, cap 2000, every active row | 37 | 30 | 7 | All 7 at the ceiling |
+| Cap 4000, every active row | 63 | 52 | 12 | 6 cut off at 4000, 6 invalid JSON |
+| Next sync | 0 | — | — | 52 current rows skipped, 12 failed rows dropped (retention) |
+| After `removeOnFinish` | 12 | 7 | 5 | Exactly the failed rows. Repair fired 0 times |
+| Review fixes | 5 | 2 | 3 | Only the failing rows |
+| Re-review fixes (final code) | 3 | 0 | 3 | Only the failing rows, all at the 4000 ceiling |
+
+End state:
+- 61 of 63 summaries are on the restored template (`0f11dfcf`), every one
+  keyed, and 60 carry claims.
+- One summary is still from before attribution, and one is from the generic
+  prompt. Both are among the documents that keep failing. Three documents
+  still hit the 4000 ceiling on every attempt.
+- No claim copies a removed example value. The one regex hit was `SB-569`, a
+  real bill.
+- No guard refusals and no timeouts.
+
+Meetings themselves were unchanged across every sync: 12 hearings (5
+Assembly, 7 Senate), 0 created and 12 updated each time.
+
+### Checks
+
+- **Tests:** backend 3650, scraping-pipeline 683, including the new tests.
+- **Mutation-checked:** each guard and fix was removed in turn, and a test
+  failed every time:
+  - the template guard;
+  - the "has a summary" skip;
+  - the bare job id;
+  - `sourceUrl` stamping;
+  - the attribution spread;
+  - the empty-ingest summarize phase;
+  - upserted-only selection;
+  - the ceiling warning;
+  - the JSON repair.
+- **Static checks:** type-check is clean. The complexity gate is clean on
+  every changed file, with a control check against
+  `deriveSummariesFromDigest` at 18.
+
+### Review of step 3 (2026-10-31) and what it changed
+
+`/op-review` ran three independent lenses on the final diff (`mpb3-v1`):
+correctness and consistency; security and regulated data; tests, typing and
+performance. This is a self-review: Rodney Gagnon is the only human author,
+so it needs a countersign. There were no blockers. Every suggestion was fixed:
+
+- **Security:**
+  - The repair `warn` logged the `JSON.parse` message, which can echo a
+    public commenter's words.
+  - Both parse logs now give the position only. A test fails if the quoted
+    text reaches the log.
+- **Correctness:**
+  - A selection failure failed the whole sync. It is now wrapped, as
+    `selectSafely` is, and falls back to this sync's rows.
+  - The guard's exact-hash check would have refused every A/B variant. It now
+    detects the fallback itself.
+- **Performance:** selection read every `rawText` at once. It now reads pages
+  of 50.
+- **Tests:**
+  - The processor spec still asserted the old boolean contract.
+  - Added:
+    - legacy stamping through `selectStale`;
+    - the key moving with the template;
+    - paging;
+    - `undefined` when the summarizer is unconfigured, with the sync falling
+      back to the upserted rows;
+    - `removeOnFinish` on the force path.
+- **Nitpicks taken:**
+  - one temperature constant for the key and the call;
+  - an explicit return type on `meetingAttribution`;
+  - a comment on force jobs running beside keyed jobs.
+- **Nitpicks left:**
+  - `rollback.sql` versus `down.sql`: both conventions are in use.
+  - `formatMinutes` runs twice per job: it is deterministic.
+
+Each new behaviour was mutation-checked, and a test failed every time:
+- the fallback-only guard;
+- the selection wrap;
+- the paging cursor;
+- the unconfigured `undefined`;
+- the no-leak log.
+
+**Re-review (on `mpb3-v1-v2`, the fixes above).** No blockers. Each
+suggestion was fixed, and each fix was mutation-checked:
+
+- **Prompt-client DB cache.** A fallback was cached under the requested name,
+  so `getPromptHash` reported the generic hash as the minutes template's and
+  the guard passed it. It is now cached under the found row's name. A test
+  is added in `prompt-client.service.spec.ts`.
+- **Guard failed open** when the generic hash lookup failed. It now refuses.
+- **Write-failure log** printed Prisma's message, which can quote the
+  summary. It now logs the error's name and code.
+- **Selection failure** dropped every pending row. It now falls back to this
+  sync's rows.
+- **Paging** used Prisma's `cursor`, which ends early on a deleted cursor row.
+  It now uses `id > cursor`.
+
+- **`mirrorClaims`**, shared by every generator, logged Prisma messages at
+  `error`: the same leak. It now uses the same `errorKind` helper, moved to
+  `llm-generator.base.ts`.
+
+Nitpicks left, both predating this change:
+- the 60s cache of a failed hash lookup;
+- a window of up to 5 minutes after a generic-template edit.
+

@@ -206,6 +206,31 @@ describe("PromptClientService", () => {
 
       expect(result.promptText).toContain("Generic: some text");
     });
+
+    it("does not report a fallback's hash as the missing template's own", async () => {
+      // Cached under the name asked for, the generic fallback answered the
+      // next `getPromptHash("document-analysis-minutes-summary")` with the
+      // GENERIC hash — and a caller checking it was served its own template
+      // was told yes (opuspopuli meetings-phase-b.md, finding M5).
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-generic", "Generic: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      await service.getDocumentAnalysisPrompt({
+        documentType: "minutes-summary",
+        text: "some text",
+      });
+
+      // The template is still missing, so its hash lookup must say so.
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.getPromptHash("document-analysis-minutes-summary"),
+      ).rejects.toThrow('"document-analysis-minutes-summary" not found');
+    });
   });
 
   describe("getRAGPrompt", () => {

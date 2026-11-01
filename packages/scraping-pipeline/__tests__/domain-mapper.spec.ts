@@ -289,6 +289,30 @@ describe("DomainMapperService", () => {
       });
     });
 
+    it("records the source's key URL as the page the meeting came from (meetings-phase-b.md §3)", () => {
+      const result = mapper.map(
+        createRawResult({
+          items: [
+            {
+              externalId: "MTG-003",
+              title: "Budget Committee Hearing",
+              scheduledAt: "2026-03-15T10:00:00Z",
+              // A record cannot name its own provenance.
+              sourceUrl: "https://elsewhere.example/claimed",
+            },
+          ],
+        }),
+        createSource({
+          dataType: DataType.MEETINGS,
+          url: "https://example.com/hearings",
+        }),
+      );
+
+      expect(result.items[0]).toMatchObject({
+        sourceUrl: "https://example.com/hearings",
+      });
+    });
+
     it("should inject category as body when not in record", () => {
       const result = mapper.map(
         createRawResult({

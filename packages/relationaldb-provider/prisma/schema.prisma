@@ -1397,6 +1397,10 @@ model Minutes {
   summaryPromptVersion String?   @map("summary_prompt_version") @db.VarChar(20)
   summaryLlmModel      String?   @map("summary_llm_model") @db.VarChar(80)
   summaryLlmDigest     String?   @map("summary_llm_digest") @db.VarChar(80)
+  /// The skip key's input and config axes (meetings-phase-b.md §3, the
+  /// representatives pattern): what the prompt was given, and the settings.
+  summarySourceHash    String?   @map("summary_source_hash") @db.VarChar(64)
+  summaryConfigHash    String?   @map("summary_config_hash") @db.VarChar(64)
   parsedAt             DateTime? @map("parsed_at") @db.Timestamptz
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -1600,8 +1604,23 @@ model Meeting {
 
   minutesDocuments Minutes[]
 
+  /// The source's key URL — the list page, not the dated fetch URL
+  /// (meetings-phase-b.md §3). Null on rows written before attribution.
+  sourceUrl           String? @map("source_url")
+  /// Which pipeline run produced this row (#1280, as on `Minutes`). Null where
+  /// the run predates provenance recording — a null is honest, a back-dated
+  /// guess would look like evidence.
+  pipelineExecutionId String? @map("pipeline_execution_id")
+  /// The StructuralManifest the extraction ran under.
+  manifestId          String? @map("manifest_id")
+  manifestVersion     Int?    @map("manifest_version")
+
+  pipelineExecution PipelineExecution?  @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+  producingManifest StructuralManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+
   @@index([body])
   @@index([scheduledAt])
+  @@index([pipelineExecutionId])
   @@map("meetings")
 }
 
@@ -2817,6 +2836,7 @@ model StructuralManifest {
   sourceVersions SourceVersion[]
   propositions   Proposition[]
   minutes        Minutes[]
+  meetings       Meeting[]
   bills          Bill[]
   contributions  Contribution[]
 
@@ -2857,6 +2877,7 @@ model PipelineExecution {
   bulkSnapshots     BulkSnapshot[]
   propositions      Proposition[]
   minutes           Minutes[]
+  meetings          Meeting[]
   bills             Bill[]
   contributions     Contribution[]
   Claim             Claim[]

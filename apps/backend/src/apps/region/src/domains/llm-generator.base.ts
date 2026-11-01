@@ -81,6 +81,16 @@ export interface AiOutputProvenance {
   readonly llmModelDigest: string;
 }
 
+/**
+ * A thrown error's name and, for Prisma, its code — never its message. A
+ * generator's writes carry model output that quotes its source verbatim, and
+ * Prisma's validation errors print the write's arguments.
+ */
+export function errorKind(error: unknown): string {
+  const { name, code } = (error ?? {}) as { name?: string; code?: string };
+  return [name ?? 'Error', code].filter(Boolean).join(' ');
+}
+
 /** Recorded when a provider cannot resolve its digest — never left blank. */
 export const UNKNOWN_MODEL_DIGEST = 'unknown';
 
@@ -136,7 +146,7 @@ export abstract class LlmGeneratorBase {
     };
   }
 
-  private livePromptHash(templateName: string): Promise<string | undefined> {
+  protected livePromptHash(templateName: string): Promise<string | undefined> {
     const cached = this.promptHashes.get(templateName);
     if (cached && Date.now() - cached.at < 60_000) return cached.hash;
     const hash = (async () => {
@@ -243,9 +253,12 @@ export abstract class LlmGeneratorBase {
     try {
       return await recordClaims(this.db, input);
     } catch (error) {
+      // The error's kind, not its message: a Prisma validation error prints
+      // the write's arguments, and claims quote their source verbatim —
+      // minutes name members of the public (meetings-phase-b.md §3).
       onError(
         `Claim dual-write failed for ${input.subjectType} ${input.subjectId}: ` +
-          `${(error as Error).message}`,
+          errorKind(error),
       );
       return null;
     }

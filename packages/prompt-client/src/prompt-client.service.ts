@@ -1309,7 +1309,12 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.metrics.recordDbFallback();
-    await this.templateCache.set(name, template);
+    // Under the name of the row found, not the name asked for. Cached under
+    // `name`, a fallback answered every later lookup of `name` — including
+    // `getPromptHash(name)`, which then reported the FALLBACK's hash as the
+    // template's own, and a caller checking it was served its template was
+    // told yes (opuspopuli meetings-phase-b.md, finding M5).
+    await this.templateCache.set(template.name, template);
     return template;
   }
 
