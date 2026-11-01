@@ -1,0 +1,4 @@
+# Accepted data-scan findings. Every entry needs a reason; see scripts/data-scan.ts.
+- path: apps/frontend/__tests__/pages/transparency/system-card.test.tsx
+  rule: email
+  reason: transparency@opuspopuli.org is the published abuse-reporting address the page must render, not personal data
