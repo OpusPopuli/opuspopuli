@@ -52,6 +52,9 @@ describe('MinutesSummaryService (integration)', () => {
       promptHash: 'h',
       promptVersion: 'v1',
     }),
+    // The live skip key's prompt axis — the served template's own hash, so
+    // the fallback guard (meetings-phase-b.md §3) lets the write through.
+    getPromptHash: jest.fn().mockResolvedValue('h'),
   } as unknown as PromptClientService;
   const llm = {
     getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
@@ -91,15 +94,22 @@ describe('MinutesSummaryService (integration)', () => {
   it('persists summary + summaryClaims JSONB and reads back through the mapper', async () => {
     const minutesId = await insertMinutes();
 
-    const wrote = await service.summarize(minutesId);
-    expect(wrote).toBe(true);
+    await expect(service.summarize(minutesId)).resolves.toBe('created');
 
     // Real JSONB round-trip on the row.
     const row = await db.minutes.findUnique({
       where: { id: minutesId },
-      select: { summary: true, summaryClaims: true },
+      select: {
+        summary: true,
+        summaryClaims: true,
+        summarySourceHash: true,
+        summaryConfigHash: true,
+      },
     });
     expect(row?.summary).toContain('AB 1234');
+    // The skip key's input and config axes persist with the write.
+    expect(row?.summarySourceHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row?.summaryConfigHash).toMatch(/^[0-9a-f]{64}$/);
     const claims = row?.summaryClaims as Array<{ kind: string }>;
     expect(claims).toHaveLength(2); // malformed third claim dropped
     expect(claims[0].kind).toBe('decision');
@@ -127,10 +137,10 @@ describe('MinutesSummaryService (integration)', () => {
     });
     (service as unknown as { llm: ILLMProvider }).llm = llm;
 
-    // No force → skipped.
-    await expect(service.summarize(minutesId)).resolves.toBe(false);
+    // Current on every axis, no force → left alone.
+    await expect(service.summarize(minutesId)).resolves.toBe('unchanged');
     // Force → regenerated.
-    await expect(service.summarize(minutesId, true)).resolves.toBe(true);
+    await expect(service.summarize(minutesId, true)).resolves.toBe('updated');
     const row = await db.minutes.findUnique({
       where: { id: minutesId },
       select: { summary: true },
