@@ -15,8 +15,35 @@ import {
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { meetingSyncTracker, minutesSyncTracker } from './sync-phase-logger';
 import type { UpsertByExternalId } from './propositions-sync.service';
-import { rowProvenance } from './row-provenance';
+import { rowProvenance, type RowProvenanceColumns } from './row-provenance';
 import { SourceVersionService } from './source-version.service';
+import { MinutesSummaryService } from './minutes-summary.service';
+import { outputJobId, type OutputTarget } from './output-lane';
+
+/**
+ * A meeting's attribution columns (meetings-phase-b.md §3): the run and
+ * manifest that produced it (#1280) and the page it came from. Explicit nulls,
+ * as in {@link rowProvenance}, so a row rewritten by an untracked run does not
+ * keep pointing at the last tracked one.
+ *
+ * No `sourceVersionId`: meetings come from list pages, which are not archived,
+ * and the table has no column for one.
+ */
+export function meetingAttribution(meeting: Meeting): Omit<
+  RowProvenanceColumns,
+  'sourceVersionId'
+> & {
+  sourceUrl: string | null;
+} {
+  const { pipelineExecutionId, manifestId, manifestVersion } =
+    rowProvenance(meeting);
+  return {
+    pipelineExecutionId,
+    manifestId,
+    manifestVersion,
+    sourceUrl: meeting.sourceUrl ?? null,
+  };
+}
 
 /**
  * Minimal contract for the provider this service pulls meetings + minutes
@@ -106,6 +133,13 @@ export class MeetingsSyncService {
     @Optional()
     @Inject(METRICS_OBSERVER)
     private readonly metrics?: MetricsObserver,
+    /**
+     * Picks which summaries are stale, and their skip keys (meetings-phase-b.md
+     * §3). Unbound, every upserted row is queued under a one-off id and the
+     * job decides.
+     */
+    @Optional()
+    private readonly minutesSummary?: MinutesSummaryService,
   ) {}
 
   async sync(
@@ -177,25 +211,19 @@ export class MeetingsSyncService {
             outcomeLabel: isNew ? 'created' : 'updated',
             outcome: isNew ? 'created' : 'updated',
           });
+          const fields = {
+            title: meeting.title,
+            body: meeting.body,
+            scheduledAt: meeting.scheduledAt,
+            location: meeting.location,
+            agendaUrl: meeting.agendaUrl,
+            videoUrl: meeting.videoUrl,
+            ...meetingAttribution(meeting),
+          };
           return this.db.meeting.upsert({
             where: { externalId: meeting.externalId },
-            update: {
-              title: meeting.title,
-              body: meeting.body,
-              scheduledAt: meeting.scheduledAt,
-              location: meeting.location,
-              agendaUrl: meeting.agendaUrl,
-              videoUrl: meeting.videoUrl,
-            },
-            create: {
-              externalId: meeting.externalId,
-              title: meeting.title,
-              body: meeting.body,
-              scheduledAt: meeting.scheduledAt,
-              location: meeting.location,
-              agendaUrl: meeting.agendaUrl,
-              videoUrl: meeting.videoUrl,
-            },
+            update: fields,
+            create: { externalId: meeting.externalId, ...fields },
           });
         }),
       'meetings:',
@@ -264,8 +292,9 @@ export class MeetingsSyncService {
     if (bundles.length === 0) {
       const ingestEmpty = this.minutesTracker('ingest', 0);
       ingestEmpty.complete();
-      const summarizeEmpty = this.minutesTracker('summarize', 0);
-      summarizeEmpty.complete();
+      // Still summarize: no new PDFs is the usual sync, and a summary goes
+      // stale by a prompt or model change, not only by new text.
+      await this.summarizePhase([]);
       return { processed: 0, created: 0, updated: 0 };
     }
 
@@ -353,15 +382,7 @@ export class MeetingsSyncService {
       await this.legislativeActionLinker.linkMinutes(upsertedIds);
     }
 
-    // ─── Phase 3/3 — summarize ─────────────────────────────────────
-    // Enqueue an async AI-synopsis job per upserted minutes row (#813).
-    // Kept out of the ingest path (no inline LLM call) so the sync stays
-    // fast; MinutesSummaryService skips rows that already have a summary
-    // unless a job carries `force`. Deduped by minutesId so repeated syncs
-    // don't pile up jobs for the same row.
-    const enqueued = await this.enqueueSummaries(upsertedIds);
-    const summarizeTracker = this.minutesTracker('summarize', enqueued);
-    summarizeTracker.complete();
+    await this.summarizePhase(upsertedIds);
 
     const created = bundles.filter(
       (b) => !existingExternalIds.has(b.minutes.externalId),
@@ -392,19 +413,11 @@ export class MeetingsSyncService {
       take: limit && limit > 0 ? limit : undefined,
     });
     return this.enqueueSummaries(
-      rows.map((r) => r.id),
+      rows.map((r) => ({ id: r.id, key: null })),
       true,
     );
   }
 
-  /**
-   * Enqueue a minutes-summary job per minutes id (#813). Normal ingest jobs are
-   * deduped by the row's own id so repeated syncs don't pile up jobs for the
-   * same row. A `force` run (operator backfill) omits the id so BullMQ always
-   * enqueues a fresh job even if a prior one is still retained. Returns the
-   * number enqueued; a no-op returning 0 when no QueueService is wired (e.g.
-   * unit tests / a region service without the worker stack).
-   */
   /**
    * Store a minutes document's `rawText` against the archived PDF it was
    * parsed from (#1306).
@@ -430,29 +443,85 @@ export class MeetingsSyncService {
     }
   }
 
+  /**
+   * Enqueue a minutes-summary job per target (#813), under its skip-key job id
+   * (a one-off id when the key is unknown). Returns the number enqueued; 0
+   * when no QueueService is wired (unit tests, a region service without the
+   * worker stack).
+   */
   private async enqueueSummaries(
-    minutesIds: string[],
+    targets: readonly OutputTarget[],
     force = false,
   ): Promise<number> {
-    if (!this.queueService || minutesIds.length === 0) return 0;
+    if (!this.queueService || targets.length === 0) return 0;
     let enqueued = 0;
-    for (const minutesId of minutesIds) {
+    for (const target of targets) {
       try {
-        // BullMQ custom job ids must NOT contain ':' (it's the internal key
-        // separator) — the row's UUID is used bare as the dedup id. force
-        // omits the id so a re-run isn't deduped against a retained job.
+        // force always gets a one-off id, so an operator re-run is never
+        // deduped against a retained job. It can therefore run beside a keyed
+        // job for the same row: two calls, the last write wins. An operator
+        // action, so accepted rather than coordinated.
         await this.queueService.enqueue<MinutesSummaryJobData>(
           MINUTES_SUMMARY_QUEUE,
-          { minutesId, force },
-          force ? undefined : { jobId: minutesId },
+          { minutesId: target.id, force },
+          {
+            jobId: outputJobId(
+              force ? { id: target.id, key: null } : target,
+              'minutes-summary',
+            ),
+            // The key collapses only work still in flight. Retained, a job
+            // that reported `failed` kept its id for a week and BullMQ
+            // dropped every retry as a duplicate (UAT, 2026-10-31). Currency
+            // is the row's to say, not the queue's history.
+            removeOnFinish: true,
+          },
         );
         enqueued++;
       } catch (err) {
         this.logger.warn(
-          `Failed to enqueue minutes-summary for ${minutesId}: ${(err as Error).message}`,
+          `Failed to enqueue minutes-summary for ${target.id}: ${(err as Error).message}`,
         );
       }
     }
     return enqueued;
+  }
+
+  /**
+   * Phase 3/3 — summarize. Enqueue an async AI-synopsis job per stale minutes
+   * row (#813), kept out of the ingest path so the sync stays fast. The job id
+   * is the skip key (meetings-phase-b.md §3): a repeat sync collapses onto the
+   * same job, and a new prompt or model mints a new one. The bare row id it
+   * replaced collided with the completed job BullMQ retains for a week, so a
+   * prompt change inside that week regenerated nothing.
+   */
+  private async summarizePhase(upsertedIds: readonly string[]): Promise<void> {
+    const enqueued = await this.enqueueSummaries(
+      await this.staleSummaries(upsertedIds),
+    );
+    this.minutesTracker('summarize', enqueued).complete();
+  }
+
+  /**
+   * Every active row whose summary is stale. With no summarizer bound, or one
+   * missing its LLM or prompt client, the rows this sync wrote, under one-off
+   * ids, and the job decides.
+   */
+  private async staleSummaries(
+    upsertedIds: readonly string[],
+  ): Promise<OutputTarget[]> {
+    let stale: Awaited<ReturnType<MinutesSummaryService['selectStale']>>;
+    try {
+      stale = await this.minutesSummary?.selectStale();
+    } catch (error) {
+      // The meetings and minutes rows are written; a failed read of summary
+      // currency must not fail the sync. Fall back to the rows this sync
+      // wrote, under one-off ids — each job re-checks currency, so this costs
+      // at most a check per row, and new minutes are not left until tomorrow.
+      this.logger.warn(
+        `minutes-summary selection failed (queueing this sync's rows): ${(error as Error).message}`,
+      );
+      return upsertedIds.map((id) => ({ id, key: null }));
+    }
+    return stale ? stale.pending : upsertedIds.map((id) => ({ id, key: null }));
   }
 }

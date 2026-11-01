@@ -238,7 +238,7 @@ export class DomainMapperService {
       case DataType.PROPOSITIONS:
         return this.mapProposition(record, diag);
       case DataType.MEETINGS:
-        return this.mapMeeting(record, diag, source.category, source.timezone);
+        return this.mapMeeting(record, diag, source);
       case DataType.REPRESENTATIVES:
         return this.mapRepresentative(record, diag, source.category);
       case DataType.CAMPAIGN_FINANCE:
@@ -346,9 +346,9 @@ export class DomainMapperService {
   private mapMeeting(
     record: Record<string, unknown>,
     diag: MappingDiagnostics,
-    category?: string,
-    timezone?: string,
+    source: Pick<DataSourceConfig, "url" | "category" | "timezone">,
   ): Meeting | null {
+    const { category, timezone } = source;
     const title = typeof record.title === "string" ? record.title : undefined;
     const body =
       typeof record.body === "string" ? record.body : (category ?? "Unknown");
@@ -392,6 +392,10 @@ export class DomainMapperService {
         body,
         externalId,
         ...(scheduledAt !== undefined && { scheduledAt }),
+        // The page the row came from (meetings-phase-b.md §3): the source's
+        // key URL, never a value the record carries, and not the dated fetch
+        // URL, which changes daily while the page does not.
+        sourceUrl: source.url,
       },
       "Meeting",
       diag,
@@ -1011,6 +1015,7 @@ const MeetingSchema = z.object({
   agendaUrl: z.preprocess(coerceFirstString, z.string().optional()),
   videoUrl: z.preprocess(coerceFirstString, z.string().optional()),
   minutes: z.preprocess(coerceFirstString, z.string().optional()),
+  sourceUrl: z.string().optional(),
 });
 
 const partyTransform = (val: string | undefined) => {
