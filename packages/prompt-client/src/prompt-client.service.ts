@@ -113,6 +113,15 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    * `/:name/hash` before refetching the full template. See #729.
    */
   private readonly remoteCache: ICache<RemoteCachedTemplate>;
+  /**
+   * DB-mode names found missing, with when that stops being trusted. A
+   * fallback is cached under its own name, so without this every lookup of a
+   * missing name (`document-analysis-unknown` → generic, by design) queried
+   * the DB for it again (opuspopuli meetings-phase-b.md §4e). Used only when
+   * a fallback is asked for: alone, a missing name still reports missing.
+   */
+  private readonly missingTemplates = new Map<string, number>();
+  private readonly dbCacheTtlMs: number;
   private readonly circuitBreaker?: CircuitBreakerManager;
   private readonly hmacConfig?: HmacSigningConfig;
   private readonly metrics = new MetricsCollector();
@@ -129,6 +138,7 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     private readonly config?: PromptClientConfig,
   ) {
     // Initialize template cache (DB-mode + hardcoded fallback path)
+    this.dbCacheTtlMs = config?.cacheTtlMs ?? 300000;
     this.templateCache =
       config?.cache ??
       new MemoryCache<PromptTemplate>({
@@ -602,6 +612,7 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
    */
   async clearCache(): Promise<void> {
     await this.templateCache.clear();
+    this.missingTemplates.clear();
     await this.remoteCache.clear();
     this.logger.log("Template cache cleared");
   }
@@ -1281,7 +1292,11 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     fallbackName?: string,
   ): Promise<PromptTemplate> {
     // Check DB-path cache
-    const cached = await this.templateCache.get(name);
+    const cached =
+      (await this.templateCache.get(name)) ??
+      (fallbackName && this.knownMissing(name)
+        ? await this.templateCache.get(fallbackName)
+        : undefined);
     if (cached) {
       this.metrics.recordCacheHit();
       return cached;
@@ -1291,6 +1306,8 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     let template = await this.db.promptTemplate.findFirst({
       where: { name, isActive: true },
     });
+    if (template) this.missingTemplates.delete(name);
+    else this.missingTemplates.set(name, Date.now() + this.dbCacheTtlMs);
 
     if (!template && fallbackName) {
       template = await this.db.promptTemplate.findFirst({
@@ -1316,6 +1333,15 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     // told yes (opuspopuli meetings-phase-b.md, finding M5).
     await this.templateCache.set(template.name, template);
     return template;
+  }
+
+  /** Whether `name` was found missing within the DB cache's TTL. */
+  private knownMissing(name: string): boolean {
+    const until = this.missingTemplates.get(name);
+    if (until === undefined) return false;
+    if (Date.now() < until) return true;
+    this.missingTemplates.delete(name);
+    return false;
   }
 
   // ---------------------------------------------------------------------------

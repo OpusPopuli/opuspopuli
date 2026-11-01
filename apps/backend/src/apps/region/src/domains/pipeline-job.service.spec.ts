@@ -98,4 +98,64 @@ describe('PipelineJobService', () => {
       expect(prisma.pipelineJob.updateMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('sweepOrphanedQueued (§4g)', () => {
+    it('fails old queued rows whose queue job is gone, and only those', async () => {
+      const prisma = buildMockPrisma();
+      prisma.pipelineJob.findMany.mockResolvedValue([
+        { id: 'orphan', bullmqJobId: 'gone', parentJobId: null },
+        { id: 'waiting', bullmqJobId: 'still-there', parentJobId: null },
+      ]);
+      const svc = new PipelineJobService(prisma as never);
+      const jobExists = jest.fn(async (id: string) => id === 'still-there');
+
+      const before = Date.now();
+      const count = await svc.sweepOrphanedQueued(86_400_000, jobExists);
+
+      expect(count).toBe(1);
+      const found = prisma.pipelineJob.findMany.mock.calls[0][0];
+      expect(found.where.status).toBe(JOB_STATUS.QUEUED);
+      const cutoff = (found.where.enqueuedAt.lt as Date).getTime();
+      expect(cutoff).toBeGreaterThanOrEqual(before - 86_400_000);
+      expect(cutoff).toBeLessThanOrEqual(Date.now() - 86_400_000);
+      const call = prisma.pipelineJob.updateMany.mock.calls[0][0];
+      expect(call.where).toEqual({
+        id: { in: ['orphan'] },
+        status: JOB_STATUS.QUEUED,
+      });
+      expect(call.data.status).toBe(JOB_STATUS.FAILED);
+      expect(call.data.errorMessage).toMatch(/no pending queue job/);
+    });
+
+    it('settles each orphan parent once', async () => {
+      const prisma = buildMockPrisma();
+      prisma.pipelineJob.findMany.mockResolvedValue([
+        { id: 'a', bullmqJobId: 'gone-a', parentJobId: 'req-1' },
+        { id: 'b', bullmqJobId: 'gone-b', parentJobId: 'req-1' },
+        { id: 'c', bullmqJobId: 'gone-c', parentJobId: null },
+      ]);
+      const svc = new PipelineJobService(prisma as never);
+      const settle = jest
+        .spyOn(svc, 'settleParent')
+        .mockResolvedValue(undefined as never);
+
+      await svc.sweepOrphanedQueued(86_400_000, async () => false);
+
+      expect(settle).toHaveBeenCalledTimes(1);
+      expect(settle).toHaveBeenCalledWith('req-1');
+    });
+
+    it('writes nothing when every old row still has its job', async () => {
+      const prisma = buildMockPrisma();
+      prisma.pipelineJob.findMany.mockResolvedValue([
+        { id: 'waiting', bullmqJobId: 'still-there', parentJobId: null },
+      ]);
+      const svc = new PipelineJobService(prisma as never);
+
+      await expect(
+        svc.sweepOrphanedQueued(86_400_000, async () => true),
+      ).resolves.toBe(0);
+      expect(prisma.pipelineJob.updateMany).not.toHaveBeenCalled();
+    });
+  });
 });

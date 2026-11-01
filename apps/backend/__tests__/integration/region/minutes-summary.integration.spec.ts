@@ -147,4 +147,48 @@ describe('MinutesSummaryService (integration)', () => {
     });
     expect(row?.summary).toBe('v2');
   });
+
+  it('counts refusals on the real columns, null key included (D5)', async () => {
+    // The conditional writes rely on Postgres semantics a mock cannot show:
+    // `summary_failed_key <> $1` is never true for NULL, so the claim also
+    // names NULL explicitly.
+    const minutesId = await insertMinutes();
+    const refusing = {
+      ...llm,
+      generate: jest.fn().mockResolvedValue({ text: 'not json at all' }),
+    } as unknown as ILLMProvider;
+    service = new MinutesSummaryService(config, promptClient, refusing, db);
+    const read = () =>
+      db.minutes.findUnique({
+        where: { id: minutesId },
+        select: { summaryFailedKey: true, summaryFailedAttempts: true },
+      });
+
+    await expect(service.summarize(minutesId)).resolves.toBe('failed');
+    const first = await read();
+    expect(first?.summaryFailedKey).toMatch(/^sk1-[0-9a-f]{64}$/);
+    expect(first?.summaryFailedAttempts).toBe(1);
+
+    await service.summarize(minutesId);
+    await service.summarize(minutesId);
+    expect((await read())?.summaryFailedAttempts).toBe(3);
+    // Used up: skipped without calling the model.
+    await expect(service.summarize(minutesId)).resolves.toBe('skipped');
+    expect(refusing.generate).toHaveBeenCalledTimes(3);
+
+    // A new prompt is a new key: claimed over the old one, counted from 1.
+    const newPrompt = {
+      getDocumentAnalysisPrompt: jest.fn().mockResolvedValue({
+        promptText: 'prompt',
+        promptHash: 'h2',
+        promptVersion: 'v2',
+      }),
+      getPromptHash: jest.fn().mockResolvedValue('h2'),
+    } as unknown as PromptClientService;
+    service = new MinutesSummaryService(config, newPrompt, refusing, db);
+    await expect(service.summarize(minutesId)).resolves.toBe('failed');
+    const moved = await read();
+    expect(moved?.summaryFailedKey).not.toBe(first?.summaryFailedKey);
+    expect(moved?.summaryFailedAttempts).toBe(1);
+  });
 });

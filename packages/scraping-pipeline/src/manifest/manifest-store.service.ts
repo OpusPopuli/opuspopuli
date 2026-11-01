@@ -47,6 +47,7 @@ export interface ManifestRecord {
   version: number;
   structureHash: string;
   promptHash: string;
+  configHash: string | null;
   extractionRules: unknown;
   confidence: number;
   successCount: number;
@@ -146,6 +147,7 @@ export class ManifestStoreService {
         version: manifest.version,
         structureHash: manifest.structureHash,
         promptHash: manifest.promptHash,
+        configHash: manifest.configHash ?? null,
         extractionRules: manifest.extractionRules as unknown,
         confidence: manifest.confidence,
         successCount: 0,
@@ -257,6 +259,20 @@ export class ManifestStoreService {
   }
 
   /**
+   * Record the config hash on a manifest saved before the config axis
+   * existed (meetings-phase-b.md §4b). Its rules came from whatever config
+   * was live then, which is unknowable; treating it as current is the same
+   * call the output skip keys make for legacy rows, and avoids re-deriving
+   * every manifest at once.
+   */
+  async stampConfigHash(manifestId: string, configHash: string): Promise<void> {
+    await this.repository.update({
+      where: { id: manifestId },
+      data: { configHash },
+    });
+  }
+
+  /**
    * Update the lastCheckedAt timestamp for a manifest.
    */
   async markChecked(manifestId: string): Promise<void> {
@@ -278,6 +294,7 @@ export class ManifestStoreService {
       version: record.version,
       structureHash: record.structureHash,
       promptHash: record.promptHash,
+      configHash: record.configHash ?? undefined,
       extractionRules:
         record.extractionRules as StructuralManifest["extractionRules"],
       confidence: record.confidence,

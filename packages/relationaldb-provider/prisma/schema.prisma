@@ -1360,50 +1360,55 @@ model Proposition {
 /// against the active revision; superseded rows stay in-place for
 /// audit but UI queries should filter `minutes.isActive = true`.
 model Minutes {
-  id                   String    @id @default(uuid())
+  id                    String    @id @default(uuid())
   /// `${region}-${body-lowercase}-${YYYY-MM-DD}` for chamber-wide r0;
   /// `${region}-${body-lowercase}-${committee-slug}-${YYYY-MM-DD}` for
   /// per-committee minutes; suffixed `-r${n}` for revisions.
-  externalId           String    @unique @map("external_id")
-  body                 String    @db.VarChar(20)
-  date                 DateTime  @db.Date
+  externalId            String    @unique @map("external_id")
+  body                  String    @db.VarChar(20)
+  date                  DateTime  @db.Date
   /// Revision sequence: 0 for the original publication, 1+ for
   /// re-issues. Combined with (body, date, committeeId) gives a stable
   /// natural key.
-  revisionSeq          Int       @default(0) @map("revision_seq")
+  revisionSeq           Int       @default(0) @map("revision_seq")
   /// True for the canonical-current version; false for superseded
   /// predecessors. UI queries filter on this.
-  isActive             Boolean   @default(true) @map("is_active")
+  isActive              Boolean   @default(true) @map("is_active")
   /// Set when the document is a single-committee minutes. Null for
   /// chamber-wide daily journals.
-  committeeId          String?   @map("committee_id")
+  committeeId           String?   @map("committee_id")
   /// Set when this minutes record corresponds to a specific scheduled
   /// meeting. Null when the source PDF doesn't map to a calendared
   /// meeting.
-  meetingId            String?   @map("meeting_id")
-  pageCount            Int?      @map("page_count")
-  sourceUrl            String    @map("source_url")
+  meetingId             String?   @map("meeting_id")
+  pageCount             Int?      @map("page_count")
+  sourceUrl             String    @map("source_url")
   /// Full pdf-parse output. Capped at ~256kB at write time; longer
   /// documents are truncated. Used by downstream passes (linker, AI
   /// summarization) so they can be re-run without re-fetching the PDF.
-  rawText              String?   @map("raw_text") @db.Text
+  rawText               String?   @map("raw_text") @db.Text
   /// V2: AI-generated plain-language summary. Reserved column.
-  summary              String?   @db.Text
+  summary               String?   @db.Text
   /// V2: per-claim attribution into rawText for citizen-facing
   /// "letter to representative with quote" features. Mirrors the
   /// PropositionAnalysisClaim shape (sourceStart/sourceEnd offsets).
-  summaryClaims        Json?     @map("summary_claims")
-  summaryPromptHash    String?   @map("summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `summary`
-  summaryPromptVersion String?   @map("summary_prompt_version") @db.VarChar(20)
-  summaryLlmModel      String?   @map("summary_llm_model") @db.VarChar(80)
-  summaryLlmDigest     String?   @map("summary_llm_digest") @db.VarChar(80)
+  summaryClaims         Json?     @map("summary_claims")
+  summaryPromptHash     String?   @map("summary_prompt_hash") @db.VarChar(64) /// #1149 — prompt that produced `summary`
+  summaryPromptVersion  String?   @map("summary_prompt_version") @db.VarChar(20)
+  summaryLlmModel       String?   @map("summary_llm_model") @db.VarChar(80)
+  summaryLlmDigest      String?   @map("summary_llm_digest") @db.VarChar(80)
   /// The skip key's input and config axes (meetings-phase-b.md §3, the
   /// representatives pattern): what the prompt was given, and the settings.
-  summarySourceHash    String?   @map("summary_source_hash") @db.VarChar(64)
-  summaryConfigHash    String?   @map("summary_config_hash") @db.VarChar(64)
-  parsedAt             DateTime? @map("parsed_at") @db.Timestamptz
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  summarySourceHash     String?   @map("summary_source_hash") @db.VarChar(64)
+  summaryConfigHash     String?   @map("summary_config_hash") @db.VarChar(64)
+  /// The skip key the last summary attempt FAILED under (D5, §4c): not
+  /// retried once it has failed 3 times under it. Cleared on a successful write.
+  summaryFailedKey      String?   @map("summary_failed_key") @db.VarChar(80)
+  /// Model-output failures under `summaryFailedKey`; retried up to 3 (D5).
+  summaryFailedAttempts Int       @default(0) @map("summary_failed_attempts")
+  parsedAt              DateTime? @map("parsed_at") @db.Timestamptz
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   committee LegislativeCommittee? @relation(fields: [committeeId], references: [id], onDelete: SetNull)
   meeting   Meeting?              @relation(fields: [meetingId], references: [id], onDelete: SetNull)
@@ -2818,6 +2823,7 @@ model StructuralManifest {
   version         Int       @default(1)
   structureHash   String    @map("structure_hash") @db.VarChar(64) /// SHA-256 of HTML skeleton
   promptHash      String    @map("prompt_hash") @db.VarChar(64) /// SHA-256 of analysis prompt
+  configHash      String?   @map("config_hash") @db.VarChar(64) /// Data-source fields the analysis prompt is given (§4b); null = legacy, stamped on use
   extractionRules Json      @map("extraction_rules") /// ExtractionRuleSet as JSON
   confidence      Float     @default(0)
   successCount    Int       @default(0) @map("success_count")

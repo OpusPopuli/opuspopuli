@@ -170,6 +170,7 @@ describe("Pipeline Integration Tests", () => {
       incrementSuccess: jest.fn().mockResolvedValue(undefined),
       incrementFailure: jest.fn().mockResolvedValue(undefined),
       markChecked: jest.fn().mockResolvedValue(undefined),
+      stampConfigHash: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<ManifestStoreService>;
 
     // Wire up the pipeline with real services + mocked externals
