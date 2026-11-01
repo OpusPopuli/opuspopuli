@@ -700,3 +700,329 @@ Nitpicks left, both predating this change:
 - the 60s cache of a failed hash lookup;
 - a window of up to 5 minutes after a generic-template edit.
 
+
+## Plan: step 4 (2026-11-01)
+
+Measured on UAT before any change (`meet-e0`, the first sync after midnight):
+
+- **The structure hash churns daily, and every churn is a new, unchecked
+  manifest.** Both chambers read `structure_changed` and queued a GPU
+  re-analysis. The Assembly's took 29 s and wrote v17. No two of the 17
+  Assembly versions, or of the 4 Senate versions, have identical extraction
+  rules, so each re-analysis swaps in rules generated afresh. The cause is in
+  `extractHtmlSkeleton`: it keeps one subtree per repeated element, so a page
+  with one more hearing, or one more day in the window, hashes differently.
+  The Senate skeleton for adjacent windows differs by exactly one
+  `page-events--day-wrapper` block.
+- **The three documents at the ceiling are not the long ones.** They are
+  21 k, 55 k and 107 k characters, while the five longest rows (262 k, the
+  text cap) summarize fine. They run out of output, not input. Whether that
+  is a long, legitimate claim list or a repetition loop cannot be told from
+  the current logs, and the response itself must not be logged (§3).
+- **Nothing waits on the stuck job row.** `a5240300` is a parentless `cron`
+  row, `queued` since 2026-07-15 with no BullMQ job behind it. Every reader
+  of open rows is scoped to a parent (`cancelChildren`, `settleParent`), and
+  the jobs list shows only the most recent rows. It is harmless, but its
+  status is wrong and nothing will ever correct it: the startup sweep only
+  fails stale `running` rows.
+- **A max-tokens mismatch between region and region-worker costs no-op jobs,
+  not regenerations.** The pre-push gate on #1422 said a mismatch would
+  regenerate the corpus daily. It would not: the worker re-assesses each row
+  against its own config before calling the model, so the jobs region queues
+  in error end `unchanged`. The real cost is one no-op job per row per sync,
+  plus a one-time regeneration of any legacy rows region stamped with its
+  own value. That is still silent, so it is still worth surfacing.
+
+### 4a. Structure hash ignores repetition
+
+The skeleton keeps each element's **distinct** child skeletons, in first-seen
+order, instead of every child. One more hearing or day adds nothing new; a
+renamed class or a new kind of block still changes the hash.
+
+Prototyped against the live pages: over 15 consecutive Senate windows, the
+current hash takes 2 values and the proposed hash 1. The Assembly also
+differed from yesterday's stored hash under the current algorithm.
+
+**Cost:** every stored hash changes, so each of the 13 active manifests
+(propositions 8, meetings 3, representatives 1, campaign finance 1) reads
+`structure_changed` once and re-derives, about 30 s of GPU each. **D4** below.
+
+### 4b. Manifest config axis
+
+`structural_manifests` gains `config_hash`: a hash of the data-source fields
+that shape the derivation (`contentGoal`, `hints`, `category`, `dataType`).
+`ManifestComparator` adds `config_changed`. A manifest with no config hash
+(every one today) is stamped with the current one on its next use, not
+re-derived, as the output keys treat legacy rows. Additive migration via
+`/op-migration`. This closes "a hint edit never re-derives a manifest" from
+steps 1–2.
+
+### 4c. Ceiling documents
+
+1. **Diagnose without the text.** On a refusal, log shape only: response
+   characters, the number of claims parsed so far where the JSON is partial,
+   and the share of repeated lines. That separates a long claim list from a
+   loop with no document text in the log.
+2. **Stop retrying the same failure.** **D5** below.
+
+### 4d. Max-tokens mismatch visible
+
+Both services log the effective minutes-summary config at startup. When a job
+that selection queued as stale ends `unchanged` in the worker, the worker
+warns once per run that the two disagree, naming the setting.
+
+### 4e. Prompt-client negative cache
+
+A missing template name is cached as missing, for the same TTL as a hit, so
+`document-analysis-unknown` → generic does not query the DB, or count a
+fallback, on every call.
+
+### 4f. Bounded selection
+
+`selectStale` takes a cap (`MINUTES_SUMMARY_SELECT_MAX`), as the
+representatives selectors do, and logs when it is hit. The default is above
+today's corpus (64 rows), so nothing changes now.
+
+### 4g. Orphaned queued rows
+
+The startup sweep also fails `queued` rows older than a day whose BullMQ job
+no longer exists, with a reason saying so. That clears `a5240300` and any
+future orphan.
+
+### Measure
+
+LLM calls per meetings sync, before and after, on two consecutive days: the
+gate is 0 structural analyses on a day when only the counts changed.
+
+### Owner decisions for step 4
+
+| | Decision | Suggestion |
+|---|---|---|
+| **D4** | Accept a one-time re-derivation of all 13 manifests when the hash algorithm changes | **Yes.** About 7 minutes of GPU, once. The alternative, keeping both algorithms and accepting either hash, carries the old churn forward until each source changes |
+| **D5** | A document that fails under the same skip key | **Record the failed key and skip it** until the key changes (prompt, model, text or config), with the failure counted in the sync log. Today each of the 3 costs about a minute of GPU per sync, forever. Needs one more additive column on `minutes` |
+
+**Owner, 2026-11-01: D4 accept the one-time re-derivation; D5 record the failed key and skip until it changes.** Both as suggested.
+
+## As built: step 4 (2026-11-01, UAT)
+
+### What landed
+
+- **4a. Repetition-tolerant structure hash.** `extractHtmlSkeleton` keeps
+  each element's distinct child skeletons, in first-seen order. As D4
+  expected, the first sync after deploying re-derived both chambers once
+  (Assembly v18, Senate v6). Every sync after that, six of them, hit the
+  cache: 0 structural analyses.
+- **4b. Manifest config axis.** `structural_manifests.config_hash` is
+  `manifestConfigHash(source)`: `dataType`, `contentGoal`, `category` and
+  `hints`, the source fields the analysis prompt is given. A test pins that
+  list against the prompt call. Absent and empty hash alike, because the
+  analysis worker defaults `contentGoal` to `""` and the pipeline passes the
+  source's own value. `ManifestComparator` reports `config_changed` only when
+  structure and prompt both match, so existing reasons keep their meaning. A
+  manifest without a hash is stamped with the current one on use, not
+  re-derived. The stamp is best-effort: a failed write is logged and retried
+  on the next use, and the extraction goes ahead from the cache. Both
+  re-derived manifests carry a config hash.
+- **4c. Ceiling documents.**
+  - **Shape-only diagnostics** on every refusal: characters, claims begun,
+    distinct titles, repeated lines. The parse-failure lines move from `debug`
+    to `warn`, because a refusal at `debug` is invisible in production (#1085).
+    For 09-25 they read `chars=18511 claims=25 distinctTitles=25/25`: a long
+    and legitimate claim list, not a loop. The 95 repeated lines of 176 are
+    JSON punctuation.
+  - **D5, as revisited.** A model-output refusal records its skip key in
+    `summary_failed_key` and counts it in `summary_failed_attempts`. A row is
+    not retried once its key has failed 3 times. Any axis moving gives a new
+    key, which starts again at one, and a successful write clears both
+    columns. Transient failures are not recorded: the LLM call, the write, or
+    the prompt guard. Selection books skipped rows to the phase totals as
+    `summary_current` and `summary_failed_same_key`. The count is written
+    conditionally on the stored key, not on the key read at job start: a
+    forced job can fail beside a keyed one, and a write chosen from a stale
+    read would lose one of the two failures. The claim of a row for a new key
+    names `NULL` explicitly, because `summary_failed_key <> $1` is never true
+    for `NULL`. The integration suite shows that on `postgres_test`.
+  - **A repetition abort counts as a model-output refusal.** Ollama stops a
+    generation that loops with an HTTP 500, "token repeat limit reached".
+    The provider surfaces that as a thrown `LLMError`, which was first
+    classified as transient and retried every sync without being counted.
+    It now records the key like any other refusal. Found in `meet-h1` on 08-14.
+  - **The cap moves to 8000** (owner, 2026-11-01). It is set in the code
+    default, the UAT compose file, `.env.example`, and both node repos
+    (opuspopuli-node-us-ca#46, opuspopuli-node#66). Regenerating every
+    summary at 8000 hit the ceiling 0 times. 09-25, which never fitted in
+    4000, came out with 36 claims.
+- **4d. Config mismatch is reported.** Both services log the effective
+  summary config at startup. Each job carries the config hash its selection
+  ran under (`selectedUnderConfigHash`), and the worker warns once per
+  mismatched pair, naming `MINUTES_SUMMARY_MAX_TOKENS`.
+- **4e. Prompt-client remembers missing names.** In DB mode, a name found
+  missing is remembered for the cache TTL. A repeat fallback is then served
+  from the cache without querying the name again. The record is used only
+  when a fallback is asked for, so `getPromptHash` on a missing name still
+  reports it missing. `clearCache` clears it.
+- **4g. Orphaned `queued` rows.** On startup the worker also fails `queued`
+  rows older than a day whose BullMQ job will never run them: gone, or
+  finished but retained (failed jobs are kept 30 days). This runs in its
+  own try block, so a failure in it skips neither the running sweep nor the
+  parent settle. On first boot, under the gone-only rule, it failed exactly
+  `a5240300`, and no `queued` rows remain. The finished-state arm came from
+  review and is unit-tested only: UAT had no such row left to find. It
+  catches a real case: a second boot on the same day reuses
+  `startup-<yyyymmdd>`, and BullMQ drops that add while the first job is
+  retained as completed.
+
+### Not as planned
+
+- **4f was not built, and it is not a cap.** A cap limits how many jobs are
+  queued, but the cost the review gate flagged is the read: every row's text,
+  every sync. I built a SQL prefilter instead: this sync's written rows, plus
+  rows whose stored prompt, model or config is missing or differs. Then I
+  reverted it. The filter cannot see a row whose text changed in an earlier
+  sync and whose regeneration then failed transiently, which records no key;
+  such a row would never be selected again. A correct bounded selection needs
+  a stored hash of the text. That is recorded here, not built; the full walk
+  costs milliseconds at 64 rows. A regression test asserts that the walk
+  carries no filter.
+  - *When it has to be built.* A page is 50 rows, and a row's text is capped
+    at 256 KiB, so a page can read 12.8 MB. The cost grows with the corpus:
+    64 active rows span 2026-02-06 to 2026-10-23 for California. Build the
+    text hash before a second region's minutes land, or once a sync's
+    selection phase passes a second, whichever comes first.
+  - *A misreading, corrected.* At first I took `meet-f1` as UAT showing this
+    gap. 04-21 and 10-02 were not queued there, and I attributed that to the
+    filter. In fact both had been summarized that morning by `meet-e0`'s jobs,
+    so they were simply current. The gap is real by reasoning, not by
+    measurement.
+- **D5 went from one attempt to three.** 04-21 and 10-02 hit the 4000 ceiling
+  on every step 3 attempt, then fitted on the morning's attempt under the same
+  key. At temperature 0.2, output length varies from run to run, so a single
+  failure is not a verdict. Owner, 2026-11-01: up to 3 attempts per key. This
+  needed a second migration, because the first was already applied locally.
+- **The node repos never passed the context window to a container.** Found
+  while checking that 8000 tokens fit. #44 documented `LLM_CONTEXT_TOKENS` in
+  the `.env` examples, but `x-llm-env` named none of the three variables, so a
+  production node sent no `num_ctx`. On a GGUF build, that reads 16,386 tokens
+  of a long input. The Studio's own Ollama settings were not checked. Fixed in
+  the same node PRs (owner, 2026-11-01); opuspopuli-node also gains the
+  documentation it never got.
+
+### Migrations
+
+- **`20261101120000_meetings_phase_b_skip_fixes`:** adds
+  `structural_manifests.config_hash VARCHAR(64)` and
+  `minutes.summary_failed_key VARCHAR(80)`.
+- **`20261101130000_minutes_summary_failed_attempts`:** adds
+  `minutes.summary_failed_attempts INTEGER NOT NULL DEFAULT 0`.
+
+Both are additive and need no backfill. They were applied locally with
+`prisma migrate deploy` and run on `postgres_test` by the integration suite.
+`migrate diff` shows no drift. No column holds personal data.
+
+### UAT measurements
+
+| Sync | Manifest analyses | Summaries queued | Skipped | Notes |
+|---|---|---|---|---|
+| `meet-e0` (main, first after midnight) | 2 | 3 | — | Both chambers `structure_changed`; v17 had different rules from v16 |
+| `meet-f1` (deploy, D4) | 2 | 1 | — | One-time re-derive; 09-25 failed and its key was recorded |
+| `meet-f2` | 0 | 0 | 63 current, 1 failed key | One attempt per key, as first built |
+| `meet-g1`–`g3` (3 attempts) | 0 | 1 each | 63 current | 09-25 attempts 1 → 2 → 3 |
+| `meet-g4` | 0 | 0 | 63 current, 1 failed key | Skipped at 3 attempts |
+| `meet-h1` (cap 8000, config axis moves) | 0 | 64 | — | 58 updated, 1 created (09-25), 5 failed, 0 ceiling hits |
+| `meet-h2` (repetition-abort fix) | 0 | 5 | 59 current | All 5 written on the second attempt |
+| `meet-i1` (review fixes) | 0 | 0 | 64 current | Healthy boot; no `queued` pipeline_jobs rows |
+
+Before the hash change, the current algorithm took 2 values over 15
+consecutive Senate windows; the repetition-tolerant one took 1.
+
+In `meet-h1`, 05-05, 06-03, 06-30 and 08-11 returned JSON that the repair
+could not parse, though the diagnostics show nothing pathological (every
+claim title distinct). 08-14 was a repetition abort. All five wrote at their
+next attempt under the same key. That is run-to-run variance, which is why
+D5 allows 3 attempts. The repetition-abort path is covered by a unit test,
+because 08-14 did not loop again in UAT.
+
+### Observed, not fixed here
+
+- **Two summaries have no claims.** 02-06 and 10-05 are both at the 256 KiB
+  text cap and write a short summary with 0 claims. The model is shown the
+  first 60,000 characters. Whether that window holds only procedural matter
+  has not been checked, because reading it means reading minutes that name
+  members of the public. This belongs to the input window, not to step 4.
+
+### Kept as built, against a review suggestion
+
+- **First-seen sibling order stays in the structure hash.** The review
+  pointed out that a window starting on a different kind of row (a day with
+  no hearings, then a day with them) changes the order of distinct siblings
+  and so the hash. Sorting them would remove that, but it would also hide a
+  real reorder, which can break a sibling selector, and it would re-derive
+  all 13 manifests again. Measured first: over 15 consecutive Senate windows
+  on 2026-11-01, plus the Assembly daily file, first-seen order took 1 value
+  per page, the same as sorted order. A test now pins first-seen order. If a
+  page is ever seen re-deriving on order alone, sort then.
+
+### Fixed in passing
+
+- **The worker's per-job outcome line named the row's UUID.** The job data
+  has always had an `externalId` field, but the sync never filled it.
+  `OutputTarget` now carries an optional `externalId`, minutes selection sets
+  it, and the enqueue passes it on. Jobs queued by the selection-failure
+  fallback still log the UUID: that path has only the ids this sync wrote. This predates step 4; it was found
+  because the UAT scripts grep the outcome lines.
+- **The selection-failure warn printed the error's message.** It now prints
+  `errorKind`, as every other catch on the minutes path does. Its message is
+  safe today, but a Prisma validation error prints its call's arguments.
+- **The comment in `20261101120000`'s SQL describes D5 as one attempt.** It
+  was applied locally before the change to three, and editing an applied
+  migration changes its checksum, so the comment stands and this note
+  supersedes it.
+
+### Checks
+
+- **Tests:**
+  - scraping-pipeline 702, prompt-client 125, queue-provider 63, common 274,
+    backend 3674;
+  - the minutes-summary integration spec on `postgres_test`, 3 tests. It had to move
+    to the outcome contract: #1422's CI failed on it, and the fix went in on
+    the branch before merge.
+- **Mutation-checked:** each change was undone in turn, and a test failed
+  every time:
+  - the sibling collapse;
+  - the config comparison, the legacy stamp, the absent-equals-empty
+    normalisation, and the analyzer's stamp;
+  - the failed-key match, refusal-only recording, the clear on success, the
+    selection skip, the attempts threshold, the increment, and the attempts
+    reset;
+  - the conditional failure count's retry, and both arms of its claim, `NULL`
+    and a different key (each in the unit fake and on `postgres_test`);
+  - the negative-cache hit, and its TTL;
+  - the mismatch warning and its once-per-pair rule;
+  - the orphan sweep's existence check, its finished-state check, and its
+    parent settle;
+  - the best-effort legacy stamp;
+  - the `externalId` carried into job data, and the selection warn's
+    `errorKind`.
+- **Static checks:** lint and `lint:sonar` are clean (one nested template
+  literal fixed). jscpd finds no new clones; the two it reports are in
+  unchanged code.
+
+### Review
+
+`/op-review` ran on the final diff (`step4-v2.diff`) as three independent
+lenses: correctness and test coverage; security and regulated data;
+performance, types and consistency. It found no blockers. Every suggestion
+was fixed except the sibling order, kept above with its reason. The
+nitpicks were fixed too, except two: folding the two migrations, which
+would need a local `migrate reset`, and extracting from `summarize()`, which
+`lint:sonar` passes. A first cut of the diff was taken against a stale local
+`main` and included #1422; the lenses were rescoped to the true diff.
+A fresh re-review of the fix round (`step4-v3.diff` and the v2→v3
+interdiff) found no blockers. Its findings were fixed: the unit fake now
+evaluates each `OR` arm as SQL does, and the integration test covers a
+moving key. The orphan sweep's wording and constant comment now cover
+finished jobs. This record states what UAT did and did not exercise.
+`/op-security`: no dependency changes; the only CRITICAL is the frontend's
+suppressed `maplibre-gl` CVE (`.trivyignore.yaml`); gitleaks clean.
+This is a self-review: the author and the reviewer are the same, so it needs
+a countersign.

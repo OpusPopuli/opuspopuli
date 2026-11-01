@@ -231,6 +231,109 @@ describe("PromptClientService", () => {
         service.getPromptHash("document-analysis-minutes-summary"),
       ).rejects.toThrow('"document-analysis-minutes-summary" not found');
     });
+
+    it("serves a repeat fallback from cache, without querying the missing name again", async () => {
+      // §4e: the fallback is cached under its own name, so the missing name
+      // is remembered as missing rather than queried on every call.
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-generic", "Generic: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      const ask = () =>
+        service.getDocumentAnalysisPrompt({
+          documentType: "unknown",
+          text: "some text",
+        });
+      await ask();
+      const queries = mockDb.promptTemplate.findFirst.mock.calls.length;
+
+      const again = await ask();
+
+      expect(again.promptText).toContain("Generic: some text");
+      expect(mockDb.promptTemplate.findFirst).toHaveBeenCalledTimes(queries);
+    });
+
+    it("queries the missing name again once the cache clears", async () => {
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-generic", "Generic: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      await service.getDocumentAnalysisPrompt({
+        documentType: "unknown",
+        text: "some text",
+      });
+      await service.clearCache();
+
+      // Seeded since: the type's own template is found, not the generic.
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-unknown", "Own: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      const result = await service.getDocumentAnalysisPrompt({
+        documentType: "unknown",
+        text: "some text",
+      });
+
+      expect(result.promptText).toContain("Own: some text");
+    });
+
+    it("queries the missing name again once its TTL has passed", async () => {
+      // Without clearCache: a template seeded later must be found within the
+      // TTL, not only after a restart.
+      const now = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-generic", "Generic: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      await service.getDocumentAnalysisPrompt({
+        documentType: "unknown",
+        text: "some text",
+      });
+
+      now.mockReturnValue(1_000_000 + 300_001);
+      // Another missing type re-caches the generic, as live traffic would.
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-generic", "Generic: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      await service.getDocumentAnalysisPrompt({
+        documentType: "other",
+        text: "some text",
+      });
+      mockDb.promptTemplate.findFirst
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-unknown", "Own: {{TEXT}}"),
+        )
+        .mockResolvedValueOnce(
+          mockTemplate("document-analysis-base-instructions", "JSON only."),
+        );
+      const result = await service.getDocumentAnalysisPrompt({
+        documentType: "unknown",
+        text: "some text",
+      });
+
+      expect(result.promptText).toContain("Own: some text");
+      now.mockRestore();
+    });
   });
 
   describe("getRAGPrompt", () => {

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   extractJsonObjectSlice,
+  LLMError,
   parseJsonWithRepair,
   stableHash,
 } from '@opuspopuli/common';
@@ -15,6 +16,7 @@ import { normaliseSummaryClaims } from './claim-normalisers';
 import { readPositiveInt } from './config-helpers';
 import {
   outputCurrency,
+  outputSkipKey,
   partitionStale,
   type GeneratedOutputOutcome,
   type LiveOutputKey,
@@ -74,7 +76,17 @@ interface MinutesForSummary {
   summaryLlmDigest: string | null;
   summarySourceHash: string | null;
   summaryConfigHash: string | null;
+  summaryFailedKey: string | null;
+  summaryFailedAttempts: number;
 }
+
+/**
+ * Attempts one skip key gets before it is not retried (D5). Not one: at this
+ * temperature output length varies run to run, and 2 of the 3 documents that
+ * hit the ceiling on every step 3 attempt fit on a later one under the same
+ * key (UAT, 2026-11-01). Not unbounded: the third failed every time.
+ */
+export const MINUTES_SUMMARY_MAX_ATTEMPTS = 3;
 
 /** Rows read per page by `selectStale`. */
 const SELECT_PAGE = 50;
@@ -92,7 +104,17 @@ const MINUTES_SELECT = {
   summaryLlmDigest: true,
   summarySourceHash: true,
   summaryConfigHash: true,
+  summaryFailedKey: true,
+  summaryFailedAttempts: true,
 } as const;
+
+/** How one generation attempt ended. */
+type Attempt =
+  | 'written'
+  /** The model's output was unusable: cut off, not JSON, or no synopsis. */
+  | 'output_refused'
+  /** Anything else — the prompt guard, the LLM call, the write. Not recorded. */
+  | 'error';
 
 /**
  * Where a JSON.parse failed, without what it failed on. V8's "Unexpected
@@ -104,8 +126,52 @@ function parseErrorAt(error: unknown): string {
   return position ? `position ${position}` : 'an unknown position';
 }
 
+/**
+ * Ollama's abort when a generation loops: the model's output failing, like a
+ * cut-off, not the call (D5). It arrives thrown, so without this it read as
+ * transient and was retried every sync, uncounted (UAT 2026-11-01, 08-14).
+ * Ollama's own message, which quotes nothing of the prompt.
+ */
+function isRepetitionAbort(error: unknown): boolean {
+  return (
+    error instanceof LLMError &&
+    /token repeat limit/i.test(error.originalError?.message ?? '')
+  );
+}
+
+/** What selection found: the stale rows, and the rows it skipped and why. */
+export interface MinutesSelection {
+  pending: OutputTarget[];
+  /** Current on every axis. */
+  current: number;
+  /** Stale, but the key has used up its attempts (D5). */
+  failedBefore: number;
+}
+
 function hasText(row: MinutesForSummary): boolean {
   return !!row.rawText && row.rawText.trim().length > 0;
+}
+
+/**
+ * The shape of a refused response, never its text (§3: minutes name members
+ * of the public). Enough to tell a long claim list from a loop (§4c): a loop
+ * repeats claims, so the distinct titles fall far below the claims begun.
+ * Titles and lines are read only to be counted: return counts, nothing else.
+ */
+export function responseShape(text: string): string {
+  const titles = [...text.matchAll(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map(
+    (m) => m[1],
+  );
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const repeated = lines.length - new Set(lines).size;
+  return (
+    `chars=${text.length} claims=${(text.match(/"kind"\s*:/g) ?? []).length} ` +
+    `distinctTitles=${new Set(titles).size}/${titles.length} ` +
+    `repeatedLines=${repeated}/${lines.length}`
+  );
 }
 
 /**
@@ -120,18 +186,22 @@ function hasText(row: MinutesForSummary): boolean {
  * representatives rule in `generated-output-key.ts`) — or when `force` is set.
  */
 @Injectable()
-export class MinutesSummaryService extends LlmGeneratorBase {
+export class MinutesSummaryService
+  extends LlmGeneratorBase
+  implements OnModuleInit
+{
   private readonly logger = new Logger(MinutesSummaryService.name);
   /**
-   * 4000, from 2000 (meetings-phase-b.md §3): under the restored template, 7
-   * of 37 nemotron summaries on UAT ran past 2000 tokens and were cut off
-   * mid-JSON. Part of the config hash, so changing it regenerates every
-   * summary once.
+   * 8000, from 4000 (meetings-phase-b.md §4c): one journal (2026-09-25)
+   * carries 25 distinct claims and was still mid-JSON at 4000 on every
+   * attempt — a long record, not a loop, so the budget moves rather than the
+   * record shrinking. 2000 → 4000 before that (§3). Part of the config hash,
+   * so changing it regenerates every summary once.
    */
   private readonly maxTokens = readPositiveInt(
     this.config,
     'MINUTES_SUMMARY_MAX_TOKENS',
-    4000,
+    8000,
   );
   /**
    * Cap the rawText handed to the LLM to bound cost + stay within context
@@ -143,6 +213,18 @@ export class MinutesSummaryService extends LlmGeneratorBase {
     'MINUTES_SUMMARY_MAX_INPUT_CHARS',
     60000,
   );
+
+  /**
+   * The effective settings, in both region (which selects) and region-worker
+   * (which summarizes): the two read them from separate environments, and
+   * disagreeing they key every summary differently (§4d).
+   */
+  onModuleInit(): void {
+    this.logger.log(
+      `minutes-summary config: maxTokens=${this.maxTokens} maxInputChars=${this.maxInputChars} ` +
+        `configHash=${this.configHash().slice(0, 12)}`,
+    );
+  }
 
   /**
    * Summarize one minutes row — the `minutes-summary` job. Re-checks currency
@@ -172,8 +254,71 @@ export class MinutesSummaryService extends LlmGeneratorBase {
       if (currency === 'legacy') await this.stamp(row.id, live);
       return 'unchanged';
     }
-    if (!(await this.tryGenerateAndPersist(row, live))) return 'failed';
+    if (!force && this.failedBefore(row, live)) {
+      // D5: the same prompt, model, text and config failed every allowed
+      // attempt. The job can arrive by the fallback path, which skips
+      // selection.
+      this.logger.debug(
+        `minutes-summary ${row.externalId}: failed ${row.summaryFailedAttempts} times under this key; not retried`,
+      );
+      return 'skipped';
+    }
+    const attempt = await this.tryGenerateAndPersist(row, live);
+    if (attempt === 'output_refused') await this.recordFailure(row, live);
+    if (attempt !== 'written') return 'failed';
     return row.summary ? 'updated' : 'created';
+  }
+
+  /** D5: whether this row used up its attempts under the live key. */
+  private failedBefore(row: MinutesForSummary, live: LiveOutputKey): boolean {
+    const key = outputSkipKey(live);
+    return (
+      key !== null &&
+      row.summaryFailedKey === key &&
+      row.summaryFailedAttempts >= MINUTES_SUMMARY_MAX_ATTEMPTS
+    );
+  }
+
+  /**
+   * Count a model-output refusal against its key (D5): a new key starts at
+   * one, the same key adds one. Not recorded when the key cannot be known,
+   * nor for a transient error (the LLM call, the write, the prompt guard):
+   * those retry without spending an attempt.
+   */
+  private async recordFailure(
+    row: MinutesForSummary,
+    live: LiveOutputKey,
+  ): Promise<void> {
+    const key = outputSkipKey(live);
+    if (key === null) return;
+    try {
+      // Conditional on the stored key, not the one read at job start: a
+      // forced job can fail beside a keyed one. Increment under this key,
+      // else claim the row for it, else another job claimed it first.
+      if (await this.countFailure(row.id, key)) return;
+      const claimed = await this.db!.minutes.updateMany({
+        where: {
+          id: row.id,
+          OR: [{ summaryFailedKey: null }, { summaryFailedKey: { not: key } }],
+        },
+        data: { summaryFailedKey: key, summaryFailedAttempts: 1 },
+      });
+      if (claimed.count === 0) await this.countFailure(row.id, key);
+    } catch (error) {
+      // Not recording only costs a retry next sync.
+      this.logger.warn(
+        `minutes-summary ${row.externalId}: failure not recorded: ${errorKind(error)}`,
+      );
+    }
+  }
+
+  /** Count one more failure if the row is recorded under `key`. */
+  private async countFailure(id: string, key: string): Promise<boolean> {
+    const { count } = await this.db!.minutes.updateMany({
+      where: { id, summaryFailedKey: key },
+      data: { summaryFailedAttempts: { increment: 1 } },
+    });
+    return count > 0;
   }
 
   /**
@@ -184,15 +329,22 @@ export class MinutesSummaryService extends LlmGeneratorBase {
    *
    * Every active row with text, not only the rows this sync wrote: the
    * archive ingest skips PDFs it has seen, so a summary gone stale under a
-   * new prompt or model would otherwise wait for its PDF to change. The
-   * representatives generators also select over every candidate, though
-   * they take a cap and this does not (meetings-phase-b.md §4).
+   * new prompt or model would otherwise wait for its PDF to change. Every
+   * row's text is read, because the key covers it: a filter on the stored
+   * prompt, model and config would miss a row whose text changed in an
+   * earlier sync and whose regeneration then failed transiently, which
+   * records no key (meetings-phase-b.md §4f).
+   *
+   * `failedBefore` counts stale rows not queued because their last attempt
+   * failed under the same key (D5).
    */
-  async selectStale(): Promise<
-    { pending: OutputTarget[]; current: number } | undefined
-  > {
+  async selectStale(): Promise<MinutesSelection | undefined> {
     if (!this.promptClient || !this.llm || !this.db) return undefined;
-    const result = { pending: [] as OutputTarget[], current: 0 };
+    const result = {
+      pending: [] as OutputTarget[],
+      current: 0,
+      failedBefore: 0,
+    };
     // Paged: the key covers the text, so every row's `rawText` is read, and a
     // daily journal runs 100 kB+. All at once would grow with the corpus.
     let cursor: string | undefined;
@@ -209,16 +361,40 @@ export class MinutesSummaryService extends LlmGeneratorBase {
         orderBy: { id: 'asc' },
         take: SELECT_PAGE,
       });
-      const page = await partitionStale(rows, {
-        assess: async (row) => (hasText(row) ? this.assess(row) : undefined),
-        stamp: (row, live) => this.stamp(row.id, live),
-        target: (row, key) => ({ id: row.id, key }),
-      });
-      result.pending.push(...page.pending);
-      result.current += page.current;
+      await this.selectPage(rows, result);
       if (rows.length < SELECT_PAGE) return result;
       cursor = rows.at(-1)?.id;
     }
+  }
+
+  /** One page of candidates into the selection. */
+  private async selectPage(
+    rows: MinutesForSummary[],
+    result: MinutesSelection,
+  ): Promise<void> {
+    const page = await partitionStale(rows, {
+      assess: async (row) => {
+        if (!hasText(row)) return undefined;
+        const assessed = await this.assess(row);
+        if (
+          assessed.currency === 'stale' &&
+          this.failedBefore(row, assessed.live)
+        ) {
+          result.failedBefore++;
+          return undefined;
+        }
+        return assessed;
+      },
+      stamp: (row, live) => this.stamp(row.id, live),
+      target: (row, key) => ({ id: row.id, key, externalId: row.externalId }),
+    });
+    result.pending.push(...page.pending);
+    result.current += page.current;
+  }
+
+  /** The config axis of this process's skip keys. */
+  configHash(): string {
+    return minutesSummaryConfigHash(this.maxTokens);
   }
 
   /** The live key — over exactly the prompt's input — and how the stored summary compares. */
@@ -228,7 +404,7 @@ export class MinutesSummaryService extends LlmGeneratorBase {
     const live = await this.liveOutputKey(
       MINUTES_SUMMARY_TEMPLATE,
       this.formatMinutes(row),
-      minutesSummaryConfigHash(this.maxTokens),
+      this.configHash(),
     );
     const currency = outputCurrency(
       {
@@ -256,10 +432,12 @@ export class MinutesSummaryService extends LlmGeneratorBase {
   private async tryGenerateAndPersist(
     row: MinutesForSummary,
     live: LiveOutputKey,
-  ): Promise<boolean> {
+  ): Promise<Attempt> {
     try {
       const generated = await this.generateOne(row, live);
-      if (!generated) return false;
+      if (generated === 'output_refused' || generated === 'error') {
+        return generated;
+      }
 
       await this.db!.minutes.update({
         where: { id: row.id },
@@ -273,6 +451,8 @@ export class MinutesSummaryService extends LlmGeneratorBase {
           summaryLlmDigest: generated.provenance.llmModelDigest,
           summarySourceHash: live.sourceHash,
           summaryConfigHash: live.configHash,
+          summaryFailedKey: null,
+          summaryFailedAttempts: 0,
         },
       });
 
@@ -306,15 +486,21 @@ export class MinutesSummaryService extends LlmGeneratorBase {
         (message) => this.logger.error(message),
       );
 
-      return true;
+      return 'written';
     } catch (error) {
       // The error's kind, never its message: a Prisma validation error
       // prints the write's arguments, and `summary`/`summaryClaims` quote the
       // minutes verbatim — the same leak `parseErrorAt` closes.
+      if (isRepetitionAbort(error)) {
+        this.logger.warn(
+          `Minutes summary failed for ${row.externalId}: the model looped (token repeat limit)`,
+        );
+        return 'output_refused';
+      }
       this.logger.warn(
         `Minutes summary failed for ${row.externalId}: ${errorKind(error)}`,
       );
-      return false;
+      return 'error';
     }
   }
 
@@ -323,7 +509,8 @@ export class MinutesSummaryService extends LlmGeneratorBase {
     live: LiveOutputKey,
   ): Promise<
     | { payload: MinutesSummaryResult; provenance: AiOutputProvenance }
-    | undefined
+    | 'output_refused'
+    | 'error'
   > {
     const prompt = await this.promptClient!.getDocumentAnalysisPrompt({
       documentType: 'minutes-summary',
@@ -339,7 +526,7 @@ export class MinutesSummaryService extends LlmGeneratorBase {
         `minutes-summary ${row.externalId}: served prompt ${prompt.promptHash?.slice(0, 12) ?? 'none'} ` +
           `is not ${MINUTES_SUMMARY_TEMPLATE} (${live.promptHash?.slice(0, 12) ?? 'not found'}); nothing written`,
       );
-      return undefined;
+      return 'error';
     }
     const { promptText } = prompt;
 
@@ -361,12 +548,12 @@ export class MinutesSummaryService extends LlmGeneratorBase {
       // JSON object" — which reads as a model fault, not a budget one.
       this.logger.warn(
         `minutes-summary ${row.externalId}: output hit the ${this.maxTokens}-token ceiling ` +
-          `(${result.tokensOut ?? '?'} out); raise MINUTES_SUMMARY_MAX_TOKENS`,
+          `(${result.tokensOut ?? '?'} out; ${responseShape(result.text)}); raise MINUTES_SUMMARY_MAX_TOKENS`,
       );
     }
 
     const payload = this.parsePayload(result.text, row);
-    if (!payload) return undefined;
+    if (!payload) return 'output_refused';
     return { payload, provenance: await this.outputProvenance(prompt) };
   }
 
@@ -409,8 +596,9 @@ export class MinutesSummaryService extends LlmGeneratorBase {
   ): MinutesSummaryResult | undefined {
     const candidate = extractJsonObjectSlice(text);
     if (!candidate) {
-      this.logger.debug(
-        `Summary parse failed for ${row.externalId}: no JSON object in ${text.length}-char response`,
+      // `warn`: a refusal logged at `debug` is invisible where it matters (#1085).
+      this.logger.warn(
+        `Summary parse failed for ${row.externalId}: no JSON object (${responseShape(text)})`,
       );
       return undefined;
     }
@@ -420,8 +608,9 @@ export class MinutesSummaryService extends LlmGeneratorBase {
     } catch (error) {
       const repaired = parseJsonWithRepair(candidate);
       if (!repaired) {
-        this.logger.debug(
-          `Summary JSON.parse failed for ${row.externalId} at ${parseErrorAt(error)}`,
+        this.logger.warn(
+          `Summary JSON.parse failed for ${row.externalId} at ${parseErrorAt(error)} ` +
+            `(${responseShape(text)})`,
         );
         return undefined;
       }

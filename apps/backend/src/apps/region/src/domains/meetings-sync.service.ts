@@ -17,7 +17,11 @@ import { meetingSyncTracker, minutesSyncTracker } from './sync-phase-logger';
 import type { UpsertByExternalId } from './propositions-sync.service';
 import { rowProvenance, type RowProvenanceColumns } from './row-provenance';
 import { SourceVersionService } from './source-version.service';
-import { MinutesSummaryService } from './minutes-summary.service';
+import {
+  MinutesSummaryService,
+  type MinutesSelection,
+} from './minutes-summary.service';
+import { errorKind } from './llm-generator.base';
 import { outputJobId, type OutputTarget } from './output-lane';
 
 /**
@@ -463,7 +467,12 @@ export class MeetingsSyncService {
         // action, so accepted rather than coordinated.
         await this.queueService.enqueue<MinutesSummaryJobData>(
           MINUTES_SUMMARY_QUEUE,
-          { minutesId: target.id, force },
+          {
+            minutesId: target.id,
+            externalId: target.externalId,
+            force,
+            selectedUnderConfigHash: this.minutesSummary?.configHash(),
+          },
           {
             jobId: outputJobId(
               force ? { id: target.id, key: null } : target,
@@ -495,10 +504,13 @@ export class MeetingsSyncService {
    * prompt change inside that week regenerated nothing.
    */
   private async summarizePhase(upsertedIds: readonly string[]): Promise<void> {
-    const enqueued = await this.enqueueSummaries(
-      await this.staleSummaries(upsertedIds),
-    );
-    this.minutesTracker('summarize', enqueued).complete();
+    const stale = await this.staleSummaries(upsertedIds);
+    const enqueued = await this.enqueueSummaries(stale.pending);
+    const tracker = this.minutesTracker('summarize', enqueued);
+    tracker.skippedInBulk(stale.current, 'summary_current');
+    // D5: stale, but the key has used up its attempts; retried when it moves.
+    tracker.skippedInBulk(stale.failedBefore, 'summary_failed_same_key');
+    tracker.complete();
   }
 
   /**
@@ -508,8 +520,13 @@ export class MeetingsSyncService {
    */
   private async staleSummaries(
     upsertedIds: readonly string[],
-  ): Promise<OutputTarget[]> {
-    let stale: Awaited<ReturnType<MinutesSummaryService['selectStale']>>;
+  ): Promise<MinutesSelection> {
+    const fallback = {
+      pending: upsertedIds.map((id) => ({ id, key: null })),
+      current: 0,
+      failedBefore: 0,
+    };
+    let stale: MinutesSelection | undefined;
     try {
       stale = await this.minutesSummary?.selectStale();
     } catch (error) {
@@ -518,10 +535,10 @@ export class MeetingsSyncService {
       // wrote, under one-off ids — each job re-checks currency, so this costs
       // at most a check per row, and new minutes are not left until tomorrow.
       this.logger.warn(
-        `minutes-summary selection failed (queueing this sync's rows): ${(error as Error).message}`,
+        `minutes-summary selection failed (queueing this sync's rows): ${errorKind(error)}`,
       );
-      return upsertedIds.map((id) => ({ id, key: null }));
+      return fallback;
     }
-    return stale ? stale.pending : upsertedIds.map((id) => ({ id, key: null }));
+    return stale ?? fallback;
   }
 }

@@ -27,7 +27,10 @@ export {
 } from "./scraping-pipeline.module.js";
 
 // Analysis
-export { StructuralAnalyzerService } from "./analysis/structural-analyzer.service.js";
+export {
+  StructuralAnalyzerService,
+  manifestConfigHash,
+} from "./analysis/structural-analyzer.service.js";
 export {
   extractHtmlSkeleton,
   computeStructureHash,

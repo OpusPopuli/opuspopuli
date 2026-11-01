@@ -106,6 +106,7 @@ describe('RegionSyncProcessor', () => {
     pipelineJobService.markSucceeded.mockResolvedValue(undefined);
     pipelineJobService.markFailed.mockResolvedValue(undefined);
     pipelineJobService.sweepStaleRunning.mockResolvedValue(0);
+    pipelineJobService.sweepOrphanedQueued.mockResolvedValue(0);
     // #1319: read before any work, so a cancelled job cannot be restarted
     // forever by BullMQ's stalled-job re-delivery.
     pipelineJobService.isCancelled.mockResolvedValue(false);
@@ -171,6 +172,31 @@ describe('RegionSyncProcessor', () => {
       expect(pipelineJobService.sweepStaleRunning).toHaveBeenCalledWith(600000);
     });
 
+    it('fails day-old queued rows whose queue job is gone or finished (§4g)', async () => {
+      pipelineJobService.sweepOrphanedQueued.mockResolvedValue(1);
+      const states: Record<string, string> = {
+        live: 'waiting',
+        retrying: 'delayed',
+        done: 'completed',
+        dead: 'failed',
+      };
+      queueService.getJobInfo.mockImplementation(async (_q, id) =>
+        states[id] ? ({ id, state: states[id], progress: 0 } as never) : null,
+      );
+
+      await processor.onApplicationBootstrap();
+
+      const [age, jobPending] =
+        pipelineJobService.sweepOrphanedQueued.mock.calls[0];
+      expect(age).toBe(24 * 60 * 60 * 1000);
+      await expect(jobPending('live')).resolves.toBe(true);
+      await expect(jobPending('retrying')).resolves.toBe(true);
+      await expect(jobPending('gone')).resolves.toBe(false);
+      // Retained after finishing, but never run again.
+      await expect(jobPending('done')).resolves.toBe(false);
+      await expect(jobPending('dead')).resolves.toBe(false);
+    });
+
     it('also closes requests whose jobs have all finished (S2)', async () => {
       // A last child whose own settle failed leaves its request `running`.
       pipelineJobService.settleFinishedParents.mockResolvedValue(1);
@@ -178,6 +204,17 @@ describe('RegionSyncProcessor', () => {
       await processor.onApplicationBootstrap();
 
       expect(pipelineJobService.settleFinishedParents).toHaveBeenCalledTimes(1);
+    });
+
+    it('still settles parents and starts the worker when the orphan sweep throws', async () => {
+      pipelineJobService.sweepOrphanedQueued.mockRejectedValueOnce(
+        new Error('redis down'),
+      );
+
+      await expect(processor.onApplicationBootstrap()).resolves.toBeUndefined();
+
+      expect(pipelineJobService.settleFinishedParents).toHaveBeenCalledTimes(1);
+      expect(createWorker).toHaveBeenCalled();
     });
 
     it('continues starting the worker even if the sweep throws', async () => {

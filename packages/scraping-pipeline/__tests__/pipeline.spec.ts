@@ -10,6 +10,7 @@ import type { BulkDownloadHandler } from "../src/handlers/bulk-download.handler"
 import type { ApiIngestHandler } from "../src/handlers/api-ingest.handler";
 import type { ExtractionProvider } from "@opuspopuli/extraction-provider";
 import { computeStructureHash } from "../src/analysis/structure-hasher";
+import { manifestConfigHash } from "../src/analysis/structural-analyzer.service";
 import {
   DataType,
   type StructuralManifest,
@@ -98,6 +99,7 @@ describe("ScrapingPipelineService", () => {
       incrementSuccess: jest.fn().mockResolvedValue(undefined),
       incrementFailure: jest.fn().mockResolvedValue(undefined),
       markChecked: jest.fn().mockResolvedValue(undefined),
+      stampConfigHash: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<ManifestStoreService>;
 
     mockExtractor = {
@@ -161,6 +163,53 @@ describe("ScrapingPipelineService", () => {
       // Records success with the extracted item count as the drift baseline (#911)
       expect(mockStore.incrementSuccess).toHaveBeenCalledWith("manifest-1", 1);
       expect(mockStore.markChecked).toHaveBeenCalledWith("manifest-1");
+    });
+
+    it("stamps a legacy manifest's config hash instead of re-deriving it", async () => {
+      const source = createSource();
+
+      await pipeline.execute(source, "california");
+
+      expect(mockAnalyzer.analyze).not.toHaveBeenCalled();
+      expect(mockStore.stampConfigHash).toHaveBeenCalledWith(
+        "manifest-1",
+        manifestConfigHash(source),
+      );
+    });
+
+    it("still extracts from the cache when the legacy stamp fails", async () => {
+      mockStore.stampConfigHash.mockRejectedValue(new Error("db blip"));
+
+      const result = await pipeline.execute(createSource(), "california");
+
+      expect(result.success).toBe(true);
+      expect(mockAnalyzer.analyze).not.toHaveBeenCalled();
+    });
+
+    it("neither stamps nor re-derives a manifest whose config is current", async () => {
+      const source = createSource();
+      mockStore.findLatest.mockResolvedValue(
+        createManifest({ configHash: manifestConfigHash(source) }),
+      );
+
+      await pipeline.execute(source, "california");
+
+      expect(mockAnalyzer.analyze).not.toHaveBeenCalled();
+      expect(mockStore.stampConfigHash).not.toHaveBeenCalled();
+    });
+
+    it("re-derives when a hint edit changes the config", async () => {
+      mockStore.findLatest.mockResolvedValue(
+        createManifest({ configHash: manifestConfigHash(createSource()) }),
+      );
+
+      await pipeline.execute(
+        createSource({ hints: ["title is the committee name"] }),
+        "california",
+      );
+
+      expect(mockAnalyzer.analyze).toHaveBeenCalled();
+      expect(mockStore.stampConfigHash).not.toHaveBeenCalled();
     });
 
     it("should fetch HTML via extraction provider", async () => {
