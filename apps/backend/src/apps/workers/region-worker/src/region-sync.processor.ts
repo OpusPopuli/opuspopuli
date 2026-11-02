@@ -37,6 +37,16 @@ const DEFAULT_LOCKED_RETRY_MS = 60_000;
 /** BullMQ's default for `region-sync` jobs' own lock (`createWorker`). */
 const DEFAULT_JOB_LOCK_MS = 300_000;
 
+/** Queue states a job never leaves: its `queued` row will not be run. */
+const FINISHED_JOB_STATES = new Set(['completed', 'failed']);
+
+/**
+ * How long a `queued` row must have waited before a missing or finished
+ * queue job makes it an orphan. A day: well past any lock retry or startup
+ * job, and short enough that a lost row is corrected by the next deploy.
+ */
+const ORPHANED_QUEUED_AGE_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Anything but exactly one type is a parent that fans out into one job per
  * type (S2): no types means every type; an empty list means none, and closes
@@ -157,6 +167,7 @@ export class RegionSyncProcessor
         `Stale-row sweep failed (non-fatal): ${(err as Error).message}`,
       );
     }
+    await this.sweepOrphanedQueued();
 
     // The type lock lives as long as the job's own: shorter, a stall the job
     // survives would let a second sync of the type start beside it.
@@ -180,6 +191,37 @@ export class RegionSyncProcessor
     );
 
     this.logger.log('RegionSyncProcessor worker started');
+  }
+
+  /**
+   * §4g: a `queued` row whose queue job is gone is never picked up, and the
+   * running sweep only sees `running`. Separate from it, so neither failing
+   * skips the other — nor the parent settle between them.
+   */
+  private async sweepOrphanedQueued(): Promise<void> {
+    try {
+      const orphaned = await this.pipelineJobService.sweepOrphanedQueued(
+        ORPHANED_QUEUED_AGE_MS,
+        async (id) => {
+          const info = await this.queueService.getJobInfo(
+            REGION_SYNC_QUEUE,
+            id,
+          );
+          // A finished job is retained for days (failed: 30), but nothing
+          // will run it again: its row is as orphaned as one with no job.
+          return info !== null && !FINISHED_JOB_STATES.has(info.state);
+        },
+      );
+      if (orphaned > 0) {
+        this.logger.warn(
+          `Failed ${orphaned} pipeline_jobs row(s) queued over a day with no pending queue job`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Orphaned-queued sweep failed (non-fatal): ${(err as Error).message}`,
+      );
+    }
   }
 
   async onModuleDestroy() {

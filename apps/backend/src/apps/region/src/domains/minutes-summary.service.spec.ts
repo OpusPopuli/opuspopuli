@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { ILLMProvider } from '@opuspopuli/common';
+import { LLMError, type ILLMProvider } from '@opuspopuli/common';
 import { PromptClientService } from '@opuspopuli/prompt-client';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { recordClaims } from './claim-recorder';
 import {
   MINUTES_SUMMARY_TEMPLATE,
+  MINUTES_SUMMARY_MAX_ATTEMPTS,
   MinutesSummaryService,
+  responseShape,
 } from './minutes-summary.service';
 
 jest.mock('./claim-recorder', () => ({
@@ -30,6 +32,8 @@ const MINUTES_ROW = {
   summaryLlmDigest: null as string | null,
   summarySourceHash: null as string | null,
   summaryConfigHash: null as string | null,
+  summaryFailedKey: null as string | null,
+  summaryFailedAttempts: 0,
 };
 
 const VALID_LLM_JSON = JSON.stringify({
@@ -53,10 +57,31 @@ const VALID_LLM_JSON = JSON.stringify({
 interface Mocks {
   service: MinutesSummaryService;
   db: {
-    minutes: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+    minutes: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+    };
   };
+  /** The row's D5 columns, as the conditional writes leave them. */
+  failure: { key: string | null; attempts: number };
   llm: { generate: jest.Mock };
   getPromptHash: jest.Mock;
+}
+
+/** One `OR` arm on the failed key, as SQL evaluates it: NULL matches only `null`. */
+type KeyArm = { summaryFailedKey: string | null | { not: string } };
+
+function armMatches({ summaryFailedKey: arm }: KeyArm, stored: string | null) {
+  if (arm === null) return stored === null;
+  if (typeof arm === 'string') return stored === arm;
+  return stored !== null && stored !== arm.not;
+}
+
+interface FailureWrite {
+  where: { summaryFailedKey?: string; OR?: KeyArm[] };
+  data: { summaryFailedKey?: string; summaryFailedAttempts: unknown };
 }
 
 function build(
@@ -105,11 +130,31 @@ function build(
 
   const config = { get: jest.fn(() => undefined) } as unknown as ConfigService;
 
+  const stored = (findUnique ?? {}) as Partial<typeof MINUTES_ROW>;
+  const failure = {
+    key: stored.summaryFailedKey ?? null,
+    attempts: stored.summaryFailedAttempts ?? 0,
+  };
   const db = {
     minutes: {
       findUnique: jest.fn().mockResolvedValue(findUnique),
       findMany: jest.fn().mockResolvedValue(findMany),
       update: jest.fn().mockResolvedValue(undefined),
+      // The failure record's conditional writes, applied to `failure` with
+      // the where-clause semantics they rely on.
+      updateMany: jest.fn(async ({ where, data }: FailureWrite) => {
+        const matches = where.OR
+          ? where.OR.some((arm) => armMatches(arm, failure.key))
+          : failure.key === where.summaryFailedKey;
+        if (!matches) return { count: 0 };
+        if (data.summaryFailedKey !== undefined) {
+          failure.key = data.summaryFailedKey;
+          failure.attempts = data.summaryFailedAttempts as number;
+        } else {
+          failure.attempts += 1;
+        }
+        return { count: 1 };
+      }),
     },
   } as unknown as DbService & Mocks['db'];
 
@@ -117,6 +162,7 @@ function build(
   return {
     service,
     db: db as unknown as Mocks['db'],
+    failure,
     llm: llm as Mocks['llm'],
     getPromptHash,
   };
@@ -241,7 +287,7 @@ describe('MinutesSummaryService', () => {
     llm.generate.mockResolvedValueOnce({
       text: '{"summary": "The Assem',
       finishReason: 'length',
-      tokensOut: 4000,
+      tokensOut: 8000,
     });
     const warn = jest
       .spyOn(Logger.prototype, 'warn')
@@ -249,7 +295,7 @@ describe('MinutesSummaryService', () => {
 
     await expect(service.summarize('m-1')).resolves.toBe('failed');
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('hit the 4000-token ceiling'),
+      expect.stringContaining('hit the 8000-token ceiling'),
     );
     warn.mockRestore();
   });
@@ -316,10 +362,202 @@ describe('MinutesSummaryService', () => {
     warn.mockRestore();
   });
 
-  it('refuses to persist when the LLM output has no parseable summary', async () => {
-    const { service, db } = build({ llmText: 'not json at all' });
+  it('refuses to persist when the LLM output has no parseable summary, recording only the failed key', async () => {
+    const { service, db, failure } = build({ llmText: 'not json at all' });
     await expect(service.summarize('m-1')).resolves.toBe('failed');
     expect(db.minutes.update).not.toHaveBeenCalled();
+    expect(failure).toEqual({
+      key: expect.stringMatching(/^sk1-[0-9a-f]{64}$/),
+      attempts: 1,
+    });
+  });
+});
+
+describe('MinutesSummaryService — a failure under the same key (D5)', () => {
+  /** The key the default row fails under, from a real refusal. */
+  async function failedKey(): Promise<string> {
+    const { service, failure } = build({ llmText: 'not json at all' });
+    await service.summarize('m-1');
+    return failure.key!;
+  }
+
+  it('is not retried once the key has used up its attempts', async () => {
+    const { service, llm } = build({
+      findUnique: {
+        ...MINUTES_ROW,
+        summaryFailedKey: await failedKey(),
+        summaryFailedAttempts: MINUTES_SUMMARY_MAX_ATTEMPTS,
+      },
+    });
+
+    await expect(service.summarize('m-1')).resolves.toBe('skipped');
+    expect(llm.generate).not.toHaveBeenCalled();
+  });
+
+  it('is retried, counting the attempt, while the key has attempts left', async () => {
+    // 2 of 3 ceiling documents fit on a later attempt under the same key.
+    const key = await failedKey();
+    const { service, llm, failure } = build({
+      llmText: 'not json at all',
+      findUnique: {
+        ...MINUTES_ROW,
+        summaryFailedKey: key,
+        summaryFailedAttempts: MINUTES_SUMMARY_MAX_ATTEMPTS - 1,
+      },
+    });
+
+    await expect(service.summarize('m-1')).resolves.toBe('failed');
+    expect(llm.generate).toHaveBeenCalled();
+    expect(failure).toEqual({ key, attempts: MINUTES_SUMMARY_MAX_ATTEMPTS });
+  });
+
+  it('starts the count again under a new key', async () => {
+    const { service, failure } = build({
+      llmText: 'not json at all',
+      findUnique: {
+        ...MINUTES_ROW,
+        summaryFailedKey: 'sk1-an-older-key',
+        summaryFailedAttempts: MINUTES_SUMMARY_MAX_ATTEMPTS,
+      },
+    });
+
+    await expect(service.summarize('m-1')).resolves.toBe('failed');
+    expect(failure).toEqual({
+      key: expect.stringMatching(/^sk1-[0-9a-f]{64}$/),
+      attempts: 1,
+    });
+  });
+
+  it('counts both of two jobs failing at once under a new key', async () => {
+    // A forced job beside a keyed one: both read the old key at start, so a
+    // write chosen from that read would set 1 twice and lose a failure.
+    const { service, failure } = build({
+      llmText: 'not json at all',
+      findUnique: {
+        ...MINUTES_ROW,
+        summaryFailedKey: 'sk1-an-older-key',
+        summaryFailedAttempts: MINUTES_SUMMARY_MAX_ATTEMPTS,
+      },
+    });
+
+    await Promise.all([
+      service.summarize('m-1', true),
+      service.summarize('m-1', true),
+    ]);
+    expect(failure.attempts).toBe(2);
+    expect(failure.key).not.toBe('sk1-an-older-key');
+  });
+
+  it('is retried when any axis moves — here the prompt', async () => {
+    const { service, llm } = build({
+      findUnique: {
+        ...MINUTES_ROW,
+        summaryFailedKey: await failedKey(),
+        summaryFailedAttempts: MINUTES_SUMMARY_MAX_ATTEMPTS,
+      },
+      templateHash: 'h-new',
+    });
+    // Serve the new template, so the guard lets it through.
+    (
+      service as unknown as {
+        promptClient: { getDocumentAnalysisPrompt: jest.Mock };
+      }
+    ).promptClient.getDocumentAnalysisPrompt.mockResolvedValue({
+      promptText: 'built prompt',
+      promptHash: 'h-new',
+      promptVersion: 'v2',
+    });
+
+    await expect(service.summarize('m-1')).resolves.toBe('created');
+    expect(llm.generate).toHaveBeenCalled();
+  });
+
+  it('is retried under force', async () => {
+    const { service, llm } = build({
+      findUnique: {
+        ...MINUTES_ROW,
+        summaryFailedKey: await failedKey(),
+        summaryFailedAttempts: MINUTES_SUMMARY_MAX_ATTEMPTS,
+      },
+    });
+
+    await expect(service.summarize('m-1', true)).resolves.toBe('created');
+    expect(llm.generate).toHaveBeenCalled();
+  });
+
+  it('clears the failed key and its count on a successful write', async () => {
+    const { service, db } = build();
+    await service.summarize('m-1');
+    expect(db.minutes.update.mock.calls[0][0].data).toMatchObject({
+      summaryFailedKey: null,
+      summaryFailedAttempts: 0,
+    });
+  });
+
+  it('does not record a transient failure — the LLM call threw', async () => {
+    const { service, db, llm } = build();
+    llm.generate.mockRejectedValueOnce(new Error('timeout'));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await expect(service.summarize('m-1')).resolves.toBe('failed');
+    expect(db.minutes.update).not.toHaveBeenCalled();
+    expect(db.minutes.updateMany).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
+  });
+
+  it('counts a repetition abort as the output failing, not the call', async () => {
+    // Ollama aborts a looping generation and the provider throws: 08-14 on
+    // UAT, retried every sync while it read as transient.
+    const { service, llm, failure } = build();
+    llm.generate.mockRejectedValueOnce(
+      new LLMError(
+        'ollama',
+        'generate',
+        new Error(
+          'HTTP 500: {"error":"prediction aborted, token repeat limit reached"}',
+        ),
+      ),
+    );
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await expect(service.summarize('m-1')).resolves.toBe('failed');
+    expect(failure).toEqual({
+      key: expect.stringMatching(/^sk1-/),
+      attempts: 1,
+    });
+    jest.restoreAllMocks();
+  });
+
+  it('does not record a guard refusal — the fallback prompt was served', async () => {
+    const { service, db } = build();
+    (
+      service as unknown as {
+        promptClient: { getDocumentAnalysisPrompt: jest.Mock };
+      }
+    ).promptClient.getDocumentAnalysisPrompt.mockResolvedValue({
+      promptText: 'generic',
+      promptHash: 'g',
+      promptVersion: 'v1',
+    });
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    await expect(service.summarize('m-1')).resolves.toBe('failed');
+    expect(db.minutes.update).not.toHaveBeenCalled();
+    expect(db.minutes.updateMany).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
+  });
+});
+
+describe('responseShape', () => {
+  it('counts claims, distinct titles and repeated lines — never the text', () => {
+    const claim = '{"kind": "public_comment", "title": "Jane Resident spoke"},';
+    const claims = (claim + '\n').repeat(5);
+    const shape = responseShape(`{"summary": "x", "claims": [\n${claims}`);
+
+    expect(shape).toContain('claims=5');
+    expect(shape).toContain('distinctTitles=1/5');
+    expect(shape).toContain('repeatedLines=4/6');
+    expect(shape).not.toContain('Jane');
   });
 });
 
@@ -441,7 +679,10 @@ describe('MinutesSummaryService.selectStale', () => {
     const result = await service.selectStale();
 
     // Every active row with text, not only what this sync wrote: the ingest
-    // skips PDFs it has seen, and a prompt change stales those too.
+    // skips PDFs it has seen, and a prompt change stales those too. Nor only
+    // rows whose stored prompt, model or config moved: one whose text changed
+    // in an earlier sync, and whose regeneration then failed transiently,
+    // would be invisible to that filter (meetings-phase-b.md §4f).
     expect(db.minutes.findMany.mock.calls[0][0].where).toEqual({
       isActive: true,
       rawText: { not: null },
@@ -449,7 +690,11 @@ describe('MinutesSummaryService.selectStale', () => {
     // No text: nothing to generate from, so neither pending nor current.
     expect(result!.current).toBe(1);
     expect(result!.pending).toEqual([
-      { id: 'm-stale', key: expect.stringMatching(/\S/) },
+      {
+        id: 'm-stale',
+        key: expect.stringMatching(/\S/),
+        externalId: expect.any(String),
+      },
     ]);
   });
 
@@ -464,7 +709,7 @@ describe('MinutesSummaryService.selectStale', () => {
 
     const result = await service.selectStale();
 
-    expect(result).toEqual({ pending: [], current: 1 });
+    expect(result).toEqual({ pending: [], current: 1, failedBefore: 0 });
     expect(db.minutes.update).toHaveBeenCalledWith({
       where: { id: 'm-1' },
       data: {
@@ -472,6 +717,50 @@ describe('MinutesSummaryService.selectStale', () => {
         summaryConfigHash: expect.any(String),
       },
     });
+  });
+
+  it('selects a row whose text changed, though its prompt, model and config are current', async () => {
+    // Re-ingested, its regeneration failed transiently, every other axis
+    // current: a filter on those axes would never select it again (§4f).
+    const changed = {
+      ...(await summarizedRow()),
+      id: 'm-changed',
+      rawText: 'ROLLCALL ... a corrected journal ...',
+    };
+    const { service, db } = build({ findMany: [changed] });
+
+    const result = await service.selectStale();
+
+    expect(result!.pending).toEqual([
+      {
+        id: 'm-changed',
+        key: expect.stringMatching(/\S/),
+        externalId: expect.any(String),
+      },
+    ]);
+    expect(db.minutes.findMany.mock.calls[0][0].where).not.toHaveProperty('OR');
+  });
+
+  it('leaves out, and counts, a stale row that used up its attempts under the same key (D5)', async () => {
+    const stale = { ...MINUTES_ROW, id: 'm-stale' };
+    const key = (await build({ findMany: [stale] }).service.selectStale())!
+      .pending[0].key;
+    const failed = (attempts: number) =>
+      build({
+        findMany: [
+          { ...stale, summaryFailedKey: key, summaryFailedAttempts: attempts },
+        ],
+      }).service.selectStale();
+
+    await expect(failed(MINUTES_SUMMARY_MAX_ATTEMPTS)).resolves.toEqual({
+      pending: [],
+      current: 0,
+      failedBefore: 1,
+    });
+    // An attempt left: still queued.
+    expect(
+      (await failed(MINUTES_SUMMARY_MAX_ATTEMPTS - 1))!.pending,
+    ).toHaveLength(1);
   });
 
   it('keys a job on the live prompt: a new template is a new job id', async () => {
@@ -520,6 +809,8 @@ describe('MinutesSummaryService.selectStale', () => {
 
     const result = await service.selectStale();
 
-    expect(result!.pending).toEqual([{ id: 'm-stale', key: null }]);
+    expect(result!.pending).toEqual([
+      { id: 'm-stale', key: null, externalId: expect.any(String) },
+    ]);
   });
 });

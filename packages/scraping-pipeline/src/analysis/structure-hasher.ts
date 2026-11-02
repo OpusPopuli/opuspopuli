@@ -5,6 +5,12 @@
  * and produces a deterministic hash. Text content is stripped so that
  * content changes (new bills, updated meeting times) don't affect the hash,
  * while structural changes (class renames, DOM restructuring) do.
+ *
+ * Repetition is not structure either. A list page with one more row, or a
+ * calendar whose window holds one more day, is the same page: each element
+ * keeps its DISTINCT child skeletons, not every child. Keeping every child
+ * re-derived a manifest whenever a count changed — daily, for a calendar on
+ * a moving window (meetings-phase-b.md §4a).
  */
 
 import * as cheerio from "cheerio";
@@ -28,9 +34,10 @@ const NON_STRUCTURAL_ELEMENTS = [
 /**
  * Extract the structural skeleton of HTML.
  *
- * Keeps: tag names, class/id/role attributes, nesting structure.
- * Strips: text content, href/src values, inline styles, data-* attributes,
- *         scripts, styles, SVGs, iframes.
+ * Keeps: tag names, class/id/role attributes, nesting structure, and each
+ *        distinct child skeleton once, in first-seen order.
+ * Strips: repeated identical siblings, text content, href/src values,
+ *         inline styles, data-* attributes, scripts, styles, SVGs, iframes.
  *
  * @param html - Raw HTML string
  * @returns Skeleton string representing the structural layout
@@ -61,7 +68,8 @@ export function extractHtmlSkeleton(html: string): string {
 
 /**
  * Recursively build a skeleton string from a DOM element.
- * Only preserves tag names and structural attributes.
+ * Only preserves tag names and structural attributes, and each distinct
+ * child skeleton once.
  */
 function skeletonize(el: AnyNode): string {
   if (el.type === "text" || el.type === "comment") {
@@ -83,10 +91,9 @@ function skeletonize(el: AnyNode): string {
 
   const attrStr = attribs.length > 0 ? " " + attribs.join(" ") : "";
 
-  const children = (el.children || [])
-    .map(skeletonize)
-    .filter(Boolean)
-    .join("");
+  const children = [
+    ...new Set((el.children || []).map(skeletonize).filter(Boolean)),
+  ].join("");
 
   return `<${tag}${attrStr}>${children}</${tag}>`;
 }

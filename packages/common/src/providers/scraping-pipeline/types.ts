@@ -88,6 +88,12 @@ export interface StructuralManifest {
   structureHash: string;
   /** SHA-256 hash of the analysis prompt that produced this manifest */
   promptHash: string;
+  /**
+   * Hash of the data-source fields the analysis prompt was given
+   * (`manifestConfigHash`). Undefined on a manifest saved before the config
+   * axis existed, which is stamped on its next use rather than re-derived.
+   */
+  configHash?: string;
   /** The extraction rules derived by AI */
   extractionRules: ExtractionRuleSet;
   /** Confidence score from the AI analysis (0.0-1.0) */

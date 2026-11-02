@@ -49,6 +49,7 @@ function createRecord(overrides: Partial<ManifestRecord> = {}): ManifestRecord {
     version: 1,
     structureHash: "hash-abc",
     promptHash: "hash-def",
+    configHash: null,
     extractionRules: {
       containerSelector: ".container",
       itemSelector: ".item",
@@ -175,6 +176,24 @@ describe("ManifestStoreService", () => {
       expect(createCall.data.successCount).toBe(0);
       expect(createCall.data.failureCount).toBe(0);
     });
+
+    it("persists the config hash, and reads a legacy null back as undefined", async () => {
+      repo.updateMany.mockResolvedValue({ count: 0 });
+      repo.create.mockResolvedValueOnce(createRecord({ configHash: "cfg-1" }));
+
+      const saved = await store.save(createManifest({ configHash: "cfg-1" }));
+
+      expect(repo.create.mock.calls[0][0].data.configHash).toBe("cfg-1");
+      expect(saved.configHash).toBe("cfg-1");
+
+      repo.findFirst.mockResolvedValueOnce(createRecord({ configHash: null }));
+      const legacy = await store.findLatest(
+        "california",
+        "https://example.com",
+        "propositions" as never,
+      );
+      expect(legacy?.configHash).toBeUndefined();
+    });
   });
 
   describe("incrementSuccess", () => {
@@ -283,6 +302,19 @@ describe("ManifestStoreService", () => {
       expect(repo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ take: 5 }),
       );
+    });
+  });
+
+  describe("stampConfigHash", () => {
+    it("writes only the config hash", async () => {
+      repo.update.mockResolvedValue(createRecord());
+
+      await store.stampConfigHash("manifest-1", "cfg-1");
+
+      expect(repo.update).toHaveBeenCalledWith({
+        where: { id: "manifest-1" },
+        data: { configHash: "cfg-1" },
+      });
     });
   });
 

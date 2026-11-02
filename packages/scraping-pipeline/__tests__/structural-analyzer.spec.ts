@@ -1,4 +1,7 @@
-import { StructuralAnalyzerService } from "../src/analysis/structural-analyzer.service";
+import {
+  StructuralAnalyzerService,
+  manifestConfigHash,
+} from "../src/analysis/structural-analyzer.service";
 import { PromptClientService } from "../src/analysis/prompt-client.service";
 import {
   DataType,
@@ -145,6 +148,28 @@ describe("StructuralAnalyzerService", () => {
       const manifest = await analyzer.analyze(SIMPLE_HTML, createSource());
 
       expect(manifest.promptHash).toBe("a".repeat(64));
+    });
+
+    it("stamps the manifest with the config it was derived from", async () => {
+      const source = createSource();
+      const manifest = await analyzer.analyze(SIMPLE_HTML, source);
+
+      expect(manifest.configHash).toBe(manifestConfigHash(source));
+    });
+
+    it("hashes every source field the prompt is given (a new input must join the config axis)", async () => {
+      await analyzer.analyze(SIMPLE_HTML, createSource());
+
+      const [args] = mockPromptClient.getStructuralAnalysisPrompt.mock.calls[0];
+      const sourceInputs = Object.keys(args)
+        .filter((k) => k !== "html")
+        .sort();
+      expect(sourceInputs).toEqual([
+        "category",
+        "contentGoal",
+        "dataType",
+        "hints",
+      ]);
     });
 
     it("should set sourceUrl from the data source", async () => {
@@ -413,5 +438,35 @@ describe("StructuralAnalyzerService", () => {
         "structural-analysis",
       );
     });
+  });
+});
+
+describe("manifestConfigHash", () => {
+  const base = {
+    dataType: DataType.MEETINGS,
+    contentGoal: "Extract committee hearings",
+    category: "Senate",
+    hints: ["title is the committee name"],
+  };
+
+  it("changes when a hint, the goal or the category changes", () => {
+    const h = manifestConfigHash(base);
+    expect(manifestConfigHash({ ...base, hints: ["other"] })).not.toBe(h);
+    expect(manifestConfigHash({ ...base, contentGoal: "other" })).not.toBe(h);
+    expect(manifestConfigHash({ ...base, category: "Assembly" })).not.toBe(h);
+  });
+
+  it("hashes absent and empty alike (the worker defaults contentGoal to empty)", () => {
+    const bare = { dataType: DataType.MEETINGS } as Parameters<
+      typeof manifestConfigHash
+    >[0];
+    expect(manifestConfigHash(bare)).toBe(
+      manifestConfigHash({
+        dataType: DataType.MEETINGS,
+        contentGoal: "",
+        category: "",
+        hints: [],
+      }),
+    );
   });
 });

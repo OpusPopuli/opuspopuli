@@ -25,7 +25,10 @@ import type {
 // used in type position.
 import { DataType, RowProvenance } from "@opuspopuli/common";
 import { ExtractionProvider } from "@opuspopuli/extraction-provider";
-import { StructuralAnalyzerService } from "../analysis/structural-analyzer.service.js";
+import {
+  StructuralAnalyzerService,
+  manifestConfigHash,
+} from "../analysis/structural-analyzer.service.js";
 import { computeStructureHash } from "../analysis/structure-hasher.js";
 import { ManifestStoreService } from "../manifest/manifest-store.service.js";
 import { ManifestComparator } from "../manifest/manifest-comparator.js";
@@ -1025,13 +1028,30 @@ export class ScrapingPipelineService {
       source.dataType as DataType,
     );
 
+    const currentConfigHash = manifestConfigHash(source);
     const comparison = ManifestComparator.compare(
       existing,
       currentStructureHash,
       currentPromptHash,
+      currentConfigHash,
     );
 
     if (comparison.canReuse && existing) {
+      if (existing.configHash === undefined) {
+        // Saved before the config axis (§4b): stamp it as current rather
+        // than re-derive every manifest at once. Best-effort: a missed stamp
+        // is retried on the next use, and must not fail the extraction.
+        try {
+          await this.manifestStore.stampConfigHash(
+            existing.id,
+            currentConfigHash,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Could not stamp the config hash on manifest ${existing.id}: ${(error as Error).name}`,
+          );
+        }
+      }
       this.logger.debug(
         `Manifest cache hit for ${source.url} (v${existing.version})`,
       );

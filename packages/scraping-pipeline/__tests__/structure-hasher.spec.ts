@@ -104,9 +104,23 @@ describe("extractHtmlSkeleton", () => {
     expect(skeleton).toContain('class="inner"');
     expect(skeleton).toContain('class="list"');
     expect(skeleton).toContain('class="item"');
-    // Should have two <li> elements
+    // Identical siblings collapse to one (repetition is not structure)
     const liCount = (skeleton.match(/<li/g) || []).length;
-    expect(liCount).toBe(2);
+    expect(liCount).toBe(1);
+  });
+
+  it("keeps each distinct sibling once, in first-seen order", () => {
+    const skeleton = extractHtmlSkeleton(`
+      <html><body><div class="day">
+        <div class="hearing"></div>
+        <div class="holiday"></div>
+        <div class="hearing"></div>
+      </div></body></html>
+    `);
+
+    expect(skeleton).toBe(
+      '<body><div class="day"><div class="hearing"></div><div class="holiday"></div></div></body>',
+    );
   });
 });
 
@@ -167,6 +181,34 @@ describe("computeStructureHash", () => {
         <div class="card"><h3>Name</h3><p>Extra</p></div>
       </body></html>
     `;
+
+    expect(computeStructureHash(html1)).not.toBe(computeStructureHash(html2));
+  });
+
+  it("returns the same hash when only the number of repeated rows changes", () => {
+    // A calendar on a moving window: one more day, one more hearing.
+    const day = (hearings: number) =>
+      `<div class="day"><h2></h2>${'<div class="hearing"><a></a></div>'.repeat(hearings)}</div>`;
+    const html1 = `<html><body>${day(2)}${day(1)}</body></html>`;
+    const html2 = `<html><body>${day(1)}${day(3)}${day(2)}</body></html>`;
+
+    expect(computeStructureHash(html1)).toBe(computeStructureHash(html2));
+  });
+
+  it("returns a different hash when a new kind of row appears", () => {
+    const html1 = `<html><body><div class="hearing"></div><div class="hearing"></div></body></html>`;
+    const html2 = `<html><body><div class="hearing"></div><div class="holiday"></div></body></html>`;
+
+    expect(computeStructureHash(html1)).not.toBe(computeStructureHash(html2));
+  });
+
+  it("returns a different hash when distinct kinds of row swap order", () => {
+    // First-seen order is kept, deliberately (meetings-phase-b.md, as built
+    // step 4): a reorder can break a sibling selector. The cost is that a
+    // window starting on a different kind of row re-derives; 15 Senate
+    // windows on 2026-11-01 never did.
+    const html1 = `<html><body><div class="hearing"></div><div class="holiday"></div></body></html>`;
+    const html2 = `<html><body><div class="holiday"></div><div class="hearing"></div></body></html>`;
 
     expect(computeStructureHash(html1)).not.toBe(computeStructureHash(html2));
   });

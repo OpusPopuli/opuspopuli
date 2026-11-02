@@ -390,7 +390,7 @@ services:
       COMMITTEE_SUMMARY_GENERATOR_MAX_REPS: "5"
       # Minutes synopsis + claims; the default, stated so a change is a diff.
       # The same on region and region-worker: it is in the skip key.
-      MINUTES_SUMMARY_MAX_TOKENS: "4000"
+      MINUTES_SUMMARY_MAX_TOKENS: "8000"
     ports:
       - "3004:8080"
     depends_on:
@@ -483,7 +483,7 @@ services:
       COMMITTEE_SUMMARY_GENERATOR_MAX_REPS: "5"
       # Minutes synopsis + claims; the default, stated so a change is a diff.
       # The same on region and region-worker: it is in the skip key.
-      MINUTES_SUMMARY_MAX_TOKENS: "4000"
+      MINUTES_SUMMARY_MAX_TOKENS: "8000"
     ports:
       - "3005:8080"
     depends_on:

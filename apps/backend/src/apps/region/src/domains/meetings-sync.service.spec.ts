@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { QueueService } from '@opuspopuli/queue-provider';
 import type { Meeting, MinutesWithActions } from '@opuspopuli/common';
@@ -141,7 +142,10 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
       },
     } as unknown as DbService;
     const summary = selectStale
-      ? ({ selectStale } as unknown as MinutesSummaryService)
+      ? ({
+          selectStale,
+          configHash: () => 'sel-config',
+        } as unknown as MinutesSummaryService)
       : undefined;
     const svc = new MeetingsSyncService(
       db,
@@ -179,7 +183,7 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
 
   it('queues only the stale summaries, under their skip-key job ids', async () => {
     const selectStale = jest.fn().mockResolvedValue({
-      pending: [{ id: 'row-m-b', key: 'k1' }],
+      pending: [{ id: 'row-m-b', key: 'k1', externalId: 'ext-m-b' }],
       current: 1,
     });
     const { svc, provider, enqueue } = buildSync(selectStale);
@@ -190,7 +194,11 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
     expect(enqueue).toHaveBeenCalledTimes(1);
     expect(enqueue.mock.calls[0][1]).toEqual({
       minutesId: 'row-m-b',
+      // Carried so the worker's outcome line names the document (§4).
+      externalId: 'ext-m-b',
       force: false,
+      // The worker checks its own config against this (§4d).
+      selectedUnderConfigHash: 'sel-config',
     });
     // Not the bare row id, which collided with the completed job BullMQ keeps
     // for a week: a new key is a new job.
@@ -199,6 +207,25 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
     expect(jobId).toContain('k1');
     // Not retained: a failed job's id must not block the next sync's retry.
     expect(enqueue.mock.calls[0][2].removeOnFinish).toBe(true);
+  });
+
+  it('books selection skips to the phase totals', async () => {
+    const selectStale = jest.fn().mockResolvedValue({
+      pending: [],
+      current: 2,
+      failedBefore: 1,
+    });
+    const { svc, provider } = buildSync(selectStale);
+    const log = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+
+    await svc.sync(provider, undefined, upsertByExternalId);
+
+    const lines = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(lines).toContain('2 skipped (summary_current)');
+    expect(lines).toContain('1 skipped (summary_failed_same_key)');
+    log.mockRestore();
   });
 
   it('still queues stale summaries when no new minutes were found', async () => {
@@ -216,6 +243,7 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
     expect(enqueue.mock.calls[0][1]).toEqual({
       minutesId: 'row-old',
       force: false,
+      selectedUnderConfigHash: 'sel-config',
     });
   });
 
@@ -223,8 +251,13 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
     // Meetings and minutes are already written by then; a failed currency
     // read must not fail the sync, and this sync's rows still get a job (each
     // re-checks currency).
-    const selectStale = jest.fn().mockRejectedValue(new Error('db timeout'));
+    const selectStale = jest
+      .fn()
+      .mockRejectedValue(new Error('db timeout: the selected text'));
     const { svc, provider, enqueue } = buildSync(selectStale);
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
 
     await expect(
       svc.sync(provider, undefined, upsertByExternalId),
@@ -233,6 +266,12 @@ describe('MeetingsSyncService.sync — attribution and summary jobs', () => {
       'row-m-a',
       'row-m-b',
     ]);
+    // The error's kind, never its message: a Prisma validation error prints
+    // the call's arguments, and those can carry minutes text.
+    const lines = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(lines).toContain('selection failed');
+    expect(lines).not.toContain('the selected text');
+    warn.mockRestore();
   });
 
   it('falls back to the upserted rows when the summarizer is unconfigured', async () => {

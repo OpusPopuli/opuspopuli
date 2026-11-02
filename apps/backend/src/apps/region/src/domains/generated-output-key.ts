@@ -26,6 +26,8 @@ export interface OutputTarget {
   id: string;
   /** The skip key — the job id's last part; null when it cannot be known. */
   key: string | null;
+  /** The row's external id, when the generator has one, for log correlation. */
+  externalId?: string;
 }
 
 /** What a stored output records about how it was produced. */

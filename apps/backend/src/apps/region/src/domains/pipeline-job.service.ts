@@ -257,6 +257,51 @@ export class PipelineJobService {
   }
 
   /**
+   * Fail `queued` rows older than `maxAgeMs` whose queue job will never run
+   * them: gone, or finished (meetings-phase-b.md §4g). The running sweep above never sees them, so
+   * one stays `queued` for ever: `a5240300`, a 2026-07-15 cron row, was still
+   * queued in November. A row whose job is still pending — waiting, delayed
+   * for a lock retry, scheduled, active — is left alone, however old.
+   *
+   * @param jobPending - Whether the row's queue job may still run
+   */
+  async sweepOrphanedQueued(
+    maxAgeMs: number,
+    jobPending: (bullmqJobId: string) => Promise<boolean>,
+  ): Promise<number> {
+    const old = await this.prisma.pipelineJob.findMany({
+      where: {
+        status: JOB_STATUS.QUEUED,
+        enqueuedAt: { lt: new Date(Date.now() - maxAgeMs) },
+      },
+      select: { id: true, bullmqJobId: true, parentJobId: true },
+    });
+    const orphans: typeof old = [];
+    for (const row of old) {
+      if (!(await jobPending(row.bullmqJobId))) orphans.push(row);
+    }
+    if (orphans.length === 0) return 0;
+    const result = await this.prisma.pipelineJob.updateMany({
+      // Re-checked: a row that started since the read keeps its status.
+      where: {
+        id: { in: orphans.map((r) => r.id) },
+        status: JOB_STATUS.QUEUED,
+      },
+      data: {
+        status: JOB_STATUS.FAILED,
+        finishedAt: new Date(),
+        errorMessage:
+          'Abandoned: worker startup found this row queued with no pending queue job (gone or finished)',
+      },
+    });
+    const parents = new Set(
+      orphans.flatMap((r) => (r.parentJobId ? [r.parentJobId] : [])),
+    );
+    for (const parent of parents) await this.settleParent(parent);
+    return result.count;
+  }
+
+  /**
    * Close every still-running request whose children have all finished (S2)
    * — a last child whose own settle failed leaves its parent `running`, and
    * nothing else would ever close it. Run at startup beside the sweep.

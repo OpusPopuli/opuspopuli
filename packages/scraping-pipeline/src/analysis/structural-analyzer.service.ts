@@ -9,16 +9,41 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import * as cheerio from "cheerio";
 import { randomUUID } from "node:crypto";
-import type {
-  ILLMProvider,
-  DataType,
-  DataSourceConfig,
-  ExtractionRuleSet,
-  StructuralManifest,
+import {
+  stableHash,
+  type ILLMProvider,
+  type DataType,
+  type DataSourceConfig,
+  type ExtractionRuleSet,
+  type StructuralManifest,
 } from "@opuspopuli/common";
 import { findFieldContractGaps } from "../mapping/field-contract.js";
 import { computeStructureHash } from "./structure-hasher.js";
 import { PromptClientService } from "./prompt-client.service.js";
+
+/**
+ * The data-source config a manifest was derived from — every source field
+ * the structural-analysis prompt is given — hashed as the manifest's config
+ * axis (meetings-phase-b.md §4b). Without it a hint edit never re-derived a
+ * manifest. A new input to `getStructuralAnalysisPrompt` must be added here.
+ *
+ * Absent and empty are the same config: the pipeline passes the source's own
+ * fields, the analysis worker a job payload whose `contentGoal` defaults to
+ * `""`, and the two must hash alike or every manifest reads as changed.
+ */
+export function manifestConfigHash(
+  source: Pick<
+    DataSourceConfig,
+    "dataType" | "contentGoal" | "category" | "hints"
+  >,
+): string {
+  return stableHash({
+    dataType: source.dataType,
+    contentGoal: source.contentGoal ?? "",
+    category: source.category ?? "",
+    hints: source.hints ?? [],
+  });
+}
 
 /** Maximum HTML size to send to the LLM (characters) */
 const MAX_HTML_SIZE = 12000;
@@ -104,6 +129,7 @@ export class StructuralAnalyzerService {
       version: 0, // Set by caller
       structureHash: computeStructureHash(html),
       promptHash: promptResponse.promptHash,
+      configHash: manifestConfigHash(source),
       extractionRules: rules,
       confidence: this.estimateConfidence(rules),
       successCount: 0,

@@ -63,6 +63,14 @@ export interface MinutesSummaryJobData {
   externalId?: string;
   /** When true, re-summarize even if a summary already exists (operator backfill). */
   force?: boolean;
+  /**
+   * The summary config hash the selecting service judged currency under
+   * (meetings-phase-b.md §4d). Selection runs in region and the summary in
+   * region-worker, each reading `MINUTES_SUMMARY_*` from its own environment;
+   * the worker compares this with its own so a mismatch is reported, not
+   * just paid for in no-op jobs.
+   */
+  selectedUnderConfigHash?: string;
 }
 
 /**

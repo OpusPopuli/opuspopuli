@@ -107,4 +107,72 @@ describe("ManifestComparator", () => {
     expect(result.structureChanged).toBe(true);
     expect(result.promptChanged).toBe(true);
   });
+
+  describe("config axis", () => {
+    const current = () =>
+      createManifest({ configHash: "cfg-1" }) as StructuralManifest;
+
+    it("reports config_changed when only the config moved", () => {
+      const result = ManifestComparator.compare(
+        current(),
+        "struct-hash-abc",
+        "prompt-hash-xyz",
+        "cfg-2",
+      );
+
+      expect(result).toEqual({
+        canReuse: false,
+        reason: "config_changed",
+        structureChanged: false,
+        promptChanged: false,
+        configChanged: true,
+      });
+    });
+
+    it("reuses when the config matches", () => {
+      const result = ManifestComparator.compare(
+        current(),
+        "struct-hash-abc",
+        "prompt-hash-xyz",
+        "cfg-1",
+      );
+
+      expect(result.canReuse).toBe(true);
+      expect(result.configChanged).toBe(false);
+    });
+
+    it("treats a manifest with no config hash as current (legacy, stamped by the caller)", () => {
+      const result = ManifestComparator.compare(
+        createManifest(),
+        "struct-hash-abc",
+        "prompt-hash-xyz",
+        "cfg-2",
+      );
+
+      expect(result.canReuse).toBe(true);
+      expect(result.configChanged).toBe(false);
+    });
+
+    it("leaves the axis unchecked when no live config hash is given", () => {
+      const result = ManifestComparator.compare(
+        current(),
+        "struct-hash-abc",
+        "prompt-hash-xyz",
+      );
+
+      expect(result.canReuse).toBe(true);
+    });
+
+    it("keeps structure as the reason when structure and config both moved", () => {
+      const result = ManifestComparator.compare(
+        current(),
+        "new-struct",
+        "prompt-hash-xyz",
+        "cfg-2",
+      );
+
+      expect(result.reason).toBe("structure_changed");
+      expect(result.configChanged).toBe(true);
+    });
+  });
 });

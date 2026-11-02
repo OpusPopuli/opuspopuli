@@ -32,6 +32,8 @@ export class MinutesSummaryProcessor
     timestamp: true,
   });
   private worker?: Worker<MinutesSummaryJobData>;
+  /** Config pairs already reported, so a mismatch warns once, not per job. */
+  private readonly reportedMismatches = new Set<string>();
 
   constructor(
     private readonly minutesSummary: MinutesSummaryService,
@@ -61,11 +63,30 @@ export class MinutesSummaryProcessor
     job: Job<MinutesSummaryJobData>,
   ): Promise<GeneratedOutputOutcome> {
     const { minutesId, externalId, force } = job.data;
+    this.checkSelectionConfig(job.data.selectedUnderConfigHash);
     const outcome = await this.minutesSummary.summarize(
       minutesId,
       force ?? false,
     );
     this.logger.debug(`minutes-summary ${externalId ?? minutesId}: ${outcome}`);
     return outcome;
+  }
+
+  /**
+   * Warn when the service that selected this job keyed currency under other
+   * settings (meetings-phase-b.md §4d). Each side then judges stale what the
+   * other wrote: region queues jobs that end `unchanged` here, every sync.
+   * Absent on jobs queued before the field existed.
+   */
+  private checkSelectionConfig(selected: string | undefined): void {
+    const own = this.minutesSummary.configHash();
+    if (!selected || selected === own) return;
+    const pair = `${selected}/${own}`;
+    if (this.reportedMismatches.has(pair)) return;
+    this.reportedMismatches.add(pair);
+    this.logger.warn(
+      `minutes-summary: selected under config ${selected.slice(0, 12)}, but this worker's is ` +
+        `${own.slice(0, 12)}; set MINUTES_SUMMARY_MAX_TOKENS the same on region and region-worker`,
+    );
   }
 }
