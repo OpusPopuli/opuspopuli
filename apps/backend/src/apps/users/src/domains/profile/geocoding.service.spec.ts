@@ -264,7 +264,7 @@ describe('GeocodingService', () => {
    * fails these.
    */
   describe('never logs the street address', () => {
-    const ADDRESS = '645 Taraval Street';
+    const ADDRESS = '645 Quillfeather Street';
     const ZIP = '94116';
 
     let logged: string[];
@@ -291,7 +291,7 @@ describe('GeocodingService', () => {
     const expectNoAddressLogged = (): void => {
       const all = logged.join('\n');
       expect(all).not.toContain(ADDRESS);
-      expect(all).not.toContain('Taraval');
+      expect(all).not.toContain('Quillfeather');
       expect(all).not.toContain(ZIP);
     };
 
@@ -339,7 +339,7 @@ describe('GeocodingService', () => {
      * We put the street into the request URL as a query parameter, so an error
      * raised by the HTTP layer can carry it back to us inside a message we did
      * not write. Exact-value scrubbing covers the encoded forms too, which a
-     * street-address regex would miss entirely: `645+Taraval+Street` has no
+     * street-address regex would miss entirely: `645+Quillfeather+Street` has no
      * spaces for a pattern to anchor on.
      */
     it('scrubs the address out of an upstream message that echoes the URL', async () => {
@@ -347,7 +347,7 @@ describe('GeocodingService', () => {
         .spyOn(global, 'fetch')
         .mockRejectedValue(
           new Error(
-            'request to https://geocoding.geo.census.gov/x?street=645+Taraval+Street&zip=94116 failed',
+            'request to https://geocoding.geo.census.gov/x?street=645+Quillfeather+Street&zip=94116 failed',
           ),
         );
 
@@ -369,7 +369,7 @@ describe('GeocodingService', () => {
         .spyOn(global, 'fetch')
         .mockRejectedValue(
           new Error(
-            'connect ECONNREFUSED while fetching ?street=645+Taraval+Street',
+            'connect ECONNREFUSED while fetching ?street=645+Quillfeather+Street',
           ),
         );
 
@@ -381,7 +381,7 @@ describe('GeocodingService', () => {
       }
 
       expect(caught).toBeInstanceOf(GeocoderUnavailableError);
-      expect(caught?.message).not.toContain('Taraval');
+      expect(caught?.message).not.toContain('Quillfeather');
       expect(caught?.message).toContain('[REDACTED]');
     });
   });
