@@ -1026,3 +1026,71 @@ finished jobs. This record states what UAT did and did not exercise.
 suppressed `maplibre-gl` CVE (`.trivyignore.yaml`); gitleaks clean.
 This is a self-review: the author and the reviewer are the same, so it needs
 a countersign.
+
+## As built: step 5 (2026-11-01, UAT)
+
+No code change. Both lanes the step names were already in place for meetings,
+inherited from shared code, and UAT confirms each one.
+
+- **Minutes PDFs already parse on the CPU lane.** `MinutesIngestHandler`
+  fetches every minutes PDF through `ExtractionProvider.fetchPdfText` with
+  `archive` set. That is the path propositions Phase B laned. The archived
+  bytes get a source-version id, and with `PDF_PARSE_LANE` bound (region and
+  region-worker, `region.module.ts`) a PDF with no recorded parse is queued
+  on `pdf-parse` instead of being parsed in process. Measured:
+  - the 12 meetings source versions fetched on 2026-10-29 at 01:41 UTC all
+    carry a recorded parse (`pdf-extractor-1+f7a80dbd33c0`);
+  - `pdf_parse_total{source="lane"}` rose from 0 to 12 at 01:42.
+
+  The lane takes a source-version id and stores text, which is S6 as the lanes
+  plan defines it. A normal sync parses nothing at all: both listings stop at
+  their watermark, and an unchanged PDF reuses its recorded parse (K-P1).
+- **`minutes-summary` already runs on the analysis GPU sublane.**
+  `MinutesSummaryService` extends `LlmGeneratorBase`, which injects
+  `LLM_ANALYSIS_PROVIDER`. Its jobs run in region-worker, where the GPU lane
+  dispatcher is bound (`GPU_LANE_QUEUE_ENABLED=true` on UAT). Over the 24 h
+  of step 4's regeneration runs: 101 `minutes-summary` jobs, every
+  region-worker LLM request on `lane="analysis"`, and 62 analysis-lane waits.
+
+### Not done here
+
+- **Petition-scan OCR is not moved.** The plan made the move conditional on
+  `1234-petition-scan-ocr-eval.md`, and that eval has not run. Its status is
+  still "plan — nothing implemented", so there is no engine decision to move
+  toward. Recognition already runs in a tesseract.js worker thread. What stays
+  on the documents event loop is `detectSkewAngle`: about 72 projection
+  passes over a 500 px-wide image. Petition scans are a different data type,
+  a synchronous user flow carrying third-party personal information, and
+  nothing in meetings depends on them. They move after the eval's phases
+  1–4, as their own change.
+- **The `pdf` source type still parses in process.** The `pdf` handler
+  (`pipeline.service.ts`) calls `fetchPdfText(url)` without `archive`, so it
+  has no source-version id and never reaches the lane. These were the two
+  in-process parses next to the 12 laned ones on 10-29: the Senate Daily File,
+  which step 2 retired. No region config uses `sourceType: pdf` now
+  (opuspopuli-regions `820cfb2`). The path is recorded with M2's other
+  limitations, not changed: no live source exists to verify a change against.
+
+## As built: step 6, the gate (2026-11-01, UAT)
+
+Two meetings syncs ran back to back (`meet-j1`, `meet-j2`, under
+`caffeinate`). The UAT images were built at 22:36 UTC from the step 4 working
+tree. That tree was committed eight minutes later as `20d1de66`, and the
+#1423 merge (`fa9a0d45`) has the same tree. The step 0 baseline is `meet-c0`
+(2026-10-31). Before and after each sync, every Assembly and Senate meeting
+and every minutes row was snapshotted.
+
+| Gate | Result |
+|---|---|
+| Both chambers land rows | **Yes.** Assembly 5 and Senate 7 per sync, from the cached manifests (v18, v6). At baseline: 0 and 0 |
+| Minutes counts unchanged | **Yes.** 67 before and after. `raw_text`, summary, prompt hash and failure columns are identical row for row |
+| Summaries regenerated only where the skip key says | **Yes.** 64 skipped as current, 0 regenerated, because no key axis changed. The other direction, a key change regenerating exactly the affected rows, was shown in step 4 (`meet-h2`, new prompt hash) |
+| No duplicate meetings across two syncs | **Yes.** 25 state rows before and after, `external_id` distinct, no two live rows share chamber, time and title. Each sync reported 12 updated, 0 created, with content unchanged |
+| Wall time and LLM calls against step 0 | **1.1 s and 0.1 s, against 48.3 s.** 0 LLM calls, against 2 at baseline (an Assembly re-analysis on `structure_changed` and the Senate PDF rules call). 0 structural analyses, 0 PDF parses |
+
+Meetings Phase B is complete for the steps this plan set out. Its open items
+are recorded above:
+- 02-06 and 10-05 summarize with 0 claims (step 4);
+- 4f is unbuilt, with the condition for building it (step 4);
+- petition-scan OCR and the unarchived `pdf` path (step 5);
+- #921, narrowed (step 1).
