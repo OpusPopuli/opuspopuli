@@ -30,7 +30,7 @@ describe("redactContactDetails", () => {
   });
 
   test("removes phone numbers in the formats these filings use", () => {
-    for (const p of ["628-243-1808", "916-446-6752", "(619) 806-0698"]) {
+    for (const p of ["628-555-0142", "916-555-0167", "(619) 555-0123"]) {
       const r = redactContactDetails(`Call ${p} today.`);
       expectMatch(r.text, /\[REDACTED-PHONE\]/, `failed on ${p}`);
     }
@@ -38,15 +38,15 @@ describe("redactContactDetails", () => {
 
   test("removes a street address with a suite", () => {
     const r = redactContactDetails(
-      "3009 DOUGLAS BLVD. SUITE 300 ROSEVILLE, CA",
+      "3009 BRAMBLEWOOD BLVD. SUITE 300 FAIRHAVEN, CA",
     );
     expectMatch(r.text, /\[REDACTED-ADDRESS\]/);
-    expectOk(!r.text.includes("DOUGLAS"));
+    expectOk(!r.text.includes("BRAMBLEWOOD"));
   });
 
   test("removes residential-looking street addresses", () => {
     // The two that prompted this module.
-    for (const a of ["645 Taraval Street", "7031 Mission Street"]) {
+    for (const a of ["645 Quillfeather Street", "7031 Lanternfish Street"]) {
       const r = redactContactDetails(`Proponent address: ${a}, San Francisco`);
       expectMatch(r.text, /\[REDACTED-ADDRESS\]/, `failed on ${a}`);
     }
@@ -76,7 +76,7 @@ describe("redactContactDetails", () => {
 
   test("reports every hit it made", () => {
     const r = redactContactDetails(
-      "645 Taraval Street, call 628-243-1808 or campaign@example.org",
+      "645 Quillfeather Street, call 628-555-0142 or campaign@example.org",
     );
     expectDeepEqual(r.hits.map((h) => h.kind).sort(), [
       "email",
@@ -88,7 +88,7 @@ describe("redactContactDetails", () => {
 
 describe("findContactDetails", () => {
   test("is empty for already-redacted text", () => {
-    const once = redactContactDetails("call 628-243-1808").text;
+    const once = redactContactDetails("call 628-555-0142").text;
     // The post-condition used on fixture generation: redacting twice must
     // find nothing the second time.
     expectDeepEqual(findContactDetails(once), []);
