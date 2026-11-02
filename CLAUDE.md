@@ -241,7 +241,8 @@ The `op-*` workflow commands — `/op-review`, `/op-issue-plan`, `/op-release`, 
 - **Compliance profile:** `.sdlc/compliance-profile.yaml` declares `us-state-privacy` + `soc2`, so the data lens is CCPA personal information, not HIPAA PHI. It moved from `.claude/` in plugin 0.3.0; the path belongs to no single coding agent.
 - **Gate review criteria:** `.sdlc/review/code.md` and `.sdlc/review/security.md` hold this repo's checks for the pre-push AI review (GPL deps, Federation/HMAC contracts, inline prompts, the security list). Edit them there, not in `.husky/pre-push`.
 - **`scripts/data-scan.ts`** (stage 6b) is the deterministic regulated-data scan: card numbers, SSNs and sensitive fields reaching a log, error or prompt, scoped to the profile. Accepted false positives go in `.sdlc/data-scan-allow.yaml`, each with a reason. Run `node --experimental-strip-types scripts/data-scan.ts --all` to scan the whole repo.
-- **`scripts/review-gate.ts`** and **`scripts/data-scan.ts`** are vendored from the plugin. Don't edit them here: change them upstream, then copy them again.
+- **Stack:** `.sdlc/stack.yaml` declares the build commands (`node-pnpm` preset with this repo's lint, jscpd and audit overrides, plus the no-GPL licence policy). `scripts/stack.ts` runs pre-push stages 1–4 from it, and the `op-*` skills read it. `node --experimental-strip-types scripts/stack.ts show` prints what runs. Change a gate command there, not in `.husky/pre-push`.
+- **`scripts/review-gate.ts`**, **`scripts/data-scan.ts`** and **`scripts/stack.ts`** are vendored from the plugin. Don't edit them here: change them upstream, then copy them again.
 
 ## Pre-push workflow (mandatory)
 

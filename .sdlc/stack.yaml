@@ -1,0 +1,12 @@
+# The Opus Populi monorepo's stack: pnpm workspaces (NestJS backend, Next.js frontend).
+# scripts/stack.ts reads this for .husky/pre-push stages 1-4 and the op-* skills' commands.
+# `node --experimental-strip-types scripts/stack.ts show` prints what will run.
+version: 1
+preset: node-pnpm
+commands:
+  lint: pnpm lint:sonar                          # SonarJS rules (each package's lint runs in pre-commit)
+  duplication: pnpm jscpd                        # the repo's jscpd and .jscpd.json thresholds
+  dependency-audit: sh scripts/dependency-audit.sh   # warns on an unreachable advisory endpoint, blocks on CVEs
+licence:
+  # AGPL-3.0 + dual commercial licence: GPL-only dependencies would break the commercial option.
+  forbidden: [GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later]
