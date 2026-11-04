@@ -17,6 +17,7 @@ import {
   MANIFEST_MISSING_CALLBACK,
   EXECUTION_TRACKER_REPOSITORY,
   BULK_ARCHIVE,
+  BULK_IMPORT_LEDGER,
   type ManifestMissingArgs,
 } from '@opuspopuli/scraping-pipeline';
 import {
@@ -85,6 +86,7 @@ import { PrismaManifestRepository } from '../infrastructure/prisma-manifest-repo
 import { PrismaSourceArchive } from '../infrastructure/prisma-source-archive';
 import { QueuedPdfParseLane } from '../infrastructure/queued-pdf-parse-lane';
 import { PrismaBulkArchive } from '../infrastructure/prisma-bulk-archive';
+import { PrismaBulkImportLedger } from '../infrastructure/prisma-bulk-import-ledger';
 import { StorageModule } from '@opuspopuli/storage-provider';
 import { PrismaIngestionWatermarkRepository } from '../infrastructure/prisma-ingestion-watermark-repository';
 import { PrismaExecutionTrackerRepository } from '../infrastructure/prisma-execution-tracker-repository';
@@ -211,6 +213,13 @@ const promptClientAsyncConfig = {
         {
           provide: BULK_ARCHIVE,
           useExisting: PrismaBulkArchive,
+        },
+        // Which bulk imports completed, so unchanged rows can be skipped
+        // (campaign-finance-phase-b.md, D3). Same scope rule as BULK_ARCHIVE.
+        PrismaBulkImportLedger,
+        {
+          provide: BULK_IMPORT_LEDGER,
+          useExisting: PrismaBulkImportLedger,
         },
         StructuralAnalysisJobService,
         {

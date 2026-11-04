@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
+import { existsSync, type ReadStream } from "node:fs";
+import { readdir, stat, unlink, utimes, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BulkDownloadHandler } from "../src/handlers/bulk-download.handler";
+import { bulkImportKey } from "../src/handlers/bulk-import-key";
 import type { DomainMapperService } from "../src/mapping/domain-mapper.service";
 import { ExecutionTrackerService } from "../src/pipeline/execution-tracker.service";
 import { Readable } from "node:stream";
 import {
   DataType,
+  createBulkDownloadScope,
   type DataSourceConfig,
   type BulkDownloadConfig,
 } from "@opuspopuli/common";
@@ -117,6 +123,367 @@ describe("BulkDownloadHandler", () => {
 
       expect(hostSlot).toHaveBeenCalledWith("https://example.com/data.csv");
       expect(order.slice(0, 2)).toEqual(["slot", "fetch"]);
+    });
+  });
+
+  describe("the temp export", () => {
+    // The export carries donor names and addresses, so it is written
+    // owner-only, deleted on failure, and swept if a killed worker left it.
+    const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500";
+
+    async function tempExports(): Promise<string[]> {
+      return (await readdir(tmpdir())).filter((n) =>
+        n.startsWith("opus-bulk-"),
+      );
+    }
+
+    it("is readable by its owner only", async () => {
+      let mode = 0;
+      const archive = {
+        archive: jest.fn(async (c: { openStream: () => unknown }) => {
+          const stream = c.openStream() as ReadStream;
+          mode = (await stat(String(stream.path))).mode & 0o777;
+          stream.destroy();
+          return undefined;
+        }),
+      };
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csv),
+      );
+
+      await new BulkDownloadHandler(mapper, null, archive).execute(
+        createSource(),
+        "california",
+      );
+
+      expect(mode).toBe(0o600);
+    });
+
+    it("is deleted when the download fails partway", async () => {
+      const before = await tempExports();
+      const body = new Readable({
+        read() {
+          this.push(Buffer.from("CMTE_ID,NAME\n"));
+          this.destroy(new Error("connection reset"));
+        },
+      });
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ...mockStreamResponse(csv),
+        body,
+      });
+
+      const result = await handler.execute(createSource(), "california");
+
+      expect(result.success).toBe(false);
+      expect(await tempExports()).toEqual(before);
+    });
+
+    it("sweeps exports a killed worker left behind, and keeps live ones", async () => {
+      const stale = join(tmpdir(), `opus-bulk-stale-${process.pid}.tmp`);
+      const live = join(tmpdir(), `opus-bulk-live-${process.pid}.tmp`);
+      await writeFile(stale, "x");
+      await writeFile(live, "x");
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      await utimes(stale, threeDaysAgo, threeDaysAgo);
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csv),
+      );
+
+      try {
+        await handler.execute(createSource(), "california");
+
+        expect(existsSync(stale)).toBe(false);
+        expect(existsSync(live)).toBe(true);
+      } finally {
+        await unlink(stale).catch(() => undefined);
+        await unlink(live).catch(() => undefined);
+      }
+    });
+  });
+
+  describe("one download per sync (campaign-finance-phase-b.md, D4)", () => {
+    const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500\nC002,John Roe,75";
+    let archive: { archive: jest.Mock };
+    let archived: string[];
+
+    /** Where the export landed on disk, read off the archive's stream. */
+    async function capturePath(candidate: {
+      openStream: () => NodeJS.ReadableStream;
+    }): Promise<void> {
+      const stream = candidate.openStream() as ReadStream;
+      archived.push(String(stream.path));
+      stream.destroy();
+    }
+
+    beforeEach(() => {
+      archived = [];
+      archive = { archive: jest.fn().mockImplementation(capturePath) };
+      handler = new BulkDownloadHandler(mapper, null, archive);
+    });
+
+    it("downloads an export once for every source in the scope", async () => {
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csv),
+      );
+      const scope = createBulkDownloadScope();
+
+      const first = await handler.execute(
+        createSource({ category: "one" }),
+        "california",
+        undefined,
+        undefined,
+        scope,
+      );
+      const second = await handler.execute(
+        createSource({ category: "two" }),
+        "california",
+        undefined,
+        undefined,
+        scope,
+      );
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+      expect(first.items).toHaveLength(2);
+      expect(second.items).toHaveLength(2);
+      await scope.close();
+    });
+
+    it("keeps a shared export on disk until the scope closes", async () => {
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csv),
+      );
+      const scope = createBulkDownloadScope();
+
+      await handler.execute(
+        createSource(),
+        "california",
+        undefined,
+        undefined,
+        scope,
+      );
+      expect(existsSync(archived[0])).toBe(true);
+
+      await scope.close();
+      expect(existsSync(archived[0])).toBe(false);
+    });
+
+    it("deletes an unshared export as soon as its source is done", async () => {
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csv),
+      );
+
+      await handler.execute(createSource(), "california");
+
+      expect(archived).toHaveLength(1);
+      expect(existsSync(archived[0])).toBe(false);
+    });
+
+    it("fails every source sharing a failed download, without fetching again", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue(
+        mockStreamResponse("", false, 503),
+      );
+      const scope = createBulkDownloadScope();
+
+      const results = [
+        await handler.execute(
+          createSource({ category: "one" }),
+          "california",
+          undefined,
+          undefined,
+          scope,
+        ),
+        await handler.execute(
+          createSource({ category: "two" }),
+          "california",
+          undefined,
+          undefined,
+          scope,
+        ),
+      ];
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(results.map((r) => r.success)).toEqual([false, false]);
+      await scope.close();
+    });
+  });
+
+  describe("skipping unchanged rows (campaign-finance-phase-b.md, K4)", () => {
+    const csv = "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500";
+    let ledger: {
+      lastCompletedKey: jest.Mock;
+      recordCompleted: jest.Mock;
+      forget: jest.Mock;
+    };
+    let tracker: jest.Mocked<ExecutionTrackerService>;
+
+    beforeEach(() => {
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csv),
+      );
+      ledger = {
+        lastCompletedKey: jest.fn().mockResolvedValue(undefined),
+        recordCompleted: jest.fn().mockResolvedValue(undefined),
+        forget: jest.fn().mockResolvedValue(undefined),
+      };
+      tracker = {
+        isEnabled: true,
+        startExecution: jest.fn().mockResolvedValue({
+          executionId: "exec-1",
+          appliedBatches: new Set(),
+        }),
+        recordBatch: jest.fn().mockResolvedValue(true),
+        linkSnapshot: jest.fn().mockResolvedValue(undefined),
+        finalizeExecution: jest.fn().mockResolvedValue(undefined),
+      } as unknown as jest.Mocked<ExecutionTrackerService>;
+      handler = new BulkDownloadHandler(mapper, tracker, null, null, ledger);
+    });
+
+    async function contextOfFirstBatch(): Promise<unknown> {
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+      await handler.execute(createSource(), "california", onBatch, "job-1");
+      return onBatch.mock.calls[0][1];
+    }
+
+    it("allows skipping when the last completed import had this key", async () => {
+      ledger.lastCompletedKey.mockResolvedValue(bulkImportKey(createSource()));
+
+      expect(await contextOfFirstBatch()).toEqual({ skipUnchanged: true });
+    });
+
+    it("writes every row when the last completed import had another key", async () => {
+      ledger.lastCompletedKey.mockResolvedValue("an-older-key");
+
+      expect(await contextOfFirstBatch()).toEqual({ skipUnchanged: false });
+    });
+
+    it("forgets another key's entry before the first batch is written", async () => {
+      // A run under a new key that died partway would otherwise leave the
+      // old entry to license skipping rows it rewrote, after a rollback.
+      ledger.lastCompletedKey.mockResolvedValue("an-older-key");
+      const onBatch = jest.fn(async () => {
+        expect(ledger.forget).toHaveBeenCalled();
+        throw new Error("write failed");
+      });
+
+      await handler.execute(createSource(), "california", onBatch, "job-1");
+
+      expect(onBatch).toHaveBeenCalled();
+      expect(ledger.forget).toHaveBeenCalledWith(
+        expect.stringContaining("https://example.com/data.csv"),
+      );
+      expect(ledger.recordCompleted).not.toHaveBeenCalled();
+    });
+
+    it("keeps the entry when the key matches", async () => {
+      ledger.lastCompletedKey.mockResolvedValue(bulkImportKey(createSource()));
+
+      await contextOfFirstBatch();
+
+      expect(ledger.forget).not.toHaveBeenCalled();
+    });
+
+    it("does not record a resumed import as complete", async () => {
+      // Batch 0 came from an earlier attempt, perhaps under another key.
+      tracker.startExecution.mockResolvedValue({
+        executionId: "exec-1",
+        appliedBatches: new Set([0]),
+      });
+      const csvTwoBatches =
+        "CMTE_ID,NAME,AMOUNT\nC001,Jane Doe,500\nC002,John Roe,75";
+      (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+        mockStreamResponse(csvTwoBatches),
+      );
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+
+      await handler.execute(
+        createSource({
+          bulk: { ...createSource().bulk!, batchSize: 1 },
+        }),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      expect(onBatch).toHaveBeenCalledTimes(1);
+      expect(ledger.recordCompleted).not.toHaveBeenCalled();
+    });
+
+    it("still succeeds when the completed import cannot be recorded", async () => {
+      ledger.recordCompleted.mockRejectedValue(new Error("db down"));
+      const onBatch = jest.fn().mockResolvedValue(undefined);
+
+      const result = await handler.execute(
+        createSource(),
+        "california",
+        onBatch,
+        "job-1",
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it("writes every row when no import of this source has completed", async () => {
+      expect(await contextOfFirstBatch()).toEqual({ skipUnchanged: false });
+    });
+
+    it("writes every row when the ledger cannot be read", async () => {
+      ledger.lastCompletedKey.mockRejectedValue(new Error("db down"));
+
+      expect(await contextOfFirstBatch()).toEqual({ skipUnchanged: false });
+    });
+
+    it("writes every row when no ledger is bound", async () => {
+      handler = new BulkDownloadHandler(mapper, tracker);
+
+      expect(await contextOfFirstBatch()).toEqual({ skipUnchanged: false });
+    });
+
+    it("records a completed import under this source and key", async () => {
+      await contextOfFirstBatch();
+
+      expect(ledger.recordCompleted).toHaveBeenCalledWith(
+        expect.stringContaining("https://example.com/data.csv"),
+        bulkImportKey(createSource()),
+        "exec-1",
+      );
+    });
+
+    it("never records an import that failed partway as complete", async () => {
+      const onBatch = jest.fn().mockRejectedValue(new Error("write failed"));
+
+      await handler.execute(createSource(), "california", onBatch, "job-1");
+
+      expect(ledger.recordCompleted).not.toHaveBeenCalled();
+    });
+
+    it("links the run to the snapshot its export is archived as (D5)", async () => {
+      const archive = { archive: jest.fn().mockResolvedValue("snap-1") };
+      handler = new BulkDownloadHandler(mapper, tracker, archive);
+
+      await handler.execute(createSource(), "california", undefined, "job-1");
+
+      expect(tracker.linkSnapshot).toHaveBeenCalledWith("exec-1", "snap-1");
+    });
+
+    it("links every run sharing a download to the same snapshot (D4, D5)", async () => {
+      const archive = { archive: jest.fn().mockResolvedValue("snap-1") };
+      handler = new BulkDownloadHandler(mapper, tracker, archive);
+      const scope = createBulkDownloadScope();
+
+      for (const category of ["one", "two"]) {
+        await handler.execute(
+          createSource({ category }),
+          "california",
+          undefined,
+          "job-1",
+          scope,
+        );
+      }
+      await scope.close();
+
+      expect(archive.archive).toHaveBeenCalledTimes(1);
+      expect(tracker.linkSnapshot).toHaveBeenCalledTimes(2);
     });
   });
 

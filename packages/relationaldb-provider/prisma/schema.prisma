@@ -2128,8 +2128,10 @@ model CommitteeMeasurePosition {
 /// in PropositionFinanceLinkerService.
 model Cvr2Filing {
   id                 String   @id @default(uuid())
-  externalId         String   @unique @map("external_id") /// FILING_ID + LINE_ITEM
+  externalId         String   @unique @map("external_id") /// FILING_ID + LINE_ITEM + TRAN_ID (regions#97)
   filingId           String   @map("filing_id") @db.VarChar(50)
+  /// CalAccess AMEND_ID — see Contribution.amendId (#992, regions#97).
+  amendId            Int?     @map("amend_id")
   ballotName         String?  @map("ballot_name")
   ballotNumber       String?  @map("ballot_number") @db.VarChar(50)
   ballotJurisdiction String?  @map("ballot_jurisdiction") @db.VarChar(100)
@@ -2149,8 +2151,15 @@ model Cvr2Filing {
   /// against a source it never was.
   sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
+  /// Which pipeline run wrote this row (campaign-finance-phase-b.md, D5).
+  /// Null on rows written before it was recorded.
+  pipelineExecutionId String?            @map("pipeline_execution_id")
+  pipelineExecution   PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
   @@index([filingId])
+  @@index([filingId, amendId])
   @@index([ballotName])
+  @@index([pipelineExecutionId])
   @@map("cvr2_filings")
 }
 
@@ -2186,7 +2195,13 @@ model CvrFiling {
   /// against a source it never was.
   sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
+  /// Which pipeline run wrote this row (campaign-finance-phase-b.md, D5).
+  /// Null on rows written before it was recorded.
+  pipelineExecutionId String?            @map("pipeline_execution_id")
+  pipelineExecution   PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
   @@index([filerId])
+  @@index([pipelineExecutionId])
   @@map("cvr_filings")
 }
 
@@ -2234,8 +2249,14 @@ model FilingSummary {
   /// against a source it never was.
   sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
+  /// Which pipeline run wrote this row (campaign-finance-phase-b.md, D5).
+  /// Null on rows written before it was recorded.
+  pipelineExecutionId String?            @map("pipeline_execution_id")
+  pipelineExecution   PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
   @@index([filingId])
   @@index([filingId, formType, lineItem])
+  @@index([pipelineExecutionId])
   @@map("filing_summaries")
 }
 
@@ -2413,6 +2434,11 @@ model Expenditure {
   /// against a source it never was.
   sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
+  /// Which pipeline run wrote this row (campaign-finance-phase-b.md, D5).
+  /// Null on rows written before it was recorded.
+  pipelineExecutionId String?            @map("pipeline_execution_id")
+  pipelineExecution   PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
   @@index([committeeId])
   @@index([filingId])
   @@index([filingId, amendId])
@@ -2421,6 +2447,7 @@ model Expenditure {
   @@index([date])
   @@index([sourceSystem])
   @@index([propositionId])
+  @@index([pipelineExecutionId])
   @@map("expenditures")
 }
 
@@ -2435,6 +2462,8 @@ model IndependentExpenditure {
   committeeId      String?   @map("committee_id")
   /// CalAccess FILING_ID from S496_CD — the join key to the Form 496 cover page.
   filingId         String?   @map("filing_id") @db.VarChar(50)
+  /// CalAccess AMEND_ID — see Contribution.amendId (#992, regions#97).
+  amendId          Int?      @map("amend_id")
   committeeName    String    @map("committee_name")
   candidateName    String?   @map("candidate_name")
   propositionTitle String?   @map("proposition_title")
@@ -2464,14 +2493,21 @@ model IndependentExpenditure {
   /// against a source it never was.
   sourceRecordHash String? @map("source_record_hash") @db.VarChar(64)
 
+  /// Which pipeline run wrote this row (campaign-finance-phase-b.md, D5).
+  /// Null on rows written before it was recorded.
+  pipelineExecutionId String?            @map("pipeline_execution_id")
+  pipelineExecution   PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
   @@index([committeeId])
   @@index([filingId])
+  @@index([filingId, amendId])
   @@index([candidateName])
   @@index([propositionTitle])
   @@index([propositionId])
   @@index([date])
   @@index([supportOrOppose])
   @@index([sourceSystem])
+  @@index([pipelineExecutionId])
   @@map("independent_expenditures")
 }
 
@@ -2619,13 +2655,36 @@ model BulkSnapshot {
   executionId      String?   @map("execution_id")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
-  execution PipelineExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  /// The run that first fetched these bytes. Later runs reading the same
+  /// export point here through `PipelineExecution.bulkSnapshotId` (D5).
+  execution PipelineExecution?  @relation("SnapshotFetchedBy", fields: [executionId], references: [id], onDelete: SetNull)
+  readBy    PipelineExecution[] @relation("ExecutionReadSnapshot")
 
   @@index([sourceUrl, fetchedAt])
   @@index([executionId])
   @@index([regionId, dataType, fetchedAt])
   @@index([prunedAt])
   @@map("bulk_snapshots")
+}
+
+/// The last completed import of each bulk source, and the import key it ran
+/// under (campaign-finance-phase-b.md, D3). Rows may be skipped as unchanged
+/// only when this matches the current key; an import that died partway
+/// never completes, so it never licenses a skip.
+model BulkImport {
+  id          String   @id @default(uuid())
+  /// The handler's per-source key (`sessionSourceKey`): url, file, category.
+  sourceKey   String   @unique @map("source_key") @db.VarChar(1000)
+  /// `bulkImportKey` of the last completed import.
+  importKey   String   @map("import_key") @db.VarChar(64)
+  executionId String?  @map("execution_id")
+  completedAt DateTime @map("completed_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  execution PipelineExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@map("bulk_imports")
 }
 
 /// How confident we are that a claim is supported by the source it cites.
@@ -2855,40 +2914,51 @@ model StructuralManifest {
 
 /// Pipeline execution metrics for monitoring and debugging.
 model PipelineExecution {
-  id                String                   @id @default(uuid())
-  regionId          String                   @map("region_id") @db.VarChar(100)
-  sourceUrl         String                   @map("source_url") @db.VarChar(1000)
-  dataType          String                   @map("data_type") @db.VarChar(50)
-  manifestId        String?                  @map("manifest_id")
-  manifestVersion   Int?                     @map("manifest_version")
-  manifestCacheHit  Boolean                  @default(false) @map("manifest_cache_hit")
-  structureChanged  Boolean                  @default(false) @map("structure_changed")
-  selfHealTriggered Boolean                  @default(false) @map("self_heal_triggered")
-  itemsExtracted    Int                      @default(0) @map("items_extracted")
-  itemsFailed       Int                      @default(0) @map("items_failed")
-  analysisTimeMs    Int?                     @map("analysis_time_ms")
-  extractionTimeMs  Int                      @default(0) @map("extraction_time_ms")
-  totalTimeMs       Int                      @default(0) @map("total_time_ms")
-  success           Boolean                  @default(true)
-  status            String                   @default("completed") @db.VarChar(20)
-  errorMessage      String?                  @map("error_message") @db.Text
-  llmProvider       String?                  @map("llm_provider") @db.VarChar(50)
-  llmModel          String?                  @map("llm_model") @db.VarChar(100)
-  llmTokensUsed     Int?                     @map("llm_tokens_used")
-  executedAt        DateTime                 @default(now()) @map("executed_at") @db.Timestamptz
-  pipelineJobId     String?                  @map("pipeline_job_id")
-  pipelineJob       PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
-  batches           PipelineExecutionBatch[]
-  sourceVersions    SourceVersion[]
-  bulkSnapshots     BulkSnapshot[]
-  propositions      Proposition[]
-  minutes           Minutes[]
-  meetings          Meeting[]
-  bills             Bill[]
-  contributions     Contribution[]
-  Claim             Claim[]
+  id                      String                   @id @default(uuid())
+  regionId                String                   @map("region_id") @db.VarChar(100)
+  sourceUrl               String                   @map("source_url") @db.VarChar(1000)
+  dataType                String                   @map("data_type") @db.VarChar(50)
+  manifestId              String?                  @map("manifest_id")
+  manifestVersion         Int?                     @map("manifest_version")
+  manifestCacheHit        Boolean                  @default(false) @map("manifest_cache_hit")
+  structureChanged        Boolean                  @default(false) @map("structure_changed")
+  selfHealTriggered       Boolean                  @default(false) @map("self_heal_triggered")
+  itemsExtracted          Int                      @default(0) @map("items_extracted")
+  itemsFailed             Int                      @default(0) @map("items_failed")
+  analysisTimeMs          Int?                     @map("analysis_time_ms")
+  extractionTimeMs        Int                      @default(0) @map("extraction_time_ms")
+  totalTimeMs             Int                      @default(0) @map("total_time_ms")
+  success                 Boolean                  @default(true)
+  status                  String                   @default("completed") @db.VarChar(20)
+  errorMessage            String?                  @map("error_message") @db.Text
+  llmProvider             String?                  @map("llm_provider") @db.VarChar(50)
+  llmModel                String?                  @map("llm_model") @db.VarChar(100)
+  llmTokensUsed           Int?                     @map("llm_tokens_used")
+  executedAt              DateTime                 @default(now()) @map("executed_at") @db.Timestamptz
+  pipelineJobId           String?                  @map("pipeline_job_id")
+  pipelineJob             PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
+  /// The bulk export this run read, whether or not it was the run that
+  /// fetched it (campaign-finance-phase-b.md, D5, F5).
+  bulkSnapshotId          String?                  @map("bulk_snapshot_id")
+  bulkSnapshot            BulkSnapshot?            @relation("ExecutionReadSnapshot", fields: [bulkSnapshotId], references: [id], onDelete: SetNull)
+  batches                 PipelineExecutionBatch[]
+  sourceVersions          SourceVersion[]
+  bulkSnapshots           BulkSnapshot[]           @relation("SnapshotFetchedBy")
+  propositions            Proposition[]
+  minutes                 Minutes[]
+  meetings                Meeting[]
+  bills                   Bill[]
+  contributions           Contribution[]
+  expenditures            Expenditure[]
+  filingSummaries         FilingSummary[]
+  independentExpenditures IndependentExpenditure[]
+  cvrFilings              CvrFiling[]
+  cvr2Filings             Cvr2Filing[]
+  bulkImports             BulkImport[]
+  Claim                   Claim[]
 
   @@index([regionId, dataType, executedAt])
+  @@index([bulkSnapshotId])
   @@index([manifestId])
   @@index([executedAt])
   @@index([pipelineJobId])

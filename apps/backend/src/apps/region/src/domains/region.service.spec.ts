@@ -314,6 +314,8 @@ describe('RegionService post-sync triggers', () => {
   const supersession = {
     contributions: { superseded: 2_832_297, filingsAffected: 10_928 },
     expenditures: { superseded: 1_107_527, filingsAffected: 15_764 },
+    independentExpenditures: { superseded: 6_876, filingsAffected: 5_173 },
+    committeeMeasureFilings: { superseded: 13_436, filingsAffected: 18_762 },
   };
 
   const build = (

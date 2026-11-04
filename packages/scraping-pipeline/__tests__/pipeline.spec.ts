@@ -468,6 +468,26 @@ describe("ScrapingPipelineService", () => {
       );
     });
 
+    it("hands the caller's download scope to the bulk handler (D4)", async () => {
+      const source = createSource({
+        sourceType: "bulk_download",
+        bulk: { format: "csv", columnMappings: { CMTE_ID: "committeeId" } },
+      });
+      const bulkDownloads = { acquire: jest.fn(), close: jest.fn() };
+
+      await pipeline.execute(source, "california", undefined, "job-1", {
+        bulkDownloads,
+      });
+
+      expect(mockBulkDownload.execute).toHaveBeenCalledWith(
+        source,
+        "california",
+        undefined,
+        "job-1",
+        bulkDownloads,
+      );
+    });
+
     it("should route sourceType: 'bulk_download' to BulkDownloadHandler", async () => {
       const source = createSource({
         sourceType: "bulk_download",
@@ -482,6 +502,7 @@ describe("ScrapingPipelineService", () => {
       expect(mockBulkDownload.execute).toHaveBeenCalledWith(
         source,
         "california",
+        undefined,
         undefined,
         undefined,
       );

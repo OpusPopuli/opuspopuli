@@ -1788,6 +1788,98 @@ describe("DomainMapperService", () => {
     });
   });
 
+  describe("campaign finance — source record hash (#1277)", () => {
+    // The strip trap again. `BulkDownloadHandler` stamps every record with
+    // the sha256 of its raw line, and `z.object()` drops undeclared keys, so
+    // a schema that does not name the field loses it before the row is
+    // written. It had been lost on every table since #1277
+    // (campaign-finance-phase-b.md, F3).
+    const HASH = "a".repeat(64);
+    const cases: [string, Record<string, unknown>][] = [
+      [
+        "CAL-ACCESS Contributions",
+        {
+          externalId: "2505994:7:BBB",
+          donorName: "Jane Q. Public",
+          amount: "1500.00",
+          date: "03/01/2026",
+          sourceSystem: "cal_access",
+        },
+      ],
+      [
+        "CAL-ACCESS Expenditures",
+        {
+          externalId: "EXP-1",
+          committeeId: "C001",
+          payeeName: "Ad Agency LLC",
+          amount: "10000",
+          date: "2026-03-01",
+          sourceSystem: "cal_access",
+        },
+      ],
+      [
+        "CAL-ACCESS Independent Expenditures",
+        {
+          externalId: "IE-1",
+          committeeId: "C001",
+          committeeName: "Super PAC",
+          supportOrOppose: "S",
+          amount: "50000",
+          date: "2026-06-01",
+          sourceSystem: "cal_access",
+        },
+      ],
+      [
+        "CAL-ACCESS IE Cover Pages",
+        {
+          filingId: "F-100200",
+          filerId: "C0099",
+          sourceSystem: "cal_access",
+        },
+      ],
+      [
+        "CAL-ACCESS Filing Summaries",
+        {
+          externalId: "2505994:1:F460:1",
+          filingId: "2505994",
+          amendId: "1",
+          formType: "F460",
+          lineItem: "1",
+          sourceSystem: "cal_access",
+        },
+      ],
+      [
+        "CAL-ACCESS Committee Positions",
+        {
+          externalId: "CVR2-1",
+          filingId: "F123",
+          ballotName: "Clean Water Act",
+          sourceSystem: "cal_access",
+        },
+      ],
+    ];
+
+    it.each(cases)("keeps the hash on %s", (category, record) => {
+      const result = mapper.map(
+        createRawResult({ items: [{ ...record, sourceRecordHash: HASH }] }),
+        createSource({ dataType: DataType.CAMPAIGN_FINANCE, category }),
+      );
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toHaveProperty("sourceRecordHash", HASH);
+    });
+
+    it("rejects a hash that is not a sha256", () => {
+      const [category, record] = cases[0];
+      const result = mapper.map(
+        createRawResult({ items: [{ ...record, sourceRecordHash: "abc" }] }),
+        createSource({ dataType: DataType.CAMPAIGN_FINANCE, category }),
+      );
+
+      expect(result.items).toHaveLength(0);
+    });
+  });
+
   describe("campaign finance — category routing", () => {
     it("should default to contribution mapping when category is unrecognized", () => {
       const result = mapper.map(
@@ -1938,6 +2030,37 @@ describe("DomainMapperService", () => {
         amountB: 412500,
       });
     });
+
+    it.each([
+      [
+        "CAL-ACCESS Independent Expenditures",
+        { amount: "1000", date: "2026-03-01" },
+      ],
+      ["CAL-ACCESS Committee Positions", { ballotNumber: "Prop 5" }],
+    ])(
+      "keeps a numeric amendId on %s, for supersession (regions#97)",
+      (category, fields) => {
+        // z.object() strips unknown keys: without amendId in the schema the
+        // row lands with amend_id NULL and supersession never sees it.
+        const result = mapper.map(
+          createRawResult({
+            items: [
+              {
+                externalId: "F300:1:T1",
+                filingId: "F300",
+                amendId: "10",
+                sourceSystem: "cal_access",
+                ...fields,
+              },
+            ],
+          }),
+          createSource({ dataType: DataType.CAMPAIGN_FINANCE, category }),
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.items[0]).toMatchObject({ amendId: 10 });
+      },
+    );
 
     it("carries scheduleCode through onto contributions (#992)", () => {
       // The strip trap. `z.object()` drops unknown keys, so mapping FORM_TYPE

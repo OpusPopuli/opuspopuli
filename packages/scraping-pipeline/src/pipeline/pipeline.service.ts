@@ -12,7 +12,9 @@
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type {
+  BatchCallback,
   ArchiveIngestOptions,
+  BulkDownloadScope,
   PipelineExecuteOptions,
   DataSourceConfig,
   ExtractionResult,
@@ -250,7 +252,7 @@ export class ScrapingPipelineService {
   async execute<T>(
     source: DataSourceConfig,
     regionId: string,
-    onBatch?: (items: T[]) => Promise<void>,
+    onBatch?: BatchCallback<T>,
     pipelineJobId?: string,
     options?: PipelineExecuteOptions,
   ): Promise<ExtractionResult<T>> {
@@ -263,6 +265,7 @@ export class ScrapingPipelineService {
           regionId,
           onBatch,
           pipelineJobId,
+          options?.bulkDownloads,
         );
       case "api":
         return this.executeApiIngest<T>(source, regionId, pipelineJobId);
@@ -1128,8 +1131,9 @@ export class ScrapingPipelineService {
   private async executeBulkDownload<T>(
     source: DataSourceConfig,
     regionId: string,
-    onBatch?: (items: T[]) => Promise<void>,
+    onBatch?: BatchCallback<T>,
     pipelineJobId?: string,
+    bulkDownloads?: BulkDownloadScope,
   ): Promise<ExtractionResult<T>> {
     this.logger.log(
       `Pipeline started [bulk_download]: ${regionId}/${source.dataType} from ${source.url}`,
@@ -1151,6 +1155,7 @@ export class ScrapingPipelineService {
       regionId,
       onBatch,
       pipelineJobId,
+      bulkDownloads,
     );
   }
 

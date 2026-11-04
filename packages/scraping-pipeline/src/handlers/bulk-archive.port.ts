@@ -60,5 +60,11 @@ export interface BulkSnapshotCandidate {
  * unavailable.
  */
 export interface IBulkArchive {
-  archive(candidate: BulkSnapshotCandidate): Promise<void>;
+  /**
+   * Returns the `bulk_snapshots` id holding these bytes, new or already
+   * archived, so every run that read them can point at it
+   * (`docs/plans/campaign-finance-phase-b.md`, D5). Undefined when nothing
+   * was recorded.
+   */
+  archive(candidate: BulkSnapshotCandidate): Promise<string | undefined>;
 }

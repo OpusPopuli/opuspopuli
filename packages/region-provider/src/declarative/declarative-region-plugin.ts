@@ -26,9 +26,13 @@ import type {
   DataSourceConfig,
   ExtractionResult,
   BoundarySourcesConfig,
+  BatchCallback,
 } from "@opuspopuli/common";
 // Value import, so it cannot join the `import type` block above.
-import { sortCampaignFinanceItems } from "@opuspopuli/common";
+import {
+  createBulkDownloadScope,
+  sortCampaignFinanceItems,
+} from "@opuspopuli/common";
 
 /**
  * Interface for the pipeline service dependency.
@@ -38,7 +42,7 @@ export interface IPipelineService {
   execute<T>(
     source: DataSourceConfig,
     regionId: string,
-    onBatch?: (items: T[]) => Promise<void>,
+    onBatch?: BatchCallback<T>,
     pipelineJobId?: string,
     options?: PipelineExecuteOptions,
   ): Promise<ExtractionResult<T>>;
@@ -221,7 +225,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
   }
 
   async fetchCampaignFinance(
-    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+    onBatch?: BatchCallback<Record<string, unknown>>,
     pipelineJobId?: string,
   ): Promise<CampaignFinanceResult> {
     // All campaign finance sources are fetched as a flat array,
@@ -268,7 +272,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
    */
   private async fetchByDataType<T>(
     dataType: string,
-    onBatch?: (items: T[]) => Promise<void>,
+    onBatch?: BatchCallback<T>,
     sourceFilter?: (source: DataSourceConfig) => boolean,
     pipelineJobId?: string,
     options?: ArchiveIngestOptions,
@@ -295,26 +299,34 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     let succeededSources = 0;
     let failedSources = 0;
 
-    for (const source of sources) {
-      try {
-        const { items, batched } = await this.fetchSource<T>(
-          source,
-          dataType,
-          onBatch,
-          pipelineJobId,
-          options,
-        );
-        allItems.push(...items);
-        batchedItemCount += batched;
-        succeededSources++;
-      } catch (err) {
-        failedSources++;
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `${dataType} source ${source.url} (category=${source.category ?? "none"}) failed: ${msg}. ` +
-            "Continuing with remaining sources; successful items will still be persisted. See #801.",
-        );
+    // Sources reading the same bulk export share one download of it, so
+    // they read one version (`campaign-finance-phase-b.md`, D4).
+    const bulkDownloads = createBulkDownloadScope();
+    const sourceOptions: PipelineExecuteOptions = { ...options, bulkDownloads };
+    try {
+      for (const source of sources) {
+        try {
+          const { items, batched } = await this.fetchSource<T>(
+            source,
+            dataType,
+            onBatch,
+            pipelineJobId,
+            sourceOptions,
+          );
+          allItems.push(...items);
+          batchedItemCount += batched;
+          succeededSources++;
+        } catch (err) {
+          failedSources++;
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(
+            `${dataType} source ${source.url} (category=${source.category ?? "none"}) failed: ${msg}. ` +
+              "Continuing with remaining sources; successful items will still be persisted. See #801.",
+          );
+        }
       }
+    } finally {
+      await bulkDownloads.close();
     }
 
     const totalCount = allItems.length + batchedItemCount;
@@ -338,7 +350,7 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
   private async fetchSource<T>(
     source: DataSourceConfig,
     dataType: string,
-    onBatch?: (items: T[]) => Promise<void>,
+    onBatch?: BatchCallback<T>,
     pipelineJobId?: string,
     options?: PipelineExecuteOptions,
   ): Promise<{ items: T[]; batched: number }> {

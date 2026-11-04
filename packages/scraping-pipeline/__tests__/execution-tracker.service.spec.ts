@@ -191,4 +191,42 @@ describe("ExecutionTrackerService", () => {
       );
     });
   });
+
+  describe("linkSnapshot (campaign-finance-phase-b.md, D5)", () => {
+    const args = {
+      regionId: "california",
+      sourceUrl: "https://example.com/data.csv",
+      dataType: "campaign_finance",
+    };
+
+    async function session() {
+      repo.findExecution.mockResolvedValue(null);
+      repo.createExecution.mockResolvedValue({ id: "exec-abc" });
+      repo.findAppliedBatches.mockResolvedValue([]);
+      return ExecutionTrackerService.beginSession(service, "job-1", args);
+    }
+
+    it("points the run at its snapshot", async () => {
+      repo.linkSnapshot = jest.fn().mockResolvedValue(undefined);
+
+      await (await session()).linkSnapshot("snap-1");
+
+      expect(repo.linkSnapshot).toHaveBeenCalledWith("exec-abc", "snap-1");
+    });
+
+    it("does nothing when the repository cannot link", async () => {
+      // Optional on the port: a repository without it records no link.
+      await expect(service.linkSnapshot("exec-abc", "snap-1")).resolves.toBe(
+        undefined,
+      );
+    });
+
+    it("never fails the run when the link cannot be written", async () => {
+      repo.linkSnapshot = jest.fn().mockRejectedValue(new Error("db down"));
+
+      await expect((await session()).linkSnapshot("snap-1")).resolves.toBe(
+        undefined,
+      );
+    });
+  });
 });

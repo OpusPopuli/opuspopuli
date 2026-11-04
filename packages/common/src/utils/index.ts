@@ -31,6 +31,11 @@ export { supportRatio, MIN_SUPPORT } from "./claim-support.js";
 export { escapeRegExp } from "./escape-regexp.js";
 export { boundedReason, withStage, UNBOUNDED_REASON } from "./with-stage.js";
 export { buildSkipKey, laneJobId, stableHash } from "./skip-key.js";
+export { createBulkDownloadScope } from "./bulk-download-scope.js";
+export type {
+  BulkDownloadScope,
+  ScopedDownload,
+} from "./bulk-download-scope.js";
 export type { SkipKeyInputs } from "./skip-key.js";
 export type {
   StageContext,
