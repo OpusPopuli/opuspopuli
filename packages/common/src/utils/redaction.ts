@@ -15,8 +15,8 @@
  *
  * carries a named individual's postal address, personal email address and
  * phone number. Nine of the ten measures in `fulltext-propositions.json`
- * contain at least one; two carry street addresses that read as residential
- * ("645 Taraval Street", "7031 Mission Street").
+ * contain at least one; two carry street addresses that read as residential.
+ * (Tests use synthetic stand-ins, never the real addresses.)
  *
  * These are public records — the Attorney General publishes proponent contact
  * details so the public can reach them, and CCPA excludes information lawfully

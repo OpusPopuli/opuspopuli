@@ -1285,7 +1285,7 @@ describe('ProfileService', () => {
   describe('never logs a resident address', () => {
     const createDto = {
       addressType: AddressType.RESIDENTIAL,
-      addressLine1: '645 Taraval Street',
+      addressLine1: '645 Quillfeather Street',
       city: 'San Francisco',
       state: 'CA',
       postalCode: '94116',
@@ -1316,7 +1316,7 @@ describe('ProfileService', () => {
 
     const expectNoAddressLogged = (): void => {
       const all = logged.join('\n');
-      expect(all).not.toContain('Taraval');
+      expect(all).not.toContain('Quillfeather');
       expect(all).not.toContain('645');
       expect(all).not.toContain('94116');
     };

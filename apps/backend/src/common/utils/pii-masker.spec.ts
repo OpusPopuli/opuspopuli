@@ -423,13 +423,13 @@ describe('PII Masker', () => {
   describe('street address redaction', () => {
     it('redacts a street address out of a log message', () => {
       expect(
-        redactPiiFromString('Geocoding failed for 645 Taraval Street, SF'),
+        redactPiiFromString('Geocoding failed for 645 Quillfeather Street, SF'),
       ).toContain('[REDACTED_ADDRESS]');
     });
 
     it('does not leave the street name behind', () => {
-      const out = redactPiiFromString('addr=645 Taraval Street');
-      expect(out).not.toContain('Taraval');
+      const out = redactPiiFromString('addr=645 Quillfeather Street');
+      expect(out).not.toContain('Quillfeather');
       expect(out).not.toContain('645');
     });
 
