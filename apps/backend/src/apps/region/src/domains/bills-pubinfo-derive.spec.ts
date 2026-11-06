@@ -1,0 +1,112 @@
+import {
+  authorHouse,
+  billNumber,
+  camlTitle,
+  lastAction,
+  latestVersion,
+  legislatorKey,
+  normalizeLegislatorName,
+  seatKey,
+  sessionLabel,
+  voteChamber,
+  voteHouse,
+  votePosition,
+} from './bills-pubinfo-derive';
+
+describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
+  it('labels a session as bills already do', () => {
+    expect(sessionLabel('20252026')).toBe('2025-2026');
+    expect(sessionLabel('2025-2026')).toBe('2025-2026');
+  });
+
+  it('numbers a bill as bills already do', () => {
+    expect(billNumber('AB', 1165)).toBe('AB 1165');
+  });
+
+  it('takes the lowest version number as the current version', () => {
+    expect(
+      latestVersion([
+        { versionNum: 99 },
+        { versionNum: 94 },
+        { versionNum: 97 },
+      ]),
+    ).toEqual({ versionNum: 94 });
+    expect(latestVersion([])).toBeUndefined();
+  });
+
+  it('takes the newest action, by date then sequence', () => {
+    const d = (s: string) => new Date(`${s}T00:00:00Z`);
+    const last = lastAction([
+      { actionDate: d('2026-08-01'), action: 'first', actionSequence: 9 },
+      { actionDate: d('2026-09-01'), action: 'early', actionSequence: 1 },
+      { actionDate: d('2026-09-01'), action: 'late', actionSequence: 2 },
+      { actionDate: null, action: 'undated', actionSequence: 99 },
+    ]);
+    expect(last?.action).toBe('late');
+  });
+
+  it('reads the long title from CAML, without tags or entities', () => {
+    expect(
+      camlTitle(
+        '<x><caml:Title>An act to amend <b>Section 1</b> &amp; more.\n </caml:Title></x>',
+      ),
+    ).toBe('An act to amend Section 1 & more.');
+    expect(camlTitle('<x/>')).toBeUndefined();
+    expect(camlTitle(null)).toBeUndefined();
+  });
+
+  it('maps vote codes to the positions bill_votes holds (D16)', () => {
+    expect(votePosition('AYE')).toBe('yes');
+    expect(votePosition('NOE')).toBe('no');
+    expect(votePosition('ABS')).toBe('no_vote');
+    expect(votePosition('XYZ')).toBeUndefined();
+    expect(votePosition(null)).toBeUndefined();
+  });
+
+  it('reads the house of a roll call from its location', () => {
+    expect(voteHouse('AFLOOR')).toBe('A');
+    expect(voteHouse('CX25')).toBe('A');
+    expect(voteHouse('SFLOOR')).toBe('S');
+    expect(voteHouse('CS61')).toBe('S');
+    expect(voteHouse('ZZ')).toBeUndefined();
+  });
+
+  it('names a vote chamber as bill_votes does (D16)', () => {
+    expect(voteChamber('AFLOOR', 'Assembly Floor')).toBe('Assembly');
+    expect(voteChamber('SFLOOR', 'Senate Floor')).toBe('Senate');
+    expect(voteChamber('CX25', 'Asm Appropriations')).toBe(
+      'Assembly Appropriations',
+    );
+    expect(voteChamber('CS61', 'Sen Appropriations')).toBe(
+      'Senate Appropriations',
+    );
+    expect(voteChamber('CX99', undefined)).toBe('CX99');
+  });
+
+  it('strips the stray prefixes author lists carry', () => {
+    expect(normalizeLegislatorName(': Schiavo')).toBe('Schiavo');
+    expect(normalizeLegislatorName('Senator Seyarto')).toBe('Seyarto');
+    expect(normalizeLegislatorName('Weber Pierson')).toBe('Weber Pierson');
+  });
+
+  it('keys a legislator by session, house and normalized name', () => {
+    expect(legislatorKey('20252026', 'S', 'Senator Seyarto')).toBe(
+      legislatorKey('20252026', 'S', 'seyarto'),
+    );
+    expect(legislatorKey('20252026', 'A', 'Smith')).not.toBe(
+      legislatorKey('20252026', 'S', 'Smith'),
+    );
+  });
+
+  it('keys a seat as representatives store it (D15)', () => {
+    expect(seatKey('AD78')).toBe('Assembly|78');
+    expect(seatKey('SD02')).toBe('Senate|2');
+    expect(seatKey('XD01')).toBeUndefined();
+  });
+
+  it('reads an author row house', () => {
+    expect(authorHouse('ASSEMBLY')).toBe('A');
+    expect(authorHouse('SENATE')).toBe('S');
+    expect(authorHouse(null)).toBeUndefined();
+  });
+});

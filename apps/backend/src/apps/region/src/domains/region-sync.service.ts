@@ -47,6 +47,10 @@ import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import {
+  BillsPubinfoSyncService,
+  type BillsBulkProvider,
+} from './bills-pubinfo-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
 import { CountyThresholdSyncService } from './county-threshold-sync.service';
 import {
@@ -393,6 +397,7 @@ interface DataFetcher {
     pipelineJobId?: string,
   ): Promise<CampaignFinanceResult>;
   fetchMeetingMinutes?(): Promise<MinutesWithActions[]>;
+  fetchBillsBulk?: BillsBulkProvider['fetchBillsBulk'];
   getName?(): string;
   getDataSources?(dataType?: DataType): DataSourceConfig[];
 }
@@ -570,6 +575,9 @@ export class RegionSyncService implements OnModuleDestroy {
     @Optional()
     @Inject(HOST_RATE_LIMITER)
     hostRateLimiter?: IHostRateLimiter,
+    /** Bills from a published export (`bills-phase-b.md`, D9). Last, for the hand-built specs. */
+    @Optional()
+    private readonly billsPubinfoSync?: BillsPubinfoSyncService,
   ) {
     this.hostRateLimiter =
       hostRateLimiter ?? new MemoryHostRateLimiter(DEFAULT_HOST_RATE);
@@ -1041,7 +1049,7 @@ export class RegionSyncService implements OnModuleDestroy {
       [DataType.CIVICS]: () =>
         this.syncCivics(provider, pipelineJobId, archiveOptions),
       [DataType.BILLS]: () =>
-        this.syncBills(maxBills, provider, forceStatusRecheck),
+        this.syncBills(maxBills, provider, forceStatusRecheck, pipelineJobId),
       [DataType.COUNTY_THRESHOLDS]: () => this.syncCountyThresholds(provider),
     };
 
@@ -1315,16 +1323,58 @@ export class RegionSyncService implements OnModuleDestroy {
 
   // ─── Bills sync ───────────────────────────────────────────────────────────────
 
-  private async syncBills(
-    maxBills: number | undefined,
+  /**
+   * Bills from a legislature's published export (`bills-phase-b.md`, D9):
+   * mirror the tables, derive the bills they touch, then move flags by date
+   * (F4's refresh, which for official rows only ends a closed session's
+   * active bills). No page is fetched and no LLM runs here.
+   */
+  private async syncBillsFromExport(
     plugin: DataFetcher,
-    forceStatusRecheck: boolean = false,
+    sources: DataSourceConfig[],
+    pipelineJobId?: string,
   ): Promise<{
     processed: number;
     created: number;
     updated: number;
     skipped: number;
   }> {
+    if (!this.billsPubinfoSync) {
+      this.logger.warn(
+        'Bulk bills source configured but no pubinfo sync bound; skipping',
+      );
+      return { processed: 0, created: 0, updated: 0, skipped: 0 };
+    }
+    const regionId = plugin.getName?.() ?? 'unknown';
+    const statusLifecycle =
+      sources.find((s) => s.billStatusLifecycle)?.billStatusLifecycle ?? {};
+    const result = await this.billsPubinfoSync.sync(plugin, {
+      regionId,
+      statusLifecycle,
+      pipelineJobId,
+    });
+    await this.refreshLifecycleFlags(regionId);
+    return result;
+  }
+
+  private async syncBills(
+    maxBills: number | undefined,
+    plugin: DataFetcher,
+    forceStatusRecheck: boolean = false,
+    pipelineJobId?: string,
+  ): Promise<{
+    processed: number;
+    created: number;
+    updated: number;
+    skipped: number;
+  }> {
+    const bulkSources = (plugin?.getDataSources?.(DataType.BILLS) ?? []).filter(
+      (s) => s.sourceType === 'bulk_download',
+    );
+    if (bulkSources.length > 0) {
+      return this.syncBillsFromExport(plugin, bulkSources, pipelineJobId);
+    }
+
     if (!this.promptClient || !this.llm) {
       this.logger.warn('Bills sync requires PromptClient and LLM; skipping');
       return { processed: 0, created: 0, updated: 0, skipped: 0 };
@@ -1337,7 +1387,9 @@ export class RegionSyncService implements OnModuleDestroy {
       return { processed: 0, created: 0, updated: 0, skipped: 0 };
     }
 
-    const dataSources = plugin.getDataSources(DataType.BILLS);
+    const dataSources = plugin
+      .getDataSources(DataType.BILLS)
+      .filter((s) => s.sourceType !== 'bulk_download');
     if (dataSources.length === 0) {
       this.logger.log('No bills data sources configured for this region');
       return { processed: 0, created: 0, updated: 0, skipped: 0 };
@@ -2899,6 +2951,9 @@ export class RegionSyncService implements OnModuleDestroy {
         title: raw.title,
         subject: raw.subject ?? null,
         status: raw.status ?? null,
+        // Page-scraped: the lifecycle refresh may recompute flags from it
+        // (bills-phase-b.md, B8).
+        statusSource: 'page',
         currentStageId: resolvedCurrentStageId,
         lastAction: raw.lastAction ?? null,
         lastActionDate: resolvedLastActionDate,

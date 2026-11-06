@@ -1,5 +1,6 @@
 import { createMockDbService } from '@opuspopuli/relationaldb-provider/testing';
 import {
+  flagsFor,
   lifecycleFlags,
   refreshBillLifecycleFlags,
   writeBillLifecycleFields,
@@ -16,6 +17,7 @@ const activeBill: BillLifecycleRow = {
   sessionYear: '2025-2026',
   lastAction: 'Referred to Com. on APPR.',
   lastActionDate: new Date('2026-08-01T00:00:00Z'),
+  statusSource: 'page',
 };
 
 describe('writeBillLifecycleFields (F4)', () => {
@@ -306,5 +308,87 @@ describe('refreshBillLifecycleFlags (F4)', () => {
     };
     expect(second.where).toEqual({ regionId: 'california' });
     expect(second.cursor).toEqual({ id: 'a' });
+  });
+});
+
+describe('flagsFor (bills-phase-b.md, B8)', () => {
+  /** 2027: the 2025-2026 session has closed. */
+  const NEXT_SESSION = new Date('2027-01-15T12:00:00Z');
+  const stored = { isDead: false, isActive: true };
+
+  it('recomputes a page-scraped row from its status', () => {
+    expect(
+      flagsFor({ ...activeBill, ...stored, status: 'Vetoed' }, TODAY),
+    ).toEqual({ isDead: true, isActive: false });
+  });
+
+  it('never recomputes a legacy row from its status', () => {
+    // The B8 shape: an LLM wrote a text-page label into `status`, which the
+    // regex rules would read as "not Active Bill", so inactive.
+    const legacy = {
+      ...activeBill,
+      ...stored,
+      statusSource: null,
+      status: 'Amended IN Assembly January 22, 2026',
+    };
+    expect(flagsFor(legacy, TODAY)).toEqual(stored);
+  });
+
+  it('leaves an official row as the bulk derive set it', () => {
+    const official = {
+      ...activeBill,
+      ...stored,
+      statusSource: 'official',
+      status: 'In Committee Process',
+    };
+    expect(flagsFor(official, TODAY)).toEqual(stored);
+  });
+
+  it('ends an official row that is still active when its session closes', () => {
+    const official = {
+      ...activeBill,
+      ...stored,
+      statusSource: 'official',
+      status: 'In Committee Process',
+    };
+    expect(flagsFor(official, NEXT_SESSION)).toEqual({
+      isDead: true,
+      isActive: false,
+    });
+  });
+
+  it('keeps an enacted official row enacted after its session closes', () => {
+    const enacted = {
+      ...activeBill,
+      statusSource: 'official',
+      status: 'Chaptered',
+      isDead: false,
+      isActive: false,
+    };
+    expect(flagsFor(enacted, NEXT_SESSION)).toEqual({
+      isDead: false,
+      isActive: false,
+    });
+  });
+
+  it('refresh leaves a legacy row alone', async () => {
+    const db = createMockDbService();
+    db.bill.findMany
+      .mockResolvedValueOnce([
+        {
+          ...activeBill,
+          ...stored,
+          statusSource: null,
+          status: 'Introduced',
+        },
+      ] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const counts = await refreshBillLifecycleFlags(db as never, {
+      today: TODAY,
+    });
+
+    expect(db.bill.update).not.toHaveBeenCalled();
+    expect(counts.flippedActive).toBe(0);
   });
 });

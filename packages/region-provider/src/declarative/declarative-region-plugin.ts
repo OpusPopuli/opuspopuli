@@ -27,6 +27,7 @@ import type {
   ExtractionResult,
   BoundarySourcesConfig,
   BatchCallback,
+  PubinfoRow,
 } from "@opuspopuli/common";
 // Value import, so it cannot join the `import type` block above.
 import {
@@ -199,8 +200,32 @@ export class DeclarativeRegionPlugin extends BaseRegionPlugin {
     return allReps;
   }
 
+  /**
+   * Bills from a legislature website. Bulk bills sources are not pages, so
+   * they are left to {@link fetchBillsBulk}.
+   */
   async fetchBills(): Promise<Bill[]> {
-    return this.fetchByDataType<Bill>("bills");
+    return this.fetchByDataType<Bill>(
+      "bills",
+      undefined,
+      (s) => s.sourceType !== "bulk_download",
+    );
+  }
+
+  /**
+   * A legislature's published database export, one table per source
+   * (`bills-phase-b.md`, D9). Every table reads the same download.
+   */
+  async fetchBillsBulk(
+    onBatch: BatchCallback<PubinfoRow>,
+    pipelineJobId?: string,
+  ): Promise<void> {
+    await this.fetchByDataType<PubinfoRow>(
+      "bills",
+      onBatch,
+      (s) => s.sourceType === "bulk_download",
+      pipelineJobId,
+    );
   }
 
   /**

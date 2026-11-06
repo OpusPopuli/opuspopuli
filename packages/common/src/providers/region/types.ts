@@ -10,6 +10,7 @@ import type {
   BatchCallback,
   DataSourceConfig,
 } from "../scraping-pipeline/types.js";
+import type { PubinfoRow } from "./pubinfo-types.js";
 
 /**
  * Supported data types for region content
@@ -872,6 +873,17 @@ export interface IRegionProvider {
    * as a post-sync pass in the region service. Issue #686.
    */
   fetchBills?(): Promise<Bill[]>;
+
+  /**
+   * Stream a bulk bills export (`bills` sources with `sourceType:
+   * "bulk_download"`, e.g. the California Legislature's pubinfo tables) to
+   * `onBatch`, one table at a time. Optional — only regions with a bulk bills
+   * source implement it (`bills-phase-b.md`, D9).
+   */
+  fetchBillsBulk?(
+    onBatch: BatchCallback<PubinfoRow>,
+    pipelineJobId?: string,
+  ): Promise<void>;
 
   /**
    * Get the provider's configured data sources, optionally filtered by
