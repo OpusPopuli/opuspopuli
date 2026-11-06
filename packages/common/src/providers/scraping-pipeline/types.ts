@@ -543,6 +543,17 @@ export interface DataSourceConfig {
    * '0 2 * * 0' weekly Sunday 2 AM. See opuspopuli#689.
    */
   statusScanCadence?: string;
+  /**
+   * Bulk bills sources: each official status value mapped to where it leaves
+   * the bill. A status missing from the map keeps the stored lifecycle
+   * (`bills-phase-b.md`, D11).
+   */
+  billStatusLifecycle?: Record<string, "active" | "enacted" | "dead">;
+  /**
+   * Bills only: days after its last action before an inactive bill turns
+   * cold. Dead bills are cold at once (`bills-phase-b.md`, D1). Default 180.
+   */
+  coldAfterDays?: number;
 }
 
 /**
@@ -723,6 +734,14 @@ export interface PdfSourceConfig {
 /**
  * Configuration for bulk data download sources (ZIP archives, CSV/TSV files).
  */
+/** A bulk export published under a different name each weekday. */
+export interface RotatingFileConfig {
+  /** File name carrying `{weekday}`, e.g. `pubinfo_daily_{weekday}.zip`. */
+  name: string;
+  /** Local time (HH:MM) a day's file exists from; before it, the previous day's is newest. */
+  publishedAfter: string;
+}
+
 export interface BulkDownloadConfig {
   /**
    * File format.
@@ -741,6 +760,27 @@ export interface BulkDownloadConfig {
   filePattern?: string;
   /** Column delimiter override (default: tab for tsv, comma for csv) */
   delimiter?: string;
+  /**
+   * Character that may wrap a cell, stripped from both ends (default `"`).
+   * The California Legislature's pubinfo export uses a backtick.
+   */
+  quoteChar?: string;
+  /** Literal cell value read as empty, e.g. `NULL` in the pubinfo export. */
+  nullToken?: string;
+  /**
+   * Columns whose cell names another entry in the same ZIP holding the cell's
+   * real content (pubinfo's `.lob` files). The content replaces the name, and
+   * the row's `sourceRecordHash` covers the content rather than the name,
+   * which is renumbered on every export (`bills-phase-b.md`, D9).
+   */
+  lobColumns?: string[];
+  /**
+   * For a publisher that rotates its export by weekday: the file fetched is
+   * `name` with `{weekday}` replaced by the three-letter day (Mon..Sun) of the
+   * newest file in the source's timezone, resolved against the source url
+   * (the directory). The url stays the source's identity for skip and resume.
+   */
+  rotatingFile?: RotatingFileConfig;
   /** Number of header lines to skip */
   headerLines?: number;
   /** Explicit column headers for files without a header row (e.g., FEC bulk files) */

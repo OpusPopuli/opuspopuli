@@ -1048,6 +1048,143 @@ describe("BulkDownloadHandler", () => {
     });
   });
 
+  describe("pubinfo exports (bills-phase-b.md, D9)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AdmZip = require("adm-zip");
+
+    const HEADERS = ["bill_version_id", "bill_id", "subject", "bill_xml"];
+    const MAPPINGS = {
+      bill_version_id: "externalId",
+      bill_id: "billExternalId",
+      subject: "subject",
+      bill_xml: "billXml",
+    };
+
+    function pubinfoZip(
+      lines: string[],
+      lobs: Record<string, string>,
+    ): Readable {
+      const zip = new AdmZip();
+      zip.addFile("BILL_VERSION_TBL.dat", Buffer.from(lines.join("\n")));
+      for (const [name, content] of Object.entries(lobs)) {
+        zip.addFile(name, Buffer.from(content));
+      }
+      const buffer = zip.toBuffer();
+      return new Readable({
+        read() {
+          this.push(buffer);
+          this.push(null);
+        },
+      });
+    }
+
+    function pubinfoSource(extra: Partial<BulkDownloadConfig> = {}) {
+      return createSource({
+        dataType: DataType.BILLS,
+        bulk: {
+          format: "zip_tsv",
+          filePattern: "BILL_VERSION_TBL.dat",
+          headers: HEADERS,
+          quoteChar: "`",
+          nullToken: "NULL",
+          columnMappings: MAPPINGS,
+          lobColumns: ["bill_xml"],
+          ...extra,
+        },
+      });
+    }
+
+    async function ingest(
+      lines: string[],
+      lobs: Record<string, string>,
+      source = pubinfoSource(),
+    ): Promise<Record<string, unknown>[]> {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: pubinfoZip(lines, lobs),
+      });
+      const result = await handler.execute(source, "california");
+      expect(result.success).toBe(true);
+      return mapper.map.mock.calls.at(-1)![0].items as Record<
+        string,
+        unknown
+      >[];
+    }
+
+    const row = (subject: string, lob: string) =>
+      ["`V1`", "`B1`", subject, lob].join("\t");
+
+    it("strips backticks and reads NULL as no value", async () => {
+      const [item] = await ingest([row("NULL", "BILL_VERSION_TBL_1.lob")], {
+        "BILL_VERSION_TBL_1.lob": "<bill/>",
+      });
+      expect(item).toMatchObject({ externalId: "V1", billExternalId: "B1" });
+      expect(item).not.toHaveProperty("subject");
+    });
+
+    it("keeps a quoted `NULL`, which is text", async () => {
+      const [item] = await ingest([row("`NULL`", "BILL_VERSION_TBL_1.lob")], {
+        "BILL_VERSION_TBL_1.lob": "<bill/>",
+      });
+      expect(item.subject).toBe("NULL");
+    });
+
+    it("replaces a lob cell with the entry it names", async () => {
+      const [item] = await ingest([row("`An act`", "BILL_VERSION_TBL_7.lob")], {
+        "BILL_VERSION_TBL_7.lob": "<bill>text</bill>",
+      });
+      expect(item.billXml).toBe("<bill>text</bill>");
+    });
+
+    it("hashes the same content alike whatever the lob is called", async () => {
+      // pubinfo renumbers its .lob files on every export; a hash over the name
+      // would rewrite every version every night (K4).
+      const [a] = await ingest([row("`An act`", "BILL_VERSION_TBL_1.lob")], {
+        "BILL_VERSION_TBL_1.lob": "<bill>text</bill>",
+      });
+      const [b] = await ingest([row("`An act`", "BILL_VERSION_TBL_9.lob")], {
+        "BILL_VERSION_TBL_9.lob": "<bill>text</bill>",
+      });
+      expect(a.sourceRecordHash).toBe(b.sourceRecordHash);
+    });
+
+    it("hashes changed content differently on an unchanged row", async () => {
+      const [a] = await ingest([row("`An act`", "BILL_VERSION_TBL_1.lob")], {
+        "BILL_VERSION_TBL_1.lob": "<bill>text</bill>",
+      });
+      const [b] = await ingest([row("`An act`", "BILL_VERSION_TBL_1.lob")], {
+        "BILL_VERSION_TBL_1.lob": "<bill>amended</bill>",
+      });
+      expect(a.sourceRecordHash).not.toBe(b.sourceRecordHash);
+    });
+
+    it("fails the source when a lob entry is missing", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: pubinfoZip([row("`An act`", "BILL_VERSION_TBL_1.lob")], {}),
+      });
+      const result = await handler.execute(pubinfoSource(), "california");
+      expect(result.success).toBe(false);
+      expect(result.errors.join(" ")).toContain("no entry named");
+    });
+
+    it("refuses a lob column the headers do not declare", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: pubinfoZip([row("`An act`", "x.lob")], { "x.lob": "" }),
+      });
+      const result = await handler.execute(
+        pubinfoSource({ lobColumns: ["bill_text"] }),
+        "california",
+      );
+      expect(result.success).toBe(false);
+      expect(result.errors.join(" ")).toContain("lobColumns column(s)");
+    });
+  });
+
   describe("execute — real ZIP extraction (integration)", () => {
     // These tests use adm-zip to create real ZIP test fixtures,
     // then verify the streaming yauzl extraction path end-to-end.

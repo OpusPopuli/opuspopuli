@@ -192,6 +192,10 @@ vocabulary of B8's corrupt `status` strings.
 | D12 | Store only the **latest version's** text (`latest_bill_version_id`) | The summary reads that one. All versions would be 666 MB with nothing reading them |
 | D13 | Committee referrals derive from history actions in a later step; existing rows are left alone | Not needed for the feed or B8; the action text needs its own parser |
 | D14 | Retire the California page source in regions config; keep the page-scrape code | Other regions may have no bulk source. K3/K5/B1/B3/B4 move to the issue backlog for those |
+| D12′ | **Revised while building:** store **every** version's text, not only the latest | Lines arrive unordered, so the latest version is only known after the table is read; and comparing amendments needs the earlier texts. ~666 MB a session, TOAST-compressed |
+| D15 | Link votes and authors to representatives **by chamber and district**, through `LEGISLATOR_TBL` | Roll calls name legislators as pubinfo's `legislator_name`; the legislator table maps that name and house to a district, and dev holds exactly one representative per Assembly (80) and Senate (40) district. The page path's last-name match lets two members with one surname collide |
+| D16 | Vote position: `AYE` → yes, `NOE` → no, `ABS` → no_vote. Chamber: `AFLOOR`/`SFLOOR` → Assembly/Senate, a committee code → its `LOCATION_CODE_TBL` description with `Asm`/`Sen` spelled out | Matches the values `bill_votes` already holds (`yes`/`no`/`no_vote`, "Assembly Appropriations"). pubinfo's `ABS` is "absent, abstaining or not voting" |
+| D17 | `title` is the latest version's `<caml:Title>` ("An act to …"); `subject` is its `subject` | The same two strings the page path stored |
 
 ### 1. Pipeline: read pubinfo
 
@@ -249,6 +253,42 @@ only (D1, D2). Regenerate on prompt hash or digest change, never the
 - **No prune for the bulk source.** A bill missing from a later file has
   moved to a closed session, not been deleted. The F2 prune stays for the
   page path only.
+
+## As built so far (2026-11-06)
+
+**opuspopuli-regions [#99](https://github.com/OpusPopuli/opuspopuli-regions/pull/99)** (open):
+- Schema: `quoteChar`, `nullToken`, `lobColumns` (zip-only, as a draft-07
+  `dependencies` rule), `rotatingFile { name, publishedAfter }`,
+  `billStatusLifecycle`, `coldAfterDays`.
+- California: nine pubinfo sources replace the leginfo page source.
+- Review against the real export found two blockers, both fixed:
+  - `Passed` appears only on HR/SR, meaning adopted, so it is `enacted`, not `active`.
+  - The `LOCATION_CODE_TBL` key needs `consent_calendar_code`; without it 77 rows collapsed.
+- A first design put `{weekday}` in `url`. The type generator then emitted
+  `DataSourceConfig` twice (jscpd and SonarJS gates), so the rotation moved
+  into `bulk`, and `url` stays the directory, a stable identity.
+
+**Pipeline** (`packages/scraping-pipeline`, this branch):
+- The parser reads `quoteChar` and `nullToken`.
+- A `.lob` cell is replaced by the zip entry it names
+  (`zip-entry-reader.ts`, 32 MB per-entry cap), and the line hash covers
+  the content, not the renumbered name.
+- `rotating-file.ts` resolves the weekday file once per run.
+- `pubinfo-schemas.ts` maps each table to a typed `PubinfoRow`, and the
+  mapper routes `pubinfo:<TABLE>` there.
+- bm1 was re-pinned in place under the documented exception: the new
+  options are opt-in, so existing sources' rows and hashes are unchanged.
+- 760 package tests pass. The `.lob` hash, the content hash and the null
+  token were each mutation-checked.
+
+**Migration** `20261106120000_bills_pubinfo_mirror`: nine `pubinfo_*`
+mirrors plus `bills.status_source` and `bills.ai_summary_llm_digest`.
+- Approved by the owner, then applied to the dev DB.
+- A Prisma diff against `postgres_test` shows no drift from it.
+
+**Next:** the provider method, the mirror sync (K4 skip shared with
+finance), the derive step (D15–D17), lifecycle from the status map,
+summaries from the mirrored text, then UAT.
 
 ## Step 0, attempt 1 (2026-11-06 02:12 UTC, UAT job 197): blocked
 
