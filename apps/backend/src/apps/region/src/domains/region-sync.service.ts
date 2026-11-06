@@ -453,6 +453,49 @@ interface BillStatusSummaryShape {
  * the Prisma model so the type stays in sync with the schema — adding
  * a new column to Bill doesn't quietly break the candidate fetch.
  */
+/** Days after its last action that an inactive bill stays hot (D1). */
+const DEFAULT_COLD_AFTER_DAYS = 180;
+
+/**
+ * Summaries written per export sync (D5). The ~2,200 hot bills whose summary
+ * predates prompt hashes are regenerated over several syncs, not one.
+ */
+const SUMMARY_CAP_PER_SYNC = 200;
+
+/**
+ * Hot bills needing a summary (K6, D5): no summary yet, or one with no prompt
+ * hash, which predates attribution and cannot say what produced it. Never
+ * the `{skip: true}` sentinel, which would loop. Hot means active, or not
+ * dead with a last action inside `coldAfterDays` (`bills-phase-b.md`, D1/D2).
+ */
+function hotSummaryCandidates(
+  regionId: string,
+  coldAfterDays: number,
+  today: Date,
+): Prisma.BillWhereInput {
+  const coldBefore = new Date(today.getTime() - coldAfterDays * 86_400_000);
+  return {
+    regionId,
+    OR: [
+      { isActive: true },
+      { isDead: false, lastActionDate: { gte: coldBefore } },
+    ],
+    AND: [
+      {
+        OR: [
+          { aiSummary: { equals: Prisma.DbNull } },
+          {
+            aiSummaryPromptHash: null,
+            // The whole value, not a `skip` path: a path filter is NULL on a
+            // summary without the key, and NOT NULL excludes every summary.
+            NOT: { aiSummary: { equals: { skip: true } } },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 type BillEnrichmentCandidate = Prisma.BillGetPayload<{
   select: {
     id: true;
@@ -470,6 +513,14 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
     // to recompute isDead/isActive alongside the ones it does (F4).
     lastAction: true;
     lastActionDate: true;
+    // Where the status came from and the stored flags: without them the
+    // writer would re-read every status by the regex rules, flattening
+    // official rows and flipping legacy ones (bills-phase-b.md, B8).
+    statusSource: true;
+    isDead: true;
+    isActive: true;
+    // An official bill's text is read from the export mirror, by this id.
+    externalId: true;
   };
 }>;
 
@@ -1354,6 +1405,23 @@ export class RegionSyncService implements OnModuleDestroy {
       pipelineJobId,
     });
     await this.refreshLifecycleFlags(regionId);
+
+    // Summaries for hot bills only, from the mirrored text (K6, D5). Cold
+    // bills get theirs on first read (§5.2), not here.
+    if (this.promptClient && this.llm) {
+      await this.enrichBillSummaries(
+        regionId,
+        await this.buildStagePatterns(regionId),
+        await this.buildLifecycleStageInputs(regionId),
+        SUMMARY_CAP_PER_SYNC,
+        {
+          coldAfterDays:
+            sources.find((s) => s.coldAfterDays !== undefined)?.coldAfterDays ??
+            DEFAULT_COLD_AFTER_DAYS,
+          today: new Date(),
+        },
+      );
+    }
     return result;
   }
 
@@ -2044,6 +2112,7 @@ export class RegionSyncService implements OnModuleDestroy {
     stagePatterns: StagePattern[],
     lifecycleStages: LifecycleStageInput[] | null,
     maxBills?: number,
+    hot?: { coldAfterDays: number; today: Date },
   ): Promise<{ enriched: number; skipped: number; failed: number }> {
     if (!this.promptClient || !this.llm) {
       return { enriched: 0, skipped: 0, failed: 0 };
@@ -2060,7 +2129,9 @@ export class RegionSyncService implements OnModuleDestroy {
     }
 
     const candidates = await this.db.bill.findMany({
-      where: { regionId, aiSummary: { equals: Prisma.DbNull } },
+      where: hot
+        ? hotSummaryCandidates(regionId, hot.coldAfterDays, hot.today)
+        : { regionId, aiSummary: { equals: Prisma.DbNull } },
       select: {
         id: true,
         regionId: true,
@@ -2075,6 +2146,10 @@ export class RegionSyncService implements OnModuleDestroy {
         currentStageId: true,
         lastAction: true,
         lastActionDate: true,
+        statusSource: true,
+        isDead: true,
+        isActive: true,
+        externalId: true,
       },
       take: maxBills,
     });
@@ -2257,17 +2332,15 @@ export class RegionSyncService implements OnModuleDestroy {
     outcome: EnrichmentOutcome;
     tokensUsed: number;
   }> {
-    if (!bill.fullTextUrl) {
-      this.logger.debug(
-        `Bill enrichment: skipping ${bill.billNumber} — no fullTextUrl`,
-      );
-      return { outcome: 'skipped', tokensUsed: 0 };
-    }
-
     try {
-      const html = this.htmlToReadableText(
-        await this.fetchUrlText(bill.fullTextUrl),
-      );
+      const source = await this.billTextFor(bill);
+      if (source === undefined) {
+        this.logger.debug(
+          `Bill enrichment: skipping ${bill.billNumber} — no bill text`,
+        );
+        return { outcome: 'skipped', tokensUsed: 0 };
+      }
+      const html = this.htmlToReadableText(source);
 
       const { promptText, promptVersion, promptHash } =
         await this.promptClient!.getBillStatusSummaryPrompt({
@@ -2328,6 +2401,27 @@ export class RegionSyncService implements OnModuleDestroy {
       );
       return { outcome: 'failed', tokensUsed: 0 };
     }
+  }
+
+  /**
+   * The text a bill's summary is written from. An official bill's is its
+   * current version in the export mirror (`bills-phase-b.md`, D9), so no page
+   * is fetched; a page-scraped bill's is fetched from its full-text URL.
+   */
+  private async billTextFor(
+    bill: BillEnrichmentCandidate,
+  ): Promise<string | undefined> {
+    if (bill.statusSource === 'official') {
+      const current = await this.db.pubinfoBillVersion.findFirst({
+        where: { billId: bill.externalId },
+        orderBy: { versionNum: 'asc' },
+        select: { billXml: true },
+      });
+      return current?.billXml ?? undefined;
+    }
+    return bill.fullTextUrl
+      ? await this.fetchUrlText(bill.fullTextUrl)
+      : undefined;
   }
 
   /**
@@ -2398,6 +2492,9 @@ export class RegionSyncService implements OnModuleDestroy {
       aiSummaryPromptVersion: prompt.promptVersion,
       aiSummaryPromptHash: prompt.promptHash,
       aiSummaryLlmModel: this.llm?.getModelName() ?? null,
+      // The exact model build (F3/K6), so a summary can be regenerated when
+      // the model changes as well as when the prompt does.
+      aiSummaryLlmDigest: (await this.llm?.getModelDigest()) ?? null,
       aiSummaryGeneratedAt: new Date(),
     };
     if (parsed.skip === true) {
