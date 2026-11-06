@@ -15,7 +15,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { createWriteStream, createReadStream } from "node:fs";
-import { unlink, stat } from "node:fs/promises";
+import { readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
@@ -25,15 +25,21 @@ import type {
   BulkSnapshotCandidate,
   IBulkArchive,
 } from "./bulk-archive.port.js";
+import type { IBulkImportLedger } from "./bulk-import-ledger.port.js";
+import { bulkImportKey } from "./bulk-import-key.js";
 import { Readable } from "node:stream";
 import { createInterface } from "node:readline";
 import yauzl from "yauzl";
 import type {
+  BulkBatchContext,
   BulkDownloadConfig,
+  BulkDownloadScope,
   DataSourceConfig,
   ExtractionResult,
+  ScopedDownload,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
+import { createLineParser } from "./bulk-line-parser.js";
 import {
   ExecutionTrackerService,
   type ExecutionSession,
@@ -49,50 +55,56 @@ import {
 /** Download timeout: 30 minutes for very large files (FEC indiv26.zip is ~1.4GB) */
 const DOWNLOAD_TIMEOUT_MS = 1_800_000;
 
+/** Temp exports are named with this prefix, and swept by it. */
+const TEMP_PREFIX = "opus-bulk-";
+
+/**
+ * A temp export older than this is left over from a worker that was killed
+ * (an OOM, a container stop) before it could delete it, and is removed before
+ * the next download. One sync holds its export for its whole run, ten hours
+ * at most so far, so this sits well clear of any live file.
+ */
+const STALE_EXPORT_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Delete temp exports a killed worker left behind. An export carries the
+ * whole file, donor names and addresses included, so one must not sit in the
+ * temp directory indefinitely. Never throws: a sweep that fails must not stop
+ * the download.
+ */
+async function removeStaleExports(dir: string, now: number): Promise<void> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  await Promise.all(
+    names
+      .filter((n) => n.startsWith(TEMP_PREFIX) && n.endsWith(".tmp"))
+      .map(async (n) => {
+        const path = join(dir, n);
+        const { mtimeMs } = await stat(path).catch(() => ({ mtimeMs: now }));
+        if (now - mtimeMs > STALE_EXPORT_MS) {
+          await unlink(path).catch(() => undefined);
+        }
+      }),
+  );
+}
+
 /** Default batch size for record processing (trades memory for fewer DB round-trips) */
 const DEFAULT_BATCH_SIZE = 10_000;
 
-/**
- * Joins `compositeKey` column values into an `externalId`. Matches the shape
- * single-column ids already have in this codebase (`<FILING_ID>:<LINE_ITEM>`).
- *
- * Note this is a display/identity convention only — nothing parses an id back
- * apart. The one consumer that did (`extractFilingId`) was replaced by a real
- * `filing_id` column in #980, precisely so that changing a key's layout can
- * never silently break a downstream reader again.
- */
-const COMPOSITE_KEY_SEPARATOR = ":";
-
-/** Callback invoked with each batch of mapped domain objects */
-export type OnBatchCallback<T> = (items: T[]) => Promise<void>;
-
-/**
- * Everything a single data line needs to become a record. Bundled rather than
- * passed positionally — the parameter list had reached the point where adding
- * one more (SonarCloud S107 caps it at 7) traded a readable signature for a
- * lint waiver.
- */
-interface ParseContext {
-  delimiter: string;
-  mappings: Record<string, string>;
-  filters: Record<string, string>;
-  colIndices: Record<string, number>;
-  filterIndices: Record<string, number>;
-  compositeIndices: number[];
-  sourceSystem: string | undefined;
+/** An export on local disk, deleted by `release` (D4: maybe shared). */
+interface DownloadedExport extends ScopedDownload {
+  path: string;
+  /** Its `bulk_snapshots` row, when the archive recorded one (D5). */
+  snapshotId?: string;
 }
 
 /**
- * SHA-256 of one raw export line, hex-encoded (#1277).
- *
- * The line as read from the decoded stream — bulk exports are read through a
- * text decode, so per-record *bytes* are not separably addressable without
- * re-reading the archive. This is the finest-grained honest witness available
- * at ingest, and it is enough to locate the record in a retained snapshot.
+ * Callback invoked with each batch of mapped domain objects, and whether
+ * unchanged rows in it may be skipped (D1, D3).
  */
-function hashSourceRecord(line: string): string {
-  return createHash("sha256").update(line, "utf8").digest("hex");
-}
+export type OnBatchCallback<T> = (
+  items: T[],
+  context: BulkBatchContext,
+) => Promise<void>;
 
 @Injectable()
 export class BulkDownloadHandler {
@@ -108,6 +120,11 @@ export class BulkDownloadHandler {
     private readonly bulkArchive: IBulkArchive | null = null,
     /** The shared per-host rate limit (S1); see ApiIngestHandler. */
     private readonly hostSlot: ((url: string) => Promise<void>) | null = null,
+    /**
+     * Records which imports completed (D3). Optional: left unbound, nothing
+     * is ever skipped and every row is written, as before K4.
+     */
+    private readonly importLedger: IBulkImportLedger | null = null,
   ) {}
 
   /**
@@ -119,16 +136,63 @@ export class BulkDownloadHandler {
    */
   private async archiveSnapshot(
     candidate: BulkSnapshotCandidate,
-  ): Promise<void> {
-    if (!this.bulkArchive) return;
+  ): Promise<string | undefined> {
+    if (!this.bulkArchive) return undefined;
 
     try {
-      await this.bulkArchive.archive(candidate);
+      return await this.bulkArchive.archive(candidate);
     } catch (error) {
       this.logger.warn(
         `Failed to archive ${candidate.sourceUrl}: ${(error as Error).message}`,
       );
+      return undefined;
     }
+  }
+
+  /** Never throws: a lost record only costs the next sync its skip. */
+  private async recordImportCompleted(
+    sourceKey: string,
+    importKey: string,
+    executionId: string | null,
+  ): Promise<void> {
+    try {
+      await this.importLedger?.recordCompleted(
+        sourceKey,
+        importKey,
+        executionId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not record the completed import of ${sourceKey}: ${(error as Error).name}`,
+      );
+    }
+  }
+
+  /**
+   * Whether this source's rows may be skipped when unchanged: only when its
+   * last completed import ran under the key this one runs under (D3). Never
+   * throws; anything unreadable means "write every row".
+   *
+   * On any other answer the entry is forgotten before the first batch. This
+   * run is about to rewrite rows under its own key, and if it dies partway an
+   * entry left standing would let a run under the old key skip them.
+   */
+  private async maySkipUnchanged(
+    sourceKey: string,
+    importKey: string,
+  ): Promise<boolean> {
+    if (!this.importLedger) return false;
+    try {
+      if ((await this.importLedger.lastCompletedKey(sourceKey)) === importKey) {
+        return true;
+      }
+      await this.importLedger.forget(sourceKey);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the import ledger for ${sourceKey}: ${(error as Error).name}`,
+      );
+    }
+    return false;
   }
 
   async execute<T>(
@@ -136,6 +200,13 @@ export class BulkDownloadHandler {
     regionId: string,
     onBatch?: OnBatchCallback<T>,
     pipelineJobId?: string,
+    /**
+     * One download per export per sync (`campaign-finance-phase-b.md`, D4).
+     * When set, the export is fetched by the first source that reads it and
+     * released by whoever closes the scope; unset, this source downloads its
+     * own copy and deletes it when done.
+     */
+    bulkDownloads?: BulkDownloadScope,
   ): Promise<ExtractionResult<T>> {
     const pipelineStart = Date.now();
     const bulk = source.bulk!;
@@ -166,7 +237,6 @@ export class BulkDownloadHandler {
     }
     const warnings: string[] = [];
     const errors: string[] = [];
-    const tmpPath = join(tmpdir(), `opus-bulk-${randomUUID()}.tmp`);
 
     // Opened before the download rather than after it: the run began when it
     // began, not when a gigabyte finished transferring, and the archived
@@ -188,87 +258,26 @@ export class BulkDownloadHandler {
         },
       );
 
+    let download: DownloadedExport | undefined;
     try {
-      // 1. Stream download to temp file (no memory buffering)
-      this.logger.log(`Downloading ${source.url}...`);
-      await this.hostSlot?.(source.url);
-      const response = await fetch(source.url, {
-        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      if (!response.body) {
-        throw new Error("Response has no body");
-      }
-
-      // Convert web ReadableStream to Node Readable if needed
-      const bodyStream =
-        response.body instanceof Readable
-          ? response.body
-          : Readable.fromWeb(
-              response.body as import("node:stream/web").ReadableStream,
-            );
-
-      // Hash while the bytes stream past, rather than re-reading a gigabyte
-      // from disk afterwards purely to content-address it (#1277).
-      //
-      // A Transform, not a PassThrough with a "data" listener: attaching that
-      // listener switches the stream into flowing mode and consumes chunks
-      // before pipeline() has wired them to the write stream, which silently
-      // produces an empty file.
-      const digest = createHash("sha256");
-      const hashStream = new Transform({
-        transform(chunk, _encoding, callback) {
-          digest.update(chunk);
-          callback(null, chunk);
-        },
-      });
-
-      await pipeline(bodyStream, hashStream, createWriteStream(tmpPath));
-      const contentHash = digest.digest("hex");
-
-      const fileSize = (await stat(tmpPath)).size;
-      this.logger.log(
-        `Downloaded ${(fileSize / 1024 / 1024).toFixed(1)}MB to temp file`,
-      );
-
-      // Archived before ingest, not after. The export is worth retaining
-      // whether or not parsing it succeeds — a run that failed partway is
-      // exactly the case where someone needs the bytes that caused it
-      // (#991, #992). The temp file is deleted in the finally below, so this
-      // is the only window in which it can be read.
-      await this.archiveSnapshot({
-        contentHash,
-        sourceUrl: source.url,
-        byteSize: fileSize,
-        fetchedAt: new Date().toISOString(),
-        // Optional metadata, read defensively: a missing or unusual header
-        // must not fail an ingest measured in tens of hours.
-        contentType: response.headers?.get("content-type") ?? undefined,
-        // `last-modified` is the export's own publication date — the
-        // provenance #991 shows readers as `asOfSource`. It was never read
-        // here, so `bulk_snapshots.last_modified` had been null since the
-        // column was added (#1277) and the figure could never be dated. The
-        // CDN does send it: `last-modified: Tue, 13 Oct 2026 08:59:20 GMT`.
-        lastModified: response.headers?.get("last-modified") ?? undefined,
-        etag: response.headers?.get("etag") ?? undefined,
-        regionId,
-        dataType: source.dataType,
-        ...(session.executionId && { executionId: session.executionId }),
-        openStream: () => createReadStream(tmpPath),
-      });
+      // 1. The export on disk: this sync's shared copy, or this source's own.
+      const fetchExport = () =>
+        this.downloadExport(source, regionId, session.executionId);
+      download = await (bulkDownloads
+        ? bulkDownloads.acquire(source.url, fetchExport)
+        : fetchExport());
+      // Every source that read this export points at it, not only the one
+      // that downloaded it (D5).
+      if (download.snapshotId) await session.linkSnapshot(download.snapshotId);
 
       // 2. Get a readable stream for the target content
       let contentStream: Readable;
       const isZip = bulk.format.startsWith("zip_");
 
       if (isZip) {
-        contentStream = await this.extractZipEntryStream(tmpPath, bulk);
+        contentStream = await this.extractZipEntryStream(download.path, bulk);
       } else {
-        contentStream = createReadStream(tmpPath, { encoding: "utf-8" });
+        contentStream = createReadStream(download.path, { encoding: "utf-8" });
       }
 
       // 3. Parse and process in batches (streaming)
@@ -285,6 +294,10 @@ export class BulkDownloadHandler {
         // alone is insufficient (#950, #984).
         let batchIndex = 0;
         let streamSuccess = false;
+        const importKey = bulkImportKey(source);
+        const context: BulkBatchContext = {
+          skipUnchanged: await this.maySkipUnchanged(trackingUrl, importKey),
+        };
 
         try {
           await this.parseDelimitedStream(
@@ -330,6 +343,7 @@ export class BulkDownloadHandler {
                       }
                     : item,
                 ),
+                context,
               );
               totalItems += items.length;
 
@@ -338,6 +352,16 @@ export class BulkDownloadHandler {
             batchSize,
           );
           streamSuccess = true;
+          // A resumed run skipped batches an earlier attempt wrote, perhaps
+          // under another key (a deploy between attempts), so it cannot vouch
+          // for them. The next sync writes every row once instead.
+          if (session.appliedBatches.size === 0) {
+            await this.recordImportCompleted(
+              trackingUrl,
+              importKey,
+              session.executionId,
+            );
+          }
         } finally {
           await session.finalize(streamSuccess, {
             itemsExtracted: totalItems,
@@ -393,8 +417,109 @@ export class BulkDownloadHandler {
       });
       return buildFailureResult<T>(error, warnings, errors, pipelineStart);
     } finally {
-      // Always clean up temp file
-      await unlink(tmpPath).catch(() => {});
+      // A shared download is the scope's to release, once every source has
+      // read it.
+      if (!bulkDownloads) await download?.release();
+    }
+  }
+
+  /**
+   * Stream an export to a temp file, hashing it on the way, and offer it to
+   * the bulk archive. Deletes the file itself if anything here fails.
+   */
+  private async downloadExport(
+    source: DataSourceConfig,
+    regionId: string,
+    executionId: string | null | undefined,
+  ): Promise<DownloadedExport> {
+    await removeStaleExports(tmpdir(), Date.now());
+    const tmpPath = join(tmpdir(), `${TEMP_PREFIX}${randomUUID()}.tmp`);
+    const release = async (): Promise<void> => {
+      await unlink(tmpPath).catch(() => undefined);
+    };
+    try {
+      // 1. Stream download to temp file (no memory buffering)
+      this.logger.log(`Downloading ${source.url}...`);
+      await this.hostSlot?.(source.url);
+      const response = await fetch(source.url, {
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      if (!response.body) {
+        throw new Error("Response has no body");
+      }
+
+      // Convert web ReadableStream to Node Readable if needed
+      const bodyStream =
+        response.body instanceof Readable
+          ? response.body
+          : Readable.fromWeb(
+              response.body as import("node:stream/web").ReadableStream,
+            );
+
+      // Hash while the bytes stream past, rather than re-reading a gigabyte
+      // from disk afterwards purely to content-address it (#1277).
+      //
+      // A Transform, not a PassThrough with a "data" listener: attaching that
+      // listener switches the stream into flowing mode and consumes chunks
+      // before pipeline() has wired them to the write stream, which silently
+      // produces an empty file.
+      const digest = createHash("sha256");
+      const hashStream = new Transform({
+        transform(chunk, _encoding, callback) {
+          digest.update(chunk);
+          callback(null, chunk);
+        },
+      });
+
+      // Owner-only: the export holds personal information (donor names,
+      // employers, ZIPs), and the default mode leaves it world-readable.
+      await pipeline(
+        bodyStream,
+        hashStream,
+        createWriteStream(tmpPath, { mode: 0o600 }),
+      );
+      const contentHash = digest.digest("hex");
+
+      const fileSize = (await stat(tmpPath)).size;
+      this.logger.log(
+        `Downloaded ${(fileSize / 1024 / 1024).toFixed(1)}MB to temp file`,
+      );
+
+      // Archived before ingest, not after. The export is worth retaining
+      // whether or not parsing it succeeds — a run that failed partway is
+      // exactly the case where someone needs the bytes that caused it
+      // (#991, #992). The temp file is deleted on release, so this is the
+      // only window in which it can be read.
+      const snapshotId = await this.archiveSnapshot({
+        contentHash,
+        sourceUrl: source.url,
+        byteSize: fileSize,
+        fetchedAt: new Date().toISOString(),
+        // Optional metadata, read defensively: a missing or unusual header
+        // must not fail an ingest measured in tens of hours.
+        contentType: response.headers?.get("content-type") ?? undefined,
+        // `last-modified` is the export's own publication date — the
+        // provenance #991 shows readers as `asOfSource`. It was never read
+        // here, so `bulk_snapshots.last_modified` had been null since the
+        // column was added (#1277) and the figure could never be dated. The
+        // CDN does send it: `last-modified: Tue, 13 Oct 2026 08:59:20 GMT`.
+        lastModified: response.headers?.get("last-modified") ?? undefined,
+        etag: response.headers?.get("etag") ?? undefined,
+        regionId,
+        dataType: source.dataType,
+        ...(executionId && { executionId }),
+        openStream: () => createReadStream(tmpPath),
+      });
+
+      return { path: tmpPath, release, ...(snapshotId && { snapshotId }) };
+    } catch (error) {
+      await release();
+      throw error;
     }
   }
 
@@ -525,7 +650,7 @@ export class BulkDownloadHandler {
     let batch: Record<string, unknown>[] = [];
     let totalParsed = 0;
 
-    const lineParser = this.createLineParser(bulk, source);
+    const lineParser = createLineParser(bulk, source);
     const rl = createInterface({ input: stream, crlfDelay: Infinity });
 
     for await (const line of rl) {
@@ -563,7 +688,7 @@ export class BulkDownloadHandler {
     const MAX_RECORDS = 100_000;
     const records: Record<string, unknown>[] = [];
 
-    const lineParser = this.createLineParser(bulk, source);
+    const lineParser = createLineParser(bulk, source);
     const rl = createInterface({ input: stream, crlfDelay: Infinity });
 
     for await (const line of rl) {
@@ -581,237 +706,5 @@ export class BulkDownloadHandler {
     }
 
     return records;
-  }
-
-  /**
-   * Create a stateful line parser that handles headers, skipping, and mapping.
-   */
-  private createLineParser(bulk: BulkDownloadConfig, source: DataSourceConfig) {
-    const delimiter = this.getDelimiter(bulk);
-    // Presence is guaranteed by the up-front guard in execute().
-    const mappings = bulk.columnMappings!;
-    const filters = bulk.filters ?? {};
-    const compositeKey = bulk.compositeKey ?? [];
-    const sourceSystem = inferSourceSystem(source);
-    const headerSkip = bulk.headerLines ?? 0;
-
-    let lineNum = 0;
-    let colIndices: Record<string, number> = {};
-    let filterIndices: Record<string, number> = {};
-    let compositeIndices: number[] = [];
-
-    const hasExplicitHeaders = bulk.headers && bulk.headers.length > 0;
-    if (hasExplicitHeaders) {
-      const headers = bulk.headers!;
-      colIndices = this.buildColumnIndices(headers, mappings);
-      filterIndices = this.buildColumnIndices(headers, filters);
-      compositeIndices = this.buildCompositeIndices(headers, compositeKey);
-    }
-
-    const headerLineNum = headerSkip;
-    const buildIndices = this.buildColumnIndices.bind(this);
-    const buildComposite = this.buildCompositeIndices.bind(this);
-    const processData = this.processDataLine.bind(this);
-
-    const context = (): ParseContext => ({
-      delimiter,
-      mappings,
-      filters,
-      colIndices,
-      filterIndices,
-      compositeIndices,
-      sourceSystem,
-    });
-
-    return {
-      processLine(line: string): Record<string, unknown> | null {
-        if (lineNum < headerSkip) {
-          lineNum++;
-          return null;
-        }
-
-        if (!hasExplicitHeaders && lineNum === headerLineNum) {
-          const headers = line
-            .split(delimiter)
-            .map((h) => BulkDownloadHandler.stripQuotes(h));
-          colIndices = buildIndices(headers, mappings);
-          filterIndices = buildIndices(headers, filters);
-          compositeIndices = buildComposite(headers, compositeKey);
-          lineNum++;
-          return null;
-        }
-
-        lineNum++;
-        const record = processData(line, context());
-
-        // Hash the line, not the parsed record (#1277). The hash has to
-        // witness what the export said rather than our interpretation of it —
-        // that is what lets a discrepancy be audited after the fact (#991,
-        // #992) instead of re-argued. Stamped here rather than at the two
-        // parse call sites so streaming and accumulation cannot diverge.
-        //
-        // Filtered-out lines return null and are not hashed: nothing was
-        // ingested, so there is no row whose provenance it would describe.
-        return record === null
-          ? null
-          : { ...record, sourceRecordHash: hashSourceRecord(line) };
-      },
-    };
-  }
-
-  /**
-   * Process a single data line: split, filter, map, inject sourceSystem.
-   * Returns null if the line should be skipped.
-   */
-  private processDataLine(
-    line: string,
-    ctx: ParseContext,
-  ): Record<string, unknown> | null {
-    if (!line.trim()) return null;
-
-    const { compositeIndices, sourceSystem } = ctx;
-    const values = line.split(ctx.delimiter);
-
-    if (!this.passesFilters(values, ctx.filters, ctx.filterIndices))
-      return null;
-
-    const record = this.mapRow(values, ctx.mappings, ctx.colIndices);
-
-    if (compositeIndices.length > 0) {
-      const segments = compositeIndices.map((idx) =>
-        BulkDownloadHandler.stripQuotes(values[idx] ?? ""),
-      );
-      // An all-empty key identifies nothing and would collide with every other
-      // all-empty row, so drop the line rather than upserting them onto each other.
-      if (segments.every((s) => !s)) return null;
-      // Overwrites any externalId from columnMappings — a feed that needs a
-      // composite key by definition has no single column that identifies a row.
-      record["externalId"] = segments.join(COMPOSITE_KEY_SEPARATOR);
-    }
-
-    if (sourceSystem && !record["sourceSystem"]) {
-      record["sourceSystem"] = sourceSystem;
-    }
-
-    const fieldCount = Object.keys(record).length;
-    const minFields = sourceSystem ? 2 : 1;
-    return fieldCount >= minFields ? record : null;
-  }
-
-  /**
-   * Determine the column delimiter from the config.
-   */
-  private getDelimiter(bulk: BulkDownloadConfig): string {
-    if (bulk.delimiter) return bulk.delimiter;
-    const format = bulk.format.replaceAll("zip_", "");
-    return format === "tsv" ? "\t" : ",";
-  }
-
-  /**
-   * Sanitize a CSV/TSV cell value: strip embedded NUL bytes (U+0000),
-   * surrounding double quotes, and surrounding whitespace.
-   *
-   * NUL bytes appear in CalAccess TSVs (notably in committee names and
-   * descriptions) and Postgres rejects them in UTF-8 text columns with
-   * SQLSTATE 22021 ("invalid byte sequence for encoding UTF8: 0x00"),
-   * which fails the entire batch transaction. We drop them here at the
-   * parse layer so every downstream consumer (mapper, upsert, linker)
-   * sees clean strings.
-   */
-  private static stripQuotes(val: string): string {
-    return val
-      .replaceAll("\u0000", "")
-      .trim()
-      .replaceAll(/(^"|"$)/g, "");
-  }
-
-  /**
-   * Build a column-index lookup map from headers.
-   * Logs warnings for mapped columns not found in the file.
-   */
-  private buildColumnIndices(
-    headers: string[],
-    columns: Record<string, string>,
-  ): Record<string, number> {
-    const indices: Record<string, number> = {};
-    for (const col of Object.keys(columns)) {
-      const idx = headers.indexOf(col);
-      if (idx === -1) {
-        // Same reasoning as buildCompositeIndices: when the first line isn't
-        // actually a header row it holds donor data, so log its shape, not its
-        // cells (#980 review).
-        this.logger.warn(
-          `Column '${col}' not found in file headers (${headers.length} column(s) present).`,
-        );
-      } else {
-        indices[col] = idx;
-      }
-    }
-    return indices;
-  }
-
-  /**
-   * Resolve `compositeKey` column names to their positions, in the order given.
-   *
-   * Throws on an unresolvable column instead of warning-and-continuing the way
-   * {@link buildColumnIndices} does. A missing mapped column costs one field;
-   * a missing key component silently shortens the key for *every* row, so
-   * distinct rows collapse onto one `externalId` and the upsert discards all
-   * but the last. That is the failure this feature exists to prevent
-   * (opuspopuli#980), so it must be loud.
-   */
-  private buildCompositeIndices(
-    headers: string[],
-    compositeKey: string[],
-  ): number[] {
-    const missing = compositeKey.filter((col) => !headers.includes(col));
-    if (missing.length > 0) {
-      // Report the shape of the header row, never its contents. `headers` is
-      // just the file's first non-skipped line — and this error fires precisely
-      // when that line ISN'T a header row, i.e. when it is a data row. Echoing
-      // its cells would put donor name/employer/city/ZIP into an error-level log
-      // that propagates to the persisted pipeline errors[] and on to Loki.
-      throw new Error(
-        `compositeKey column(s) not found in file headers: ${missing.join(", ")}. ` +
-          `Header row has ${headers.length} column(s); ` +
-          `expected columns are configured in the region plugin.`,
-      );
-    }
-    return compositeKey.map((col) => headers.indexOf(col));
-  }
-
-  /**
-   * Check if a row passes all filter criteria.
-   */
-  private passesFilters(
-    values: string[],
-    filters: Record<string, string>,
-    filterIndices: Record<string, number>,
-  ): boolean {
-    for (const [filterCol, filterVal] of Object.entries(filters)) {
-      const idx = filterIndices[filterCol];
-      if (idx === undefined) continue;
-      const cellVal = BulkDownloadHandler.stripQuotes(values[idx] ?? "");
-      if (cellVal !== filterVal) return false;
-    }
-    return true;
-  }
-
-  /**
-   * Map a row's values to a domain record using column mappings.
-   */
-  private mapRow(
-    values: string[],
-    mappings: Record<string, string>,
-    colIndices: Record<string, number>,
-  ): Record<string, unknown> {
-    const record: Record<string, unknown> = {};
-    for (const [sourceCol, targetField] of Object.entries(mappings)) {
-      const idx = colIndices[sourceCol];
-      if (idx === undefined) continue;
-      const val = BulkDownloadHandler.stripQuotes(values[idx] ?? "");
-      if (val) record[targetField] = val;
-    }
-    return record;
   }
 }

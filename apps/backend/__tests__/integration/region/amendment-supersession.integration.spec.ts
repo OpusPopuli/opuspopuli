@@ -192,9 +192,76 @@ describe('AmendmentSupersessionService (#992)', () => {
     expect(left).toEqual([{ amendId: 1 }]);
   });
 
+  it('supersedes independent expenditures on the same rule (regions#97)', async () => {
+    // S496 restates a filing's lines on amendment, as RCPT does.
+    const ie = (amendId: number, externalId: string, amount: string) =>
+      db.independentExpenditure.create({
+        data: {
+          externalId,
+          filingId: '900700',
+          amendId,
+          committeeName: 'Unknown',
+          supportOrOppose: 'support',
+          amount,
+          date: new Date('2026-03-01'),
+          sourceSystem: 'cal_access',
+        },
+      });
+    await ie(0, '900700:1:T1', '1000.00');
+    await ie(1, '900700:1:T2', '1200.00');
+
+    const res = await svc.supersedeAll();
+
+    expect(res.independentExpenditures).toMatchObject({
+      superseded: 1,
+      filingsAffected: 1,
+    });
+    const left = await db.independentExpenditure.findMany({
+      select: { externalId: true, amendId: true },
+    });
+    expect(left).toEqual([{ externalId: '900700:1:T2', amendId: 1 }]);
+  });
+
+  it('supersedes CVR2 measure declarations on the same rule (regions#97)', async () => {
+    const cvr2 = (amendId: number, externalId: string) =>
+      db.cvr2Filing.create({
+        data: {
+          externalId,
+          filingId: '900800',
+          amendId,
+          ballotNumber: '1',
+          supportOrOppose: 'S',
+          sourceSystem: 'cal_access',
+        },
+      });
+    await cvr2(0, '900800:1:T1');
+    await cvr2(1, '900800:1:T9');
+    await cvr2(1, '900800:2:T10');
+
+    const res = await svc.supersedeAll();
+
+    expect(res.committeeMeasureFilings).toMatchObject({
+      superseded: 1,
+      filingsAffected: 1,
+    });
+    const left = await db.cvr2Filing.findMany({
+      select: { externalId: true },
+      orderBy: { externalId: 'asc' },
+    });
+    expect(left).toEqual([
+      { externalId: '900800:1:T9' },
+      { externalId: '900800:2:T10' },
+    ]);
+  });
+
   it('does nothing when no db is injected', async () => {
     const res = await new AmendmentSupersessionService().supersedeAll();
-    expect(res.contributions.superseded).toBe(0);
+    expect(res).toEqual({
+      contributions: { superseded: 0, filingsAffected: 0 },
+      expenditures: { superseded: 0, filingsAffected: 0 },
+      independentExpenditures: { superseded: 0, filingsAffected: 0 },
+      committeeMeasureFilings: { superseded: 0, filingsAffected: 0 },
+    });
   });
 
   /**

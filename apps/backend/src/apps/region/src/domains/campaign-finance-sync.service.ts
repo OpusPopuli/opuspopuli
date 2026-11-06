@@ -1,5 +1,9 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { METRICS_OBSERVER, type MetricsObserver } from '@opuspopuli/common';
+import {
+  METRICS_OBSERVER,
+  type BulkBatchContext,
+  type MetricsObserver,
+} from '@opuspopuli/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   batchTransaction,
@@ -13,6 +17,11 @@ import { CoverPageLinkerService } from './cover-page-linker.service';
 import { AmendmentSupersessionService } from './amendment-supersession.service';
 import { FilingReconciliationService } from './filing-reconciliation.service';
 import {
+  FINANCE_WRITE_FIELDS,
+  FINANCE_WRITE_RULES,
+  writeValues,
+} from './campaign-finance-write-shape';
+import {
   campaignFinanceSyncTracker,
   type SyncPhaseTracker,
   type CampaignFinanceSyncPhase,
@@ -25,22 +34,70 @@ import {
  */
 export interface CampaignFinanceProvider {
   fetchCampaignFinance?(
-    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+    onBatch?: (
+      items: Record<string, unknown>[],
+      context?: BulkBatchContext,
+    ) => Promise<void>,
     pipelineJobId?: string,
   ): Promise<CampaignFinanceResult>;
 }
 
+/**
+ * What one upsert pass did. `processed` counts the rows left once each
+ * `externalId` is reduced to its newest amendment; `skipped` counts the
+ * unchanged rows (K4) and the superseded ones (F7) alike, and `superseded`
+ * says how many of them were F7's.
+ */
+type UpsertCounts = {
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  superseded: number;
+};
+
+const NO_COUNTS: Readonly<UpsertCounts> = Object.freeze({
+  processed: 0,
+  created: 0,
+  updated: 0,
+  skipped: 0,
+  superseded: 0,
+});
+
+function addCounts(a: UpsertCounts, b: UpsertCounts): UpsertCounts {
+  return {
+    processed: a.processed + b.processed,
+    created: a.created + b.created,
+    updated: a.updated + b.updated,
+    skipped: a.skipped + b.skipped,
+    superseded: a.superseded + b.superseded,
+  };
+}
+
+function describeCounts(c: UpsertCounts): string {
+  return `${c.processed} items (${c.created} created, ${c.updated} updated, ${c.skipped - c.superseded} unchanged, ${c.superseded} superseded)`;
+}
+
 type PrismaModelDelegate = {
-  findMany(
-    args: unknown,
-  ): Promise<{ externalId: string; amendId?: number | null }[]>;
+  findMany(args: unknown): Promise<
+    {
+      externalId: string;
+      amendId?: number | null;
+      sourceRecordHash?: string | null;
+    }[]
+  >;
   upsert(args: unknown): Prisma.PrismaPromise<unknown>;
+  /// Required, not optional: F7 reads the stored maxima with it, and a
+  /// delegate without it must fail loudly rather than turn F7 off.
+  groupBy(
+    args: unknown,
+  ): Promise<{ filingId: string | null; _max: { amendId: number | null } }[]>;
 };
 
 type UpsertConfig = {
   records: readonly unknown[];
   model: PrismaModelDelegate;
-  fields: string[];
+  fields: readonly string[];
   /**
    * Rows on this table are amendable: the same `externalId` can arrive more
    * than once, once per version of the filing, and only the newest version may
@@ -50,7 +107,7 @@ type UpsertConfig = {
   /**
    * Columns that an amendment may legitimately CLEAR (#991).
    *
-   * `pick` builds the update with `Object.fromEntries`, which always sets the
+   * `writeValues` builds the update with `Object.fromEntries`, which always sets the
    * key — so an absent field arrives as `undefined`, and Prisma reads
    * `undefined` in an `update` as "leave unchanged". That is the right
    * default: it stops a partial record from blanking columns it never
@@ -64,7 +121,7 @@ type UpsertConfig = {
    * Listed fields are written as explicit `null` when absent, so a cleared
    * value is cleared. Only list columns that are nullable in the schema.
    */
-  clearableFields?: string[];
+  clearableFields?: readonly string[];
 };
 
 type CommitteeRecord = {
@@ -136,14 +193,12 @@ export class CampaignFinanceSyncService {
   async sync(
     provider: CampaignFinanceProvider,
     pipelineJobId?: string,
-  ): Promise<{ processed: number; created: number; updated: number }> {
+  ): Promise<UpsertCounts> {
     if (!provider.fetchCampaignFinance) {
-      return { processed: 0, created: 0, updated: 0 };
+      return { ...NO_COUNTS };
     }
 
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
+    let totals: UpsertCounts = { ...NO_COUNTS };
     let batchCount = 0;
 
     // Campaign finance uses a streaming callback (CAL-ACCESS bulk
@@ -178,19 +233,21 @@ export class CampaignFinanceSyncService {
         return extractRef.tracker;
       };
 
-    const onBatch = async (items: Record<string, unknown>[]) => {
+    const onBatch = async (
+      items: Record<string, unknown>[],
+      context?: BulkBatchContext,
+    ) => {
       const tracker = ensureExtractTracker();
       const batchData = this.sortItems(items);
       await this.enrichCommittees(batchData);
       await this.ensureCommitteeStubs(batchData);
-      const result = await this.upsertBatch(batchData);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-      batchCount++;
-      tracker.note(
-        `batch ${batchCount}: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
+      const result = await this.upsertBatch(
+        batchData,
+        context?.skipUnchanged ?? false,
       );
+      totals = addCounts(totals, result);
+      batchCount++;
+      tracker.note(`batch ${batchCount}: ${describeCounts(result)}`);
     };
 
     const data = await provider.fetchCampaignFinance(onBatch, pipelineJobId);
@@ -210,13 +267,11 @@ export class CampaignFinanceSyncService {
       const tracker = ensureExtractTracker();
       await this.enrichCommittees(data);
       await this.ensureCommitteeStubs(data);
-      const result = await this.upsertBatch(data);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
-      tracker.note(
-        `final flush: ${result.processed} items (${result.created} created, ${result.updated} updated)`,
-      );
+      // Not from a bulk stream, so no ledger vouches for these rows: write
+      // them all.
+      const result = await this.upsertBatch(data, false);
+      totals = addCounts(totals, result);
+      tracker.note(`final flush: ${describeCounts(result)}`);
     }
 
     // Either the lazy ensureExtractTracker() ran (and started phase 2
@@ -233,13 +288,11 @@ export class CampaignFinanceSyncService {
       emptyExtractTracker.complete();
     }
 
+    // Run whether or not rows were skipped: new propositions or committees
+    // can need linking against finance rows that did not change (K4).
     await this.runPostSyncLinkers();
 
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
+    return totals;
   }
 
   /**
@@ -475,145 +528,59 @@ export class CampaignFinanceSyncService {
    */
   private async upsertBatch(
     data: CampaignFinanceResult,
-  ): Promise<{ processed: number; created: number; updated: number }> {
+    skipUnchanged: boolean,
+  ): Promise<UpsertCounts> {
     const upsertConfigs: UpsertConfig[] = [
       {
         records: data.contributions,
         model: this.db.contribution,
-        amendable: true,
-        fields: [
-          'committeeId',
-          'filingId',
-          'amendId',
-          'scheduleCode',
-          'donorName',
-          'donorType',
-          'donorEmployer',
-          'donorOccupation',
-          'donorCity',
-          'donorState',
-          'donorZip',
-          'amount',
-          'date',
-          'electionType',
-          'contributionType',
-          'sourceSystem',
-          // Which run produced this row (#1280). `fields` is an allowlist —
-          // `pick` copies only what is named here, so an unlisted column is
-          // silently dropped no matter what the stream carries.
-          'pipelineExecutionId',
-          'sourceRecordHash',
-        ],
+        ...FINANCE_WRITE_RULES.contributions,
+        fields: FINANCE_WRITE_FIELDS.contributions,
       },
       {
         records: data.expenditures,
         model: this.db.expenditure,
-        amendable: true,
-        // Both became nullable in #991, and an amendment that blanks either
-        // must clear it rather than leave the superseded value standing.
-        clearableFields: ['date', 'payeeName'],
-        fields: [
-          'committeeId',
-          'filingId',
-          'amendId',
-          'scheduleCode',
-          'payeeName',
-          'amount',
-          'date',
-          'purposeDescription',
-          'expenditureCode',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'sourceSystem',
-          'sourceRecordHash',
-        ],
+        ...FINANCE_WRITE_RULES.expenditures,
+        fields: FINANCE_WRITE_FIELDS.expenditures,
       },
       {
         records: data.independentExpenditures,
         model: this.db.independentExpenditure,
-        fields: [
-          'committeeId',
-          'filingId',
-          'committeeName',
-          'candidateName',
-          'propositionTitle',
-          'supportOrOppose',
-          'amount',
-          'date',
-          'electionDate',
-          'description',
-          'sourceSystem',
-          'sourceRecordHash',
-        ],
+        ...FINANCE_WRITE_RULES.independentExpenditures,
+        fields: FINANCE_WRITE_FIELDS.independentExpenditures,
       },
       {
         records: data.committeeMeasureFilings,
         model: this.db.cvr2Filing,
-        fields: [
-          'filingId',
-          'ballotName',
-          'ballotNumber',
-          'ballotJurisdiction',
-          'supportOrOppose',
-          'sourceSystem',
-          'sourceRecordHash',
-        ],
+        ...FINANCE_WRITE_RULES.committeeMeasureFilings,
+        fields: FINANCE_WRITE_FIELDS.committeeMeasureFilings,
       },
       {
         records: data.cvrFilings,
         model: this.db.cvrFiling,
-        fields: [
-          'filingId',
-          'filerId',
-          'candidateName',
-          'candidateOffice',
-          'propositionTitle',
-          'supportOrOppose',
-          'sourceSystem',
-          'sourceRecordHash',
-        ],
+        ...FINANCE_WRITE_RULES.cvrFilings,
+        fields: FINANCE_WRITE_FIELDS.cvrFilings,
       },
       {
         records: data.filingSummaries,
         model: this.db.filingSummary,
-        // Deliberately NOT `amendable`: AMEND_ID is part of this table's
-        // identity, so each amendment's summary is its own row and nothing
-        // supersedes anything. Reconciliation reads the latest one (#992).
-        fields: [
-          'filingId',
-          'amendId',
-          'formType',
-          'lineItem',
-          'amountA',
-          'amountB',
-          'amountC',
-          'sourceSystem',
-          'sourceRecordHash',
-        ],
+        ...FINANCE_WRITE_RULES.filingSummaries,
+        fields: FINANCE_WRITE_FIELDS.filingSummaries,
       },
     ];
 
-    let totalProcessed = 0;
-    let totalCreated = 0;
-    let totalUpdated = 0;
-
+    let total: UpsertCounts = { ...NO_COUNTS };
     for (const config of upsertConfigs) {
       // Optional chain, not `.length`: a provider built against an older
       // CampaignFinanceResult omits newer arrays entirely, and dropping its
       // rows beats throwing mid-sync.
       if (!config.records?.length) continue;
-      const result = await this.upsertRecordsByFields(config);
-      totalProcessed += result.processed;
-      totalCreated += result.created;
-      totalUpdated += result.updated;
+      total = addCounts(
+        total,
+        await this.upsertRecordsByFields(config, skipUnchanged),
+      );
     }
-
-    return {
-      processed: totalProcessed,
-      created: totalCreated,
-      updated: totalUpdated,
-    };
+    return total;
   }
 
   /**
@@ -627,38 +594,52 @@ export class CampaignFinanceSyncService {
    */
   private async upsertRecordsByFields(
     config: UpsertConfig,
-  ): Promise<{ processed: number; created: number; updated: number }> {
+    skipUnchanged: boolean,
+  ): Promise<UpsertCounts> {
     const { model, fields } = config;
     const incoming = config.records as Record<string, unknown>[];
     const externalIds = incoming.map((r) => r.externalId as string);
 
     const existing = await model.findMany({
       where: { externalId: { in: externalIds } },
-      select: config.amendable
-        ? { externalId: true, amendId: true }
-        : { externalId: true },
+      select: {
+        externalId: true,
+        ...(config.amendable && { amendId: true }),
+        ...(skipUnchanged && { sourceRecordHash: true }),
+      },
     });
     const existingSet = new Set(
       existing.map((r: { externalId: string }) => r.externalId),
     );
 
-    const rows = config.amendable
+    const newest = config.amendable
       ? this.keepNewestAmendment(incoming, existing)
       : incoming;
+    const current =
+      config.amendable && this.amendmentSupersession?.available
+        ? withoutSuperseded(
+            newest,
+            incoming,
+            await this.latestStoredAmendments(model, incoming),
+          )
+        : newest;
+    const superseded = newest.length - current.length;
+    const rows = skipUnchanged ? withoutUnchanged(current, existing) : current;
+    const skipped = newest.length - rows.length;
 
-    // `undefined` means "skip" to Prisma; `null` means "clear". Fields the
-    // source may legitimately blank on amendment must send null — see
-    // `clearableFields`.
     const clearable = new Set(config.clearableFields ?? []);
     const pick = (r: Record<string, unknown>) =>
-      Object.fromEntries(
-        fields.map((f: string) => [
-          f,
-          r[f] === undefined && clearable.has(f) ? null : r[f],
-        ]),
-      );
+      writeValues(r, fields, clearable);
 
-    if (rows.length === 0) return { processed: 0, created: 0, updated: 0 };
+    if (rows.length === 0) {
+      return {
+        processed: skipped,
+        created: 0,
+        updated: 0,
+        skipped,
+        superseded,
+      };
+    }
 
     await batchTransaction(
       this.db,
@@ -675,10 +656,42 @@ export class CampaignFinanceSyncService {
       (r) => !existingSet.has(r.externalId as string),
     ).length;
     return {
-      processed: rows.length,
+      processed: rows.length + skipped,
       created,
       updated: rows.length - created,
+      skipped,
+      superseded,
     };
+  }
+
+  /**
+   * The highest stored `amendId` per filing among `rows`' filings (F7). One
+   * grouped read per batch, served by the `(filing_id, amend_id)` index.
+   */
+  private async latestStoredAmendments(
+    model: PrismaModelDelegate,
+    rows: Record<string, unknown>[],
+  ): Promise<Map<string, number>> {
+    const filingIds = [
+      ...new Set(
+        rows
+          .map((r) => r.filingId)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+    if (filingIds.length === 0) return new Map();
+    const groups = await model.groupBy({
+      by: ['filingId'],
+      where: { filingId: { in: filingIds }, amendId: { not: null } },
+      _max: { amendId: true },
+    });
+    const latest = new Map<string, number>();
+    for (const g of groups) {
+      if (g.filingId !== null && g._max.amendId !== null) {
+        latest.set(g.filingId, g._max.amendId);
+      }
+    }
+    return latest;
   }
 
   /**
@@ -732,6 +745,91 @@ export class CampaignFinanceSyncService {
     }
     return kept;
   }
+}
+
+/**
+ * The rows whose line differs from the one the stored row was written from
+ * (K4). A row is unchanged only when both hashes exist and match: a stored row
+ * with no hash predates F3's fix and is written, which records its hash.
+ *
+ * Only called when the handler vouches that the last completed import of this
+ * source ran under the same import key, so an equal line maps to an equal row.
+ *
+ * A key that arrives on more than one line in the batch is never skipped. The
+ * non-amendable tables key cover pages by FILING_ID alone, one line per
+ * amendment, so a batch can hold two lines for one row and the last one wins.
+ * Skipping the line that matches the stored row (the last one, from the
+ * previous sync) while writing the other would leave the earlier line's data
+ * in place: on UAT run 2 that was 21,061 cover pages. Writing every line keeps
+ * the result identical to the sync without K4.
+ *
+ * Lines for one key in different batches need no guard: each batch reads the
+ * stored rows after the previous batch committed, so a later line is compared
+ * with the earlier line this sync just wrote, not with the previous sync's.
+ */
+function withoutUnchanged(
+  rows: Record<string, unknown>[],
+  existing: { externalId: string; sourceRecordHash?: string | null }[],
+): Record<string, unknown>[] {
+  const stored = new Map(
+    existing.map((r) => [r.externalId, r.sourceRecordHash ?? null]),
+  );
+  const lines = new Map<string, number>();
+  for (const row of rows) {
+    const id = row.externalId as string;
+    lines.set(id, (lines.get(id) ?? 0) + 1);
+  }
+  return rows.filter((row) => {
+    const id = row.externalId as string;
+    const hash = row.sourceRecordHash;
+    return !(
+      lines.get(id) === 1 &&
+      typeof hash === 'string' &&
+      stored.get(id) === hash
+    );
+  });
+}
+
+/**
+ * The rows supersession would delete after the sync, dropped before they are
+ * written (F7).
+ *
+ * `AmendmentSupersessionService` deletes every row below its filing's highest
+ * `amend_id`. The export keeps every amendment's lines, so without this each
+ * sync re-inserted the superseded ones and supersession deleted them again:
+ * ~3.9 M inserts and as many deletes on an unchanged export.
+ *
+ * A row is dropped when its `amendId` is below the highest for its filing,
+ * taken over the stored rows and every line in this batch. Both only rise
+ * during a sync: a batch line is written or kept out only by a stored row at
+ * the same or a newer amendment, and the sync deletes nothing until
+ * supersession, which never deletes a filing's highest version. So every row
+ * dropped here is one supersession would delete. A row with no `filingId` or
+ * no `amendId` is never dropped, as supersession never deletes one.
+ *
+ * Only applied when supersession is bound: without it, the older versions are
+ * what the table keeps.
+ */
+function withoutSuperseded(
+  rows: Record<string, unknown>[],
+  batch: Record<string, unknown>[],
+  stored: ReadonlyMap<string, number>,
+): Record<string, unknown>[] {
+  const latest = new Map(stored);
+  for (const line of batch) {
+    const { filingId, amendId } = line;
+    if (typeof filingId !== 'string' || typeof amendId !== 'number') continue;
+    if (amendId > (latest.get(filingId) ?? -Infinity)) {
+      latest.set(filingId, amendId);
+    }
+  }
+  return rows.filter((row) => {
+    const { filingId, amendId } = row;
+    if (typeof filingId !== 'string' || typeof amendId !== 'number') {
+      return true;
+    }
+    return amendId >= (latest.get(filingId) ?? amendId);
+  });
 }
 
 /**

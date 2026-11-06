@@ -70,6 +70,13 @@ export class PrismaExecutionTrackerRepository implements ExecutionTrackerReposit
     });
   }
 
+  async linkSnapshot(id: string, snapshotId: string): Promise<void> {
+    await this.db.pipelineExecution.update({
+      where: { id },
+      data: { bulkSnapshotId: snapshotId },
+    });
+  }
+
   async finalizeExecution(
     id: string,
     success: boolean,

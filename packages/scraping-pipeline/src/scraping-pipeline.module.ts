@@ -31,6 +31,10 @@ import {
   BULK_ARCHIVE,
   type IBulkArchive,
 } from "./handlers/bulk-archive.port.js";
+import {
+  BULK_IMPORT_LEDGER,
+  type IBulkImportLedger,
+} from "./handlers/bulk-import-ledger.port.js";
 import { ApiIngestHandler } from "./handlers/api-ingest.handler.js";
 import { PdfExtractHandler } from "./handlers/pdf-extract.handler.js";
 import { MinutesIngestHandler } from "./handlers/minutes-ingest.handler.js";
@@ -141,18 +145,22 @@ export class ScrapingPipelineModule {
             // exactly as before and nothing is retained.
             bulkArchive: IBulkArchive | undefined,
             extraction: ExtractionProvider,
+            // Optional (K4): left unbound, no row is ever skipped.
+            importLedger: IBulkImportLedger | undefined,
           ) =>
             new BulkDownloadHandler(
               mapper,
               tracker ?? null,
               bulkArchive ?? null,
               hostSlotOf(extraction),
+              importLedger ?? null,
             ),
           inject: [
             DomainMapperService,
             { token: ExecutionTrackerService, optional: true },
             { token: BULK_ARCHIVE, optional: true },
             ExtractionProvider,
+            { token: BULK_IMPORT_LEDGER, optional: true },
           ],
         },
         {

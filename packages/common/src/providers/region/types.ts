@@ -6,7 +6,10 @@
  * Forks implement their own provider to fetch data from their region's sources.
  */
 
-import type { DataSourceConfig } from "../scraping-pipeline/types.js";
+import type {
+  BatchCallback,
+  DataSourceConfig,
+} from "../scraping-pipeline/types.js";
 
 /**
  * Supported data types for region content
@@ -683,6 +686,7 @@ export interface IndependentExpenditure {
   externalId: string;
   committeeId?: string; // resolved post-sync by IndependentExpenditureLinkerService via filingId (#955)
   filingId?: string; // CalAccess FILING_ID from S496_CD — join key to the Form 496 cover page (#955)
+  amendId?: number; // CalAccess AMEND_ID — superseded like Contribution's (#992, regions#97)
   committeeName: string;
   candidateName?: string;
   propositionTitle?: string;
@@ -703,8 +707,9 @@ export interface IndependentExpenditure {
  * cycle order.
  */
 export interface CommitteeMeasureFiling {
-  externalId: string; // FILING_ID + LINE_ITEM
+  externalId: string; // FILING_ID + LINE_ITEM + TRAN_ID (regions#97)
   filingId: string; // FILING_ID — joinable to Contribution.externalId / Expenditure.externalId
+  amendId?: number; // AMEND_ID — superseded like Contribution's (#992, regions#97)
   ballotName?: string; // BAL_NAME — fuzzy-matches Proposition.title
   ballotNumber?: string; // BAL_NUM — e.g. "ACA 13"
   ballotJurisdiction?: string; // BAL_JURIS
@@ -835,10 +840,11 @@ export interface IRegionProvider {
    * Fetch campaign finance data from the region's data sources.
    * Optional — only implemented by plugins with campaign_finance data sources.
    * When onBatch is provided, bulk sources stream batches to the callback
-   * instead of accumulating all records in memory.
+   * instead of accumulating all records in memory, with a context saying
+   * whether unchanged rows may be skipped.
    */
   fetchCampaignFinance?(
-    onBatch?: (items: Record<string, unknown>[]) => Promise<void>,
+    onBatch?: BatchCallback<Record<string, unknown>>,
   ): Promise<CampaignFinanceResult>;
 
   /**

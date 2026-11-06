@@ -43,7 +43,7 @@ describe('PrismaBulkArchive', () => {
     db = {
       bulkSnapshot: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({ id: 'snap-new' }),
         update: jest.fn().mockResolvedValue({}),
       },
     };
@@ -68,12 +68,30 @@ describe('PrismaBulkArchive', () => {
       expect.objectContaining({ contentLength: 1_073_741_824 }),
     );
     expect(db.bulkSnapshot.create).toHaveBeenCalledWith({
+      select: { id: true },
       data: expect.objectContaining({
         contentHash: 'a'.repeat(64),
         storageBucket: DEFAULT_ARCHIVE_BUCKET,
         executionId: 'exec-1',
       }),
     });
+  });
+
+  it('returns the new snapshot id, so the run can point at it (D5)', async () => {
+    await expect(archive.archive(candidate())).resolves.toBe('snap-new');
+  });
+
+  it('returns the existing snapshot id when the export is already archived (D5)', async () => {
+    // Every later run reading the same bytes must link to the same row, not
+    // only the run that first fetched them (campaign-finance-phase-b.md, F5).
+    db.bulkSnapshot.findUnique.mockResolvedValue({
+      id: 'snap-old',
+      lastModified: 'Tue, 13 Oct 2026 08:59:20 GMT',
+      etag: '"x"',
+    });
+
+    await expect(archive.archive(candidate())).resolves.toBe('snap-old');
+    expect(db.bulkSnapshot.create).not.toHaveBeenCalled();
   });
 
   it('stores byteSize as a BigInt', async () => {

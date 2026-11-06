@@ -110,3 +110,11 @@ export {
   type IBulkArchive,
   type BulkSnapshotCandidate,
 } from "./handlers/bulk-archive.port.js";
+export {
+  BULK_IMPORT_LEDGER,
+  type IBulkImportLedger,
+} from "./handlers/bulk-import-ledger.port.js";
+export {
+  BULK_MAPPING_VERSION,
+  bulkImportKey,
+} from "./handlers/bulk-import-key.js";

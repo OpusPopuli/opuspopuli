@@ -22132,6 +22132,21 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "committeeMeasureFilings",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "OBJECT",
+                "name": "SupersessionTableResultModel",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "contributions",
             "type": {
               "kind": "NON_NULL",
@@ -22148,6 +22163,21 @@
             "deprecationReason": null,
             "isDeprecated": false,
             "name": "expenditures",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "OBJECT",
+                "name": "SupersessionTableResultModel",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "independentExpenditures",
             "type": {
               "kind": "NON_NULL",
               "name": null,

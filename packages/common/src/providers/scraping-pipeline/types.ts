@@ -10,6 +10,7 @@
  */
 
 import type { DataType } from "../region/types.js";
+import type { BulkDownloadScope } from "../../utils/bulk-download-scope.js";
 
 // ============================================
 // ARCHIVE INGEST OPTIONS
@@ -63,7 +64,37 @@ export interface PipelineExecuteOptions extends ArchiveIngestOptions {
    * Unset means no cap. This adds a bound; it does not introduce a default.
    */
   maxItems?: number;
+  /**
+   * Shares one download of a bulk export between the sources that read it
+   * (`docs/plans/campaign-finance-phase-b.md`, D4). Opened and closed by the
+   * caller looping over those sources; unset, each source downloads its own.
+   */
+  bulkDownloads?: BulkDownloadScope;
 }
+
+/**
+ * What a bulk handler tells the batch consumer about each batch
+ * (`docs/plans/campaign-finance-phase-b.md`, D1 and D3).
+ */
+export interface BulkBatchContext {
+  /**
+   * True when this source's last completed import ran under the same import
+   * key. A row whose stored line hash equals the incoming line's is then
+   * unchanged, and may be skipped. False means write every row.
+   */
+  skipUnchanged: boolean;
+}
+
+/**
+ * Receives each batch a pipeline streams, with the bulk handler's context when
+ * there is one. Typed on every hop from the handler to the sync, so a wrapper
+ * that drops the context fails to compile rather than quietly turning the skip
+ * off.
+ */
+export type BatchCallback<T> = (
+  items: T[],
+  context?: BulkBatchContext,
+) => Promise<void>;
 
 // ============================================
 // STRUCTURAL MANIFEST

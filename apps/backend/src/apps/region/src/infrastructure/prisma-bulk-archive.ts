@@ -48,7 +48,7 @@ export class PrismaBulkArchive implements IBulkArchive {
   /** Memoized `ensureBucket` result; see {@link bucketReady}. */
   private bucketCheck?: Promise<boolean>;
 
-  async archive(candidate: BulkSnapshotCandidate): Promise<void> {
+  async archive(candidate: BulkSnapshotCandidate): Promise<string | undefined> {
     const existing = await this.db.bulkSnapshot.findUnique({
       where: { contentHash: candidate.contentHash },
       select: { id: true, lastModified: true, etag: true },
@@ -79,18 +79,19 @@ export class PrismaBulkArchive implements IBulkArchive {
         this.logger.log(
           `Backfilled snapshot provenance (${Object.keys(backfill).join(', ')}): ${candidate.sourceUrl}`,
         );
-        return;
+        return existing.id;
       }
       this.logger.debug(
         `Bulk export unchanged, already archived: ${candidate.sourceUrl}`,
       );
-      return;
+      return existing.id;
     }
 
     const storageKey = this.keyFor(candidate);
     const stored = await this.upload(candidate, storageKey);
 
-    await this.db.bulkSnapshot.create({
+    const created = await this.db.bulkSnapshot.create({
+      select: { id: true },
       data: {
         contentHash: candidate.contentHash,
         sourceUrl: candidate.sourceUrl,
@@ -108,6 +109,7 @@ export class PrismaBulkArchive implements IBulkArchive {
         storageKey: stored ? storageKey : null,
       },
     });
+    return created.id;
   }
 
   /**

@@ -157,7 +157,7 @@ describe("DeclarativeRegionPlugin", () => {
         "california",
         undefined,
         undefined,
-        undefined,
+        { bulkDownloads: expect.any(Object) },
       );
       expect(result).toEqual(mockProps);
     });
@@ -637,6 +637,24 @@ describe("DeclarativeRegionPlugin", () => {
         lineItem: "1",
       });
       expect(result.contributions).toEqual([]);
+    });
+
+    it("gives every source one download scope and closes it afterwards (D4)", async () => {
+      cfPipeline.execute
+        .mockRejectedValueOnce(new Error("HTTP 503"))
+        .mockResolvedValue(createExtractionResult([]));
+
+      await cfPlugin.fetchCampaignFinance();
+
+      const scopes = cfPipeline.execute.mock.calls.map(
+        (call) => call[4]?.bulkDownloads,
+      );
+      expect(scopes.length).toBeGreaterThan(1);
+      expect(new Set(scopes).size).toBe(1);
+      // Closed even though a source failed: a closed scope refuses work.
+      await expect(
+        scopes[0]!.acquire("url", async () => ({ release: async () => {} })),
+      ).rejects.toThrow("Download scope closed");
     });
 
     it("should return empty arrays when pipeline returns no items", async () => {

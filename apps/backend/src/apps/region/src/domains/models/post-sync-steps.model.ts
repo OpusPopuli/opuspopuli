@@ -29,6 +29,13 @@ export class SupersessionResultModel {
 
   @Field(() => SupersessionTableResultModel)
   expenditures!: SupersessionTableResultModel;
+
+  @Field(() => SupersessionTableResultModel)
+  independentExpenditures!: SupersessionTableResultModel;
+
+  /** CVR2 ballot-measure declarations (`cvr2_filings`). */
+  @Field(() => SupersessionTableResultModel)
+  committeeMeasureFilings!: SupersessionTableResultModel;
 }
 
 /** Filing-level agreement between itemized detail and the filer's own summary. */

@@ -11,15 +11,25 @@ export interface SupersessionTableResult {
 export interface SupersessionResult {
   contributions: SupersessionTableResult;
   expenditures: SupersessionTableResult;
+  independentExpenditures: SupersessionTableResult;
+  committeeMeasureFilings: SupersessionTableResult;
 }
 
 /**
- * The two tables carrying amendable line items. A const tuple because the table
- * name is interpolated into SQL (identifiers cannot be bound), so the only
- * values reaching the statement are these compile-time literals.
+ * The tables carrying amendable line items, by result field. The table names
+ * are interpolated into SQL (identifiers cannot be bound), so the only values
+ * reaching the statement are these compile-time literals.
+ *
+ * S496 and CVR2 joined with regions#97: keyed on a bare TRAN_ID, their
+ * amendments overwrote each other instead of surviving as versions.
  */
-const AMENDABLE_TABLES = ['contributions', 'expenditures'] as const;
-type AmendableTable = (typeof AMENDABLE_TABLES)[number];
+const AMENDABLE_TABLES = {
+  contributions: 'contributions',
+  expenditures: 'expenditures',
+  independentExpenditures: 'independent_expenditures',
+  committeeMeasureFilings: 'cvr2_filings',
+} as const satisfies Record<keyof SupersessionResult, string>;
+type AmendableTable = (typeof AMENDABLE_TABLES)[keyof SupersessionResult];
 
 /**
  * Rows removed per transaction. Bounds WAL and lock duration on the first run
@@ -77,14 +87,25 @@ export class AmendmentSupersessionService {
   }
 
   async supersedeAll(): Promise<SupersessionResult> {
-    if (!this.db) {
-      return { contributions: { ...EMPTY }, expenditures: { ...EMPTY } };
-    }
-
-    const [contributions, expenditures] = await Promise.all(
-      AMENDABLE_TABLES.map((t) => this.supersedeTable(t)),
-    );
-    return { contributions, expenditures };
+    const run = (table: AmendableTable) =>
+      this.db ? this.supersedeTable(table) : Promise.resolve({ ...EMPTY });
+    const [
+      contributions,
+      expenditures,
+      independentExpenditures,
+      committeeMeasureFilings,
+    ] = await Promise.all([
+      run(AMENDABLE_TABLES.contributions),
+      run(AMENDABLE_TABLES.expenditures),
+      run(AMENDABLE_TABLES.independentExpenditures),
+      run(AMENDABLE_TABLES.committeeMeasureFilings),
+    ]);
+    return {
+      contributions,
+      expenditures,
+      independentExpenditures,
+      committeeMeasureFilings,
+    };
   }
 
   private async supersedeTable(

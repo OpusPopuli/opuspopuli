@@ -392,7 +392,13 @@ describe('CampaignFinanceSyncService — newest amendment wins (#992)', () => {
     const res = await run([row({ amendId: 1, amount: 100 })]);
 
     expect(upsert).not.toHaveBeenCalled();
-    expect(res).toEqual({ processed: 0, created: 0, updated: 0 });
+    expect(res).toEqual({
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      superseded: 0,
+    });
   });
 
   it('re-writes the same amendment, so a re-sync stays idempotent', async () => {
@@ -491,5 +497,304 @@ describe('CampaignFinanceSyncService — final flush covers every table (#992)',
 
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(res.processed).toBe(1);
+  });
+});
+
+describe('CampaignFinanceSyncService — skipping unchanged rows (K4)', () => {
+  // campaign-finance-phase-b.md D1: a routine sync rewrote 32.7M rows, nearly
+  // all unchanged. A row is skipped only when the handler vouches for the
+  // source (its last completed import ran under the same import key) AND the
+  // stored line hash equals the incoming one.
+  type Row = Record<string, unknown>;
+  const HASH = 'a'.repeat(64);
+
+  function build(stored: Row[]) {
+    const upsert = jest.fn((args: unknown) => ({ __op: args }));
+    const findMany = jest.fn().mockResolvedValue(stored);
+    const db = {
+      committee: { upsert, findMany: jest.fn().mockResolvedValue([]) },
+      contribution: { upsert, findMany },
+      $transaction: jest.fn().mockResolvedValue([]),
+    } as unknown as DbService;
+    const svc = new CampaignFinanceSyncService(db);
+    const run = (records: Row[], skipUnchanged: boolean) =>
+      (
+        svc as unknown as {
+          upsertRecordsByFields: (c: unknown, skip: boolean) => Promise<Row>;
+        }
+      ).upsertRecordsByFields(
+        {
+          records,
+          model: { findMany, upsert },
+          fields: ['amount', 'sourceRecordHash'],
+        },
+        skipUnchanged,
+      );
+    return { svc, run, upsert, findMany };
+  }
+
+  const line = (over: Row = {}): Row => ({
+    externalId: 'F1:1:T1',
+    amount: 100,
+    sourceRecordHash: HASH,
+    ...over,
+  });
+
+  it('skips a row whose stored line hash matches', async () => {
+    const { run, upsert } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: HASH },
+    ]);
+
+    const res = await run([line()], true);
+
+    expect(upsert).not.toHaveBeenCalled();
+    expect(res).toEqual({
+      processed: 1,
+      created: 0,
+      updated: 0,
+      skipped: 1,
+      superseded: 0,
+    });
+  });
+
+  it('writes a row whose line changed', async () => {
+    const { run, upsert } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: 'b'.repeat(64) },
+    ]);
+
+    const res = await run([line()], true);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ updated: 1, skipped: 0 });
+  });
+
+  it('writes a stored row with no hash, which records one (F3)', async () => {
+    const { run, upsert } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: null },
+    ]);
+
+    await run([line()], true);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes an incoming row with no hash, even against a stored null', async () => {
+    const { run, upsert } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: null },
+    ]);
+
+    await run([line({ sourceRecordHash: undefined })], true);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes a new row', async () => {
+    const { run, upsert } = build([]);
+
+    const res = await run([line()], true);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ created: 1, skipped: 0 });
+  });
+
+  it('writes every line of a key that appears twice in the batch, in order', async () => {
+    // Cover pages key on FILING_ID, one line per amendment. The stored row
+    // holds the batch's LAST line from the previous sync; skipping that line
+    // and writing the earlier one would leave the earlier one's data.
+    const { run, upsert } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: HASH },
+    ]);
+    const earlier = line({ amount: 50, sourceRecordHash: 'b'.repeat(64) });
+
+    const res = await run([earlier, line()], true);
+
+    expect(upsert).toHaveBeenCalledTimes(2);
+    expect(
+      upsert.mock.calls.map((c) => (c[0] as { update: Row }).update.amount),
+    ).toEqual([50, 100]);
+    expect(res).toMatchObject({ skipped: 0 });
+  });
+
+  it('writes every row when the handler does not vouch for the source', async () => {
+    const { run, upsert, findMany } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: HASH },
+    ]);
+
+    const res = await run([line()], false);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ updated: 1, skipped: 0 });
+    // And does not read the hash it will not use.
+    expect(findMany.mock.calls[0][0].select).not.toHaveProperty(
+      'sourceRecordHash',
+    );
+  });
+
+  it("passes the handler's verdict from each batch, and still runs the linkers", async () => {
+    const { svc, upsert } = build([
+      { externalId: 'F1:1:T1', sourceRecordHash: HASH },
+    ]);
+    const coverPageLinker = { linkAll: jest.fn().mockResolvedValue({}) };
+    (svc as unknown as { coverPageLinker: unknown }).coverPageLinker =
+      coverPageLinker;
+    const contribution = { ...line(), donorName: 'Ada Example' };
+    const provider = {
+      fetchCampaignFinance: jest.fn(
+        async (onBatch: (i: Row[], c: unknown) => Promise<void>) => {
+          await onBatch([contribution], { skipUnchanged: true });
+          return result([]);
+        },
+      ),
+    };
+
+    const res = await svc.sync(provider as never);
+
+    expect(upsert).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { externalId: 'F1:1:T1' } }),
+    );
+    expect(res).toMatchObject({ skipped: 1 });
+    // New propositions or committees can need linking against unchanged rows.
+    expect(coverPageLinker.linkAll).toHaveBeenCalled();
+  });
+});
+
+describe('CampaignFinanceSyncService — dropping superseded lines (F7)', () => {
+  // campaign-finance-phase-b.md F7: the export keeps every amendment's lines,
+  // so each sync re-inserted ~3.9 M rows supersession then deleted. A line
+  // below its filing's highest amendment is dropped before the write instead.
+  type Row = Record<string, unknown>;
+
+  function build(
+    latest: Array<{ filingId: string; amendId: number }>,
+    supersession: unknown = { available: true },
+  ) {
+    const upsert = jest.fn((args: unknown) => ({ __op: args }));
+    const findMany = jest.fn().mockResolvedValue([]);
+    const groupBy = jest.fn().mockResolvedValue(
+      latest.map((l) => ({
+        filingId: l.filingId,
+        _max: { amendId: l.amendId },
+      })),
+    );
+    const db = {
+      $transaction: jest.fn().mockResolvedValue([]),
+    } as unknown as DbService;
+    const svc = new CampaignFinanceSyncService(
+      db,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      supersession as never,
+    );
+    const run = (records: Row[], amendable = true) =>
+      (
+        svc as unknown as {
+          upsertRecordsByFields: (c: unknown, skip: boolean) => Promise<Row>;
+        }
+      ).upsertRecordsByFields(
+        {
+          records,
+          model: { findMany, upsert, groupBy },
+          fields: ['filingId', 'amendId', 'amount'],
+          amendable,
+        },
+        false,
+      );
+    const written = () =>
+      upsert.mock.calls.map(
+        (c) => (c[0] as { where: { externalId: string } }).where.externalId,
+      );
+    return { run, written, groupBy };
+  }
+
+  const line = (externalId: string, filingId: string, amendId: number) => ({
+    externalId,
+    filingId,
+    amendId,
+    amount: 100,
+  });
+
+  it('drops a line below the highest stored amendment of its filing', async () => {
+    const { run, written } = build([{ filingId: 'F1', amendId: 2 }]);
+
+    const res = await run([
+      line('F1:1:INC1', 'F1', 0),
+      line('F1:1:CR1', 'F1', 2),
+      line('F2:1:T1', 'F2', 0),
+    ]);
+
+    expect(written()).toEqual(['F1:1:CR1', 'F2:1:T1']);
+    expect(res).toMatchObject({
+      processed: 3,
+      created: 2,
+      skipped: 1,
+      superseded: 1,
+    });
+  });
+
+  it('drops a line below a newer amendment of its filing in the same batch', async () => {
+    // Amendment 1 restates the line under a new TRAN_ID, so the two lines key
+    // to different rows and the externalId merge cannot collapse them.
+    const { run, written } = build([]);
+
+    await run([line('F1:1:INC1', 'F1', 0), line('F1:1:CR1', 'F1', 1)]);
+
+    expect(written()).toEqual(['F1:1:CR1']);
+  });
+
+  it('keeps every line of the highest amendment', async () => {
+    const { run, written } = build([{ filingId: 'F1', amendId: 1 }]);
+
+    await run([line('F1:1:A', 'F1', 1), line('F1:2:B', 'F1', 1)]);
+
+    expect(written()).toEqual(['F1:1:A', 'F1:2:B']);
+  });
+
+  it('never drops a line without a filing or an amendment', async () => {
+    const { run, written } = build([{ filingId: 'F1', amendId: 3 }]);
+
+    await run([
+      { externalId: 'F1:1:X', filingId: 'F1', amount: 1 },
+      { externalId: 'X:1:Y', amendId: 0, amount: 1 },
+    ]);
+
+    expect(written()).toEqual(['F1:1:X', 'X:1:Y']);
+  });
+
+  it('reads the stored highest amendment for the filings in the batch', async () => {
+    const { run, groupBy } = build([]);
+
+    await run([line('F1:1:A', 'F1', 0), line('F1:2:B', 'F1', 0)]);
+
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['filingId'],
+      where: { filingId: { in: ['F1'] }, amendId: { not: null } },
+      _max: { amendId: true },
+    });
+  });
+
+  it.each([
+    // null, not undefined: undefined would take build's default.
+    ['supersession is not bound', null],
+    ['supersession has no database', { available: false }],
+  ])('writes every line when %s', async (_, supersession) => {
+    const { run, written, groupBy } = build(
+      [{ filingId: 'F1', amendId: 2 }],
+      supersession,
+    );
+
+    await run([line('F1:1:INC1', 'F1', 0), line('F1:1:CR1', 'F1', 2)]);
+
+    expect(written()).toEqual(['F1:1:INC1', 'F1:1:CR1']);
+    expect(groupBy).not.toHaveBeenCalled();
+  });
+
+  it('leaves a table that is not amendable alone', async () => {
+    const { run, written } = build([{ filingId: 'F1', amendId: 2 }]);
+
+    await run([line('F1:0', 'F1', 0), line('F1:2', 'F1', 2)], false);
+
+    expect(written()).toEqual(['F1:0', 'F1:2']);
   });
 });

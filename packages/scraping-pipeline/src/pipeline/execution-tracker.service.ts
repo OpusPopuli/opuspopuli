@@ -37,6 +37,13 @@ export interface ExecutionTrackerRepository {
     itemCount: number,
   ): Promise<void>;
 
+  /**
+   * Point a run at the bulk export it read
+   * (`docs/plans/campaign-finance-phase-b.md`, D5). Optional: a repository
+   * without it records no snapshot link.
+   */
+  linkSnapshot?(id: string, snapshotId: string): Promise<void>;
+
   finalizeExecution(
     id: string,
     success: boolean,
@@ -75,6 +82,8 @@ export interface ExecutionSession {
   readonly executionId: string | null;
   readonly appliedBatches: ReadonlySet<number>;
   recordBatch(batchIndex: number, itemCount: number): Promise<void>;
+  /** Records the bulk export this run read (D5). Never throws. */
+  linkSnapshot(snapshotId: string): Promise<void>;
   finalize(success: boolean, stats: ExecutionStats): Promise<void>;
 }
 
@@ -82,6 +91,7 @@ const NO_OP_SESSION: ExecutionSession = {
   executionId: null,
   appliedBatches: new Set(),
   async recordBatch() {},
+  async linkSnapshot() {},
   async finalize() {},
 };
 
@@ -130,6 +140,12 @@ export class ExecutionTrackerService {
       appliedBatches,
       recordBatch: (batchIndex, itemCount) =>
         tracker.recordBatch(executionId, batchIndex, itemCount).then(() => {}),
+      linkSnapshot: (snapshotId) =>
+        tracker.linkSnapshot(executionId, snapshotId).catch((err) => {
+          tracker.logger.warn(
+            `Failed to link execution ${executionId} to its snapshot: ${(err as Error).name}`,
+          );
+        }),
       finalize: (success, stats) =>
         tracker.finalizeExecution(executionId, success, stats).catch((err) => {
           tracker.logger.warn(
@@ -246,6 +262,11 @@ export class ExecutionTrackerService {
       }
       throw err;
     }
+  }
+
+  /** Point a run at the bulk export it read (D5). */
+  async linkSnapshot(executionId: string, snapshotId: string): Promise<void> {
+    await this.repository!.linkSnapshot?.(executionId, snapshotId);
   }
 
   /**

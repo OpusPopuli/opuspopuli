@@ -135,4 +135,15 @@ describe('PrismaExecutionTrackerRepository', () => {
       });
     });
   });
+
+  describe('linkSnapshot', () => {
+    it('points the run at the bulk export it read (D5)', async () => {
+      (db.pipelineExecution.update as jest.Mock).mockResolvedValue({});
+      await repo.linkSnapshot('exec-1', 'snap-1');
+      expect(db.pipelineExecution.update).toHaveBeenCalledWith({
+        where: { id: 'exec-1' },
+        data: { bulkSnapshotId: 'snap-1' },
+      });
+    });
+  });
 });

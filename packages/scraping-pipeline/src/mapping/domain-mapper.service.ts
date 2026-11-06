@@ -1200,6 +1200,16 @@ const CommitteeSchema = z.object({
 });
 
 /**
+ * sha256 of the raw export line, stamped by `BulkDownloadHandler` (#1277).
+ *
+ * Declared on every schema whose table stores it, because `z.object` strips
+ * undeclared keys: until this was declared the hash never reached a row
+ * (`docs/plans/campaign-finance-phase-b.md`, F3), and the per-row skip reads
+ * it back.
+ */
+const sourceRecordHash = z.string().length(64).optional();
+
+/**
  * Parse dates from multiple formats:
  * - ISO: 2025-01-15
  * - US: 01/15/2025
@@ -1255,6 +1265,7 @@ const ContributionSchema = z.object({
   electionType: z.string().optional(),
   contributionType: z.string().optional(),
   sourceSystem: z.enum(["cal_access", "fec"]),
+  sourceRecordHash,
 });
 
 const ExpenditureSchema = z
@@ -1318,6 +1329,7 @@ const ExpenditureSchema = z
       .optional()
       .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
     sourceSystem: z.enum(["cal_access", "fec"]),
+    sourceRecordHash,
   })
   // Drop `propositionTitle` when the row carries no `BAL_NUM`. CalAccess
   // filers misuse the BAL_NAME field to stuff committee names, party
@@ -1350,6 +1362,9 @@ const IndependentExpenditureSchema = z.object({
   // IndependentExpenditureLinkerService via filingId -> Form 496 cover page (#955).
   committeeId: z.string().min(1).optional(),
   filingId: z.string().min(1).optional(),
+  /// See ContributionSchema.amendId (#992). S496 amendments restate their
+  /// lines, so supersession needs it here too (regions#97).
+  amendId: z.coerce.number().int().optional(),
   committeeName: z
     .string()
     .nullable()
@@ -1391,6 +1406,7 @@ const IndependentExpenditureSchema = z.object({
     .transform((v) => v ?? undefined)
     .optional(),
   sourceSystem: z.enum(["cal_access", "fec"]),
+  sourceRecordHash,
 });
 
 // Form 496 cover page (CVR_CAMPAIGN_DISCLOSURE_CD, FORM_TYPE=F496). externalId
@@ -1422,6 +1438,7 @@ const CvrFilingSchema = z.object({
     .optional()
     .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
   sourceSystem: z.enum(["cal_access", "fec"]),
+  sourceRecordHash,
 });
 
 // SMRY_CD Form 460 summary line (#992) — one numbered line of the totals a
@@ -1445,6 +1462,7 @@ const FilingSummarySchema = z.object({
   amountB: z.coerce.number().optional(),
   amountC: z.coerce.number().optional(),
   sourceSystem: z.enum(["cal_access", "fec"]),
+  sourceRecordHash,
 });
 
 // CVR2 / Form 410 ballot-measure declaration (#936). externalId + filingId are
@@ -1455,6 +1473,8 @@ const FilingSummarySchema = z.object({
 const CommitteeMeasureFilingSchema = z.object({
   externalId: z.string().min(1),
   filingId: z.string().min(1),
+  /// See ContributionSchema.amendId (#992, regions#97).
+  amendId: z.coerce.number().int().optional(),
   ballotName: z
     .string()
     .nullable()
@@ -1476,4 +1496,5 @@ const CommitteeMeasureFilingSchema = z.object({
     .optional()
     .transform((val) => (val ? supportOpposeTransform(val) : undefined)),
   sourceSystem: z.enum(["cal_access", "fec"]),
+  sourceRecordHash,
 });
