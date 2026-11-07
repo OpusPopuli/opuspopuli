@@ -45,6 +45,7 @@ import { GatewayServicesModule } from './gateway-services.module';
 import { WebSocketConnectionException } from 'src/common/exceptions/app.exceptions';
 import { AuthRefreshController } from './auth-refresh.controller';
 import { AuthLogoutController } from './auth-logout.controller';
+import { clientSessionId } from 'src/common/utils/client-session';
 
 /**
  * Extract authenticated user from request context for GraphQL operations.
@@ -65,6 +66,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
     res: Response;
     clientIp?: string;
     clientUserAgent?: string;
+    clientSession?: string;
   } = { res };
 
   if (req.user) {
@@ -76,6 +78,8 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
   context.clientIp =
     (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
   context.clientUserAgent = req.headers['user-agent'];
+  // Per-reader caps on anonymous requests (bills-phase-b.md, D18).
+  context.clientSession = clientSessionId(req);
 
   return context;
 };
