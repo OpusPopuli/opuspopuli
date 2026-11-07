@@ -2269,13 +2269,26 @@ describe('RegionSyncService', () => {
   });
 
   describe('syncBills — from an export (bills-phase-b.md, D9)', () => {
-    const summaryCapFor = async (maxBills: number | undefined) => {
-      const internals = service as unknown as Record<string, unknown> & {
-        syncBills: (
-          maxBills: number | undefined,
-          plugin: unknown,
-        ) => Promise<unknown>;
-      };
+    type Internals = Record<string, unknown> & {
+      syncBills: (
+        maxBills: number | undefined,
+        plugin: unknown,
+      ) => Promise<unknown>;
+    };
+    const exportPlugin = {
+      getName: () => 'california',
+      getDataSources: () => [
+        {
+          url: 'https://example.test/',
+          dataType: 'bills',
+          sourceType: 'bulk_download',
+        },
+      ],
+    };
+
+    /** The export path with its phases stubbed; `deriveFailed` as given. */
+    const exportSync = (deriveFailed = 0) => {
+      const internals = service as unknown as Internals;
       internals.promptClient = {};
       internals.llm = {};
       internals.billsPubinfoSync = {
@@ -2284,27 +2297,24 @@ describe('RegionSyncService', () => {
           created: 0,
           updated: 0,
           skipped: 0,
-          derived: 0,
+          derived: 3,
+          deriveFailed,
         }),
       };
       const stub = stubResolved(internals);
-      stub('refreshLifecycleFlags', undefined);
       stub('buildStagePatterns', []);
       stub('buildLifecycleStageInputs', null);
-      const enrich = stub('enrichBillSummaries', undefined);
+      return {
+        run: (maxBills?: number) => internals.syncBills(maxBills, exportPlugin),
+        refresh: stub('refreshLifecycleFlags', undefined),
+        enrich: stub('enrichBillSummaries', undefined),
+      };
+    };
 
-      await internals.syncBills(maxBills, {
-        getName: () => 'california',
-        getDataSources: () => [
-          {
-            url: 'https://example.test/',
-            dataType: 'bills',
-            sourceType: 'bulk_download',
-          },
-        ],
-      });
-
-      return (enrich.mock.calls[0] as unknown[])[3];
+    const summaryCapFor = async (maxBills: number | undefined) => {
+      const sync = exportSync();
+      await sync.run(maxBills);
+      return (sync.enrich.mock.calls[0] as unknown[])[3];
     };
 
     it('caps the summaries by maxBills, as the page path caps bills', async () => {
@@ -2314,6 +2324,15 @@ describe('RegionSyncService', () => {
     it('summarizes at most the per-sync cap otherwise', async () => {
       expect(await summaryCapFor(undefined)).toBe(200);
       expect(await summaryCapFor(10_000)).toBe(200);
+    });
+
+    it('still refreshes and summarizes when a bill failed to derive, then fails', async () => {
+      const sync = exportSync(1);
+
+      await expect(sync.run()).rejects.toThrow('1 bills failed to derive');
+
+      expect(sync.refresh).toHaveBeenCalledTimes(1);
+      expect(sync.enrich).toHaveBeenCalledTimes(1);
     });
   });
 

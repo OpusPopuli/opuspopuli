@@ -628,6 +628,18 @@ findings. Its four notes:
 - **Already recorded:** the B7 scope, and the `min(derived_at)` prefilter
   (below).
 
+**Third pre-push gate:** passed, with no critical or high findings.
+- **Fixed:** one bill that failed to derive threw out of the sync, so the
+  lifecycle refresh and the summary pass were skipped for that run, and every
+  night while the bill kept failing. The derive now reports its failures; the
+  sync finishes both phases, then fails the job (B7). Unit test,
+  mutation-checked.
+- **By design:** legacy rows keep their stored flags (B8). The B7 scope is
+  intended.
+- **Not a defect:** unlinked votes have a NULL `representative_id`, which the
+  unique key treats as distinct. Each bill's votes are replaced as a set, and
+  the export has no duplicate roll-call rows, so nothing duplicates.
+
 **Recorded, not changed:** bills that never change keep their first
 `derived_at`, so `min(derived_at)` stays put and the prefilter reads more
 rows over time. That costs speed only. If it shows in timings, compare per

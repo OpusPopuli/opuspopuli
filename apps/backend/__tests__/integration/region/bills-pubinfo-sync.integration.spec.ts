@@ -471,9 +471,8 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
         return original(...args);
       });
 
-    await expect(run(twoBills(), false)).rejects.toThrow(
-      '1 of 2 bills failed to derive',
-    );
+    const first = await run(twoBills(), false);
+    expect(first).toMatchObject({ derived: 1, deriveFailed: 1 });
     deriveBill.mockRestore();
     const mirrored = await db.pubinfoBill.findMany({
       orderBy: { externalId: 'asc' },

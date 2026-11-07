@@ -1454,6 +1454,13 @@ export class RegionSyncService implements OnModuleDestroy {
         },
       );
     }
+    // After the refresh and summaries, so one bill that will not derive does
+    // not hold them back every night; the job is still recorded failed (B7).
+    if (result.deriveFailed > 0) {
+      throw new Error(
+        `pubinfo: ${result.deriveFailed} bills failed to derive (${result.derived} derived); they are retried next sync`,
+      );
+    }
     return result;
   }
 

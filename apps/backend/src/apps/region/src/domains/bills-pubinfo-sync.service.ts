@@ -48,6 +48,12 @@ export interface BillsPubinfoSyncResult {
   skipped: number;
   /** Bills rewritten from the mirrors. */
   derived: number;
+  /**
+   * Bills whose derive failed. They keep their old `derived_at`, so the next
+   * sync derives them again; the caller finishes its other phases, then
+   * fails the job (B7).
+   */
+  deriveFailed: number;
 }
 
 /** The two calls a mirror delegate is used for. */
@@ -114,6 +120,7 @@ export class BillsPubinfoSyncService {
       updated: 0,
       skipped: 0,
       derived: 0,
+      deriveFailed: 0,
     };
     if (!provider.fetchBillsBulk) return result;
 
@@ -133,13 +140,15 @@ export class BillsPubinfoSyncService {
 
     const index = await this.deriveIndex(opts.regionId);
     const billIds = await this.billsToDerive(index.linksHash);
-    result.derived = await this.derive(billIds, index, {
+    const tally = await this.derive(billIds, index, {
       regionId: opts.regionId,
       statusLifecycle: opts.statusLifecycle,
       today: opts.today ?? new Date(),
     });
+    result.derived = tally.derived;
+    result.deriveFailed = tally.failed;
     this.logger.log(
-      `pubinfo: ${result.processed} rows (${result.created} created, ${result.updated} updated, ${result.skipped} unchanged); ${result.derived} bills derived`,
+      `pubinfo: ${result.processed} rows (${result.created} created, ${result.updated} updated, ${result.skipped} unchanged); ${result.derived} bills derived, ${result.deriveFailed} failed`,
     );
     return result;
   }
@@ -253,12 +262,11 @@ export class BillsPubinfoSyncService {
       statusLifecycle: Readonly<Record<string, OfficialLifecycle>>;
       today: Date;
     },
-  ): Promise<number> {
-    if (billIds.length === 0) return 0;
+  ): Promise<{ derived: number; failed: number }> {
+    const tally = { derived: 0, failed: 0 };
     // Stamped on each bill derived: a mirror row written after this moment
     // is newer than what the bill was derived from.
     const run = { ...opts, derivedAt: new Date(), linksHash: index.linksHash };
-    const tally = { derived: 0, failed: 0 };
     for (let i = 0; i < billIds.length; i += DERIVE_CHUNK) {
       await this.deriveChunk(
         billIds.slice(i, i + DERIVE_CHUNK),
@@ -267,14 +275,7 @@ export class BillsPubinfoSyncService {
         tally,
       );
     }
-    if (tally.failed > 0) {
-      // The failed bills keep their old `derived_at`, so the next sync
-      // derives them again; the job is recorded failed meanwhile (B7).
-      throw new Error(
-        `pubinfo: ${tally.failed} of ${billIds.length} bills failed to derive (${tally.derived} derived); they are retried next sync`,
-      );
-    }
-    return tally.derived;
+    return tally;
   }
 
   private async deriveIndex(regionId: string): Promise<DeriveIndex> {

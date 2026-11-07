@@ -81,7 +81,7 @@ const PINS: { version: string; files: Record<string, string> }[] = [
       billsDerive:
         '05d699c576c083b76b4f67596268853d7586e70188020c2a3e3a2ed39beff9ad',
       billsSync:
-        'c44710a9c1d75f9cb781812213a55dc5a35f4b0e13df7bcdfce6a94a64a4b2b9',
+        '0cf44e4f66349fc5f6a8a577af611d8bcc6b5cb3885782f42a947a47a4454f83',
       billLifecycle:
         '088a2d4f6c9cf157a47a453453e21dc3b2d6553a59d5e2d5393d451915787621',
       billLifecycleWriter:
