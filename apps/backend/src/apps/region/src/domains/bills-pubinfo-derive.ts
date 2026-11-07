@@ -190,7 +190,17 @@ export function isSeatHolder(
   repName: string,
   lastName: string | null,
 ): boolean {
-  return !!lastName && foldName(repName).includes(foldName(lastName));
+  if (!lastName) return false;
+  // Whole words, so "Lee" is not found in "Kathleen".
+  const last = words(lastName);
+  return last !== '' && ` ${words(repName)} `.includes(` ${last} `);
+}
+
+function words(name: string): string {
+  return foldName(name)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join(' ');
 }
 
 /** An author row's house, from pubinfo's `ASSEMBLY` / `SENATE`. */

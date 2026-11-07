@@ -2722,6 +2722,9 @@ model PubinfoBill {
   /// mirror rows; NULL = never. Written by raw SQL so `updatedAt` stays the
   /// time the export line last changed.
   derivedAt           DateTime? @map("derived_at") @db.Timestamptz
+  /// Hash of the legislator-to-representative links the bill was derived
+  /// under: a rep renamed in place changes it, which no timestamp shows.
+  derivedLinksHash    String?   @map("derived_links_hash") @db.VarChar(64)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 

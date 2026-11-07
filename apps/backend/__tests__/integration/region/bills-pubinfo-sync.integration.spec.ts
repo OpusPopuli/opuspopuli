@@ -379,9 +379,35 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
     ]);
   });
 
-  it('re-derives every bill when a legislator row changes', async () => {
-    await run(exportRows('In Committee Process'), false);
-    const rows = exportRows('In Committee Process').map((row) =>
+  /** A second bill, with no votes, so "every bill" and "this bill" differ. */
+  const secondBill = (): PubinfoRow[] => [
+    withHash({
+      table: 'BILL_TBL',
+      externalId: '202520260AB9002',
+      sessionYear: SESSION,
+      measureType: 'AB',
+      measureNum: 9002,
+      latestBillVersionId: '20250AB900299INT',
+      currentStatus: 'In Committee Process',
+    }),
+    withHash({
+      table: 'BILL_VERSION_TBL',
+      externalId: '20250AB900299INT',
+      billId: '202520260AB9002',
+      versionNum: 99,
+      billVersionActionDate: '2025-02-01',
+      subject: 'Second subject.',
+      billXml: '<caml:Title>A second act.</caml:Title>',
+    }),
+  ];
+  const twoBills = () => [
+    ...exportRows('In Committee Process'),
+    ...secondBill(),
+  ];
+
+  it('derives no bill when a legislator change leaves the links as they were', async () => {
+    await run(twoBills(), false);
+    const rows = twoBills().map((row) =>
       row.table === 'LEGISLATOR_TBL' && row.district === 'SD03'
         ? withHash({ ...row, party: 'X' } as Unhashed)
         : row,
@@ -389,7 +415,66 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
 
     const after = await run(rows);
 
+    expect(after).toMatchObject({ updated: 1, derived: 0 });
+  });
+
+  it('re-derives every bill when a representative is renamed in place', async () => {
+    await run(twoBills(), false);
+    // Representatives are keyed by seat: a new member renames the row, and
+    // no timestamp says so.
+    await db.representative.update({
+      where: { externalId: 'rep-ad7' },
+      data: { name: 'Zed Successor' },
+    });
+
+    const after = await run(twoBills());
+
+    expect(after).toMatchObject({ updated: 0, derived: 2 });
+    const votes = await db.billVote.findMany();
+    expect(votes.map((v) => v.representativeId)).toEqual([null]);
+  });
+
+  it('re-derives only the bills whose votes use a changed motion', async () => {
+    await run(twoBills(), false);
+    const rows = twoBills().map((row) =>
+      row.table === 'BILL_MOTION_TBL'
+        ? withHash({ ...row, motionText: 'Do pass as amended.' } as Unhashed)
+        : row,
+    );
+
+    const after = await run(rows);
+
     expect(after).toMatchObject({ updated: 1, derived: 1 });
+    const [vote] = await db.billVote.findMany();
+    expect(vote.motionText).toBe('Do pass as amended.');
+  });
+
+  it('keeps the bills it derived and retries the one that failed', async () => {
+    type DeriveBill = (...a: unknown[]) => Promise<void>;
+    const target = sync as unknown as { deriveBill: DeriveBill };
+    const original = target.deriveBill.bind(sync);
+    const deriveBill = jest
+      .spyOn(target, 'deriveBill')
+      .mockImplementation(async (...args: unknown[]) => {
+        const pb = args[1] as { externalId: string };
+        if (pb.externalId === '202520260AB9001') throw new Error('boom');
+        return original(...args);
+      });
+
+    await expect(run(twoBills(), false)).rejects.toThrow(
+      '1 of 2 bills failed to derive',
+    );
+    deriveBill.mockRestore();
+    const mirrored = await db.pubinfoBill.findMany({
+      orderBy: { externalId: 'asc' },
+      select: { externalId: true, derivedAt: true },
+    });
+    expect(mirrored.map((b) => b.derivedAt !== null)).toEqual([false, true]);
+
+    // Nothing in the export changed, yet the failed bill is derived again.
+    const again = await run(twoBills());
+
+    expect(again).toMatchObject({ updated: 0, derived: 1 });
   });
 
   it("does not credit a predecessor's vote to the seat's current member (D15)", async () => {

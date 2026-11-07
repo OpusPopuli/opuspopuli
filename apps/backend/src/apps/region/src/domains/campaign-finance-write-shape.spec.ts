@@ -68,6 +68,8 @@ const PINS: { version: string; files: Record<string, string> }[] = [
   },
   {
     // The derive is crash-safe and links by seat holder; lifecycle files pinned.
+    // Re-pinned in place (never left dev) for the links fingerprint: it only
+    // changes the derive, and the new NULL column re-derives every bill.
     version: 'bm3',
     files: {
       writeShape:
@@ -77,9 +79,9 @@ const PINS: { version: string; files: Record<string, string> }[] = [
       billsWriteShape:
         '033cc3971012617482c15c4c2cc1c5ba7c25dabe5241d856b5804a15f6cedbf3',
       billsDerive:
-        '204701119de34fd03a4f10117253f5a7cd8a3c7c3cb3b698b82b9988c82cdb40',
+        '4c79c8084de62b300f960f48922cc3ad8331cdc81b0d38168885ba8c907d187d',
       billsSync:
-        'edf7e5cd5ed81a3f52575b3ee237cc2ae430e590a0430f379239feaa1a6f60a1',
+        '6a2f34df1240763eb5787b1f08f1b5bd22960685107afb07899002597f69c8a0',
       billLifecycle:
         '088a2d4f6c9cf157a47a453453e21dc3b2d6553a59d5e2d5393d451915787621',
       billLifecycleWriter:

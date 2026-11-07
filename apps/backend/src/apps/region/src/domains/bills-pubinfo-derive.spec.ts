@@ -165,6 +165,9 @@ describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
     expect(isSeatHolder('Ada Successor', 'Predecessor')).toBe(false);
     expect(isSeatHolder('Member Vacant', 'Former')).toBe(false);
     expect(isSeatHolder('Ada Example', null)).toBe(false);
+    // Whole words: a short name inside another is not a match.
+    expect(isSeatHolder('Kathleen Smith', 'Lee')).toBe(false);
+    expect(isSeatHolder('Ana Ávila-Farías', 'Avila Farias')).toBe(true);
   });
 
   it('reads an author row house', () => {

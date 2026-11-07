@@ -467,8 +467,11 @@ const SUMMARY_CAP_PER_SYNC = 200;
  * again. Without the wait, the same bills (budget bills of up to 2M characters
  * that time out, or return no JSON) led every sync and tripped the
  * five-failure abort before any other bill was reached (bills-phase-b.md, UAT
- * run 2). A bill with no text waits too, or it would take a place in the cap
- * every sync.
+ * run 2). Every attempt that ends without a summary waits: a bill with no
+ * text would otherwise take a place in the cap every sync, and a failure the
+ * code cannot classify (a page fetch refused every time, a write that fails
+ * for one bill) would lead every sync the same way. An outage costs at most
+ * the five bills tried before the abort.
  */
 const SUMMARY_RETRY_AFTER_DAYS = 7;
 
@@ -2365,10 +2368,7 @@ export class RegionSyncService implements OnModuleDestroy {
     if (outcome === 'votes-upserted') updatedRef.total += 1;
   }
 
-  /**
-   * Summarize one bill. An attempt the bill itself defeated (no text, an
-   * unusable answer, a timeout) is recorded, so it waits before a retry.
-   */
+  /** Summarize one bill; an attempt that ends without one is recorded. */
   private async enrichSingleBill(
     bill: BillEnrichmentCandidate,
     stagePatterns: StagePattern[],
@@ -2384,8 +2384,10 @@ export class RegionSyncService implements OnModuleDestroy {
       lifecycleStages,
       stageIdSet,
     );
-    if (result.wait) await this.recordSummaryFailure(bill.id);
-    return { outcome: result.outcome, tokensUsed: result.tokensUsed };
+    if (result.outcome !== 'enriched') {
+      await this.recordSummaryFailure(bill.id);
+    }
+    return result;
   }
 
   private async recordSummaryFailure(billId: string): Promise<void> {
@@ -2409,8 +2411,6 @@ export class RegionSyncService implements OnModuleDestroy {
   ): Promise<{
     outcome: EnrichmentOutcome;
     tokensUsed: number;
-    /** The bill defeated this attempt; it waits before the next. */
-    wait?: boolean;
   }> {
     try {
       const source = await this.billTextFor(bill);
@@ -2418,7 +2418,7 @@ export class RegionSyncService implements OnModuleDestroy {
         this.logger.debug(
           `Bill enrichment: skipping ${bill.billNumber} — no bill text`,
         );
-        return { outcome: 'skipped', tokensUsed: 0, wait: true };
+        return { outcome: 'skipped', tokensUsed: 0 };
       }
       const html = this.htmlToReadableText(source);
 
@@ -2450,7 +2450,7 @@ export class RegionSyncService implements OnModuleDestroy {
         bill.billNumber,
       );
       if (!parsed) {
-        return { outcome: 'failed', tokensUsed, wait: true };
+        return { outcome: 'failed', tokensUsed };
       }
 
       await this.writeStatusSummary(
@@ -2476,18 +2476,10 @@ export class RegionSyncService implements OnModuleDestroy {
 
       return { outcome: 'enriched', tokensUsed };
     } catch (e) {
-      const message = (e as Error).message;
       this.logger.warn(
-        `Bill enrichment failed for ${bill.billNumber}: ${message}`,
+        `Bill enrichment failed for ${bill.billNumber}: ${(e as Error).message}`,
       );
-      // A timeout is what a bill too long for the model produces. Anything
-      // else (prompt service or model unreachable, a failed write) is not
-      // the bill's doing, so it is tried again next sync.
-      return {
-        outcome: 'failed',
-        tokensUsed: 0,
-        wait: /timed out/i.test(message),
-      };
+      return { outcome: 'failed', tokensUsed: 0 };
     }
   }
 

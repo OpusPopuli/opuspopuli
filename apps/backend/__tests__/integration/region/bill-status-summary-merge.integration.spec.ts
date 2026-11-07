@@ -797,25 +797,22 @@ describe('bill-status-summary merge — integration (#823)', () => {
     expect(row.aiSummaryFailedAt).not.toBeNull();
   });
 
-  it('makes a bill wait after a timeout, not when the model is unreachable', async () => {
+  it('makes a bill wait after any failed attempt, a timeout or not', async () => {
+    // A failure the code cannot classify would otherwise lead every sync.
     await seedCivicsTaxonomy(db);
     const timedOut = await seedBill(db, { id: 'a-timed-out' });
-    const unreachable = await seedBill(db, { id: 'b-unreachable' });
+    const refused = await seedBill(db, { id: 'b-refused' });
     stubFetchUrlText();
     mockLlm.generate
       .mockRejectedValueOnce(new Error('Request timed out after 120000ms'))
-      .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:11434'));
+      .mockRejectedValueOnce(new Error('HTTP 403 Forbidden'));
 
     await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
 
     const rows = await db.bill.findMany({
-      where: { id: { in: [timedOut.id, unreachable.id] } },
-      orderBy: { id: 'asc' },
-      select: { id: true, aiSummaryFailedAt: true },
+      where: { id: { in: [timedOut.id, refused.id] } },
+      select: { aiSummaryFailedAt: true },
     });
-    expect(rows.map((r) => [r.id, r.aiSummaryFailedAt !== null])).toEqual([
-      ['a-timed-out', true],
-      ['b-unreachable', false],
-    ]);
+    expect(rows.every((r) => r.aiSummaryFailedAt !== null)).toBe(true);
   });
 });

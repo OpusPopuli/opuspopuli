@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   batchTransaction,
@@ -65,6 +66,12 @@ const DERIVE_TX_TIMEOUT_MS = 30_000;
 interface DeriveIndex {
   /** legislatorKey → representative id, through the legislator's seat (D15). */
   repByLegislator: Map<string, string>;
+  /**
+   * Fingerprint of `repByLegislator`. Representatives are keyed by seat and
+   * renamed in place when it changes hands, which no timestamp shows, so a
+   * bill derived under other links is derived again.
+   */
+  linksHash: string;
   /** `session|code` → location description. */
   locations: Map<string, string>;
 }
@@ -119,8 +126,9 @@ export class BillsPubinfoSyncService {
       }
     }, opts.pipelineJobId);
 
-    const billIds = await this.billsToDerive();
-    result.derived = await this.derive(billIds, {
+    const index = await this.deriveIndex();
+    const billIds = await this.billsToDerive(index.linksHash);
+    result.derived = await this.derive(billIds, index, {
       regionId: opts.regionId,
       statusLifecycle: opts.statusLifecycle,
       today: opts.today ?? new Date(),
@@ -184,46 +192,57 @@ export class BillsPubinfoSyncService {
   }
 
   /**
-   * Bills to derive: never derived, or with a mirror row written since. A
-   * changed legislator or location code can change any bill, and so can a
-   * representative added or removed (the seat a vote links to); an edited
-   * representative cannot, so `updated_at` there is not read. A changed motion
-   * re-derives only the bills whose votes use it.
+   * Bills to derive: never derived, derived under other legislator links, or
+   * with a mirror row written since. A changed location code can change any
+   * bill; a changed motion only the bills whose votes use it. Each mirror is
+   * read once, for rows written since the oldest derive, rather than probed
+   * per bill.
    */
-  private async billsToDerive(): Promise<string[]> {
+  private async billsToDerive(linksHash: string): Promise<string[]> {
     const rows = await this.db.$queryRaw<{ external_id: string }[]>`
-      WITH lookups AS (
-        SELECT GREATEST(
-          (SELECT max(updated_at) FROM pubinfo_legislators),
-          (SELECT max(updated_at) FROM pubinfo_location_codes),
-          (SELECT max(GREATEST(created_at, deleted_at)) FROM representatives
-            WHERE chamber IN ('Assembly', 'Senate'))
-        ) AS changed_at
+      WITH since AS (SELECT min(derived_at) AS at FROM pubinfo_bills),
+      lookups AS (
+        SELECT max(updated_at) AS changed_at FROM pubinfo_location_codes
+      ),
+      changed AS (
+        SELECT bill_id, max(updated_at) AS at FROM (
+          SELECT v.bill_id, v.updated_at FROM pubinfo_bill_versions v, since
+            WHERE v.updated_at > since.at
+          UNION ALL
+          SELECT v.bill_id, a.updated_at FROM pubinfo_bill_version_authors a
+            JOIN pubinfo_bill_versions v ON v.external_id = a.bill_version_id,
+            since WHERE a.updated_at > since.at
+          UNION ALL
+          SELECT h.bill_id, h.updated_at FROM pubinfo_bill_history h, since
+            WHERE h.updated_at > since.at
+          UNION ALL
+          SELECT s.bill_id, s.updated_at FROM pubinfo_bill_summary_votes s,
+            since WHERE s.updated_at > since.at
+          UNION ALL
+          SELECT d.bill_id, d.updated_at FROM pubinfo_bill_detail_votes d,
+            since WHERE d.updated_at > since.at
+          UNION ALL
+          SELECT d.bill_id, m.updated_at FROM pubinfo_bill_motions m
+            JOIN pubinfo_bill_detail_votes d ON d.motion_id = CASE
+              WHEN m.external_id ~ '^[0-9]+$' THEN m.external_id::int END,
+            since WHERE m.updated_at > since.at
+        ) written GROUP BY bill_id
       )
-      SELECT b.external_id FROM pubinfo_bills b, lookups l
+      SELECT b.external_id FROM pubinfo_bills b
+        CROSS JOIN lookups l
+        LEFT JOIN changed c ON c.bill_id = b.external_id
       WHERE b.derived_at IS NULL
+        OR b.derived_links_hash IS DISTINCT FROM ${linksHash}
         OR b.updated_at > b.derived_at
         OR l.changed_at > b.derived_at
-        OR EXISTS (SELECT 1 FROM pubinfo_bill_versions v
-          WHERE v.bill_id = b.external_id AND v.updated_at > b.derived_at)
-        OR EXISTS (SELECT 1 FROM pubinfo_bill_versions v
-          JOIN pubinfo_bill_version_authors a ON a.bill_version_id = v.external_id
-          WHERE v.bill_id = b.external_id AND a.updated_at > b.derived_at)
-        OR EXISTS (SELECT 1 FROM pubinfo_bill_history h
-          WHERE h.bill_id = b.external_id AND h.updated_at > b.derived_at)
-        OR EXISTS (SELECT 1 FROM pubinfo_bill_summary_votes s
-          WHERE s.bill_id = b.external_id AND s.updated_at > b.derived_at)
-        OR EXISTS (SELECT 1 FROM pubinfo_bill_detail_votes d
-          WHERE d.bill_id = b.external_id AND d.updated_at > b.derived_at)
-        OR EXISTS (SELECT 1 FROM pubinfo_bill_motions m
-          JOIN pubinfo_bill_detail_votes d ON d.motion_id = m.external_id::int
-          WHERE d.bill_id = b.external_id AND m.updated_at > b.derived_at)
+        OR c.at > b.derived_at
       ORDER BY b.external_id`;
     return rows.map((r) => r.external_id);
   }
 
   private async derive(
     billIds: string[],
+    index: DeriveIndex,
     opts: {
       regionId: string;
       statusLifecycle: Readonly<Record<string, OfficialLifecycle>>;
@@ -233,8 +252,7 @@ export class BillsPubinfoSyncService {
     if (billIds.length === 0) return 0;
     // Stamped on each bill derived: a mirror row written after this moment
     // is newer than what the bill was derived from.
-    const run = { ...opts, derivedAt: new Date() };
-    const index = await this.deriveIndex();
+    const run = { ...opts, derivedAt: new Date(), linksHash: index.linksHash };
     const tally = { derived: 0, failed: 0 };
     for (let i = 0; i < billIds.length; i += DERIVE_CHUNK) {
       await this.deriveChunk(
@@ -289,6 +307,9 @@ export class BillsPubinfoSyncService {
     }
     return {
       repByLegislator,
+      linksHash: createHash('sha256')
+        .update(JSON.stringify([...repByLegislator].sort()))
+        .digest('hex'),
       locations: new Map(
         locations
           .filter((l) => l.description)
@@ -315,7 +336,7 @@ export class BillsPubinfoSyncService {
         // One bad bill must not stop the rest; it stays underived.
         tally.failed++;
         this.logger.warn(
-          `pubinfo: deriving ${pb.externalId} failed: ${(e as Error).message}`,
+          `pubinfo: deriving ${pb.externalId} failed: ${shortError(e)}`,
         );
       }
     }
@@ -387,7 +408,7 @@ export class BillsPubinfoSyncService {
     );
     // Raw, so Prisma's @updatedAt does not move past it and mark the bill
     // changed again.
-    await tx.$executeRaw`UPDATE pubinfo_bills SET derived_at = ${run.derivedAt} WHERE external_id = ${pb.externalId}`;
+    await tx.$executeRaw`UPDATE pubinfo_bills SET derived_at = ${run.derivedAt}, derived_links_hash = ${run.linksHash} WHERE external_id = ${pb.externalId}`;
   }
 
   /** Co-authors and votes, replaced inside the bill's transaction. */
@@ -616,6 +637,7 @@ interface DeriveRun {
   statusLifecycle: Readonly<Record<string, OfficialLifecycle>>;
   today: Date;
   derivedAt: Date;
+  linksHash: string;
 }
 
 /** A derived bill: its row id, and the pubinfo id and session it came from. */
@@ -638,6 +660,18 @@ function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
     else groups.set(k, [item]);
   }
   return groups;
+}
+
+/**
+ * A Prisma error's code, or the first line of a message cut short: a Prisma
+ * message can quote the whole call, every vote of the bill included.
+ */
+function shortError(e: unknown): string {
+  const code = (e as { code?: unknown }).code;
+  if (typeof code === 'string') return code;
+  return String((e as Error).message ?? e)
+    .split('\n')[0]
+    .slice(0, 200);
 }
 
 /**
