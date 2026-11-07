@@ -191,15 +191,18 @@ export function isSeatHolder(
   lastName: string | null,
 ): boolean {
   if (!lastName) return false;
-  // Whole words, so "Lee" is not found in "Kathleen".
+  // Whole words, so "Lee" is not found in "Kathleen"; a generational suffix
+  // in one name and not the other ("Smith Jr.") does not count.
   const last = words(lastName);
   return last !== '' && ` ${words(repName)} `.includes(` ${last} `);
 }
 
+const SUFFIXES: ReadonlySet<string> = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
+
 function words(name: string): string {
   return foldName(name)
     .split(/[^a-z0-9]+/)
-    .filter(Boolean)
+    .filter((w) => w && !SUFFIXES.has(w))
     .join(' ');
 }
 

@@ -72,6 +72,7 @@ import {
   type FetchTextOptions,
 } from './resilient-fetch';
 import { crawlInScope, type CivicsCrawl } from './civics-crawl';
+import { shortError } from './short-error';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
   BILL_LIFECYCLE_SELECT,
@@ -467,11 +468,12 @@ const SUMMARY_CAP_PER_SYNC = 200;
  * again. Without the wait, the same bills (budget bills of up to 2M characters
  * that time out, or return no JSON) led every sync and tripped the
  * five-failure abort before any other bill was reached (bills-phase-b.md, UAT
- * run 2). Every attempt that ends without a summary waits: a bill with no
- * text would otherwise take a place in the cap every sync, and a failure the
- * code cannot classify (a page fetch refused every time, a write that fails
- * for one bill) would lead every sync the same way. An outage costs at most
- * the five bills tried before the abort.
+ * run 2). Every attempt that ends without a summary waits, while the model
+ * is reachable: a bill with no text would otherwise take a place in the cap
+ * every sync, and a failure the code cannot classify (a page fetch refused
+ * every time, a write that fails for one bill) would lead every sync the same
+ * way. A failure while the model is down is the outage's, not the bill's, so
+ * it does not wait.
  */
 const SUMMARY_RETRY_AFTER_DAYS = 7;
 
@@ -2368,7 +2370,10 @@ export class RegionSyncService implements OnModuleDestroy {
     if (outcome === 'votes-upserted') updatedRef.total += 1;
   }
 
-  /** Summarize one bill; an attempt that ends without one is recorded. */
+  /**
+   * Summarize one bill. An attempt that ends without one is recorded, unless
+   * it failed while the model was unreachable.
+   */
   private async enrichSingleBill(
     bill: BillEnrichmentCandidate,
     stagePatterns: StagePattern[],
@@ -2384,10 +2389,19 @@ export class RegionSyncService implements OnModuleDestroy {
       lifecycleStages,
       stageIdSet,
     );
-    if (result.outcome !== 'enriched') {
-      await this.recordSummaryFailure(bill.id);
-    }
+    const waits =
+      result.outcome === 'skipped' ||
+      (result.outcome === 'failed' && (await this.modelReachable()));
+    if (waits) await this.recordSummaryFailure(bill.id);
     return result;
+  }
+
+  private async modelReachable(): Promise<boolean> {
+    try {
+      return (await this.llm?.isAvailable()) ?? false;
+    } catch {
+      return false;
+    }
   }
 
   private async recordSummaryFailure(billId: string): Promise<void> {
@@ -2398,7 +2412,7 @@ export class RegionSyncService implements OnModuleDestroy {
       });
     } catch (e) {
       this.logger.warn(
-        `Could not record a failed summary for bill ${billId}: ${(e as Error).message}`,
+        `Could not record a failed summary for bill ${billId}: ${shortError(e)}`,
       );
     }
   }
@@ -2477,7 +2491,7 @@ export class RegionSyncService implements OnModuleDestroy {
       return { outcome: 'enriched', tokensUsed };
     } catch (e) {
       this.logger.warn(
-        `Bill enrichment failed for ${bill.billNumber}: ${(e as Error).message}`,
+        `Bill enrichment failed for ${bill.billNumber}: ${shortError(e)}`,
       );
       return { outcome: 'failed', tokensUsed: 0 };
     }

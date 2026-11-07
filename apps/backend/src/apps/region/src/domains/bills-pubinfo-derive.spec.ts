@@ -168,6 +168,8 @@ describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
     // Whole words: a short name inside another is not a match.
     expect(isSeatHolder('Kathleen Smith', 'Lee')).toBe(false);
     expect(isSeatHolder('Ana Ávila-Farías', 'Avila Farias')).toBe(true);
+    expect(isSeatHolder('John Smith', 'Smith Jr.')).toBe(true);
+    expect(isSeatHolder('Pat O’Brien', "O'Brien")).toBe(true);
   });
 
   it('reads an author row house', () => {

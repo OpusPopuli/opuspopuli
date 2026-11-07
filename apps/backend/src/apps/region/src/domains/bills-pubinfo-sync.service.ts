@@ -27,6 +27,7 @@ import {
 } from './bills-pubinfo-derive';
 import { pubinfoWriteValues } from './bills-pubinfo-write-shape';
 import { withoutUnchanged } from './bulk-row-skip';
+import { shortError } from './short-error';
 
 /**
  * Minimal provider contract: a region with a bulk bills source streams its
@@ -224,7 +225,7 @@ export class BillsPubinfoSyncService {
           UNION ALL
           SELECT d.bill_id, m.updated_at FROM pubinfo_bill_motions m
             JOIN pubinfo_bill_detail_votes d ON d.motion_id = CASE
-              WHEN m.external_id ~ '^[0-9]+$' THEN m.external_id::int END,
+              WHEN m.external_id ~ '^[0-9]{1,9}$' THEN m.external_id::int END,
             since WHERE m.updated_at > since.at
         ) written GROUP BY bill_id
       )
@@ -274,7 +275,10 @@ export class BillsPubinfoSyncService {
 
   private async deriveIndex(): Promise<DeriveIndex> {
     const [legislators, reps, locations] = await Promise.all([
+      // Ordered, so a key two rows share resolves the same way every run and
+      // the links hash does not flip between syncs.
       this.db.pubinfoLegislator.findMany({
+        orderBy: { externalId: 'asc' },
         select: {
           sessionYear: true,
           houseType: true,
@@ -660,18 +664,6 @@ function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
     else groups.set(k, [item]);
   }
   return groups;
-}
-
-/**
- * A Prisma error's code, or the first line of a message cut short: a Prisma
- * message can quote the whole call, every vote of the bill included.
- */
-function shortError(e: unknown): string {
-  const code = (e as { code?: unknown }).code;
-  if (typeof code === 'string') return code;
-  return String((e as Error).message ?? e)
-    .split('\n')[0]
-    .slice(0, 200);
 }
 
 /**

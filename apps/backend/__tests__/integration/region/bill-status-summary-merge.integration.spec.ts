@@ -211,6 +211,7 @@ describe('bill-status-summary merge — integration (#823)', () => {
     generate: jest.Mock;
     getModelName: jest.Mock;
     getModelDigest: jest.Mock;
+    isAvailable: jest.Mock;
   };
 
   beforeAll(async () => {
@@ -240,6 +241,7 @@ describe('bill-status-summary merge — integration (#823)', () => {
       // gap was found.
       getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
       getModelDigest: jest.fn().mockResolvedValue('sha256:it-digest'),
+      isAvailable: jest.fn().mockResolvedValue(true),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -813,6 +815,22 @@ describe('bill-status-summary merge — integration (#823)', () => {
       where: { id: { in: [timedOut.id, refused.id] } },
       select: { aiSummaryFailedAt: true },
     });
+    expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.aiSummaryFailedAt !== null)).toBe(true);
+  });
+
+  it('does not make a bill wait for a failure while the model is down', async () => {
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db);
+    stubFetchUrlText();
+    mockLlm.isAvailable.mockResolvedValue(false);
+    mockLlm.generate.mockRejectedValueOnce(
+      new Error('connect ECONNREFUSED 127.0.0.1:11434'),
+    );
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const row = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(row.aiSummaryFailedAt).toBeNull();
   });
 });
