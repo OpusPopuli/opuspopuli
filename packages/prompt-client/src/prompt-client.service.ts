@@ -500,6 +500,21 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * The hash a compose of `templateName` would stamp on its output now: the
+   * template this client is actually served, an experiment's variant
+   * included, not the service's canonical one that `getPromptHash` reports.
+   * Compare a stored output's `promptHash` with this to tell whether the
+   * output is current. `fallback` is true when a prompt service is configured
+   * but the template came from the local copy, which may have drifted.
+   */
+  async getServedPromptHash(
+    templateName: string,
+  ): Promise<{ promptHash: string; fallback: boolean }> {
+    const { template, fallback } = await this.resolveTemplate(templateName);
+    return { promptHash: this.hash(template.templateText), fallback };
+  }
+
+  /**
    * Get the current prompt hash for cache invalidation.
    *
    * When configured with a remote prompt service, this hits GET
@@ -1259,6 +1274,18 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
     name: string,
     fallbackName?: string,
   ): Promise<PromptTemplate> {
+    return (await this.resolveTemplate(name, fallbackName)).template;
+  }
+
+  /**
+   * The template a compose would use now, and whether it came from the local
+   * fallback while a prompt service is configured. One path for both, so the
+   * hash a caller compares with is the hash a compose stamps on its output.
+   */
+  private async resolveTemplate(
+    name: string,
+    fallbackName?: string,
+  ): Promise<{ template: PromptTemplate; fallback: boolean }> {
     if (this.config?.promptServiceUrl) {
       // Configuration errors throw — never fall through silently, that
       // would mask deployment misconfigurations as if they were healthy
@@ -1270,16 +1297,26 @@ export class PromptClientService implements OnModuleInit, OnModuleDestroy {
         );
       }
       try {
-        return await this.fetchRawTemplate(name, fallbackName);
+        return {
+          template: await this.fetchRawTemplate(name, fallbackName),
+          fallback: false,
+        };
       } catch (error) {
         this.logger.warn(
           `Remote template fetch failed for "${name}", falling back to DB: ${(error as Error).message}`,
         );
         // fall through to DB+hardcoded chain
       }
+      return {
+        template: await this.getTemplateFromDb(name, fallbackName),
+        fallback: true,
+      };
     }
 
-    return this.getTemplateFromDb(name, fallbackName);
+    return {
+      template: await this.getTemplateFromDb(name, fallbackName),
+      fallback: false,
+    };
   }
 
   /**
