@@ -1592,6 +1592,19 @@ describe("PromptClientService", () => {
     });
   });
 
+  describe("getServedPromptHash", () => {
+    it("is not a fallback when no prompt service is configured", async () => {
+      mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
+        mockTemplate("rag", "Template text for hashing"),
+      );
+
+      const served = await service.getServedPromptHash("rag");
+
+      expect(served.fallback).toBe(false);
+      expect(served.promptHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+  });
+
   describe("getPromptHash", () => {
     it("should return sha256 hash of template text", async () => {
       mockDb.promptTemplate.findFirst.mockResolvedValueOnce(
@@ -1819,6 +1832,10 @@ describe("PromptClientService", () => {
       await expect(
         noKeyService.getRAGPrompt({ context: "a", query: "b" }),
       ).rejects.toThrow("API key is required");
+      // The same misconfiguration is not reported as a fallback either.
+      await expect(noKeyService.getServedPromptHash("rag")).rejects.toThrow(
+        "API key is required",
+      );
       await noKeyService.onModuleDestroy();
     });
 
@@ -1933,6 +1950,66 @@ describe("PromptClientService", () => {
 
       // Should fall back to hashing local template rather than throwing
       expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it("getServedPromptHash is the hash a compose stamps, from the served template", async () => {
+      // An experiment variant is what the compose path is served; the /hash
+      // endpoint reports the canonical template, so a caller comparing with
+      // it would find every output stale.
+      globalThis.fetch = jest.fn().mockResolvedValue(
+        mockRemoteTemplateResponse({
+          name: "rag",
+          templateText: "variant: {{CONTEXT}} {{QUERY}}",
+        }),
+      );
+
+      const served = await remoteService.getServedPromptHash("rag");
+      const composed = await remoteService.getRAGPrompt({
+        context: "a",
+        query: "b",
+      });
+
+      expect(served).toEqual({
+        promptHash: composed.promptHash,
+        fallback: false,
+      });
+    });
+
+    it("getServedPromptHash differs from the canonical /hash under an experiment", async () => {
+      const fetchMock = jest.fn().mockImplementation(async (url: string) =>
+        url.endsWith("/hash")
+          ? {
+              ok: true,
+              json: () =>
+                Promise.resolve({
+                  name: "rag",
+                  promptHash: "canonical-hash",
+                  promptVersion: "v2",
+                }),
+            }
+          : mockRemoteTemplateResponse({
+              name: "rag",
+              templateText: "variant: {{CONTEXT}} {{QUERY}}",
+            }),
+      );
+      globalThis.fetch = fetchMock;
+
+      const served = await remoteService.getServedPromptHash("rag");
+
+      expect(await remoteService.getPromptHash("rag")).toBe("canonical-hash");
+      expect(served.promptHash).not.toBe("canonical-hash");
+    });
+
+    it("getServedPromptHash says when the template came from the local fallback", async () => {
+      globalThis.fetch = jest.fn().mockRejectedValue(new Error("fetch failed"));
+      mockDb.promptTemplate.findFirst.mockResolvedValue(
+        mockTemplate("rag", "local template text"),
+      );
+
+      const served = await remoteService.getServedPromptHash("rag");
+
+      expect(served.fallback).toBe(true);
+      expect(served.promptHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it("should NOT write remote responses into the local DB", async () => {

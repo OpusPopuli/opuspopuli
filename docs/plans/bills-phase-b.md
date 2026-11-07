@@ -762,3 +762,134 @@ dead, the "passed" class. The personalized feed reads `isActive`.
 | The full run is ~48h and shares Ollama with everything | Capped runs for development; one full run, on a weekend, never overlapping another heavy job |
 | B1's fix writes status for bills that drifted months ago, flipping flags at once | Expected and correct; step 0 counts them first so the flip is a known number |
 | D5 regenerates ~2,200 hot summaries | A per-sync cap spreads the GPU cost; quality checked on a sample before the cap is raised |
+
+## K6 — summaries regenerated when what wrote them changes (2026-11-07)
+
+Branch `feat/bills-summary-staleness`, after #1428 merged.
+
+A current (hot) bill's summary is regenerated when any of these change:
+- **The prompt template:** the stored `ai_summary_prompt_hash` differs from
+  the live hash of `bill-status-summary` (`getPromptHash`, the same bare
+  template hash the compose returns). A summary with no hash counts as
+  stale.
+- **The model build:** the stored `ai_summary_llm_digest` differs from the
+  live digest. This only applies when the live digest is known.
+- **The bill's text:** for export bills, the version a summary was written
+  from differs from the bill's current version. Migration
+  `20261107160000_bills_ai_summary_source_version` (approved by the owner)
+  adds `bills.ai_summary_source_version`, which records which text a summary
+  describes. That is an attestation fact as well as the staleness test. NULL
+  counts as stale, so each export bill is regenerated once, inside the cap.
+
+Two rules sit around these:
+- **Skip sentinel:** `{skip: true}` is retried only when the bill has a new
+  version. Under the same text it would only skip again, so a new prompt
+  does not retry it.
+- **Unreadable hash:** if the live template hash cannot be read, the pass is
+  skipped rather than treating every summary as stale.
+
+Order: bills never failed first, then bills with no summary, then the oldest
+summary, then by id. Still 200 per sync. Cold bills are the lazy path's (D7).
+
+Six integration tests, each mutation-checked, cover:
+- live inputs leave a summary alone;
+- each of the three changes regenerates it;
+- the sentinel is retried only on a new version;
+- an unreadable hash skips the pass.
+
+### Newer exports: what changed, measured on the raw files
+
+A script compared Thursday 11-05, Friday 11-06 and Saturday 11-07 line by line
+in the nine tables, with `.lob` text compared by content. It reads only the
+downloaded files, not our code.
+- **Thu → Fri:** 0 lines new, changed or gone in any of the nine tables.
+  14,140 `.lob` entries changed, but by name only: the nightly renumbering.
+  `BILL_ANALYSIS_TBL`, which we do not import, also changed.
+- **Fri → Sat:** byte-identical entries.
+
+The session ended on 2026-08-31, so the data is still until the 2027–28
+bills arrive. Saturday's file was published at 04:23 PST, not about 21:23
+like the weekday files. With `publishedAfter: 21:30` a Saturday run before
+21:30 takes Friday's file, which is harmless here because the two are
+identical.
+
+### UAT (job 207): Friday's file, three lines made to look changed
+
+There was no real change to test. So the stored line hash was altered on
+three mirror rows, each in a different bill and table: AB 1089's bill row,
+SB 1179's current version (the lob path) and one roll call of AB 1359. The
+import writes the hashes back, so the change repairs itself.
+- **Import:** 959,853 rows, 3 updated and 959,850 unchanged, though 14,140
+  `.lob` entries had been renamed since Thursday.
+- **Derive:** 3 bills derived, exactly those three. Every other bill kept its
+  `derived_at`.
+- **Summaries (K6):** 10 attempted, 9 written, each recording its prompt hash
+  and source version. 1 timed out and was recorded so it waits. Bills with no
+  summary went first.
+
+### K6 review 1 (working tree before the fixes below)
+
+**Blocker, fixed: the hash compared was not the hash stamped.** Prompt-service
+`GET /prompts/:name/hash` hashes the canonical active template. A compose is
+served the template its API key resolves to, which can be an experiment's
+variant, or a cached older copy. While a node is in an experiment, every
+summary would have looked stale on every sync, cycling 200 at a time through
+every hot bill.
+
+The fix: `PromptClientService.getServedPromptHash()` hashes the template the
+compose path is served. It shares `resolveTemplate` with `getTemplate`, so
+the two cannot drift apart. K6 compares against it.
+
+**Fixed (suggestions):**
+- **Fallback skip:** the pass is skipped when the served template came from
+  the local fallback while a prompt service is configured. The real
+  `getPromptHash` never threw on an outage; it silently hashed a local copy
+  that may have drifted.
+- **Version check scope:** the stale-version query covers only hot bills, as
+  the candidates do, and only bills whose current version has text. A bill
+  with no text would have failed and waited every week, indefinitely.
+- **JSON null:** `jsonb_typeof(ai_summary) = 'object'` replaces
+  `IS NOT NULL`, which a JSON `null` would pass.
+- **Docblock:** `enrichBillSummaries`'s doc comment is back on it, and its
+  out-of-date "only `ai_summary IS NULL`" paragraph now describes K6.
+- **Tests added**, each mutation-checked:
+  - local fallback skips the pass;
+  - no loop, a second run calls the model 0 times;
+  - an unknown live digest does not judge a summary with no recorded build;
+  - a page-path bill under the live prompt is left alone;
+  - a current version with no text is not chased;
+  - no summary comes before an old one.
+
+  The prompt-client spec gains three `getServedPromptHash` cases: served
+  hash equals compose hash, fallback flagged, no service configured.
+
+### K6 review 2 (final working tree, after review 1's fixes)
+
+No blocker. It confirmed:
+- No path regenerates a bill every sync. Experiment variants are stable per
+  API key, and served and stamped hashes come from one `resolveTemplate`.
+- The digest is resolved once per process.
+- `resolveTemplate` keeps `getTemplate`'s behaviour for every existing caller.
+- The raw SQL is parameterized.
+- No bill text or model output is logged.
+
+**Fixed:**
+- **Version ties:** a bill's current version is picked by `version_num`,
+  which is not unique. A tie could make the SQL and `billTextFor` name
+  different versions, so the summary would look stale forever. Both now break
+  ties by `external_id`. There are no ties in the 2026-11-05 export; the
+  derive's own pick is unchanged, since it is under the mapping pin.
+- **Fallback too strict:** the local-fallback skip also stopped bills with no
+  summary from getting one during an outage. Now, under the fallback, missing
+  summaries are written and none is refreshed (`LiveSummaryInputs.refresh`).
+  A circuit that opens mid-pass stamps the rest with the local hash; they are
+  refreshed once next sync, not in a loop.
+- **Nitpicks:**
+  - `getPromptHash`'s doc comment is back on it;
+  - `hot && live` is now `live`, with the cut-off and clock carried on it;
+  - the cut-off has one helper (`coldCutoff`);
+  - `hotSummaryCandidates` was split, adding `staleSummaries`.
+- **Tests:** a version tie (no loop), the fallback writing missing summaries
+  and refreshing none, `getServedPromptHash` differing from the canonical
+  `/hash` under an experiment, and the API-key misconfiguration throwing
+  rather than reading as a fallback. Each new rule was mutation-checked.
