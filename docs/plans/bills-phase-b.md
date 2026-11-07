@@ -238,8 +238,11 @@ only (D1, D2). Regenerate on prompt hash or digest change, never the
 - Gate against the raw file, as for campaign finance:
   - mirror rows equal the file's lines;
   - every derived status, last action, author and vote count equals the raw tables;
-  - the 24 vetoes from 2026-11-05 read dead.
-- A second import of the same file writes nothing and calls no LLM.
+  - every vetoed bill reads dead. (This said "the 24 vetoes from
+    2026-11-05"; those 24 were in that day's change file but are dated
+    September. The gate checks every `Vetoed` bill instead.)
+- A second import of the same file writes nothing. (The summary pass still
+  runs: it works through the hot backlog, capped per sync.)
 - Timing against the ~48h page run.
 
 ### 6. Lazy path (§5.2): its own PR (D7)
@@ -256,7 +259,7 @@ only (D1, D2). Regenerate on prompt hash or digest change, never the
 
 ## As built so far (2026-11-06)
 
-**opuspopuli-regions [#99](https://github.com/OpusPopuli/opuspopuli-regions/pull/99)** (open):
+**opuspopuli-regions [#99](https://github.com/OpusPopuli/opuspopuli-regions/pull/99)** (merged 2026-11-06, published as 1.0.107):
 - Schema: `quoteChar`, `nullToken`, `lobColumns` (zip-only, as a draft-07
   `dependencies` rule), `rotatingFile { name, publishedAfter }`,
   `billStatusLifecycle`, `coldAfterDays`.
@@ -286,9 +289,135 @@ mirrors plus `bills.status_source` and `bills.ai_summary_llm_digest`.
 - Approved by the owner, then applied to the dev DB.
 - A Prisma diff against `postgres_test` shows no drift from it.
 
-**Next:** the provider method, the mirror sync (K4 skip shared with
-finance), the derive step (D15–D17), lifecycle from the status map,
-summaries from the mirrored text, then UAT.
+**Backend** (commits 8a069cd1, 7321e9f9):
+- `fetchBillsBulk` on the provider. The page path now ignores bulk sources.
+- `BillsPubinfoSyncService` mirrors each table through the shared K4 skip,
+  which moved to `bulk-row-skip.ts`, and derives only the bills that
+  written rows touch. A change to a lookup table (legislators, location
+  codes, motions) derives every bill.
+- Bills are written through `upsertOfficialBill` in the writer module, so
+  the F4 enforcement spec still holds.
+- Lifecycle follows `status_source`: `page` uses the regex rules;
+  `official` is set by the derive and moved only by the closed-session
+  rule; legacy rows are never re-read (B8 guard, mutation-checked).
+- Summaries for official bills read the mirrored current version. Export
+  regions summarize hot bills only (D1/D2) and regenerate hot summaries
+  that have no prompt hash, 200 per sync (D5). The model digest is
+  recorded (F3).
+- **Found and fixed while building:**
+  - The summary candidate lacked `statusSource` and the stored flags, so
+    every summary write would have re-read the status by regex. That was
+    B8 again, for official and legacy rows alike. The candidate type now
+    requires them; dropping them fails compilation.
+  - A Prisma JSON `path` filter is NULL on a summary without the key, so
+    `NOT` excluded every summary. The sentinel check now compares the
+    whole value.
+- Tests: 3,719 backend unit tests, 6 new integration cases on
+  `bills-pubinfo-sync`, and 4 new on the summary merge.
+  - Mutation-checked: the K4 skip, the current-version rule and the B8
+    guard.
+  - `region.integration.spec.ts` (35 failures) queries the running region
+    service on :3004, which reads the dev DB, not `postgres_test`. It does
+    not exercise this change; not re-run on `main`.
+
+## UAT run 1 (2026-11-06, job 199): `pubinfo_daily_Thu.zip`
+
+Regions pinned at 1.0.107; only the five regions lines of the lockfile
+changed (a plain install also moved serwist's `browserslist` peer, which
+was reverted). Disk before: 29 GB free. The scratchpad copy of the file
+has the same SHA-256 as the imported snapshot (`b33a2d23…`), so the gate
+compares against what was imported.
+
+**Timing:** download 1 min (1,108 MB); mirror plus derive 7 min (959,853
+rows, 5,065 bills); summaries 84 min for 200 bills. Against ~48 h for the
+page run.
+
+**Gate against the raw file:**
+
+| Check | Result |
+|---|---|
+| Mirror rows = file lines | 8 of 9 tables exact. `LEGISLATOR_TBL` 122 of 124: the 2 others are vacant seats (AD03, SD10) with no name, rejected by the schema, with a warning. Correct. |
+| Status, source | 5,065 of 5,065 equal `current_status`, all `official`; no legacy rows left. |
+| Lifecycle flags | Each status maps as configured. Active 518 → 1,524: the B8 repair. All 212 `Vetoed` are dead. |
+| Last action | **146 wrong.** Fixed (below). |
+| Votes | **4,285 missing across 123 bills.** Fixed (below). |
+| Authors | 4,777 of 5,065 linked. The other 288: 287 committee-authored bills (no representative to link) and GRP 1. |
+| Co-authors, vote links | 31,524 co-authors, all linked. 606,210 of 606,214 votes linked. |
+
+GRP 1 (the Governor's reorganization plan) has no status, so it is neither
+active nor dead. Accepted.
+
+**Found and fixed:**
+- **Same-day roll calls collapsed.** `bill_votes` was unique on (bill,
+  member, date, chamber), so a member's second vote that day was dropped:
+  1,803 groups; SB 280 kept 208 of 524 votes. A roll call is (location,
+  `vote_date_time`, `vote_date_seq`), unique in the export. Migration
+  `20261106180000_bill_votes_roll_call` (approved by the owner) adds
+  `roll_call` (default `''`, so page rows keep one vote per day) and widens
+  the key. Readers list votes by date, so the extra rows display as the
+  separate votes they are. Integration test mutation-checked.
+- **Last action followed load order.** `action_sequence` ties within a
+  day on 3,434 bills (AB 133: "From committee: Do pass" and "Read second
+  time" are both 11). The history id never orders against the sequence, so
+  it breaks the tie. Unit test mutation-checked.
+- **A derive change did not reach unchanged bills.** A bill is derived
+  again only when one of its lines changes, so neither fix would have
+  reached existing rows. The derive and the sync service now join the
+  backend's mapping-version pin. `BULK_MAPPING_VERSION` is bumped to bm2
+  rather than re-pinned in place: the dev ledger already holds bm1 for these
+  sources. Cost: one full rewrite of bills, and of finance on its next sync.
+- `maxBills` now caps the export path's summaries, as it caps bills on the
+  page path. A gate run then needs no GPU hour.
+
+**Summary failures:** 15 of 200. 6 timed out at 120 s (long bills, up to
+38k tokens), 8 returned no JSON, 1 returned malformed JSON. These are model
+failures, not pipeline failures. A failed bill keeps no summary and is a
+candidate again next sync.
+
+## UAT run 2 (job 200): bm2, same file, `maxBills` 10
+
+**Import:** 959,853 rows rewritten and 5,065 bills derived in 9 minutes, as
+bm2 should.
+
+**Gate:**
+- Votes: all 610,499 written, 0 bills differing (SB 280: 524); 610,495 linked.
+- Last action and status: 0 mismatches.
+
+**The summary pass aborted.** Candidates had no order, and the bills that
+failed in run 1 came first again. Five in a row tripped the abort before any
+other bill was reached, so every nightly pass would have stopped the same
+way. Two further problems showed:
+- The job was recorded `succeeded` (B7).
+- The import's counts were replaced by the abort's zeros. The log keeps them.
+
+**Fixed:**
+- **A failed summary waits a week.** Migration
+  `20261106200000_bills_ai_summary_failed_at` (approved by the owner) adds
+  `bills.ai_summary_failed_at`. A failure sets it and a success clears it.
+  Candidates skip bills that failed in the last 7 days, and bills that never
+  failed come first, so the abort trips only when the model is actually
+  down. Both rules were mutation-checked.
+- **B7:** a job whose results carry errors is recorded `failed`, with its
+  results kept. It is not thrown, so BullMQ does not retry the whole sync.
+  This applies to every data type: a boundary refresh with failed upserts
+  now reads `failed` too. Mutation-checked.
+
+The text is not the cause. The summary already passes the CAML through
+`htmlToReadableText`, and the markup left over (escaped inside the CAML) is
+under 1% of the text. The failing bills are long (budget bills run to 2 M
+characters), as they were on the page path.
+
+## UAT run 3 (job 201): same file again
+
+The import wrote nothing: 959,853 rows unchanged, 0 derived. It took 22 s
+after a 1-minute download. All 10 summaries succeeded, including one of 55 k
+tokens. The job was recorded `succeeded`.
+
+**Not new:** the 1.1 GB zip exceeds local Supabase storage's object limit,
+so the snapshot was not archived. The finance zip has never archived
+locally either. The import continues, and the snapshot row records no
+storage key. The worker's memory health check failed for about 40 s
+while parsing (heap ~1.2 GB); the job was unaffected.
 
 ## Step 0, attempt 1 (2026-11-06 02:12 UTC, UAT job 197): blocked
 
