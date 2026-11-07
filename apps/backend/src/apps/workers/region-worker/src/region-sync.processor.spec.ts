@@ -140,6 +140,30 @@ describe('RegionSyncProcessor', () => {
       expect(pipelineJobService.markFailed).not.toHaveBeenCalled();
     });
 
+    it('records a run whose results carry errors as failed, without a retry (B7)', async () => {
+      // A phase that aborts is caught per data type and lands in `errors`;
+      // the job used to be marked succeeded regardless.
+      regionService.syncAll.mockResolvedValue([
+        {
+          ...mockSyncResults[0],
+          dataType: DataType.BILLS,
+          errors: ['[BillSync] Aborted after 5 consecutive failures'],
+        },
+      ]);
+      await processor.onApplicationBootstrap();
+
+      await expect(getHandler()(buildJob())).resolves.toBeDefined();
+
+      expect(pipelineJobService.markFinishedWithErrors).toHaveBeenCalledWith(
+        'pipeline-uuid-1',
+        expect.arrayContaining([
+          expect.objectContaining({ dataType: DataType.BILLS }),
+        ]),
+        '[BillSync] Aborted after 5 consecutive failures',
+      );
+      expect(pipelineJobService.markSucceeded).not.toHaveBeenCalled();
+    });
+
     it('marks job failed on final failure (retries exhausted)', async () => {
       regionService.syncAll.mockRejectedValue(new Error('Scrape failed'));
       await processor.onApplicationBootstrap();
@@ -358,7 +382,7 @@ describe('RegionSyncProcessor', () => {
       expect(regionService.syncAll).not.toHaveBeenCalled();
     });
 
-    it('maps boundary counts into the succeeded result (upserted→created, missingKey→skipped)', async () => {
+    it('maps boundary counts into the result (upserted→created, missingKey→skipped)', async () => {
       boundaryLoader.loadAll.mockResolvedValue({
         ok: false,
         counts: { existing: 6200, upserted: 5, failed: 2, missingKey: 1 },
@@ -367,7 +391,10 @@ describe('RegionSyncProcessor', () => {
       await processor.onApplicationBootstrap();
       await getHandler()(boundaryJob());
 
-      const [, results] = pipelineJobService.markSucceeded.mock.calls.at(-1)!;
+      // Two rows failed to upsert, so the run is recorded failed with its
+      // counts kept (B7), not succeeded.
+      const [, results] =
+        pipelineJobService.markFinishedWithErrors.mock.calls.at(-1)!;
       expect(results).toHaveLength(1);
       expect(results[0]).toEqual(
         expect.objectContaining({

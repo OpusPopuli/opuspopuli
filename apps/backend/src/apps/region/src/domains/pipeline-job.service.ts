@@ -197,6 +197,28 @@ export class PipelineJobService {
     });
   }
 
+  /**
+   * A job that ran to the end but whose results carry errors: a data type
+   * threw, or a phase aborted (B7, bills-phase-b.md). Recorded `failed`, with
+   * its results kept, so a dashboard reading `status` does not see a green
+   * run. Not thrown, so BullMQ does not retry a whole sync over it.
+   */
+  async markFinishedWithErrors(
+    id: string,
+    results: SyncResultModel[],
+    errorMessage: string,
+  ): Promise<void> {
+    await this.prisma.pipelineJob.updateMany({
+      where: { id, status: { not: JOB_STATUS.CANCELLED } },
+      data: {
+        status: JOB_STATUS.FAILED,
+        finishedAt: new Date(),
+        result: results as object[],
+        errorMessage,
+      },
+    });
+  }
+
   async markFailed(id: string, errorMessage: string): Promise<void> {
     await this.prisma.pipelineJob.updateMany({
       where: { id, status: { not: JOB_STATUS.CANCELLED } },
