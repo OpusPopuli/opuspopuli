@@ -413,6 +413,112 @@ The import wrote nothing: 959,853 rows unchanged, 0 derived. It took 22 s
 after a 1-minute download. All 10 summaries succeeded, including one of 55 k
 tokens. The job was recorded `succeeded`.
 
+## Review of the final diff (`main...4506d47e`, 2026-11-07)
+
+`/op-review` ran as four independent lenses: pipeline correctness, backend
+correctness, security and regulated data, and performance, types, tests and
+consistency. The data scan passed with 0 findings. This is a self-review: Claude
+wrote the code and ran the review, so it needs a human countersign.
+
+**Blocker, fixed: a derive that died left its bills stale.** The ledger
+records an import complete when its stream ends, before the derive runs, and
+the bills to derive were held only in memory. After an error, a crash or an
+out-of-memory kill, the next sync skipped those unchanged lines, so the bills
+were never derived again. Migration `20261107120000_pubinfo_bills_derived_at`
+(approved by the owner) adds `pubinfo_bills.derived_at`. The derive now takes:
+- every bill never derived;
+- every bill with a mirror row written since it was last derived;
+- every bill when a legislator, location code or representative was added or
+  removed;
+- the bills whose votes use a changed motion (indexed), not all 5,065.
+
+Each bill, its co-authors, its votes and its `derived_at` are written in one
+transaction. A bill that fails is logged and the rest continue; the job is
+recorded failed and the bill is retried. `derived_at` is written by raw SQL,
+so Prisma's `@updatedAt` does not move past it. Four new integration tests,
+each mutation-checked.
+
+**Fixed (suggestions):**
+- **Votes were credited to the wrong member.** Linking by seat alone gave a
+  predecessor's votes to the seat's current member. In the export: AD63
+  (Essayli, who resigned, and Johnson), and AD03 and SD10, whose former
+  members now map to "Member Vacant" rows. A legislator now links only when
+  their last name, folded for case and accents, is in the seat holder's name
+  (AD15's two spellings of one member still link).
+- **The weekday file was resolved per source.** A sync that crossed 21:30
+  could read two days' files. The download scope now carries the sync's start
+  time.
+- **A week-old file could be imported.** A run after 21:30 on a late night
+  fetched last week's file and would roll statuses back. A rotating export
+  last modified over 48 h ago is refused.
+- **An empty `.lob` entry left its file name as the text.** It now reads as
+  empty. None is empty in the 2026-11-05 export.
+- **Lob resolution was outside the pin.** It moved into the pinned parser.
+- **The status map and lifecycle code were outside the pin.**
+  `billStatusLifecycle` is now part of the import key, and `bill-lifecycle.ts`
+  and the writer joined the backend pin. Bumped to bm3.
+- **Legacy rows never ended with their session.** The closed-session rule
+  reads no status, so it now applies to legacy rows as well as official ones.
+- **Bills with no text took a place in the cap every sync.** They wait a week
+  too.
+- **Outages made bills wait.** A bill waits only after a timeout or an
+  unusable answer, not when the model or prompt service is unreachable.
+- **Parse errors logged model output.** V8's message quotes it, so the log
+  now uses a fixed string.
+- **Batch size for text tables.** Sources with `.lob` text default to 500
+  rows per batch, not 10,000.
+- **Rotating file name host.** It must stay on the source's origin.
+- **Small fixes:** the leginfo link's id is URL-encoded. The zip is closed
+  when indexing fails, and the content stream when the lob reader fails.
+
+**Deferred, recorded here:**
+- **Summary regeneration.** Summaries are regenerated when they predate prompt
+  hashes (D5), but not yet when the prompt hash, the model digest or the bill's
+  version changes. That is K6, next.
+- **Removed export lines.** A line that drops out of the export (a corrected
+  vote, a removed author) stays in its mirror. Tracking which lines a full
+  import saw is a separate change. Low impact so far.
+- **A bad `.lob` entry fails the whole version table.** A missing or oversized
+  entry is a corrupt export, so the failure is loud on purpose.
+- **Per-bill writes.** The derive writes bill by bill: 9 min for 5,065 bills.
+  Batching is possible but not needed yet.
+
+## UAT runs 4 and 5 (jobs 202, 203): bm3, after the review fixes
+
+Before run 4 the Docker VM disk was at 14.7 GB free, under the 25 GB stop
+line. The database had grown only about 1.7 GB on this branch; the rest was
+image and build cache from the day's rebuilds. With the owner's approval,
+dangling images and build cache were pruned (no volumes), leaving 149.6 GB
+free.
+
+**Run 4 (bm3, same file):** every row rewritten, all 5,065 bills derived in
+about 1 minute after the mirror, and none left with a NULL `derived_at`.
+- Votes: 610,499, 0 bills differing from the raw table. Last action and
+  status: 0 mismatches.
+- 599,199 votes linked. The 11,296 unlinked are the members no longer in
+  their seats: Wahab 7,978, Gallagher 3,062 and Essayli 256, plus 4 Weber
+  votes that also failed to match before the change.
+- Lead authors linked fell from 4,777 to 4,670: the 107 bills those three
+  authored.
+
+**Run 5 (same file again):** 959,853 rows unchanged, 0 written, 0 derived.
+The derive query took about 40 s after the mirror pass.
+
+**Both runs' summary passes aborted after five failures in a row**, and both
+jobs are recorded `failed` (B7, working as intended). The ten failed bills are
+recorded and wait a week, so each run gets past them:
+- 5 timed out at 120 s on bills of 345 k to 5 M characters (AB 109, SB 121
+  and other budget bills).
+- 5 returned no usable JSON in 18 to 55 s on bills of 5 to 28 kB.
+- 9 of the 10 already had an older summary, so they are not bills the page
+  path had always failed on.
+
+This is how the summary prompt and model behave on these bills, and this
+change does not touch either. It is recorded for the owner. The question is
+whether to raise the timeout for long bills and find why the model returns no
+JSON for some short ones. That needs the eval harness, not production logs,
+which may not print model output.
+
 **Not new:** the 1.1 GB zip exceeds local Supabase storage's object limit,
 so the snapshot was not archived. The finance zip has never archived
 locally either. The import continues, and the snapshot row records no
