@@ -10,13 +10,14 @@ import { BillSummarySection } from "@/components/region/BillSummarySection";
 
 expect.extend(toHaveNoViolations);
 
+let mockStatus = "MISSING";
 jest.mock("@/lib/auth-context", () => ({
   useAuth: () => ({ isAuthenticated: false, isLoading: false }),
 }));
 jest.mock("@apollo/client/react", () => ({
-  useMutation: () => [jest.fn(), { loading: false }],
   useApolloClient: () => ({ query: jest.fn() }),
-  useQuery: () => ({ data: undefined }),
+  useMutation: () => [jest.fn(), { loading: false }],
+  useQuery: () => ({ data: { billSummaryStatus: mockStatus } }),
 }));
 
 describe("BillSummarySection — WCAG 2.2 AA", () => {
@@ -29,8 +30,9 @@ describe("BillSummarySection — WCAG 2.2 AA", () => {
   ] as const)(
     "%s has no axe violations",
     async (_label, status, hasSummary) => {
+      mockStatus = status;
       const { container } = render(
-        <BillSummarySection billId="b1" status={status} hasSummary={hasSummary}>
+        <BillSummarySection billId="b1" hasSummary={hasSummary}>
           {hasSummary && (
             <section aria-label="Plain-English summary">
               <p>A summary.</p>

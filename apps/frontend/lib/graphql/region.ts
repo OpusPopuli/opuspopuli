@@ -1809,8 +1809,6 @@ export interface BillsData {
 
 export interface BillData {
   bill: Bill | null;
-  /** Where the bill's summary stands (D7); a root query, one bill at a time. */
-  billSummaryStatus?: BillSummaryStatus;
 }
 
 export interface BillsVars {
@@ -1943,14 +1941,14 @@ export const GET_BILL = gql`
         }
       }
     }
-    billSummaryStatus(billId: $id)
   }
 `;
 
 /**
- * A bill's summary and its status alone, polled while a requested summary is
- * written (D7). Normalized on `Bill:id`, so the page's `GET_BILL` picks the
- * summary up without refetching votes.
+ * A bill's summary status, and the summary, for the summary section alone
+ * (D7): its own query, so a failure here cannot break the page's `GET_BILL`.
+ * Polled while a requested summary is written; normalized on `Bill:id`, so
+ * `GET_BILL` picks the summary up without refetching votes.
  */
 export const GET_BILL_SUMMARY_STATUS = gql`
   query GetBillSummaryStatus($id: ID!) {

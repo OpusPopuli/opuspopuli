@@ -8,7 +8,8 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 
 const mockRequest = jest.fn();
-let mockPolled: { billSummaryStatus: string } | undefined;
+/** What the section's own status query returns; undefined = loading/failed. */
+let mockStatus: string | undefined;
 const mockUseQuery = jest.fn();
 const mockClientQuery = jest.fn().mockResolvedValue({});
 jest.mock("@apollo/client/react", () => ({
@@ -16,25 +17,31 @@ jest.mock("@apollo/client/react", () => ({
   useMutation: () => [mockRequest, { loading: false }],
   useQuery: (...args: unknown[]) => {
     mockUseQuery(...args);
-    return { data: mockPolled };
+    return {
+      data: mockStatus ? { billSummaryStatus: mockStatus } : undefined,
+    };
   },
 }));
 
 const answer = (status: string) =>
   mockRequest.mockResolvedValue({ data: { requestBillSummary: status } });
+const lastPoll = () =>
+  (mockUseQuery.mock.calls.at(-1)![1] as { pollInterval: number }).pollInterval;
+/** A fresh element each time: the same one lets React skip the render. */
+const section = (hasSummary = false) => (
+  <BillSummarySection billId="b1" hasSummary={hasSummary} />
+);
 
 describe("BillSummarySection (bills-phase-b.md D7)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuthenticated = false;
-    mockPolled = undefined;
+    mockStatus = "MISSING";
     answer("PENDING");
   });
 
   it("gives an anonymous reader a button, and asks only when pressed", async () => {
-    render(
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />,
-    );
+    render(section());
     expect(mockRequest).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -50,20 +57,14 @@ describe("BillSummarySection (bills-phase-b.md D7)", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("asks once for a signed-in reader, with no button", async () => {
+  it("asks once for a signed-in reader, even when the status moves", async () => {
     mockAuthenticated = true;
-    const { rerender } = render(
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />,
-    );
+    const { rerender } = render(section());
     await act(async () => {});
-    // The status moves under the page (a failed attempt reads MISSING again):
-    // the page must not ask a second time.
-    rerender(
-      <BillSummarySection billId="b1" status="PENDING" hasSummary={false} />,
-    );
-    rerender(
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />,
-    );
+    mockStatus = "PENDING";
+    rerender(section());
+    mockStatus = "MISSING";
+    rerender(section());
     await act(async () => {});
 
     expect(mockRequest).toHaveBeenCalledTimes(1);
@@ -71,8 +72,9 @@ describe("BillSummarySection (bills-phase-b.md D7)", () => {
   });
 
   it("keeps a stale summary on screen and offers an update", () => {
+    mockStatus = "STALE";
     render(
-      <BillSummarySection billId="b1" status="STALE" hasSummary>
+      <BillSummarySection billId="b1" hasSummary>
         <p>The old summary.</p>
       </BillSummarySection>,
     );
@@ -85,9 +87,7 @@ describe("BillSummarySection (bills-phase-b.md D7)", () => {
 
   it("says when a summary cannot be had, and offers nothing", async () => {
     answer("UNAVAILABLE");
-    render(
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />,
-    );
+    render(section());
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
@@ -95,50 +95,90 @@ describe("BillSummarySection (bills-phase-b.md D7)", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("stops polling once a requested summary lands", async () => {
-    // A fresh element each time: the same one lets React skip the render.
-    const view = () => (
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />
-    );
-    const { rerender } = render(view());
+  it("polls after a request, and stops once the summary lands", async () => {
+    const { rerender } = render(section());
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
-    const polling = mockUseQuery.mock.calls.at(-1)![1] as { skip: boolean };
-    expect(polling.skip).toBe(false);
+    expect(lastPoll()).toBe(15_000);
 
-    // The next poll finds it written.
-    mockPolled = { billSummaryStatus: "CURRENT" };
-    rerender(view());
+    mockStatus = "CURRENT";
+    rerender(section(true));
     await act(async () => {});
 
-    const after = mockUseQuery.mock.calls.at(-1)![1] as {
-      skip: boolean;
-      pollInterval: number;
-    };
-    expect(after.skip).toBe(true);
-    expect(after.pollInterval).toBe(0);
+    expect(lastPoll()).toBe(0);
   });
 
-  it("settles on the polled answer, so polling stops", async () => {
-    mockPolled = { billSummaryStatus: "CURRENT" };
-    render(<BillSummarySection billId="b1" status="PENDING" hasSummary />);
+  it("does not take the status from before the request for its outcome", async () => {
+    // Right after the request the query still holds MISSING; the wait must
+    // go on until a poll says how it ended.
+    const { rerender } = render(section());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    rerender(section());
     await act(async () => {});
 
-    const opts = mockUseQuery.mock.calls.at(-1)![1] as {
-      skip: boolean;
-      pollInterval: number;
-    };
-    expect(opts.skip).toBe(true);
-    expect(opts.pollInterval).toBe(0);
+    expect(lastPoll()).toBe(15_000);
+    expect(screen.getByRole("status")).toHaveTextContent(/preparing/i);
+  });
+
+  it("polls when the page opens on a summary already being written", async () => {
+    mockStatus = "PENDING";
+    const { rerender } = render(section());
+    await act(async () => {});
+    rerender(section());
+    expect(lastPoll()).toBe(15_000);
+
+    mockStatus = "CURRENT";
+    rerender(section(true));
+    await act(async () => {});
+    expect(lastPoll()).toBe(0);
+  });
+
+  it("does not poll when nothing is pending", async () => {
+    mockStatus = "CURRENT";
+    render(section(true));
+    await act(async () => {});
+    expect(lastPoll()).toBe(0);
+  });
+
+  it("stops promising a summary after the bounded wait", async () => {
+    jest.useFakeTimers();
+    try {
+      mockStatus = "PENDING";
+      render(section());
+      await act(async () => {});
+      act(() => {
+        jest.advanceTimersByTime(15_000 * 8);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /longer than usual/i,
+      );
+      expect(lastPoll()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("says when a bill has no summary to give", () => {
+    mockStatus = "CURRENT";
+    render(section());
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /no plain-language summary is available/i,
+    );
+  });
+
+  it("stays quiet, with no button, when its status query fails", () => {
+    mockStatus = undefined;
+    render(section());
     expect(screen.getByRole("status")).toHaveTextContent("");
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("fetches a summary the batch wrote after the page loaded", async () => {
     answer("CURRENT");
-    render(
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />,
-    );
+    render(section());
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
@@ -151,51 +191,10 @@ describe("BillSummarySection (bills-phase-b.md D7)", () => {
   });
 
   it("moves focus to the status once the button is gone", async () => {
-    render(
-      <BillSummarySection billId="b1" status="MISSING" hasSummary={false} />,
-    );
+    render(section());
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
     expect(screen.getByRole("status")).toHaveFocus();
-  });
-
-  it("does not poll when nothing is pending", () => {
-    render(<BillSummarySection billId="b1" status="CURRENT" hasSummary />);
-    const opts = mockUseQuery.mock.calls.at(-1)![1] as {
-      skip: boolean;
-      pollInterval: number;
-    };
-    expect(opts.skip).toBe(true);
-  });
-
-  it("stops promising a summary after the bounded wait", () => {
-    jest.useFakeTimers();
-    try {
-      render(
-        <BillSummarySection billId="b1" status="PENDING" hasSummary={false} />,
-      );
-      act(() => {
-        jest.advanceTimersByTime(15_000 * 8);
-      });
-      expect(screen.getByRole("status")).toHaveTextContent(
-        /longer than usual/i,
-      );
-      const opts = mockUseQuery.mock.calls.at(-1)![1] as {
-        pollInterval: number;
-      };
-      expect(opts.pollInterval).toBe(0);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it("says when a bill has no summary to give", () => {
-    render(
-      <BillSummarySection billId="b1" status="CURRENT" hasSummary={false} />,
-    );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      /no plain-language summary is available/i,
-    );
   });
 });

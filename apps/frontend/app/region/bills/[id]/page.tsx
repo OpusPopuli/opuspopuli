@@ -231,23 +231,17 @@ function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
 
 function Snapshot({
   bill,
-  summaryStatus,
   lifecycleStages,
   onNext,
 }: {
   readonly bill: NonNullable<BillData["bill"]>;
-  readonly summaryStatus?: BillData["billSummaryStatus"];
   readonly lifecycleStages: CivicsLifecycleStage[];
   readonly onNext: () => void;
 }) {
   return (
     <div className="animate-layer-enter">
       {/* Plain-English AI summary, and getting one when missing or stale (D7) */}
-      <BillSummarySection
-        billId={bill.id}
-        status={summaryStatus}
-        hasSummary={Boolean(bill.aiSummary)}
-      >
+      <BillSummarySection billId={bill.id} hasSummary={Boolean(bill.aiSummary)}>
         {bill.aiSummary && <AiSummaryBlock summary={bill.aiSummary} />}
       </BillSummarySection>
 
@@ -649,7 +643,6 @@ export default function BillDetailPage() {
         {layer === 1 && (
           <Snapshot
             bill={bill}
-            summaryStatus={data?.billSummaryStatus}
             lifecycleStages={lifecycleStages}
             onNext={() => setLayer(2)}
           />

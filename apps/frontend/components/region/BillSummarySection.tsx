@@ -30,8 +30,6 @@ const POLL_LIMIT = 8;
 
 interface BillSummarySectionProps {
   readonly billId: string;
-  /** The status `GET_BILL` returned; absent on an older server. */
-  readonly status?: BillSummaryStatus;
   readonly hasSummary: boolean;
   /** The summary itself, when there is one to show. */
   readonly children?: ReactNode;
@@ -40,18 +38,25 @@ interface BillSummarySectionProps {
 const canRequest = (status?: BillSummaryStatus) =>
   status === "MISSING" || status === "STALE";
 
+/** What a request ends in: anything else may be the status from before it. */
+const OUTCOMES: ReadonlySet<BillSummaryStatus> = new Set<BillSummaryStatus>([
+  "CURRENT",
+  "UNAVAILABLE",
+]);
+
 /**
  * A bill's plain-English summary, and getting one when it is missing or out
  * of date (`bills-phase-b.md` D7, `ingestion-resource-lanes.md` §5.2).
  *
- * A signed-in reader's page asks for it automatically; an anonymous reader
- * gets a button, so a person — not a page load or a crawler — starts
- * generation. The source facts below never wait on it. Every state is
+ * The status is this section's own query, not part of the page's: if it
+ * fails (an older server, a Redis blip) only this section goes quiet, and
+ * the bill page renders as before. A signed-in reader's page asks for a
+ * summary automatically; an anonymous reader gets a button, so a person —
+ * not a page load or a crawler — starts generation. Every state is
  * announced from one persistent `aria-live` region.
  */
 export function BillSummarySection({
   billId,
-  status,
   hasSummary,
   children,
 }: BillSummarySectionProps) {
@@ -60,6 +65,34 @@ export function BillSummarySection({
   const client = useApolloClient();
   const statusRef = useRef<HTMLDivElement>(null);
   const [requested, setRequested] = useState<BillSummaryStatus | undefined>();
+  const [lastFetched, setLastFetched] = useState<
+    BillSummaryStatus | undefined
+  >();
+  const [stoppedPolling, setStoppedPolling] = useState(false);
+
+  const waiting = (requested ?? lastFetched) === "PENDING";
+  const { data } = useQuery<BillSummaryStatusData, BillIdVars>(
+    GET_BILL_SUMMARY_STATUS,
+    {
+      variables: { id: billId },
+      fetchPolicy: "network-only",
+      errorPolicy: "ignore",
+      pollInterval: waiting && !stoppedPolling ? POLL_MS : 0,
+    },
+  );
+  const fetched = data?.billSummaryStatus;
+
+  /* eslint-disable react-hooks/set-state-in-effect -- polling is decided
+     before the query runs, so it reads the last answer from state; and a
+     request's wait ends on an outcome, not on the status from before it. */
+  useEffect(() => {
+    setLastFetched(fetched);
+    if (requested === "PENDING" && fetched && OUTCOMES.has(fetched)) {
+      setRequested(fetched);
+    }
+  }, [fetched, requested]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const [request, { loading: requesting }] = useMutation<
     RequestBillSummaryData,
     RequestBillSummaryVars
@@ -68,8 +101,8 @@ export function BillSummarySection({
   const ask = useCallback(async () => {
     let answer: BillSummaryStatus;
     try {
-      const { data } = await request({ variables: { billId } });
-      answer = data?.requestBillSummary ?? "UNAVAILABLE";
+      const { data: reply } = await request({ variables: { billId } });
+      answer = reply?.requestBillSummary ?? "UNAVAILABLE";
     } catch {
       answer = "UNAVAILABLE";
     }
@@ -100,39 +133,14 @@ export function BillSummarySection({
      status. A ref keeps it to one request per page. */
   useEffect(() => {
     if (authLoading || !isAuthenticated || asked.current) return;
-    if (!canRequest(status)) return;
+    if (!canRequest(fetched)) return;
     asked.current = true;
     void ask();
-  }, [authLoading, isAuthenticated, status, ask]);
+  }, [authLoading, isAuthenticated, fetched, ask]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const waiting = (requested ?? status) === "PENDING";
-  const [stoppedPolling, setStoppedPolling] = useState(false);
-  const { data: polled } = useQuery<BillSummaryStatusData, BillIdVars>(
-    GET_BILL_SUMMARY_STATUS,
-    {
-      variables: { id: billId },
-      skip: !waiting,
-      fetchPolicy: "network-only",
-      pollInterval: waiting && !stoppedPolling ? POLL_MS : 0,
-    },
-  );
-  const polledStatus = polled?.billSummaryStatus;
-  const effective: BillSummaryStatus | undefined =
-    waiting && polledStatus ? polledStatus : (requested ?? status);
+  const effective = requested ?? fetched;
   const pending = effective === "PENDING";
-
-  // Settle on what the poll found, so the poll stops once it lands.
-  /* eslint-disable react-hooks/set-state-in-effect -- the poll's answer ends
-     the wait; held only in query data, `waiting` would stay true (and the
-     page keep polling) for as long as the tab is open. */
-  useEffect(() => {
-    // Only a poll that ran counts: a skipped query can still hold old data.
-    if (waiting && polledStatus && polledStatus !== "PENDING") {
-      setRequested(polledStatus);
-    }
-  }, [waiting, polledStatus]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // A ceiling, so a summary that never lands does not poll for as long as
   // the tab is open.
@@ -211,6 +219,7 @@ function statusMessage(
     case "CURRENT":
       return ctx.hasSummary ? undefined : "bill.summary.none";
     default:
-      return ctx.hasSummary ? undefined : "bill.summary.missing";
+      // Still loading, or the status query failed: say nothing.
+      return undefined;
   }
 }
