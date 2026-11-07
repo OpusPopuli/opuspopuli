@@ -1122,3 +1122,34 @@ and consistency.
 - Per-IP and per-reader keys were present and HMAC'd.
 - The gateway must restart to recompose after a region schema change. The
   snapshot was refreshed after that restart.
+
+### D7 pre-push gate (first push, blocked)
+
+The AI code gate blocked the first push with one high finding, which was
+right.
+
+**High, fixed:** a Redis or database failure would have broken every bill
+page. `status()` did not catch errors from its queue and DB lookups, and
+`billSummaryStatus` was a non-null root field inside `GET_BILL`. One failed
+lookup would have nulled the page's whole response. Now:
+- `status()` never throws: a failed lookup reads as UNAVAILABLE.
+- The status is no longer in `GET_BILL` at all. `BillSummarySection` runs
+  its own `GET_BILL_SUMMARY_STATUS` query (`errorPolicy: "ignore"`). If it
+  fails, only the section goes quiet and the page renders as before.
+- That also settles the gate's medium finding: an older gateway without the
+  field would have failed `GET_BILL` validation. So the frontend can deploy
+  before or after the backend.
+
+The section then settles a request on an outcome only, CURRENT or
+UNAVAILABLE. Right after a request the query still holds the earlier MISSING
+or STALE, and settling on that would end the wait at once. It polls a
+summary that was already being written when the page opened.
+
+**Lows, fixed:**
+- **Global count leak:** a reader or IP `INCR` that throws after the global
+  one now gives the global count back.
+- **Missing secret:** with `GATEWAY_HMAC_SECRET` unset, reader keys would
+  have been an unkeyed hash. The request is now refused (fail closed).
+
+Tests were added for each fix, each mutation-checked. UAT after a rebuild
+and gateway restart: snapshot current; MISSING, then PENDING, then CURRENT.
