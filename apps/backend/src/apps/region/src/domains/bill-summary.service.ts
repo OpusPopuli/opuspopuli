@@ -111,12 +111,21 @@ export class BillSummaryService {
     this.keyPrefix = `${resolveQueuePrefix(process.env.BULLMQ_PREFIX)}:lazy:bill-summary`;
   }
 
-  /** The status a reader's page shows for one bill. */
+  /**
+   * The status a reader's page shows for one bill. Never throws: a Redis or
+   * database failure reads as UNAVAILABLE, so the page around it still
+   * renders.
+   */
   async status(billId: string): Promise<BillSummaryStatus> {
-    const served = await this.servedTemplate();
-    if (!served) return BillSummaryStatus.UNAVAILABLE;
-    if (await this.inFlight(billId)) return BillSummaryStatus.PENDING;
-    return this.judge(billId, served);
+    try {
+      const served = await this.servedTemplate();
+      if (!served) return BillSummaryStatus.UNAVAILABLE;
+      if (await this.inFlight(billId)) return BillSummaryStatus.PENDING;
+      return await this.judge(billId, served);
+    } catch (e) {
+      this.logger.warn(`Bill summary status unavailable: ${shortError(e)}`);
+      return BillSummaryStatus.UNAVAILABLE;
+    }
   }
 
   /**
@@ -287,15 +296,16 @@ export class BillSummaryService {
    * holding Redis and the user table. Undefined without a reader identity.
    */
   private capKeys(reader: SummaryReader): CapKeys | undefined {
+    // Without the secret the HMAC would be a plain hash, linkable again.
+    const secret = process.env.GATEWAY_HMAC_SECRET;
+    if (!secret) return undefined;
     let id: string | undefined;
     if (reader.userId) id = `user:${reader.userId}`;
     else if (reader.session) id = `session:${reader.session}`;
     if (!id) return undefined;
     const day = new Date().toISOString().slice(0, 10);
     const keyed = (value: string) =>
-      createHmac('sha256', process.env.GATEWAY_HMAC_SECRET ?? '')
-        .update(value)
-        .digest('hex');
+      createHmac('sha256', secret).update(value).digest('hex');
     const ipKey = reader.ip ? keyed('ip:' + reader.ip) : undefined;
     return {
       global: `${this.keyPrefix}:global:${day}`,
@@ -317,8 +327,16 @@ export class BillSummaryService {
         await this.redis.decr(keys.global);
         return false;
       }
-      const mine = await this.bump(keys.reader);
-      const fromIp = keys.ip ? await this.bump(keys.ip) : 0;
+      let mine: number;
+      let fromIp: number;
+      try {
+        mine = await this.bump(keys.reader);
+        fromIp = keys.ip ? await this.bump(keys.ip) : 0;
+      } catch (e) {
+        // The global count was taken; do not leak it.
+        await this.giveBack(keys);
+        throw e;
+      }
       if (mine <= this.caps.perReader && fromIp <= this.caps.perIp) {
         return true;
       }

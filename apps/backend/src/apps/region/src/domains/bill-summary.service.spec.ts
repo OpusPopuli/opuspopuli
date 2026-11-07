@@ -75,6 +75,10 @@ describe('BillSummaryService (bills-phase-b.md D7)', () => {
     );
   const reader = { session: 'a'.repeat(64) };
 
+  beforeAll(() => {
+    process.env.GATEWAY_HMAC_SECRET ??= 'test-secret';
+  });
+
   beforeEach(() => {
     db = createMockDbService();
     db.bill.findUnique.mockResolvedValue({ ...PROVENANCE } as never);
@@ -210,6 +214,31 @@ describe('BillSummaryService (bills-phase-b.md D7)', () => {
       build(fakeRedis(true).redis).request('b1', reader),
     ).resolves.toBe(BillSummaryStatus.UNAVAILABLE);
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('reads a failed lookup as unavailable, never an error', async () => {
+    queue.getJobInfo.mockRejectedValue(new Error('redis down'));
+    await expect(build().status('b1')).resolves.toBe(
+      BillSummaryStatus.UNAVAILABLE,
+    );
+    db.bill.findUnique.mockRejectedValue(new Error('db down'));
+    queue.getJobInfo.mockResolvedValue(null);
+    await expect(build().status('b1')).resolves.toBe(
+      BillSummaryStatus.UNAVAILABLE,
+    );
+  });
+
+  it('refuses rather than key readers without the HMAC secret', async () => {
+    const secret = process.env.GATEWAY_HMAC_SECRET;
+    delete process.env.GATEWAY_HMAC_SECRET;
+    try {
+      await expect(build().request('b1', reader)).resolves.toBe(
+        BillSummaryStatus.UNAVAILABLE,
+      );
+      expect(queue.enqueue).not.toHaveBeenCalled();
+    } finally {
+      process.env.GATEWAY_HMAC_SECRET = secret;
+    }
   });
 
   it('does not enqueue a current summary', async () => {
