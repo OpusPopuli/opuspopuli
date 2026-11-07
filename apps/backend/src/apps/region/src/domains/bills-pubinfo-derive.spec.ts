@@ -2,6 +2,7 @@ import {
   authorHouse,
   billNumber,
   camlTitle,
+  clip,
   foldName,
   isSeatHolder,
   lastAction,
@@ -66,6 +67,28 @@ describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
       },
     ]);
     expect(last?.action).toBe('late');
+  });
+
+  it('clips a subject to the column, marking the cut', () => {
+    expect(clip('short', 500)).toBe('short');
+    expect(clip(null, 500)).toBeNull();
+    const cut = clip('x'.repeat(600), 500)!;
+    expect(cut).toHaveLength(500);
+    expect(cut.endsWith('…')).toBe(true);
+  });
+
+  it('orders history ids numerically, and does not throw on one that is not', () => {
+    const d = new Date('2026-08-31T00:00:00Z');
+    const at = (externalId: string, action: string) => ({
+      externalId,
+      actionDate: d,
+      action,
+      actionSequence: 1,
+    });
+    expect(lastAction([at('99', 'earlier'), at('100', 'later')])?.action).toBe(
+      'later',
+    );
+    expect(() => lastAction([at('x1', 'a'), at('100', 'b')])).not.toThrow();
   });
 
   it('breaks a tied sequence by history id, whatever the load order', () => {

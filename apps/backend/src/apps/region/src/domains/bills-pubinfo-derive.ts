@@ -60,7 +60,28 @@ function isAfter(a: HistoryAction, b: HistoryAction): boolean {
   if (byDate !== 0) return byDate > 0;
   const bySequence = (a.actionSequence ?? 0) - (b.actionSequence ?? 0);
   if (bySequence !== 0) return bySequence > 0;
-  return BigInt(a.externalId) > BigInt(b.externalId);
+  return compareIds(a.externalId, b.externalId) > 0;
+}
+
+/**
+ * Compare two history ids. They are digits, so numerically; a non-numeric id
+ * (none on 2026-11-05) falls back to text order rather than throwing out of
+ * the derive.
+ */
+function compareIds(a: string, b: string): number {
+  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+    return a.length - b.length || a.localeCompare(b);
+  }
+  return a.localeCompare(b);
+}
+
+/**
+ * At most `max` characters, ending in an ellipsis when cut: `bills.subject`
+ * holds 500, the mirror 1,000, and a longer subject must not fail its bill.
+ */
+export function clip(text: string | null, max: number): string | null {
+  if (text === null || text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
 }
 
 /**

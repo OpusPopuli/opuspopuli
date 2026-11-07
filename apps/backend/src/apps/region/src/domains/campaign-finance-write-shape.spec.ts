@@ -79,9 +79,9 @@ const PINS: { version: string; files: Record<string, string> }[] = [
       billsWriteShape:
         '033cc3971012617482c15c4c2cc1c5ba7c25dabe5241d856b5804a15f6cedbf3',
       billsDerive:
-        'eb79274aa8e3507c304f8cbb07ce45fc43445d00fba91d653102b4af2bb0b544',
+        '05d699c576c083b76b4f67596268853d7586e70188020c2a3e3a2ed39beff9ad',
       billsSync:
-        'e4a39bd1580d03ec39c33095d4266457f6429fa62bd28f56b941809eb89dd079',
+        '74db5b7d504d6034a5645015abee32aefb5313c426d743a7454855fff8d4726c',
       billLifecycle:
         '088a2d4f6c9cf157a47a453453e21dc3b2d6553a59d5e2d5393d451915787621',
       billLifecycleWriter:

@@ -605,6 +605,18 @@ A single-agent review across all lenses found no blocker. Its checks:
 **UAT run 8 (job 206), same file, final code:** 0 written, 0 derived; the
 links hash is unchanged across all bills; 599,199 votes linked.
 
+**Pre-push AI gate (code and security):** passed, with no critical or high
+findings. Its four notes:
+- **Fixed:** a subject over `bills.subject`'s 500 characters would fail its
+  bill's derive every night (the mirror allows 1,000; none is over 500
+  today). It is now clipped, with an ellipsis.
+- **Fixed:** a non-numeric history id would throw in the tie-break (none
+  today). It now falls back to text order.
+- **Intended:** B7 records every data type `failed` when its results carry
+  errors, boundary refreshes included.
+- **Not a defect:** `getModelDigest()` cannot reject. The provider catches
+  internally and returns undefined.
+
 **Recorded, not changed:** bills that never change keep their first
 `derived_at`, so `min(derived_at)` stays put and the prefilter reads more
 rows over time. That costs speed only. If it shows in timings, compare per

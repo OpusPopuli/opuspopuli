@@ -13,6 +13,7 @@ import {
   authorHouse,
   billNumber,
   camlTitle,
+  clip,
   isSeatHolder,
   lastAction,
   latestVersion,
@@ -59,6 +60,9 @@ interface MirrorDelegate {
 
 /** Bills derived per round trip: one read of each mirror per chunk. */
 const DERIVE_CHUNK = 100;
+
+/** `bills.subject` is VARCHAR(500); the mirror's is 1,000. */
+const BILL_SUBJECT_MAX = 500;
 
 /** Long enough for a bill with a thousand votes; Prisma's default is 5 s. */
 const DERIVE_TX_TIMEOUT_MS = 30_000;
@@ -378,7 +382,7 @@ export class BillsPubinfoSyncService {
           camlTitle(latest ? data.xmlByVersion.get(latest.externalId) : null) ??
           latest?.subject ??
           number,
-        subject: latest?.subject ?? null,
+        subject: clip(latest?.subject ?? null, BILL_SUBJECT_MAX),
         status: pb.currentStatus,
         lastAction: action?.action ?? null,
         lastActionDate: action?.actionDate ?? null,
