@@ -490,39 +490,82 @@ function summaryRetryDue(today: Date): Prisma.BillWhereInput {
   };
 }
 
+/** The summary template; its live hash is what a stored summary must match. */
+const BILL_SUMMARY_TEMPLATE = 'bill-status-summary';
+
 /**
- * Hot bills needing a summary (K6, D5): no summary yet, or one with no prompt
- * hash, which predates attribution and cannot say what produced it. Never
- * the `{skip: true}` sentinel, which would loop. Hot means active, or not
- * dead with a last action inside `coldAfterDays` (`bills-phase-b.md`, D1/D2).
+ * What a current summary must have been written under (K6): the live
+ * template hash, the live model build when known, and the bills whose
+ * summary describes an older version of their text.
+ */
+interface LiveSummaryInputs {
+  promptHash: string;
+  modelDigest?: string;
+  staleVersionIds: string[];
+  /**
+   * False while the template came from the local fallback: bills with no
+   * summary are still written, but none is refreshed against a copy that
+   * may have drifted.
+   */
+  refresh: boolean;
+  /** Hot cut-off and clock, the same for the query and the candidates. */
+  coldBefore: Date;
+  today: Date;
+}
+
+/** Last action on or after this, an inactive bill that is not dead is hot. */
+function coldCutoff(today: Date, coldAfterDays: number): Date {
+  return new Date(today.getTime() - coldAfterDays * 86_400_000);
+}
+
+/**
+ * Hot bills needing a summary (K6, D5): none yet, or one written under
+ * another prompt template, another model build, or an older version of the
+ * bill's text. A summary with no prompt hash predates attribution and counts
+ * as another template. The `{skip: true}` sentinel is regenerated only for a
+ * new version: under the same text it would only skip again. Hot means
+ * active, or not dead with a last action inside `coldAfterDays`
+ * (`bills-phase-b.md`, D1/D2).
  */
 function hotSummaryCandidates(
   regionId: string,
-  coldAfterDays: number,
-  today: Date,
+  live: LiveSummaryInputs,
 ): Prisma.BillWhereInput {
-  const coldBefore = new Date(today.getTime() - coldAfterDays * 86_400_000);
+  const stale: Prisma.BillWhereInput[] = [
+    { aiSummary: { equals: Prisma.DbNull } },
+  ];
+  if (live.refresh) stale.push(...staleSummaries(live));
   return {
     regionId,
     OR: [
       { isActive: true },
-      { isDead: false, lastActionDate: { gte: coldBefore } },
+      { isDead: false, lastActionDate: { gte: live.coldBefore } },
     ],
-    AND: [
-      summaryRetryDue(today),
-      {
-        OR: [
-          { aiSummary: { equals: Prisma.DbNull } },
-          {
-            aiSummaryPromptHash: null,
-            // The whole value, not a `skip` path: a path filter is NULL on a
-            // summary without the key, and NOT NULL excludes every summary.
-            NOT: { aiSummary: { equals: { skip: true } } },
-          },
-        ],
-      },
-    ],
+    AND: [summaryRetryDue(live.today), { OR: stale }],
   };
+}
+
+/** Summaries written under another template, model build or version. */
+function staleSummaries(live: LiveSummaryInputs): Prisma.BillWhereInput[] {
+  const writtenUnder: Prisma.BillWhereInput[] = [
+    { aiSummaryPromptHash: null },
+    { aiSummaryPromptHash: { not: live.promptHash } },
+  ];
+  if (live.modelDigest) {
+    writtenUnder.push(
+      { aiSummaryLlmDigest: null },
+      { aiSummaryLlmDigest: { not: live.modelDigest } },
+    );
+  }
+  return [
+    { id: { in: live.staleVersionIds } },
+    {
+      // The whole value, not a `skip` path: a path filter is NULL on a
+      // summary without the key, and NOT NULL excludes every summary.
+      NOT: { aiSummary: { equals: { skip: true } } },
+      OR: writtenUnder,
+    },
+  ];
 }
 
 type BillEnrichmentCandidate = Prisma.BillGetPayload<{
@@ -2131,6 +2174,70 @@ export class RegionSyncService implements OnModuleDestroy {
   }
 
   /**
+   * What a current summary must have been written under (K6): the hash of
+   * the template a compose is served now, the model build, and the hot export
+   * bills whose summary describes another version than their current one.
+   * Undefined when the template cannot be read at all. From the local copy
+   * while a prompt service is configured, `refresh` is false: bills with no
+   * summary are still written, but none is refreshed against a copy that may
+   * have drifted. (A circuit that opens mid-pass stamps the rest with the
+   * local hash; they are refreshed once on the next sync, not in a loop.)
+   */
+  private async liveSummaryInputs(
+    regionId: string,
+    coldAfterDays: number,
+    today: Date,
+  ): Promise<LiveSummaryInputs | undefined> {
+    let served: { promptHash: string; fallback: boolean };
+    try {
+      served = await this.promptClient!.getServedPromptHash(
+        BILL_SUMMARY_TEMPLATE,
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Bill enrichment: live prompt hash unavailable: ${shortError(e)}`,
+      );
+      return undefined;
+    }
+    const coldBefore = coldCutoff(today, coldAfterDays);
+    if (served.fallback) {
+      return {
+        promptHash: served.promptHash,
+        staleVersionIds: [],
+        refresh: false,
+        coldBefore,
+        today,
+      };
+    }
+    const modelDigest = (await this.llm?.getModelDigest()) ?? undefined;
+    // The current version is the lowest version_num (D17), as billTextFor
+    // reads it. Hot bills only, as the candidates are, and only versions
+    // with text: a bill with none would fail and wait, every week, forever.
+    const stale = await this.db.$queryRaw<{ id: string }[]>`
+      SELECT b.id FROM bills b
+      JOIN LATERAL (
+        SELECT v.external_id, v.bill_xml IS NOT NULL AS has_text
+        FROM pubinfo_bill_versions v
+        WHERE v.bill_id = b.external_id
+        ORDER BY v.version_num ASC, v.external_id ASC LIMIT 1
+      ) cur ON true
+      WHERE b.region_id = ${regionId}
+        AND b.status_source = 'official'
+        AND jsonb_typeof(b.ai_summary) = 'object'
+        AND (b.is_active OR (NOT b.is_dead AND b.last_action_date >= ${coldBefore}))
+        AND cur.has_text
+        AND b.ai_summary_source_version IS DISTINCT FROM cur.external_id`;
+    return {
+      promptHash: served.promptHash,
+      modelDigest,
+      staleVersionIds: stale.map((r) => r.id),
+      refresh: true,
+      coldBefore,
+      today,
+    };
+  }
+
+  /**
    * Enrich un-summarized bills with structured AI summaries from the
    * merged bill-status-summary prompt-service endpoint (#823). Runs as a
    * second pass after `syncBills` so extraction stays decoupled from
@@ -2142,11 +2249,11 @@ export class RegionSyncService implements OnModuleDestroy {
    * Stage coverage rises from 8% (pattern-match only) → ~95%+ (LLM with
    * the region taxonomy in context).
    *
-   * Idempotency: queries only bills where `ai_summary IS NULL`. Bills the
-   * LLM marks `{ skip: true }` get that value stored (so they don't churn
-   * on every sync); bills that fail with an LLM error stay NULL and are
-   * retried on the next sync. To force re-enrichment for all bills (e.g.
-   * after a prompt-template version bump), the operator nulls the column.
+   * Which bills: with `hot`, those whose summary is missing or was written
+   * under another prompt template, model build or bill version (K6, see
+   * `hotSummaryCandidates`); without it, those with no summary. Bills the
+   * LLM marks `{ skip: true }` keep that value, so they do not churn. A
+   * failed attempt keeps the old summary and waits SUMMARY_RETRY_AFTER_DAYS.
    *
    * Cost telemetry: per-bill debug log + per-job summary log. LLM is local
    * Ollama (`qwen3.5:9b` by default), so cost is compute time, not $$ —
@@ -2173,18 +2280,31 @@ export class RegionSyncService implements OnModuleDestroy {
       return { enriched: 0, skipped: 0, failed: 0 };
     }
 
+    const live = hot
+      ? await this.liveSummaryInputs(regionId, hot.coldAfterDays, hot.today)
+      : undefined;
+    if (hot && !live) {
+      // No template at all: nothing could be composed.
+      this.logger.warn(
+        `Bill enrichment ${regionId}: skipping summarize phase — the ${BILL_SUMMARY_TEMPLATE} template could not be read`,
+      );
+      return { enriched: 0, skipped: 0, failed: 0 };
+    }
+
     const candidates = await this.db.bill.findMany({
-      where: hot
-        ? hotSummaryCandidates(regionId, hot.coldAfterDays, hot.today)
+      where: live
+        ? hotSummaryCandidates(regionId, live)
         : {
             regionId,
             aiSummary: { equals: Prisma.DbNull },
             AND: [summaryRetryDue(new Date())],
           },
-      // Bills never failed first, so a retry cannot crowd them out; then by
-      // id, so each sync takes the same bills in the same order.
+      // Bills never failed first, so a retry cannot crowd them out; then
+      // bills with no summary, then the oldest; then by id, so each sync
+      // takes the same bills in the same order.
       orderBy: [
         { aiSummaryFailedAt: { sort: 'asc', nulls: 'first' } },
+        { aiSummaryGeneratedAt: { sort: 'asc', nulls: 'first' } },
         { id: 'asc' },
       ],
       select: {
@@ -2442,7 +2562,7 @@ export class RegionSyncService implements OnModuleDestroy {
         );
         return { outcome: 'skipped', tokensUsed: 0 };
       }
-      const html = this.htmlToReadableText(source);
+      const html = this.htmlToReadableText(source.text);
 
       const { promptText, promptVersion, promptHash } =
         await this.promptClient!.getBillStatusSummaryPrompt({
@@ -2478,7 +2598,7 @@ export class RegionSyncService implements OnModuleDestroy {
       await this.writeStatusSummary(
         bill,
         parsed,
-        { promptVersion, promptHash },
+        { promptVersion, promptHash, sourceVersion: source.versionId },
         stagePatterns,
         stageIdSet,
       );
@@ -2506,23 +2626,28 @@ export class RegionSyncService implements OnModuleDestroy {
   }
 
   /**
-   * The text a bill's summary is written from. An official bill's is its
-   * current version in the export mirror (`bills-phase-b.md`, D9), so no page
-   * is fetched; a page-scraped bill's is fetched from its full-text URL.
+   * The text a bill's summary is written from, and the export version it is
+   * (K6). An official bill's is its current version in the export mirror
+   * (`bills-phase-b.md`, D9), so no page is fetched; a page-scraped bill's is
+   * fetched from its full-text URL and has no version.
    */
   private async billTextFor(
     bill: BillEnrichmentCandidate,
-  ): Promise<string | undefined> {
+  ): Promise<{ text: string; versionId?: string } | undefined> {
     if (bill.statusSource === 'official') {
       const current = await this.db.pubinfoBillVersion.findFirst({
         where: { billId: bill.externalId },
-        orderBy: { versionNum: 'asc' },
-        select: { billXml: true },
+        // Ties broken as liveSummaryInputs breaks them, so both name the
+        // same version and a summary cannot look stale forever.
+        orderBy: [{ versionNum: 'asc' }, { externalId: 'asc' }],
+        select: { externalId: true, billXml: true },
       });
-      return current?.billXml ?? undefined;
+      return current?.billXml
+        ? { text: current.billXml, versionId: current.externalId }
+        : undefined;
     }
     return bill.fullTextUrl
-      ? await this.fetchUrlText(bill.fullTextUrl)
+      ? { text: await this.fetchUrlText(bill.fullTextUrl) }
       : undefined;
   }
 
@@ -2587,7 +2712,11 @@ export class RegionSyncService implements OnModuleDestroy {
   private async writeStatusSummary(
     bill: BillEnrichmentCandidate,
     parsed: BillStatusSummaryShape,
-    prompt: { promptVersion: string; promptHash: string },
+    prompt: {
+      promptVersion: string;
+      promptHash: string;
+      sourceVersion?: string;
+    },
     stagePatterns: StagePattern[],
     stageIdSet: Set<string>,
   ): Promise<void> {
@@ -2606,6 +2735,8 @@ export class RegionSyncService implements OnModuleDestroy {
       aiSummaryLlmDigest: (await this.llm?.getModelDigest()) ?? null,
       aiSummaryGeneratedAt: new Date(),
       aiSummaryFailedAt: null,
+      // Which text the summary describes (K6).
+      aiSummarySourceVersion: prompt.sourceVersion ?? null,
     };
     if (parsed.skip === true) {
       await this.db.bill.update({

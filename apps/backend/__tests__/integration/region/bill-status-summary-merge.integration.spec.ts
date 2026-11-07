@@ -190,6 +190,10 @@ function buildPromptClientStub() {
         promptVersion: 'v1',
         promptHash: 'h',
       })),
+    // The served template's hash K6 compares a stored summary's hash with.
+    getServedPromptHash: jest
+      .fn()
+      .mockResolvedValue({ promptHash: 'h', fallback: false }),
   };
 }
 
@@ -832,5 +836,260 @@ describe('bill-status-summary merge — integration (#823)', () => {
 
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
     expect(row.aiSummaryFailedAt).toBeNull();
+  });
+
+  describe('K6: a summary is regenerated when what wrote it changed', () => {
+    /** An official bill with two versions; V98 is current (lowest number). */
+    const seedOfficial = async (id: string) => {
+      const externalId = `202520260AB${id}`;
+      await seedBill(db, {
+        id,
+        externalId,
+        statusSource: 'official',
+        status: 'In Committee Process',
+      });
+      await db.pubinfoBillVersion.createMany({
+        data: [
+          {
+            externalId: `${id}-V99`,
+            billId: externalId,
+            versionNum: 99,
+            billVersionActionDate: new Date('2025-02-01'),
+            billXml: '<caml:Bill>introduced</caml:Bill>',
+          },
+          {
+            externalId: `${id}-V98`,
+            billId: externalId,
+            versionNum: 98,
+            billVersionActionDate: new Date('2025-04-01'),
+            billXml: '<caml:Bill>amended</caml:Bill>',
+          },
+        ],
+      });
+      return { id, current: `${id}-V98`, previous: `${id}-V99` };
+    };
+
+    /** A summary as the live prompt, model and current version wrote it. */
+    const summarized = (
+      sourceVersion: string,
+      over: Partial<Prisma.BillUpdateInput> = {},
+    ): Prisma.BillUpdateInput => ({
+      aiSummary: { plainEnglishSummary: 'Old.' } as Prisma.InputJsonValue,
+      aiSummaryPromptHash: 'h',
+      aiSummaryLlmDigest: 'sha256:it-digest',
+      aiSummarySourceVersion: sourceVersion,
+      aiSummaryGeneratedAt: new Date('2026-11-01T00:00:00Z'),
+      ...over,
+    });
+
+    const summarize = async (bill: { id: string }, data: object) => {
+      await db.bill.update({ where: { id: bill.id }, data });
+      await seedCivicsTaxonomy(db);
+      mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+      await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+      return db.bill.findUniqueOrThrow({ where: { id: bill.id } });
+    };
+
+    it('leaves a summary written under the live prompt, model and version', async () => {
+      const bill = await seedOfficial('9101');
+
+      await summarize(bill, summarized(bill.current));
+
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+    });
+
+    it('regenerates one written under another prompt template', async () => {
+      const bill = await seedOfficial('9102');
+
+      const row = await summarize(
+        bill,
+        summarized(bill.current, { aiSummaryPromptHash: 'old-template' }),
+      );
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+      expect(row.aiSummaryPromptHash).toBe('h');
+    });
+
+    it('regenerates one written by another model build', async () => {
+      const bill = await seedOfficial('9103');
+
+      const row = await summarize(
+        bill,
+        summarized(bill.current, { aiSummaryLlmDigest: 'sha256:old-build' }),
+      );
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+      expect(row.aiSummaryLlmDigest).toBe('sha256:it-digest');
+    });
+
+    it('regenerates one of an older version, and records the version it read', async () => {
+      const bill = await seedOfficial('9104');
+
+      const row = await summarize(bill, summarized(bill.previous));
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+      expect(row.aiSummarySourceVersion).toBe(bill.current);
+    });
+
+    it('retries a skip sentinel only when the bill has a new version', async () => {
+      const same = await seedOfficial('9105');
+      const amended = await seedOfficial('9106');
+      const skip = { skip: true } as Prisma.InputJsonValue;
+      await db.bill.update({
+        where: { id: same.id },
+        data: summarized(same.current, {
+          aiSummary: skip,
+          aiSummaryPromptHash: 'old-template',
+        }),
+      });
+
+      const row = await summarize(
+        amended,
+        summarized(amended.previous, { aiSummary: skip }),
+      );
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+      expect(row.aiSummarySourceVersion).toBe(amended.current);
+    });
+
+    it('skips the pass when the live template hash cannot be read', async () => {
+      // Else every summary would look stale and the region be regenerated.
+      await seedCivicsTaxonomy(db);
+      const bill = await seedOfficial('9107');
+      mockPromptClient.getServedPromptHash.mockRejectedValueOnce(
+        new Error('prompt service down'),
+      );
+      mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+      const result = await callEnrich(
+        REGION_ID,
+        STAGE_PATTERNS,
+        STAGE_INPUTS,
+        HOT,
+      );
+
+      expect(result).toEqual({ enriched: 0, skipped: 0, failed: 0 });
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+      const row = await db.bill.findUniqueOrThrow({ where: { id: bill.id } });
+      expect(row.aiSummary).toBeNull();
+    });
+
+    it('under the local fallback, writes missing summaries but refreshes none', async () => {
+      // The local copy may have drifted; against it every summary looks stale.
+      await seedCivicsTaxonomy(db);
+      const stale = await seedOfficial('9108');
+      const missing = await seedOfficial('9114');
+      await db.bill.update({
+        where: { id: stale.id },
+        data: summarized(stale.current, { aiSummaryPromptHash: 'old' }),
+      });
+      mockPromptClient.getServedPromptHash.mockResolvedValueOnce({
+        promptHash: 'drifted-local',
+        fallback: true,
+      });
+      mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+      await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+      const rows = await db.bill.findMany({
+        where: { id: { in: [stale.id, missing.id] } },
+        select: { id: true, aiSummaryPromptHash: true },
+        orderBy: { id: 'asc' },
+      });
+      expect(rows).toEqual([
+        { id: stale.id, aiSummaryPromptHash: 'old' },
+        { id: missing.id, aiSummaryPromptHash: 'h' },
+      ]);
+    });
+
+    it('names the same current version when two share a number (no loop)', async () => {
+      const bill = await seedOfficial('9115');
+      await db.pubinfoBillVersion.create({
+        data: {
+          externalId: `9115-V98A`,
+          billId: '202520260AB9115',
+          versionNum: 98,
+          billVersionActionDate: new Date('2025-04-01'),
+          billXml: '<caml:Bill>tied</caml:Bill>',
+        },
+      });
+      await summarize(bill, summarized(bill.previous));
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+
+      await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not regenerate what it just wrote (no loop)', async () => {
+      const bill = await seedOfficial('9109');
+      await summarize(bill, summarized(bill.previous));
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+
+      await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+      expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not judge the model build when the live digest is unknown', async () => {
+      const bill = await seedOfficial('9110');
+      // A summary with no recorded build is not stale while the live build
+      // is unknown either: there is nothing to compare.
+      mockLlm.getModelDigest.mockResolvedValue(undefined);
+
+      await summarize(
+        bill,
+        summarized(bill.current, { aiSummaryLlmDigest: null }),
+      );
+
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+    });
+
+    it('leaves a page-scraped summary under the live prompt alone (no version)', async () => {
+      const { id } = await seedBill(db, { id: 'page-bill' });
+
+      await summarize({ id }, summarized('', { aiSummarySourceVersion: null }));
+
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+    });
+
+    it('does not chase a newer version that has no text', async () => {
+      // It would fail and wait, every week, forever.
+      const bill = await seedOfficial('9113');
+      await db.pubinfoBillVersion.update({
+        where: { externalId: bill.current },
+        data: { billXml: null },
+      });
+
+      const row = await summarize(bill, summarized(bill.previous));
+
+      expect(mockLlm.generate).not.toHaveBeenCalled();
+      expect(row.aiSummaryFailedAt).toBeNull();
+    });
+
+    it('summarizes a bill with no summary before refreshing an old one', async () => {
+      const stale = await seedOfficial('9111');
+      const fresh = await seedOfficial('9112');
+      await db.bill.update({
+        where: { id: stale.id },
+        data: summarized(stale.current, { aiSummaryPromptHash: 'old' }),
+      });
+      await seedCivicsTaxonomy(db);
+      mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+      await (
+        service as unknown as { enrichBillSummaries: EnrichFn }
+      ).enrichBillSummaries.bind(service)(
+        REGION_ID,
+        STAGE_PATTERNS,
+        STAGE_INPUTS,
+        1,
+        HOT,
+      );
+
+      const row = await db.bill.findUniqueOrThrow({ where: { id: fresh.id } });
+      expect(row.aiSummary).not.toBeNull();
+    });
   });
 });
