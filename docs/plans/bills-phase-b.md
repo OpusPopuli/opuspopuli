@@ -1174,3 +1174,93 @@ Both have tests, mutation-checked.
 - **Duplicate cookies:** the `readCookie` fallback (no cookie-parser) takes
   the first duplicate cookie where the old CSRF code took the last.
   Production always runs cookie-parser, which takes the first too.
+
+## D13 — committee referrals from the hearings table (plan, 2026-11-07)
+
+**Why it matters.** The committee page's bill list (`CommitteeBillsList`,
+`/region/legislative-committees/[id]`) reads `bill_committee_assignments`. Dev
+has 3 rows, so that list is nearly empty.
+
+**What was measured** (Saturday 2026-11-07 export, dev DB):
+- **Referral text.** History actions name committees by abbreviation ("Com.
+  on APPR.", "PUB. S."): 11,586 actions on 4,706 bills. Nothing in the export
+  expands them.
+- **No Senate committees.** `legislative_committees` holds only the 85
+  Assembly committees. They come from representatives' pages through the
+  committee linker, and none of the 40 Senate members' pages yields a
+  committee list.
+- **`COMMITTEE_HEARING_TBL`** has 17,166 rows. Columns: `bill_id`,
+  `committee_type`, `committee_nr`, `hearing_date`, `location_code`,
+  `trans_uid`, `trans_update_date`. They cover 4,154 bills and 55 committee
+  codes (31 Assembly, 24 Senate), giving 13,099 distinct bill–committee
+  pairs.
+  - Bill, code and date repeat on 11 rows, which differ only in
+    `trans_update_date`, so that column joins the key.
+- **Matching:** all 31 Assembly hearing committees match an existing
+  committee by chamber and normalized name.
+
+**Owner decision (2026-11-07), D20:** referrals come from the hearings
+table, not from parsing history text.
+
+**Plan:**
+1. **Regions:** a 10th pubinfo source, `pubinfo:COMMITTEE_HEARING_TBL`,
+   keyed on bill, committee code, hearing date and `trans_update_date`. A
+   regions PR, then publish, then bump the pin.
+2. **Mirror:** migration `pubinfo_committee_hearings`, the pubinfo row type
+   and schema, and the write shape (pinned).
+3. **Committees for every hearing code:**
+   - the chamber is read from the code (`CX` Assembly, `CS` Senate) and the
+     name from `LOCATION_CODE_TBL`;
+   - the key is the linker's own `chamber:normalized-name`, so a committee
+     later scraped from a member page lands on the same row;
+   - existing committees are matched by that key, and the 24 Senate ones
+     are created.
+4. **Derive:** `bill_committee_assignments` for each derived bill is replaced
+   in the bill's transaction, one row per distinct committee it was heard
+   in. `referred_at` stays NULL: a hearing date is not a referral date, and
+   nothing reads the column. The committee mapping joins the links hash, so
+   a new committee re-derives every bill.
+5. **Version and verification:** bump to bm4. Then UAT: a gate against the
+   raw file, an unchanged re-import, and the committee page's bill list.
+
+### D13 as built so far (2026-11-07)
+
+- **Regions:** [opuspopuli-regions#100](https://github.com/OpusPopuli/opuspopuli-regions/pull/100)
+  adds the tenth pubinfo source, keyed on bill, code, date and
+  `trans_update_date`. Removing a key column from its headers fails the
+  config test.
+- **Migration** `20261107180000_pubinfo_committee_hearings` (approved by the
+  owner) is applied to the dev DB and `postgres_test`, with no drift.
+- **Row type:** `PubinfoCommitteeHearingRow`, its Zod schema and the write
+  shape. Each is enforced by a table-keyed record, so a missing entry fails
+  to compile.
+- **Shared committee key:** `normalizeLegislativeCommitteeName` and
+  `committeeExternalId` were lifted out of the committee linker as exported
+  functions. The linker and the derive build the same
+  `chamber:normalized-name` key, and the linker's 8 tests are unchanged.
+- **Derive:**
+  - `committeeIndex` maps every heard location code to a committee, created
+    when missing. An existing committee keeps the name its member pages gave
+    it. The short-description fallback drops the "Asm"/"Sen" prefix (no code
+    lacks a long description today).
+  - The committee map joins the links hash.
+  - Hearings join `billsToDerive`'s changed-rows pass.
+  - `bill_committee_assignments` is replaced in the bill's transaction,
+    with `referred_at` NULL.
+- **Version:** bumped to bm4, not re-pinned, since bm3 is on main. The next
+  sync rewrites every bulk row once.
+- **Tests:** two integration tests, mutation-checked:
+  - referrals match an existing Assembly committee and create the Senate one,
+    with repeat hearings giving one referral;
+  - a new hearing re-derives only its bill.
+
+  Backend 3,775, pipeline 768 and common 280 unit tests pass. `lint:sonar`
+  is clean.
+
+**Next:** #100 merged and published, then bump the pin. Then the UAT gate:
+- referrals against the raw file's distinct bill–committee pairs (13,099 on
+  2026-11-07, less any code with no committee);
+- the 24 Senate committees created;
+- the committee page's bill list;
+- an unchanged re-import;
+- the reviews.
