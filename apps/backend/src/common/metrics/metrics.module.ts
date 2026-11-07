@@ -394,6 +394,18 @@ export class MetricsModule {
         help: 'Age of the oldest waiting job in a BullMQ queue (0 when none waits)',
         labelNames: ['queue'],
       }),
+      /** Reader-requested analysis (§5.2) — see `LazyAnalysisMetric`. */
+      makeCounterProvider({
+        name: 'lazy_analysis_requests_total',
+        help: 'Reader requests for lazy analysis, by data type and result',
+        labelNames: ['data_type', 'result'],
+      }),
+      makeHistogramProvider({
+        name: 'lazy_analysis_ready_seconds',
+        help: 'Time from a reader request to the analysis being written',
+        labelNames: ['data_type'],
+        buckets: [5, 15, 30, 60, 120, 300, 600, 1800],
+      }),
       /** Where an archived PDF's text came from — see `PdfParseMetric`. */
       makeCounterProvider({
         name: 'pdf_parse_total',

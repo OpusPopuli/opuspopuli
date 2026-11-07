@@ -6,6 +6,7 @@ import type { Response } from 'express';
 import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { MetricsService } from 'src/common/metrics';
 import { context as otelContext, propagation } from '@opentelemetry/api';
+import { CLIENT_SESSION_HEADER } from 'src/common/utils/client-session';
 
 /**
  * Wrap the default fetcher so multiple `Set-Cookie` headers survive Apollo.
@@ -81,6 +82,7 @@ interface GatewayContext {
   res?: Response;
   clientIp?: string;
   clientUserAgent?: string;
+  clientSession?: string;
 }
 
 /**
@@ -178,6 +180,10 @@ export class HmacRemoteGraphQLDataSource extends RemoteGraphQLDataSource<Gateway
         'x-original-user-agent',
         context.clientUserAgent,
       );
+    }
+    // An opaque reader id for per-reader caps (bills-phase-b.md, D18).
+    if (context?.clientSession) {
+      request.http?.headers.set(CLIENT_SESSION_HEADER, context.clientSession);
     }
 
     // Sign request with HMAC for microservice authentication

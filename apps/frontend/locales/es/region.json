@@ -205,5 +205,17 @@
   "finance": {
     "dateNotReported": "Fecha no declarada por el declarante",
     "payeeNotReported": "Beneficiario no declarado por el declarante"
+  },
+  "bill": {
+    "summary": {
+      "preparing": "Estamos preparando un resumen en lenguaje sencillo. Los datos del proyecto de ley que aparecen abajo provienen del registro oficial.",
+      "slow": "El resumen está tardando más de lo habitual. Vuelve a consultarlo más tarde; los datos que aparecen abajo provienen del registro oficial.",
+      "unavailable": "En este momento no hay un resumen en lenguaje sencillo disponible. Los datos que aparecen abajo provienen del registro oficial.",
+      "missing": "Todavía no hay un resumen en lenguaje sencillo de este proyecto de ley.",
+      "stale": "Este resumen se redactó para una versión anterior del proyecto de ley o con un modelo anterior.",
+      "none": "No hay un resumen en lenguaje sencillo disponible para este proyecto de ley.",
+      "requestButton": "Resumir este proyecto de ley",
+      "updateButton": "Actualizar el resumen"
+    }
   }
 }

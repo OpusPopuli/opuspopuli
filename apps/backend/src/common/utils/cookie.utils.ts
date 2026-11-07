@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 
 type SameSitePolicy = 'strict' | 'lax' | 'none';
@@ -121,4 +121,24 @@ export function clearAuthCookies(
     ...clearOptions,
     path: REFRESH_COOKIE_PATH,
   });
+}
+
+/**
+ * A cookie's value: from `req.cookies` when cookie-parser ran, otherwise from
+ * the raw `Cookie` header. One reader for the CSRF middleware and the
+ * gateway's reader session (`client-session.ts`), so they cannot disagree on
+ * which value a cookie has.
+ */
+export function readCookie(req: Request, name: string): string | undefined {
+  const cookies = (req as Request & { cookies?: Record<string, string> })
+    .cookies;
+  if (cookies && typeof cookies === 'object') return cookies[name];
+
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return undefined;
+  for (const part of cookieHeader.split(';')) {
+    const [key, value] = part.trim().split('=');
+    if (key === name && value) return decodeURIComponent(value);
+  }
+  return undefined;
 }

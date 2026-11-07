@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
 import { safeCompare } from '../utils/crypto.utils';
+import { readCookie } from '../utils/cookie.utils';
 
 /**
  * CSRF Middleware - Stateless Double-Submit Cookie Pattern
@@ -66,28 +67,7 @@ export class CsrfMiddleware implements NestMiddleware {
    * Extract CSRF token from cookie
    */
   private getTokenFromCookie(req: Request): string | undefined {
-    const cookies = (req as Request & { cookies?: Record<string, string> })
-      .cookies;
-    if (cookies && typeof cookies === 'object') {
-      return cookies[this.cookieName];
-    }
-
-    // Fallback: parse cookie header manually
-    const cookieHeader = req.headers.cookie;
-    if (!cookieHeader) return undefined;
-
-    const cookies_parsed = cookieHeader.split(';').reduce(
-      (acc, cookie) => {
-        const [key, value] = cookie.trim().split('=');
-        if (key && value) {
-          acc[key] = decodeURIComponent(value);
-        }
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
-
-    return cookies_parsed[this.cookieName];
+    return readCookie(req, this.cookieName);
   }
 
   /**

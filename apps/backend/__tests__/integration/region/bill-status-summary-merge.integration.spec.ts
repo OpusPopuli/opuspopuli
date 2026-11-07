@@ -32,6 +32,10 @@
  * not wiring. Wiring is what these integration tests cover end-to-end.
  */
 
+import {
+  BillSummaryState,
+  summaryStateOf,
+} from '../../../src/apps/region/src/domains/bill-summary-state';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import {
@@ -845,6 +849,7 @@ describe('bill-status-summary merge — integration (#823)', () => {
       await seedBill(db, {
         id,
         externalId,
+        billNumber: `AB ${id}`,
         statusSource: 'official',
         status: 'In Committee Process',
       });
@@ -950,6 +955,69 @@ describe('bill-status-summary merge — integration (#823)', () => {
 
       expect(mockLlm.generate).toHaveBeenCalledTimes(1);
       expect(row.aiSummarySourceVersion).toBe(amended.current);
+    });
+
+    it('selects exactly the bills summaryStateOf calls not current (D7 pin)', async () => {
+      // The batch selects in SQL; the reader's page judges one bill in
+      // TypeScript. Both encode K6's rule, and must not drift apart.
+      await seedCivicsTaxonomy(db);
+      const skip = { skip: true } as Prisma.InputJsonValue;
+      const cases: [
+        string,
+        (b: Awaited<ReturnType<typeof seedOfficial>>) => object,
+      ][] = [
+        ['9201', (b) => summarized(b.current)],
+        ['9202', (b) => summarized(b.current, { aiSummaryPromptHash: 'old' })],
+        ['9203', (b) => summarized(b.current, { aiSummaryLlmDigest: 'x' })],
+        ['9204', (b) => summarized(b.current, { aiSummaryLlmDigest: null })],
+        ['9205', (b) => summarized(b.previous)],
+        ['9206', () => ({})],
+        [
+          '9207',
+          (b) =>
+            summarized(b.current, {
+              aiSummary: skip,
+              aiSummaryPromptHash: 'old',
+            }),
+        ],
+        ['9208', (b) => summarized(b.previous, { aiSummary: skip })],
+      ];
+      const expected: string[] = [];
+      for (const [id, data] of cases) {
+        const bill = await seedOfficial(id);
+        await db.bill.update({ where: { id }, data: data(bill) });
+        const row = await db.bill.findUniqueOrThrow({ where: { id } });
+        const state = summaryStateOf(row, {
+          promptHash: 'h',
+          modelDigest: 'sha256:it-digest',
+          currentVersion: bill.current,
+        });
+        if (state !== BillSummaryState.CURRENT) expected.push(id);
+      }
+      mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+      const generated: string[] = [];
+      mockPromptClient.getBillStatusSummaryPrompt.mockImplementation(
+        async (params: { billNumber: string }) => {
+          generated.push(params.billNumber);
+          return { promptText: 'p', promptVersion: 'v1', promptHash: 'h' };
+        },
+      );
+
+      await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+      const numbers = await db.bill.findMany({
+        where: { id: { in: expected } },
+        select: { billNumber: true },
+      });
+      expect(generated.sort()).toEqual(numbers.map((b) => b.billNumber).sort());
+      expect(expected).toEqual([
+        '9202',
+        '9203',
+        '9204',
+        '9205',
+        '9206',
+        '9208',
+      ]);
     });
 
     it('skips the pass when the live template hash cannot be read', async () => {

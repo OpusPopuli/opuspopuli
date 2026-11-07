@@ -69,6 +69,7 @@ describe('HmacRemoteGraphQLDataSource', () => {
         context: {
           clientIp: '192.168.1.100',
           clientUserAgent: 'Mozilla/5.0 Chrome/120',
+          clientSession: 'b'.repeat(64),
         },
       } as unknown as Parameters<typeof dataSource.willSendRequest>[0]);
 
@@ -76,6 +77,8 @@ describe('HmacRemoteGraphQLDataSource', () => {
       expect(mockHeaders.get('x-original-user-agent')).toBe(
         'Mozilla/5.0 Chrome/120',
       );
+      // The reader's session id for per-reader caps (bills-phase-b.md, D18).
+      expect(mockHeaders.get('x-client-session')).toBe('b'.repeat(64));
 
       jest.restoreAllMocks();
     });

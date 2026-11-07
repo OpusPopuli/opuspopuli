@@ -36,6 +36,8 @@ import { PromptClientModule } from '@opuspopuli/prompt-client';
 import { RegionDomainService } from './region.service';
 import { RegionCacheService } from './region-cache.service';
 import { RegionSyncService } from './region-sync.service';
+import { BillSummaryService } from './bill-summary.service';
+import { BillSummaryResolver } from './bill-summary.resolver';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
@@ -304,6 +306,8 @@ const promptClientAsyncConfig = {
     RegionSearchService,
     RegionDomainService,
     RegionResolver,
+    BillSummaryService,
+    BillSummaryResolver,
     CommitteeRelevanceCacheLookup,
     LegislativeCommitteeRelevanceFieldResolver,
     LegislativeCommitteeDetailRelevanceFieldResolver,
@@ -382,6 +386,8 @@ const promptClientAsyncConfig = {
     MinutesSummaryService,
     CivicsSyncService,
     PropositionAnalysisService,
+    // The bill-summary queue's consumer (region-worker), D7.
+    BillSummaryService,
     // The representatives S4 queues' consumers (region-worker).
     BioGeneratorService,
     CommitteeSummaryGeneratorService,

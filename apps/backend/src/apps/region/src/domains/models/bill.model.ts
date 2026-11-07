@@ -20,6 +20,29 @@ registerEnumType(BillLifecycle, {
     'Active = currently moveable; Inactive = passed/chaptered + dead; All = no filter (#747).',
 });
 
+/**
+ * Where a bill's plain-English summary stands, for the page (D7):
+ * whether to show it, offer to generate it, or wait for it.
+ */
+export enum BillSummaryStatus {
+  /** Written under the live template, model and text version. */
+  CURRENT = 'CURRENT',
+  /** Shown, but written under another; a refresh may be requested. */
+  STALE = 'STALE',
+  /** None yet; may be requested. */
+  MISSING = 'MISSING',
+  /** A requested summary is being written. */
+  PENDING = 'PENDING',
+  /** Not now: a daily cap is spent, or the last attempt failed. */
+  UNAVAILABLE = 'UNAVAILABLE',
+}
+
+registerEnumType(BillSummaryStatus, {
+  name: 'BillSummaryStatus',
+  description:
+    'Where a bill summary stands: CURRENT, STALE (shown, refresh possible), MISSING, PENDING, UNAVAILABLE (capped or recently failed).',
+});
+
 @ObjectType('BillVote')
 export class BillVoteModel {
   @Field(() => ID)
