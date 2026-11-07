@@ -131,7 +131,7 @@ export class BillsPubinfoSyncService {
       }
     }, opts.pipelineJobId);
 
-    const index = await this.deriveIndex();
+    const index = await this.deriveIndex(opts.regionId);
     const billIds = await this.billsToDerive(index.linksHash);
     result.derived = await this.derive(billIds, index, {
       regionId: opts.regionId,
@@ -277,7 +277,7 @@ export class BillsPubinfoSyncService {
     return tally.derived;
   }
 
-  private async deriveIndex(): Promise<DeriveIndex> {
+  private async deriveIndex(regionId: string): Promise<DeriveIndex> {
     const [legislators, reps, locations] = await Promise.all([
       // Ordered, so a key two rows share resolves the same way every run and
       // the links hash does not flip between syncs.
@@ -292,7 +292,12 @@ export class BillsPubinfoSyncService {
         },
       }),
       this.db.representative.findMany({
-        where: { deletedAt: null, chamber: { in: ['Assembly', 'Senate'] } },
+        // This region's members only: another state's Assembly 7 is not ours.
+        where: {
+          regionId,
+          deletedAt: null,
+          chamber: { in: ['Assembly', 'Senate'] },
+        },
         select: { id: true, chamber: true, district: true, name: true },
       }),
       this.db.pubinfoLocationCode.findMany({

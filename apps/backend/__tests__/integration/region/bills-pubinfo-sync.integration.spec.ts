@@ -177,12 +177,22 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
       data: [
         {
           externalId: 'rep-ad7',
+          regionId: 'california',
           name: 'Ada Example',
+          chamber: 'Assembly',
+          district: '7',
+        },
+        // Another state's member in the same seat, with the same surname.
+        {
+          externalId: 'other-ad7',
+          regionId: 'elsewhere',
+          name: 'Bo Example',
           chamber: 'Assembly',
           district: '7',
         },
         {
           externalId: 'rep-sd3',
+          regionId: 'california',
           name: 'Ben Sample',
           chamber: 'Senate',
           district: '3',

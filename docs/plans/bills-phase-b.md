@@ -617,6 +617,17 @@ findings. Its four notes:
 - **Not a defect:** `getModelDigest()` cannot reject. The provider catches
   internally and returns undefined.
 
+**Second pre-push gate:** passed, with no critical or high findings.
+- **Fixed:** the derive matched representatives by chamber and district in
+  any region, so on a node holding another state, that state's Assembly 7
+  could be linked (only the surname check stood in the way). It now reads
+  this region's members only. Tested with another state's same-seat,
+  same-surname member, and mutation-checked.
+- **Expected:** bm3 changes every bulk source's import key, so finance
+  rewrites all its rows once on its next sync, about 22 minutes.
+- **Already recorded:** the B7 scope, and the `min(derived_at)` prefilter
+  (below).
+
 **Recorded, not changed:** bills that never change keep their first
 `derived_at`, so `min(derived_at)` stays put and the prefilter reads more
 rows over time. That costs speed only. If it shows in timings, compare per
