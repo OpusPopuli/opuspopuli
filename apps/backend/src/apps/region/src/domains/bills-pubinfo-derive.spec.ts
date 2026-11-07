@@ -6,6 +6,7 @@ import {
   latestVersion,
   legislatorKey,
   normalizeLegislatorName,
+  rollCallKey,
   seatKey,
   sessionLabel,
   voteChamber,
@@ -37,12 +38,53 @@ describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
   it('takes the newest action, by date then sequence', () => {
     const d = (s: string) => new Date(`${s}T00:00:00Z`);
     const last = lastAction([
-      { actionDate: d('2026-08-01'), action: 'first', actionSequence: 9 },
-      { actionDate: d('2026-09-01'), action: 'early', actionSequence: 1 },
-      { actionDate: d('2026-09-01'), action: 'late', actionSequence: 2 },
-      { actionDate: null, action: 'undated', actionSequence: 99 },
+      {
+        externalId: '4',
+        actionDate: d('2026-08-01'),
+        action: 'first',
+        actionSequence: 9,
+      },
+      {
+        externalId: '2',
+        actionDate: d('2026-09-01'),
+        action: 'early',
+        actionSequence: 1,
+      },
+      {
+        externalId: '1',
+        actionDate: d('2026-09-01'),
+        action: 'late',
+        actionSequence: 2,
+      },
+      {
+        externalId: '9',
+        actionDate: null,
+        action: 'undated',
+        actionSequence: 99,
+      },
     ]);
     expect(last?.action).toBe('late');
+  });
+
+  it('breaks a tied sequence by history id, whatever the load order', () => {
+    const d = new Date('2026-08-31T00:00:00Z');
+    // AB 133 on 2026-11-05: both actions carry sequence 11.
+    const rows = [
+      {
+        externalId: '118906811',
+        actionDate: d,
+        action: 'Read second time.',
+        actionSequence: 11,
+      },
+      {
+        externalId: '118906810',
+        actionDate: d,
+        action: 'From committee: Do pass.',
+        actionSequence: 11,
+      },
+    ];
+    expect(lastAction(rows)?.action).toBe('Read second time.');
+    expect(lastAction([...rows].reverse())?.action).toBe('Read second time.');
   });
 
   it('reads the long title from CAML, without tags or entities', () => {
@@ -81,6 +123,13 @@ describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
       'Senate Appropriations',
     );
     expect(voteChamber('CX99', undefined)).toBe('CX99');
+  });
+
+  it('keys a roll call by location, time and sequence', () => {
+    const second = rollCallKey('AFLOOR', '2026-08-31 10:00:00', 1);
+    expect(second).toBe('AFLOOR:2026-08-31 10:00:00:1');
+    expect(rollCallKey('AFLOOR', '2026-08-31 10:00:00', 2)).not.toBe(second);
+    expect(rollCallKey('AFLOOR', '2026-08-31 14:00:00', 1)).not.toBe(second);
   });
 
   it('strips the stray prefixes author lists carry', () => {

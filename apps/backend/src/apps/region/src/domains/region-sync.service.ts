@@ -463,6 +463,27 @@ const DEFAULT_COLD_AFTER_DAYS = 180;
 const SUMMARY_CAP_PER_SYNC = 200;
 
 /**
+ * Days a bill whose summary failed waits before it is tried again. Without the
+ * wait, the same bills (budget bills of up to 2M characters that time out, or
+ * return no JSON) led every sync and tripped the five-failure abort before any
+ * other bill was reached (bills-phase-b.md, UAT run 2).
+ */
+const SUMMARY_RETRY_AFTER_DAYS = 7;
+
+/** Not failed, or failed long enough ago to try again. */
+function summaryRetryDue(today: Date): Prisma.BillWhereInput {
+  const retryBefore = new Date(
+    today.getTime() - SUMMARY_RETRY_AFTER_DAYS * 86_400_000,
+  );
+  return {
+    OR: [
+      { aiSummaryFailedAt: null },
+      { aiSummaryFailedAt: { lt: retryBefore } },
+    ],
+  };
+}
+
+/**
  * Hot bills needing a summary (K6, D5): no summary yet, or one with no prompt
  * hash, which predates attribution and cannot say what produced it. Never
  * the `{skip: true}` sentinel, which would loop. Hot means active, or not
@@ -481,6 +502,7 @@ function hotSummaryCandidates(
       { isDead: false, lastActionDate: { gte: coldBefore } },
     ],
     AND: [
+      summaryRetryDue(today),
       {
         OR: [
           { aiSummary: { equals: Prisma.DbNull } },
@@ -1378,11 +1400,14 @@ export class RegionSyncService implements OnModuleDestroy {
    * Bills from a legislature's published export (`bills-phase-b.md`, D9):
    * mirror the tables, derive the bills they touch, then move flags by date
    * (F4's refresh, which for official rows only ends a closed session's
-   * active bills). No page is fetched and no LLM runs here.
+   * active bills), then summarize hot bills from the mirrored text. No page
+   * is fetched. `maxBills` caps the summaries, as it caps bills on the page
+   * path; the import itself is always whole.
    */
   private async syncBillsFromExport(
     plugin: DataFetcher,
     sources: DataSourceConfig[],
+    maxBills: number | undefined,
     pipelineJobId?: string,
   ): Promise<{
     processed: number;
@@ -1413,7 +1438,7 @@ export class RegionSyncService implements OnModuleDestroy {
         regionId,
         await this.buildStagePatterns(regionId),
         await this.buildLifecycleStageInputs(regionId),
-        SUMMARY_CAP_PER_SYNC,
+        Math.min(SUMMARY_CAP_PER_SYNC, maxBills ?? SUMMARY_CAP_PER_SYNC),
         {
           coldAfterDays:
             sources.find((s) => s.coldAfterDays !== undefined)?.coldAfterDays ??
@@ -1440,7 +1465,12 @@ export class RegionSyncService implements OnModuleDestroy {
       (s) => s.sourceType === 'bulk_download',
     );
     if (bulkSources.length > 0) {
-      return this.syncBillsFromExport(plugin, bulkSources, pipelineJobId);
+      return this.syncBillsFromExport(
+        plugin,
+        bulkSources,
+        maxBills,
+        pipelineJobId,
+      );
     }
 
     if (!this.promptClient || !this.llm) {
@@ -2131,7 +2161,13 @@ export class RegionSyncService implements OnModuleDestroy {
     const candidates = await this.db.bill.findMany({
       where: hot
         ? hotSummaryCandidates(regionId, hot.coldAfterDays, hot.today)
-        : { regionId, aiSummary: { equals: Prisma.DbNull } },
+        : {
+            regionId,
+            aiSummary: { equals: Prisma.DbNull },
+            AND: [summaryRetryDue(new Date())],
+          },
+      // Bills never failed first, so a retry cannot crowd them out.
+      orderBy: { aiSummaryFailedAt: { sort: 'asc', nulls: 'first' } },
       select: {
         id: true,
         regionId: true,
@@ -2323,7 +2359,40 @@ export class RegionSyncService implements OnModuleDestroy {
     if (outcome === 'votes-upserted') updatedRef.total += 1;
   }
 
+  /** Summarize one bill; a failure is recorded so it waits before a retry. */
   private async enrichSingleBill(
+    bill: BillEnrichmentCandidate,
+    stagePatterns: StagePattern[],
+    lifecycleStages: LifecycleStageInput[],
+    stageIdSet: Set<string>,
+  ): Promise<{
+    outcome: EnrichmentOutcome;
+    tokensUsed: number;
+  }> {
+    const result = await this.summarizeBill(
+      bill,
+      stagePatterns,
+      lifecycleStages,
+      stageIdSet,
+    );
+    if (result.outcome === 'failed') await this.recordSummaryFailure(bill.id);
+    return result;
+  }
+
+  private async recordSummaryFailure(billId: string): Promise<void> {
+    try {
+      await this.db.bill.update({
+        where: { id: billId },
+        data: { aiSummaryFailedAt: new Date() },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Could not record a failed summary for bill ${billId}: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  private async summarizeBill(
     bill: BillEnrichmentCandidate,
     stagePatterns: StagePattern[],
     lifecycleStages: LifecycleStageInput[],
@@ -2427,8 +2496,8 @@ export class RegionSyncService implements OnModuleDestroy {
   /**
    * Parse the merged bill-status-summary LLM response. Returns null when
    * the payload is missing/non-object/array — caller treats that as
-   * `failed` so the bill stays eligible for the next sync (its
-   * `aiSummary` column remains NULL).
+   * `failed`: `aiSummary` stays NULL and the bill is retried once
+   * SUMMARY_RETRY_AFTER_DAYS have passed.
    */
   private parseStatusSummaryResponse(
     text: string,
@@ -2496,6 +2565,7 @@ export class RegionSyncService implements OnModuleDestroy {
       // the model changes as well as when the prompt does.
       aiSummaryLlmDigest: (await this.llm?.getModelDigest()) ?? null,
       aiSummaryGeneratedAt: new Date(),
+      aiSummaryFailedAt: null,
     };
     if (parsed.skip === true) {
       await this.db.bill.update({

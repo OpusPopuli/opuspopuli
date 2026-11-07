@@ -31,12 +31,19 @@ export function latestVersion<T extends { versionNum: number }>(
 }
 
 export interface HistoryAction {
+  /** `bill_history_id`: digits, assigned in the order actions were recorded. */
+  externalId: string;
   actionDate: Date | null;
   action: string | null;
   actionSequence: number | null;
 }
 
-/** The bill's last action: newest date, then highest sequence that day. */
+/**
+ * The bill's last action: newest date, then highest sequence that day, then
+ * highest history id. The sequence alone ties (3,434 bills on 2026-11-05,
+ * e.g. "From committee: Do pass" and "Read second time" both 11), and the id
+ * never orders against it, so without the id the pick followed load order.
+ */
 export function lastAction<T extends HistoryAction>(
   actions: readonly T[],
 ): T | undefined {
@@ -51,7 +58,9 @@ export function lastAction<T extends HistoryAction>(
 function isAfter(a: HistoryAction, b: HistoryAction): boolean {
   const byDate = a.actionDate!.getTime() - b.actionDate!.getTime();
   if (byDate !== 0) return byDate > 0;
-  return (a.actionSequence ?? 0) > (b.actionSequence ?? 0);
+  const bySequence = (a.actionSequence ?? 0) - (b.actionSequence ?? 0);
+  if (bySequence !== 0) return bySequence > 0;
+  return BigInt(a.externalId) > BigInt(b.externalId);
 }
 
 /**
@@ -62,7 +71,9 @@ function isAfter(a: HistoryAction, b: HistoryAction): boolean {
 export function camlTitle(
   billXml: string | null | undefined,
 ): string | undefined {
-  const match = billXml?.match(/<caml:Title>([\s\S]*?)<\/caml:Title>/);
+  const match = billXml
+    ? /<caml:Title>([\s\S]*?)<\/caml:Title>/.exec(billXml)
+    : null;
   if (!match) return undefined;
   const title = decodeEntities(match[1].replace(/<[^>]*>/g, ' '))
     .replace(/\s+/g, ' ')
@@ -99,6 +110,19 @@ export function voteHouse(locationCode: string): 'A' | 'S' | undefined {
   if (locationCode === 'AFLOOR' || locationCode.startsWith('CX')) return 'A';
   if (locationCode === 'SFLOOR' || locationCode.startsWith('CS')) return 'S';
   return undefined;
+}
+
+/**
+ * A roll call's identity within a bill: where, when and which of that
+ * moment's votes. bill_votes keys on it so several roll calls on one day
+ * (second reading, amendments, reconsideration) each keep their votes.
+ */
+export function rollCallKey(
+  locationCode: string,
+  voteDateTime: string,
+  voteDateSeq: number,
+): string {
+  return `${locationCode}:${voteDateTime}:${voteDateSeq}`;
 }
 
 /**

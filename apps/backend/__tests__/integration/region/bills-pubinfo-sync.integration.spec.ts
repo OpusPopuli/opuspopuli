@@ -251,6 +251,35 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
     ]);
   });
 
+  it('keeps each same-day roll call, not one vote per day', async () => {
+    // Second reading and reconsideration on one day: the member votes twice.
+    const rows = [
+      ...exportRows('In Committee Process'),
+      withHash({
+        table: 'BILL_DETAIL_VOTE_TBL',
+        externalId: `202520260AB9001:CX25:Example:2025-04-01 15:00:00:2:7`,
+        billId: '202520260AB9001',
+        locationCode: 'CX25',
+        legislatorName: 'Example',
+        voteDateTime: '2025-04-01 15:00:00',
+        voteDateSeq: 2,
+        voteCode: 'NOE',
+        motionId: 7,
+      }),
+    ];
+
+    await run(rows, false);
+
+    const votes = await db.billVote.findMany({
+      where: { bill: { externalId: '202520260AB9001' } },
+      orderBy: { rollCall: 'asc' },
+    });
+    expect(votes.map((v) => [v.rollCall, v.position])).toEqual([
+      ['CX25:2025-04-01 10:00:00:1', 'yes'],
+      ['CX25:2025-04-01 15:00:00:2', 'no'],
+    ]);
+  });
+
   it('writes and derives nothing when the export has not changed (K4)', async () => {
     await run(exportRows('In Committee Process'), false);
 

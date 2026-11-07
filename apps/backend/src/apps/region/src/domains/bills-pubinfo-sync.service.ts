@@ -15,11 +15,13 @@ import {
   lastAction,
   latestVersion,
   legislatorKey,
+  rollCallKey,
   seatKey,
   sessionLabel,
   voteChamber,
   voteHouse,
   votePosition,
+  type HistoryAction,
 } from './bills-pubinfo-derive';
 import { pubinfoWriteValues } from './bills-pubinfo-write-shape';
 import { withoutUnchanged } from './bulk-row-skip';
@@ -424,6 +426,7 @@ export class BillsPubinfoSyncService {
           position,
           motionText: data.motions.get(v.motionId) ?? null,
           sourceUrl: leginfoUrl('billVotesClient', bill.externalId),
+          rollCall: rollCallKey(v.locationCode, v.voteDateTime, v.voteDateSeq),
         },
       ];
     });
@@ -456,6 +459,7 @@ export class BillsPubinfoSyncService {
       this.db.pubinfoBillHistory.findMany({
         where: { billId: { in: billIds } },
         select: {
+          externalId: true,
           billId: true,
           actionDate: true,
           action: true,
@@ -469,6 +473,7 @@ export class BillsPubinfoSyncService {
           locationCode: true,
           legislatorName: true,
           voteDateTime: true,
+          voteDateSeq: true,
           voteCode: true,
           motionId: true,
         },
@@ -554,20 +559,14 @@ interface ChunkData {
   >;
   xmlByVersion: Map<string, string | null>;
   authorsByVersion: Map<string, AuthorRow[]>;
-  historyByBill: Map<
-    string,
-    {
-      actionDate: Date | null;
-      action: string | null;
-      actionSequence: number | null;
-    }[]
-  >;
+  historyByBill: Map<string, HistoryAction[]>;
   votesByBill: Map<
     string,
     {
       locationCode: string;
       legislatorName: string;
       voteDateTime: string;
+      voteDateSeq: number;
       voteCode: string | null;
       motionId: number;
     }[]

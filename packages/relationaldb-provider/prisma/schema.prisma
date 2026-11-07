@@ -1883,6 +1883,9 @@ model Bill {
   /// Model digest of the run that produced aiSummary (F3/K6), so a summary can
   /// be regenerated when the model changes, as reps and committees already are.
   aiSummaryLlmDigest     String?   @map("ai_summary_llm_digest") @db.VarChar(80)
+  /// Last failed summary attempt. The bill waits a week before it is a
+  /// candidate again; a success clears it (bills-phase-b.md, UAT run 2).
+  aiSummaryFailedAt      DateTime? @map("ai_summary_failed_at") @db.Timestamptz
 
   /// Procedurally dead — vetoed without override, withdrawn, failed deadline,
   /// inactive file, failed passage, OR from a closed session that did not
@@ -2018,13 +2021,17 @@ model BillVote {
   /// length); e.g. "Do Pass" or a verbose multi-clause CA reading motion (#901).
   motionText         String?  @map("motion_text")
   sourceUrl          String   @map("source_url")
+  /// The source's roll-call identity, so same-day roll calls stay apart
+  /// (pubinfo: `location:vote_date_time:vote_date_seq`); "" when the source
+  /// gives none, which keeps one vote per member per day.
+  rollCall           String   @default("") @map("roll_call") @db.VarChar(100)
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   bill           Bill            @relation(fields: [billId], references: [id], onDelete: Cascade)
   representative Representative? @relation(fields: [representativeId], references: [id], onDelete: SetNull)
 
-  @@unique([billId, representativeId, voteDate, chamber])
+  @@unique([billId, representativeId, voteDate, chamber, rollCall], map: "bill_votes_bill_id_representative_id_vote_date_chamber_roll_key")
   @@index([billId])
   @@index([representativeId, voteDate(sort: Desc)])
   @@index([voteDate(sort: Desc)])

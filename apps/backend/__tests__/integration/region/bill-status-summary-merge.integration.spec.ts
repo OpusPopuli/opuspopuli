@@ -732,4 +732,58 @@ describe('bill-status-summary merge — integration (#823)', () => {
     });
     expect(row.aiSummaryPromptHash).toBe('h');
   });
+
+  it('records a failed summary and waits a week before trying it again', async () => {
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db);
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValueOnce({ text: '[]', tokensUsed: 50 });
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+    const failed = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(failed.aiSummaryFailedAt).not.toBeNull();
+
+    // The next sync leaves it alone: it would lead again and trip the abort.
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+
+    // A week on it is tried again, and a success clears the mark.
+    await db.bill.update({
+      where: { id },
+      data: { aiSummaryFailedAt: daysAgo(8) },
+    });
+    mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+    const retried = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(retried.aiSummary).not.toBeNull();
+    expect(retried.aiSummaryFailedAt).toBeNull();
+  });
+
+  it('tries bills that never failed before a retry', async () => {
+    await seedCivicsTaxonomy(db);
+    const retry = await seedBill(db, { id: 'a-retry' });
+    await seedBill(db, { id: 'b-fresh' });
+    await db.bill.update({
+      where: { id: retry.id },
+      data: { aiSummaryFailedAt: daysAgo(8) },
+    });
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+    await (
+      service as unknown as { enrichBillSummaries: EnrichFn }
+    ).enrichBillSummaries.bind(service)(
+      REGION_ID,
+      STAGE_PATTERNS,
+      STAGE_INPUTS,
+      1,
+      HOT,
+    );
+
+    const summarized = await db.bill.findMany({
+      where: { NOT: { aiSummary: { equals: Prisma.DbNull } } },
+      select: { id: true },
+    });
+    expect(summarized.map((b) => b.id)).toEqual(['b-fresh']);
+  });
 });

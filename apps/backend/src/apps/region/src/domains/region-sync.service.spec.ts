@@ -2265,6 +2265,58 @@ describe('RegionSyncService', () => {
     });
   });
 
+  describe('syncBills — from an export (bills-phase-b.md, D9)', () => {
+    const summaryCapFor = async (maxBills: number | undefined) => {
+      const internals = service as unknown as Record<string, unknown> & {
+        syncBills: (
+          maxBills: number | undefined,
+          plugin: unknown,
+        ) => Promise<unknown>;
+      };
+      internals.promptClient = {};
+      internals.llm = {};
+      internals.billsPubinfoSync = {
+        sync: jest.fn().mockResolvedValue({
+          processed: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          derived: 0,
+        }),
+      };
+      const stub = (name: string, value: unknown) =>
+        jest
+          .spyOn(internals as never, name as never)
+          .mockResolvedValue(value as never);
+      stub('refreshLifecycleFlags', undefined);
+      stub('buildStagePatterns', []);
+      stub('buildLifecycleStageInputs', null);
+      const enrich = stub('enrichBillSummaries', undefined);
+
+      await internals.syncBills(maxBills, {
+        getName: () => 'california',
+        getDataSources: () => [
+          {
+            url: 'https://example.test/',
+            dataType: 'bills',
+            sourceType: 'bulk_download',
+          },
+        ],
+      });
+
+      return (enrich.mock.calls[0] as unknown[])[3];
+    };
+
+    it('caps the summaries by maxBills, as the page path caps bills', async () => {
+      expect(await summaryCapFor(5)).toBe(5);
+    });
+
+    it('summarizes at most the per-sync cap otherwise', async () => {
+      expect(await summaryCapFor(undefined)).toBe(200);
+      expect(await summaryCapFor(10_000)).toBe(200);
+    });
+  });
+
   describe('discoverAllBillUrls — what the prune may trust (F2)', () => {
     type Urls = { statusUrls: string[]; votesUrls: string[] };
     const STATUS =
