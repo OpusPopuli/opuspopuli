@@ -189,7 +189,7 @@ interface RollCallExtraction {
 }
 
 /** Outcome of enriching a single bill (summarize phase). */
-type EnrichmentOutcome = 'enriched' | 'skipped' | 'failed';
+export type EnrichmentOutcome = 'enriched' | 'skipped' | 'failed';
 
 const VALID_VOTE_POSITIONS: ReadonlySet<string> = new Set<BillVotePosition>([
   'yes',
@@ -595,6 +595,31 @@ type BillEnrichmentCandidate = Prisma.BillGetPayload<{
     externalId: true;
   };
 }>;
+
+/**
+ * The columns the summary path reads, for the batch and for one bill (D7).
+ * Typed by the candidate, so a field added to one and not the other fails
+ * to compile.
+ */
+const BILL_ENRICHMENT_SELECT: Record<keyof BillEnrichmentCandidate, true> = {
+  id: true,
+  regionId: true,
+  billNumber: true,
+  sessionYear: true,
+  title: true,
+  subject: true,
+  status: true,
+  authorName: true,
+  fiscalImpact: true,
+  fullTextUrl: true,
+  currentStageId: true,
+  lastAction: true,
+  lastActionDate: true,
+  statusSource: true,
+  isDead: true,
+  isActive: true,
+  externalId: true,
+};
 
 /**
  * RegionSyncService — owns all data-synchronisation logic extracted from
@@ -2307,25 +2332,7 @@ export class RegionSyncService implements OnModuleDestroy {
         { aiSummaryGeneratedAt: { sort: 'asc', nulls: 'first' } },
         { id: 'asc' },
       ],
-      select: {
-        id: true,
-        regionId: true,
-        billNumber: true,
-        sessionYear: true,
-        title: true,
-        subject: true,
-        status: true,
-        authorName: true,
-        fiscalImpact: true,
-        fullTextUrl: true,
-        currentStageId: true,
-        lastAction: true,
-        lastActionDate: true,
-        statusSource: true,
-        isDead: true,
-        isActive: true,
-        externalId: true,
-      },
+      select: BILL_ENRICHMENT_SELECT,
       take: maxBills,
     });
 
@@ -2496,6 +2503,31 @@ export class RegionSyncService implements OnModuleDestroy {
       reason: outcome,
     });
     if (outcome === 'votes-upserted') updatedRef.total += 1;
+  }
+
+  /**
+   * One bill's summary, for a reader's request (D7). The batch's own path —
+   * same prerequisites, same write — so the summary, stage, lifecycle flags
+   * and provenance are what the batch would have written.
+   */
+  async summarizeOne(
+    billId: string,
+  ): Promise<EnrichmentOutcome | 'not-found' | 'unavailable'> {
+    if (!this.promptClient || !this.llm) return 'unavailable';
+    const bill = await this.db.bill.findUnique({
+      where: { id: billId },
+      select: BILL_ENRICHMENT_SELECT,
+    });
+    if (!bill) return 'not-found';
+    const lifecycleStages = await this.buildLifecycleStageInputs(bill.regionId);
+    if (!lifecycleStages || lifecycleStages.length === 0) return 'unavailable';
+    const result = await this.enrichSingleBill(
+      bill,
+      await this.buildStagePatterns(bill.regionId),
+      lifecycleStages,
+      new Set(lifecycleStages.map((s) => s.id)),
+    );
+    return result.outcome;
   }
 
   /**

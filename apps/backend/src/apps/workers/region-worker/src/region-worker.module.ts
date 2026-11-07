@@ -23,6 +23,7 @@ import { RegionSyncScheduler } from './region-sync.scheduler';
 import { MinutesSummaryProcessor } from './minutes-summary.processor';
 import { CivicsExtractProcessor } from './civics-extract.processor';
 import { PropositionAnalysisProcessor } from './proposition-analysis.processor';
+import { BillSummaryProcessor } from './bill-summary.processor';
 import { PdfParseProcessor } from './pdf-parse.processor';
 import {
   ActivitySummaryProcessor,
@@ -80,6 +81,7 @@ import { GpuLaneModule } from 'src/common/gpu-lane/gpu-lane.module';
     MinutesSummaryProcessor,
     CivicsExtractProcessor,
     PropositionAnalysisProcessor,
+    BillSummaryProcessor,
     PdfParseProcessor,
     RepresentativeBioProcessor,
     CommitteeSummaryProcessor,

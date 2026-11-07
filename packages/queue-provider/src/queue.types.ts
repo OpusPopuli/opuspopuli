@@ -106,6 +106,16 @@ export interface PropositionAnalysisJobData {
 }
 
 /**
+ * Job data for the bill-summary queue (D7). Only the id and when a reader
+ * asked: the worker reloads the bill and writes it through the batch path.
+ */
+export interface BillSummaryJobData {
+  billId: string;
+  /** ISO time of the request, for `lazy_analysis_ready_seconds`. */
+  requestedAt: string;
+}
+
+/**
  * Job data for the pdf-parse queue (S6). Ids only: the consumer loads the
  * archived bytes and records the parse in the source store, so neither the
  * bytes nor the text travel through Redis.

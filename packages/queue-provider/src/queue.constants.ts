@@ -30,6 +30,13 @@ export const REPRESENTATIVE_BIO_QUEUE = "representative-bio";
 export const COMMITTEE_SUMMARY_QUEUE = "committee-summary";
 export const COMMITTEE_DESCRIPTION_QUEUE = "committee-description";
 export const ACTIVITY_SUMMARY_QUEUE = "activity-summary";
+/**
+ * One bill's plain-English summary, requested by a reader opening a bill with
+ * no current summary (the lazy path, `docs/plans/bills-phase-b.md` D7). The
+ * batch writes hot bills' summaries inside the bills sync; this is the cold
+ * ones, on first read.
+ */
+export const BILL_SUMMARY_QUEUE = "bill-summary";
 
 /**
  * `BULLMQ_QUEUE_<NAME>_<SUFFIX>` — every per-queue knob's env name, in one

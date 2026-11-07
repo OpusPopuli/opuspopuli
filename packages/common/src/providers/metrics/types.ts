@@ -201,6 +201,21 @@ export const PdfParseMetric = {
 } as const;
 
 /**
+ * The lazy path (`ingestion-resource-lanes.md` §3, §5.2): analysis a reader's
+ * request starts, rather than the batch.
+ */
+export const LazyAnalysisMetric = {
+  /**
+   * Counter. Labels: `data_type`, `result` — `enqueued`, `deduped` (a job for
+   * it was already in flight), `capped` (a daily cap refused it), `current`
+   * (nothing to do).
+   */
+  RequestsTotal: "lazy_analysis_requests_total",
+  /** Histogram, seconds, request to written. Labels: `data_type`. */
+  ReadySeconds: "lazy_analysis_ready_seconds",
+} as const;
+
+/**
  * The DB lane (`docs/plans/db-lane.md`): the database as a resource. Its bound
  * is the Prisma pool, so these measure the pool and the queries through it.
  */
