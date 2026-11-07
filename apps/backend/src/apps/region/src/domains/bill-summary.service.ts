@@ -160,6 +160,19 @@ export class BillSummaryService {
     billId: string,
     reader: SummaryReader,
   ): Promise<BillSummaryStatus> {
+    try {
+      return await this.tryRequest(billId, reader);
+    } catch (e) {
+      // As `status`: a failed lookup is UNAVAILABLE, not an error.
+      this.logger.warn(`Bill summary request unavailable: ${shortError(e)}`);
+      return BillSummaryStatus.UNAVAILABLE;
+    }
+  }
+
+  private async tryRequest(
+    billId: string,
+    reader: SummaryReader,
+  ): Promise<BillSummaryStatus> {
     const served = await this.servedTemplate();
     if (!served) return BillSummaryStatus.UNAVAILABLE;
     if (await this.inFlight(billId)) {
@@ -191,7 +204,9 @@ export class BillSummaryService {
         removeOnFinish: true,
       });
     } catch (e) {
-      await this.giveBack(keys);
+      await this.giveBack(
+        [keys.global, keys.reader, keys.ip].filter((k): k is string => !!k),
+      );
       this.logger.warn(`Bill summary enqueue failed: ${shortError(e)}`);
       return BillSummaryStatus.UNAVAILABLE;
     }
@@ -321,28 +336,29 @@ export class BillSummaryService {
    * closed).
    */
   private async takeFromCaps(keys: CapKeys): Promise<boolean> {
+    // Only what was taken is given back: a counter must never go negative.
+    const taken: string[] = [];
     try {
       const total = await this.bump(keys.global);
+      taken.push(keys.global);
       if (total > this.caps.global) {
-        await this.redis.decr(keys.global);
+        await this.giveBack(taken);
         return false;
       }
-      let mine: number;
-      let fromIp: number;
-      try {
-        mine = await this.bump(keys.reader);
-        fromIp = keys.ip ? await this.bump(keys.ip) : 0;
-      } catch (e) {
-        // The global count was taken; do not leak it.
-        await this.giveBack(keys);
-        throw e;
+      const mine = await this.bump(keys.reader);
+      taken.push(keys.reader);
+      let fromIp = 0;
+      if (keys.ip) {
+        fromIp = await this.bump(keys.ip);
+        taken.push(keys.ip);
       }
       if (mine <= this.caps.perReader && fromIp <= this.caps.perIp) {
         return true;
       }
-      await this.giveBack(keys);
+      await this.giveBack(taken);
       return false;
     } catch (e) {
+      await this.giveBack(taken);
       this.logger.warn(`Bill summary caps unavailable: ${shortError(e)}`);
       return false;
     }
@@ -358,9 +374,10 @@ export class BillSummaryService {
     return results[0][1];
   }
 
-  private async giveBack(keys: CapKeys): Promise<void> {
-    const undo = this.redis.multi().decr(keys.global).decr(keys.reader);
-    if (keys.ip) undo.decr(keys.ip);
+  private async giveBack(keys: string[]): Promise<void> {
+    if (keys.length === 0) return;
+    const undo = this.redis.multi();
+    for (const key of keys) undo.decr(key);
     await undo.exec().catch(() => undefined);
   }
 

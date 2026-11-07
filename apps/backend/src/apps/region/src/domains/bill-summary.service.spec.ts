@@ -187,6 +187,32 @@ describe('BillSummaryService (bills-phase-b.md D7)', () => {
     expect([...counters.values()].every((v) => v === 0)).toBe(true);
   });
 
+  it('never drives a counter negative when an increment fails part way', async () => {
+    const { redis, counters } = fakeRedis();
+    const multi = redis.multi.bind(redis);
+    let calls = 0;
+    // The second MULTI (the reader's INCR) fails.
+    (redis as unknown as { multi: () => unknown }).multi = () => {
+      calls += 1;
+      const chain = multi() as unknown as { exec: () => Promise<unknown> };
+      if (calls === 2) chain.exec = () => Promise.reject(new Error('down'));
+      return chain;
+    };
+
+    await expect(
+      build(redis).request('b1', { ...reader, ip: '203.0.113.9' }),
+    ).resolves.toBe(BillSummaryStatus.UNAVAILABLE);
+
+    expect([...counters.values()].every((v) => v >= 0)).toBe(true);
+  });
+
+  it('answers a failed request lookup as unavailable, never an error', async () => {
+    db.bill.findUnique.mockRejectedValue(new Error('db down'));
+    await expect(build().request('b1', reader)).resolves.toBe(
+      BillSummaryStatus.UNAVAILABLE,
+    );
+  });
+
   it('keys readers by an HMAC, never the id or session itself', async () => {
     const { redis, counters } = fakeRedis();
     await build(redis).request('b1', { userId: 'user-1', ip: '203.0.113.9' });
