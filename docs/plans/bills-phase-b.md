@@ -893,3 +893,232 @@ No blocker. It confirmed:
   and refreshing none, `getServedPromptHash` differing from the canonical
   `/hash` under an experiment, and the API-key misconfiguration throwing
   rather than reading as a fallback. Each new rule was mutation-checked.
+
+## D7 — summaries on first read (plan, 2026-11-07)
+
+Design in `ingestion-resource-lanes.md` §5.2. Owner decisions already made
+(D7): its own PR; a button for anonymous readers; caps of 200 a day globally
+and 10 a day per session. Branch `feat/bills-lazy-summary`, stacked on K6
+(#1430), whose staleness rules it reuses.
+
+### What the code has (survey, 2026-11-07)
+
+- **Bill page** (`app/region/bills/[id]/page.tsx`): client-rendered,
+  `GET_BILL` cache-first.
+  - With no summary it shows a static "pending… check back shortly" block,
+    hardcoded English, no `aria-live` and nothing that starts generation.
+  - Every bill-page string except the title is hardcoded English.
+- **Region subgraph:** every mutation is admin-only, so this would be the
+  first public mutation there. Summary status is not exposed on `Bill`.
+- **No single-bill summary job.** The summary path is private methods of
+  `RegionSyncService`, and there is no bill-summary queue. The template for
+  one is `ChildJobProcessor` (single-proposition analysis).
+- **Job ids:** BullMQ rejects `:`, so the §5.2 id `bill:<id>:summary:<hash>`
+  cannot be used. The repo convention is `__` (`laneJobId`).
+- **No session for anonymous readers.** The subgraph sees no cookies: the
+  gateway forwards `user`, the client IP and the user agent only. No visitor
+  id exists. The `csrf-token` cookie is stable per browser for 24 h.
+- **No counter utility for caps.** Redis is available: the `FallbackCache`
+  in the region module, and the queue connection.
+
+### Plan
+
+1. **Backend, the job.**
+   - New queue `bill-summary`, processed in `region-worker` by a
+     `ChildJobProcessor`.
+   - It calls a public `summarizeOne(billId)` extracted from the batch path,
+     so lazy and batch output are identical: summary, stage, F4 flags and
+     provenance.
+   - Job id `bill-summary__<billId>__<servedPromptHash>`, removed on finish.
+     Concurrent first readers collapse onto one job, and a finished job never
+     blocks a later request.
+2. **Backend, the API (additive, region subgraph, gateway federation
+   check).**
+   - `Bill.summaryStatus`, an enum:
+     - `CURRENT`: summary written under the live template, model and
+       version;
+     - `STALE`: summary shown, and a refresh may be requested;
+     - `MISSING`;
+     - `PENDING`: a job is queued or running;
+     - `UNAVAILABLE`: capped, or waiting after a failure.
+   - `requestBillSummary(billId)`, `@Public()`: enqueues when the bill is
+     `MISSING` or `STALE` and under the caps, and returns the status.
+   - A mutation, never a side effect of the `bill` query.
+3. **Caps.**
+   - **Global:** Redis `INCR` with expiry, one key per UTC day.
+   - **Per reader:** a signed-in reader is counted by user id. An anonymous
+     reader needs an identity, which is decision Q1.
+   - **Fail closed:** when Redis is unavailable, nothing is generated lazily.
+     The batch still runs.
+4. **Frontend.**
+   - **Trigger:** a signed-in reader triggers the request on load when the
+     summary is missing or stale; an anonymous reader gets a "Summarise this
+     bill" button.
+   - **Polling:** a `PENDING` state polls `GET_BILL` (network-only, bounded:
+     about 8 tries at 15 s, then "check back later") inside one persistent
+     `aria-live="polite"` region.
+   - **Strings:** new en/es keys for the summary states. The rest of the bill
+     page's hardcoded English is out of scope (the "Not in scope" list
+     below).
+   - **Tests:** an a11y test for the states, and unit tests extending the
+     bill-detail mocks.
+5. **Metrics:** `lazy_analysis_requests_total{data_type, result}` (`enqueued`,
+   `deduped`, `capped`) and `lazy_analysis_ready_seconds`, per lanes plan §3.
+
+**Owner decisions (2026-11-07):**
+
+| | Question | Decision |
+|---|---|---|
+| D18 | Identity for an anonymous reader's daily cap | The gateway forwards `sha256(csrf-token)` as `x-client-session`. It is stable per browser for 24 h, needs no new cookie, and never carries the raw token. (The HMAC signs the URL only, not headers. Like `user`, the header is trusted because only the gateway sets it and subgraphs accept only HMAC-signed gateway requests.) |
+| D19 | A cold bill whose summary is stale | Show it, with a note that an updated summary can be generated. Signed-in readers refresh it automatically; anonymous readers get the button. |
+
+**Not in scope:**
+- translating the rest of the bill page;
+- the Grafana row (row 6);
+- other data types' lazy paths.
+
+### D7 as built (2026-11-07)
+
+**Backend:**
+- **Single-bill path:** `RegionSyncService.summarizeOne(billId)` is the
+  batch's own path. `BILL_ENRICHMENT_SELECT` is shared with the batch and
+  typed by the candidate.
+- **Per-bill rule:** `summaryStateOf` (`bill-summary-state.ts`) applies K6's
+  rule to one bill. An integration test pins it to the batch's SQL selection
+  across eight provenance cases, mutation-checked.
+- **`BillSummaryService`:**
+  - status: CURRENT, STALE, MISSING, PENDING or UNAVAILABLE;
+  - request: deduped on the in-flight job; both daily caps in Redis (`INCR`
+    in `MULTI`), with a refused request returning its count;
+  - fails closed with no reader identity or no counters;
+  - generate: re-checks first, then writes through the batch path.
+- **Resolver:** `BillSummaryResolver` adds `Bill.summaryStatus` (a field
+  resolver, so only the detail page pays for it) and `@Public()
+  requestBillSummary`.
+- **Queue:** `bill-summary`, consumed by `BillSummaryProcessor` in
+  region-worker.
+- **Gateway:** `clientSessionId` reads the cookie through a `readCookie`
+  helper, now shared with the CSRF middleware, and forwards
+  `x-client-session`.
+- **Metrics:** `lazy_analysis_requests_total` and
+  `lazy_analysis_ready_seconds`.
+
+**Frontend:**
+- `BillSummarySection` replaces the static "pending" block. A signed-in
+  reader's page asks once; an anonymous reader gets a button.
+- While pending it polls `GET_BILL_SUMMARY_STATUS` every 15 s, at most 8
+  times, inside one persistent `aria-live` region.
+- en/es strings under `region:bill.summary.*`.
+- The schema snapshot was refreshed from the UAT gateway; the composition is
+  the federation check.
+
+**Found while testing:**
+- **The per-reader cap never applied.** The `MULTI` result was read at the
+  wrong index (the first `EXPIRE`'s reply). A unit test caught it; fixed.
+- **No anonymous reader can reach a bill page today.** `app/region/layout.tsx`
+  wraps every region route in `ProtectedRoute`. In the app as it stands the
+  live path is therefore the signed-in auto-request. The anonymous button,
+  and its D18 cap, matter once region pages are made public (an owner
+  decision) or for direct API callers. Both are built and tested.
+
+**UAT, through the gateway, as an anonymous API caller:**
+- **AB 1138:** `MISSING`, then `PENDING`. A second request was deduped, with
+  both counters left at 1, and a per-reader counter was created, so the
+  gateway forwarded the session. Its 341 kB text timed out at 120 s, the
+  known long-bill failure; the attempt was recorded, and the bill reads
+  `UNAVAILABLE` for a week.
+- **AB 2503 (short text):** `PENDING`, then `CURRENT`, with the prompt hash,
+  model digest and source version (`20250AB250396CHP`) recorded.
+
+**Browser check of the signed-in page:** not done. It needs a dev login,
+and creating a test account in the dev database, or using the owner's, is
+the owner's call.
+
+**Tests:**
+- backend: 3,761 unit (23 new), and 30 summary integration cases (1 new pin);
+- frontend: 8 component tests and 5 axe states;
+- the bill-page test was updated;
+- frontend 1,904 unit tests and 77 a11y tests pass;
+- `lint:sonar` clean.
+
+Mutation-checked:
+- an anonymous reader is never auto-requested;
+- a signed-in reader is asked once, even if the status moves;
+- the poll ceiling;
+- the D7 pin.
+
+### D7 reviews (working tree, 2026-11-07)
+
+Two independent `/op-review` lenses ran on the working tree as built above:
+security, abuse and regulated data; and correctness, frontend, a11y, tests
+and consistency.
+
+**Blockers, fixed:**
+- **The worker never re-checked.** `generate()` asked `status()`, which saw
+  the worker's own running job as `PENDING`, so it always regenerated: a bill
+  a sync had just summarized, or one waiting after a failure. `judge()` now
+  reads the bill's own state without the queue, and the worker uses it.
+- **Polling never stopped after a reader's request.** `requested` stayed
+  `PENDING`, so the page polled every 15 s for as long as the tab was open.
+  The page now settles on the polled answer, but only from a poll that ran:
+  a skipped query can still hold old data.
+
+**Fixed (suggestions):**
+- **Status on list queries (security review; confirmed on UAT).** As a field
+  on `Bill`, `bills(take:100){items{summaryStatus}}` passed the complexity
+  limit, which does not multiply by `take`, and ran 100 status lookups. A
+  `complexity: 20` weight did not stop it. Now `billSummaryStatus(billId)`
+  is a root query, one bill at a time, and `GET_BILL` fetches it alongside
+  `bill`.
+- **The per-reader cap did not bind an adversary.** A client chooses its own
+  CSRF cookie, so a script can mint a session per request. A per-IP daily cap
+  (30, env `BILL_SUMMARY_LAZY_IP_DAILY_CAP`) is taken with the others. It is
+  higher than the per-reader cap because a household or school shares an IP.
+  The global 200 still bounds GPU cost. The plan's D18 note was about header
+  forgery and was right about that, but said nothing of this.
+- **Linkable keys:** reader and IP keys are an HMAC under
+  `GATEWAY_HMAC_SECRET`, not a bare hash, so a Redis key cannot be linked
+  back to a user, browser or address.
+- **Cap order and refunds:** the global count is checked first, so a refusal
+  there creates no per-reader key. A failed enqueue gives back what it took.
+- **Job id:** `bill-summary__<billId>`, not including the template hash, so a
+  template change while a job waits cannot enqueue a second one.
+- **Smaller fixes:**
+  - the template is resolved once per request;
+  - `no_reader` is its own metric label;
+  - a bill id over 64 characters is refused without a lookup;
+  - if the batch wrote the summary after the page loaded, the page fetches
+    it once;
+  - focus moves to the status when the button goes (WCAG 2.4.3);
+  - the Spanish "slow" string uses *tú*, as the rest of the app does.
+- **Tests added, each mutation-checked:**
+  - the worker re-check with its own job active;
+  - the IP cap;
+  - no reader key on a global refusal;
+  - the refund on a failed enqueue;
+  - HMAC'd keys;
+  - polling stops after a request lands;
+  - the batch-wrote-it refetch;
+  - focus.
+
+**Recorded, not changed:**
+- **Privacy page.** The reader and IP keys are pseudonymous identifiers, kept
+  48 h for abuse prevention. `app/privacy/page.tsx` mentions no cookies or
+  identifiers; whether to add a line is the owner's call.
+- **Header trust.** The HMAC signs the URL, not headers, so a replayed
+  signature sent directly to a reachable subgraph could carry forged `user`
+  or `x-client-session` headers. That is pre-existing, and this change adds
+  one header behind it.
+- **Model swap.** The model digest is cached per process. After a model swap
+  the region API calls summaries stale until it restarts. Requests then reach
+  the worker, which re-checks with its own digest and writes nothing. They
+  spend caps, not GPU.
+
+**UAT after the fixes:**
+- `summaryStatus` on `Bill` is rejected (`Cannot query field`).
+- `billSummaryStatus` works beside `bill`.
+- AB 2504 and AB 2518 each went `MISSING`, then `PENDING`, then `CURRENT`.
+- Dedupe held: the global count went up once per bill.
+- Per-IP and per-reader keys were present and HMAC'd.
+- The gateway must restart to recompose after a region schema change. The
+  snapshot was refreshed after that restart.
