@@ -1153,3 +1153,24 @@ summary that was already being written when the page opened.
 
 Tests were added for each fix, each mutation-checked. UAT after a rebuild
 and gateway restart: snapshot current; MISSING, then PENDING, then CURRENT.
+
+### D7 pre-push gate (second push, passed)
+
+The gate passed, with no critical or high findings.
+
+**Lows, fixed:**
+- **Negative counters:** a refund after a partial `INCR` failure decremented
+  keys that were never incremented, which could drive a counter negative and
+  hand out extra allowance. Now only the keys taken are given back.
+- **Request errors:** `request()` now reads a failed lookup as UNAVAILABLE,
+  as `status()` does. Before, it surfaced as a GraphQL error.
+
+Both have tests, mutation-checked.
+
+**Lows, recorded:**
+- **Double charge:** two simultaneous first requests can both pass the
+  in-flight check and both spend caps. BullMQ's fixed job id still makes it
+  one job, so the cost is an allowance, not GPU.
+- **Duplicate cookies:** the `readCookie` fallback (no cookie-parser) takes
+  the first duplicate cookie where the old CSRF code took the last.
+  Production always runs cookie-parser, which takes the first too.
