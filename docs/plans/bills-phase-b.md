@@ -461,8 +461,8 @@ each mutation-checked.
   reads no status, so it now applies to legacy rows as well as official ones.
 - **Bills with no text took a place in the cap every sync.** They wait a week
   too.
-- **Outages made bills wait.** A bill waits only after a timeout or an
-  unusable answer, not when the model or prompt service is unreachable.
+- **Outages made bills wait.** A bill waited only after a timeout or an
+  unusable answer. (Reversed by the next review: see below.)
 - **Parse errors logged model output.** V8's message quotes it, so the log
   now uses a fixed string.
 - **Batch size for text tables.** Sources with `.lob` text default to 500
@@ -518,6 +518,60 @@ change does not touch either. It is recorded for the owner. The question is
 whether to raise the timeout for long bills and find why the model returns no
 JSON for some short ones. That needs the eval harness, not production logs,
 which may not print model output.
+
+## Review of the review fixes (`4506d47e..a349e738`, 2026-11-07)
+
+A fresh single-agent review covered all lenses on the delta. `/op-security`:
+`pnpm audit --prod` showed 3 low, 30 moderate and 1 critical, the critical
+already on the ignore list. trivy found one critical, maplibre-gl
+CVE-2026-85061, which is suppressed with an enforced guard and untouched by
+this branch. gitleaks found no leaks. The data scan found 0. The branch's only
+dependency change is regions 1.0.106 → 1.0.107.
+
+**Blocker, fixed: a representative renamed in place was never noticed.**
+Representatives are keyed by seat (`ca-assembly-63`), and the reps sync
+renames the row when the seat changes hands. So the "added or removed" check
+never fired, and votes linked under the old name stayed on the renamed row.
+The reps' `updated_at` cannot be used instead, because bio writes touch it
+constantly. Migration `20261107140000_pubinfo_bills_derived_links_hash`
+(approved by the owner) stores, per bill, a hash of the legislator →
+representative links it was derived under. Each derive computes the current
+hash; a bill derived under another is derived again. This replaces the
+representatives and legislators timestamp checks: a legislator change that
+leaves the links as they were derives nothing.
+
+**Fixed (suggestions):**
+- **Waits:** every summary attempt that ends without a summary now waits a
+  week. The timeout regex left failures that repeat on the same bill (a
+  refused page fetch, a write that fails for one bill) leading every sync. It
+  also made a saturated Ollama's timeouts wait. An outage costs at most the
+  five bills tried before the abort.
+- **Whole-word match:** `isSeatHolder` matches whole words, so "Lee" is no
+  longer found in "Kathleen". Hyphenated names match their spaced form.
+- **Query speed:** `billsToDerive` reads each mirror once, for rows written
+  since the oldest derive. It used to run seven correlated probes per bill
+  (about 40 s on an unchanged export). The motion join casts only numeric ids,
+  so the motion index is used.
+- **Error logging:** a failed derive logs the Prisma error code or a short
+  first line, never the whole call.
+- **Tests:** two-bill integration tests now cover:
+  - a legislator change that leaves the links as they were (nothing derived);
+  - a representative renamed in place (every bill derived);
+  - a changed motion (only the bills that use it);
+  - one bill failing (the rest kept, the failed bill retried with no export
+    change).
+
+  Each test was mutation-checked, as was the whole-word match.
+
+bm3 was re-pinned in place on the backend: it never left dev, the change
+touches only the derive, and the new NULL column re-derives every bill.
+
+**UAT runs 6 and 7 (jobs 204, 205):**
+- **Run 6:** with the links hash NULL, all 5,065 bills were derived in about
+  1 minute. Votes 610,499 with 0 bills differing; 599,199 linked; 4,670
+  authors linked. One links hash across all bills.
+- **Run 7 (same file):** 0 written, 0 derived. The derive query now takes
+  under a second (it was 40 s).
 
 **Not new:** the 1.1 GB zip exceeds local Supabase storage's object limit,
 so the snapshot was not archived. The finance zip has never archived
