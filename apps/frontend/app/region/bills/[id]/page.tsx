@@ -23,6 +23,7 @@ import { ComingSoon } from "@/components/region/ComingSoon";
 import { LifecycleProgressBar } from "@/components/civics/LifecycleProgressBar";
 import { useCivics } from "@/components/civics/CivicsContext";
 import { BillActivityFeed } from "@/components/region/BillActivityFeed";
+import { BillSummarySection } from "@/components/region/BillSummarySection";
 import { formatDate } from "@/lib/format";
 import { MEASURE_TYPE_STYLES } from "@/lib/bill-styles";
 import { useState, useMemo } from "react";
@@ -226,37 +227,29 @@ function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
   );
 }
 
-function AiSummaryPending() {
-  return (
-    <section
-      aria-label="Plain-English summary"
-      className="mb-6 rounded-lg border border-dashed border-line bg-surface-alt p-5 text-sm text-content-dim"
-    >
-      Plain-English summary pending. This bill hasn’t been processed by the
-      summarizer yet — check back shortly.
-    </section>
-  );
-}
-
 // ── Layer components ──────────────────────────────────────────────────────────
 
 function Snapshot({
   bill,
+  summaryStatus,
   lifecycleStages,
   onNext,
 }: {
   readonly bill: NonNullable<BillData["bill"]>;
+  readonly summaryStatus?: BillData["billSummaryStatus"];
   readonly lifecycleStages: CivicsLifecycleStage[];
   readonly onNext: () => void;
 }) {
   return (
     <div className="animate-layer-enter">
-      {/* Plain-English AI summary (or pending placeholder) */}
-      {bill.aiSummary ? (
-        <AiSummaryBlock summary={bill.aiSummary} />
-      ) : (
-        <AiSummaryPending />
-      )}
+      {/* Plain-English AI summary, and getting one when missing or stale (D7) */}
+      <BillSummarySection
+        billId={bill.id}
+        status={summaryStatus}
+        hasSummary={Boolean(bill.aiSummary)}
+      >
+        {bill.aiSummary && <AiSummaryBlock summary={bill.aiSummary} />}
+      </BillSummarySection>
 
       {/* Status + last action */}
       {bill.status && (
@@ -656,6 +649,7 @@ export default function BillDetailPage() {
         {layer === 1 && (
           <Snapshot
             bill={bill}
+            summaryStatus={data?.billSummaryStatus}
             lifecycleStages={lifecycleStages}
             onNext={() => setLayer(2)}
           />

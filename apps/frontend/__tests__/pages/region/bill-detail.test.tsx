@@ -89,13 +89,21 @@ const mockBill = {
 };
 
 let mockQueryResult: {
-  data: { bill: typeof mockBill | null } | null;
+  data: { bill: typeof mockBill | null; billSummaryStatus?: string } | null;
   loading: boolean;
   error: Error | null;
 } = { data: { bill: mockBill }, loading: false, error: null };
 
 jest.mock("@apollo/client/react", () => ({
   useQuery: jest.fn(() => mockQueryResult),
+  // The summary section's request (D7); exercised in its own test.
+  useMutation: jest.fn(() => [jest.fn(), { loading: false }]),
+  useApolloClient: jest.fn(() => ({ query: jest.fn() })),
+}));
+
+// An anonymous reader: the summary section offers a button, never auto-asks.
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: false, isLoading: false }),
 }));
 
 jest.mock("next/navigation", () => ({
@@ -245,11 +253,18 @@ describe("BillDetailPage", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows the pending placeholder when aiSummary is null", () => {
-      // mockBill already has aiSummary: null
+    it("offers an anonymous reader a summary when there is none (D7)", () => {
+      mockQueryResult = {
+        data: { bill: mockBill, billSummaryStatus: "MISSING" },
+        loading: false,
+        error: null,
+      };
       render(<BillDetailPage />);
       expect(
-        screen.getByText(/plain-english summary pending/i),
+        screen.getByText(/no plain-language summary of this bill yet/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /summarize this bill/i }),
       ).toBeInTheDocument();
     });
   });

@@ -1706,6 +1706,41 @@
         "possibleTypes": null
       },
       {
+        "enumValues": [
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "CURRENT"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "MISSING"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "PENDING"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "STALE"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "UNAVAILABLE"
+          }
+        ],
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "kind": "ENUM",
+        "name": "BillSummaryStatus",
+        "possibleTypes": null
+      },
+      {
         "enumValues": null,
         "fields": [
           {
@@ -10324,6 +10359,35 @@
             }
           },
           {
+            "args": [
+              {
+                "defaultValue": null,
+                "name": "billId",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "SCALAR",
+                    "name": "ID",
+                    "ofType": null
+                  }
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "requestBillSummary",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "ENUM",
+                "name": "BillSummaryStatus",
+                "ofType": null
+              }
+            }
+          },
+          {
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
@@ -14802,6 +14866,35 @@
               "ofType": {
                 "kind": "OBJECT",
                 "name": "PaginatedLegislativeActions",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
+                "name": "billId",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "SCALAR",
+                    "name": "ID",
+                    "ofType": null
+                  }
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "billSummaryStatus",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "ENUM",
+                "name": "BillSummaryStatus",
                 "ofType": null
               }
             }

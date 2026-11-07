@@ -205,5 +205,17 @@
   "finance": {
     "dateNotReported": "Date not reported by the filer",
     "payeeNotReported": "Payee not reported by the filer"
+  },
+  "bill": {
+    "summary": {
+      "preparing": "Preparing a plain-language summary. The bill’s details below are from the official record.",
+      "slow": "The summary is taking longer than usual. Check back later; the bill’s details below are from the official record.",
+      "unavailable": "A plain-language summary isn’t available right now. The bill’s details below are from the official record.",
+      "missing": "There’s no plain-language summary of this bill yet.",
+      "stale": "This summary was written for an earlier version of the bill, or by an earlier model.",
+      "none": "No plain-language summary is available for this bill.",
+      "requestButton": "Summarize this bill",
+      "updateButton": "Update the summary"
+    }
   }
 }

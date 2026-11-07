@@ -1779,6 +1779,17 @@ export interface Bill {
   aiSummary?: BillAiSummary | null;
 }
 
+/**
+ * Where a bill's plain-English summary stands (D7). Mirrors the backend
+ * `BillSummaryStatus` enum.
+ */
+export type BillSummaryStatus =
+  | "CURRENT"
+  | "STALE"
+  | "MISSING"
+  | "PENDING"
+  | "UNAVAILABLE";
+
 /** Mirrors the backend `BillLifecycle` enum (#747). */
 export enum BillLifecycle {
   ACTIVE = "ACTIVE",
@@ -1798,6 +1809,8 @@ export interface BillsData {
 
 export interface BillData {
   bill: Bill | null;
+  /** Where the bill's summary stands (D7); a root query, one bill at a time. */
+  billSummaryStatus?: BillSummaryStatus;
 }
 
 export interface BillsVars {
@@ -1930,8 +1943,53 @@ export const GET_BILL = gql`
         }
       }
     }
+    billSummaryStatus(billId: $id)
   }
 `;
+
+/**
+ * A bill's summary and its status alone, polled while a requested summary is
+ * written (D7). Normalized on `Bill:id`, so the page's `GET_BILL` picks the
+ * summary up without refetching votes.
+ */
+export const GET_BILL_SUMMARY_STATUS = gql`
+  query GetBillSummaryStatus($id: ID!) {
+    billSummaryStatus(billId: $id)
+    bill(id: $id) {
+      id
+      aiSummary {
+        plainEnglishSummary
+        topics
+        whoItAffects
+        stakeholderImpact
+        fiscalImpact {
+          level
+          summary
+        }
+      }
+    }
+  }
+`;
+
+/** A reader asks for a bill's summary (D7). Returns the new status. */
+export const REQUEST_BILL_SUMMARY = gql`
+  mutation RequestBillSummary($billId: ID!) {
+    requestBillSummary(billId: $billId)
+  }
+`;
+
+export interface BillSummaryStatusData {
+  billSummaryStatus: BillSummaryStatus;
+  bill: Pick<Bill, "id" | "aiSummary"> | null;
+}
+
+export interface RequestBillSummaryData {
+  requestBillSummary: BillSummaryStatus;
+}
+
+export interface RequestBillSummaryVars {
+  billId: string;
+}
 
 // ============================================
 // JURISDICTION TYPES & QUERY (#690)
