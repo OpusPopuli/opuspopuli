@@ -16,13 +16,18 @@ import { stableHash, type DataSourceConfig } from "@opuspopuli/common";
  *
  * bm2: the bills derive keeps same-day roll calls apart and breaks a tied
  * history sequence by id (bills-phase-b.md, UAT run 1).
+ * bm3: lob text is resolved under the pin, an empty entry reads as empty, and
+ * the bills derive links a vote only to the member holding the seat (review
+ * of the final diff).
  */
-export const BULK_MAPPING_VERSION = "bm2";
+export const BULK_MAPPING_VERSION = "bm3";
 
 /**
  * What a bulk import's rows were written under: the mapping version, and the
  * source config that shapes a mapped row (D2). Two imports with the same key
  * turn the same line into the same row, so an unchanged line can be skipped.
+ * `billStatusLifecycle` is included because a bill's flags are derived from
+ * it: a changed map must reach bills whose lines did not change.
  */
 export function bulkImportKey(source: DataSourceConfig): string {
   return stableHash({
@@ -30,5 +35,6 @@ export function bulkImportKey(source: DataSourceConfig): string {
     dataType: source.dataType,
     category: source.category ?? null,
     bulk: source.bulk ?? null,
+    billStatusLifecycle: source.billStatusLifecycle ?? null,
   });
 }

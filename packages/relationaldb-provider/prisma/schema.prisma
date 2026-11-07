@@ -2704,22 +2704,26 @@ model BulkImport {
 
 /// pubinfo `BILL_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
 model PubinfoBill {
-  id                  String   @id @default(uuid())
-  externalId          String   @unique @map("external_id") @db.VarChar(30)
-  sessionYear         String   @map("session_year") @db.VarChar(8)
-  measureType         String   @map("measure_type") @db.VarChar(4)
-  measureNum          Int      @map("measure_num")
-  measureState        String?  @map("measure_state") @db.VarChar(40)
-  chapterYear         String?  @map("chapter_year") @db.VarChar(4)
-  chapterNum          String?  @map("chapter_num") @db.VarChar(10)
-  latestBillVersionId String?  @map("latest_bill_version_id") @db.VarChar(30)
-  currentLocation     String?  @map("current_location") @db.VarChar(200)
-  currentHouse        String?  @map("current_house") @db.VarChar(60)
-  currentStatus       String?  @map("current_status") @db.VarChar(60)
-  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
-  pipelineExecutionId String?  @map("pipeline_execution_id")
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id                  String    @id @default(uuid())
+  externalId          String    @unique @map("external_id") @db.VarChar(30)
+  sessionYear         String    @map("session_year") @db.VarChar(8)
+  measureType         String    @map("measure_type") @db.VarChar(4)
+  measureNum          Int       @map("measure_num")
+  measureState        String?   @map("measure_state") @db.VarChar(40)
+  chapterYear         String?   @map("chapter_year") @db.VarChar(4)
+  chapterNum          String?   @map("chapter_num") @db.VarChar(10)
+  latestBillVersionId String?   @map("latest_bill_version_id") @db.VarChar(30)
+  currentLocation     String?   @map("current_location") @db.VarChar(200)
+  currentHouse        String?   @map("current_house") @db.VarChar(60)
+  currentStatus       String?   @map("current_status") @db.VarChar(60)
+  sourceRecordHash    String?   @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?   @map("pipeline_execution_id")
+  /// When the bill, co-authors and votes were last derived from this bill's
+  /// mirror rows; NULL = never. Written by raw SQL so `updatedAt` stays the
+  /// time the export line last changed.
+  derivedAt           DateTime? @map("derived_at") @db.Timestamptz
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
 
@@ -2844,6 +2848,7 @@ model PubinfoBillDetailVote {
   pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
 
   @@index([billId])
+  @@index([motionId])
   @@index([pipelineExecutionId])
   @@map("pubinfo_bill_detail_votes")
 }

@@ -1170,6 +1170,56 @@ describe("BulkDownloadHandler", () => {
       expect(result.errors.join(" ")).toContain("no entry named");
     });
 
+    it("reads an empty lob entry as empty text, not its name", async () => {
+      const [item] = await ingest([row("`An act`", "BILL_VERSION_TBL_1.lob")], {
+        "BILL_VERSION_TBL_1.lob": "",
+      });
+      expect(item.billXml).toBeUndefined();
+    });
+
+    describe("a rotating export", () => {
+      const rotating = () =>
+        pubinfoSource({
+          rotatingFile: {
+            name: "pubinfo_daily_{weekday}.zip",
+            publishedAfter: "21:30",
+          },
+        });
+      const respond = (lastModified: string) =>
+        (globalThis.fetch as jest.Mock).mockResolvedValue({
+          ok: true,
+          status: 200,
+          headers: new Headers({ "last-modified": lastModified }),
+          body: pubinfoZip([row("`An act`", "BILL_VERSION_TBL_1.lob")], {
+            "BILL_VERSION_TBL_1.lob": "<bill/>",
+          }),
+        });
+
+      it("is resolved from the sync's start, not each source's clock", async () => {
+        respond(new Date().toUTCString());
+        // Thursday 21:28 Pacific: Thursday's file is not out, so Wednesday's.
+        const scope = createBulkDownloadScope(new Date("2026-11-06T05:28:00Z"));
+        await handler.execute(
+          { ...rotating(), timezone: "America/Los_Angeles" },
+          "california",
+          undefined,
+          undefined,
+          scope,
+        );
+        expect((globalThis.fetch as jest.Mock).mock.calls[0][0]).toBe(
+          "https://example.com/pubinfo_daily_Wed.zip",
+        );
+        await scope.close();
+      });
+
+      it("is refused when it is a week old, not today's", async () => {
+        respond(new Date(Date.now() - 7 * 86_400_000).toUTCString());
+        const result = await handler.execute(rotating(), "california");
+        expect(result.success).toBe(false);
+        expect(result.errors.join(" ")).toContain("over 48 hours ago");
+      });
+    });
+
     it("refuses a lob column the headers do not declare", async () => {
       (globalThis.fetch as jest.Mock).mockResolvedValue({
         ok: true,

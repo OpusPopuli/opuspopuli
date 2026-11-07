@@ -171,6 +171,28 @@ export function seatKey(district: string): string | undefined {
   return `${match[1] === 'A' ? 'Assembly' : 'Senate'}|${match[2]}`;
 }
 
+/** Lower case, accents removed: "Ávila Farías" matches "Avila Farias". */
+export function foldName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Whether an export legislator is the member who holds the seat now (D15).
+ * A seat can also list a predecessor (AD63 on 2026-11-05: a member who
+ * resigned mid-session) or the former member of a seat now vacant (AD03,
+ * SD10), and their votes must not be credited to the seat's current holder.
+ */
+export function isSeatHolder(
+  repName: string,
+  lastName: string | null,
+): boolean {
+  return !!lastName && foldName(repName).includes(foldName(lastName));
+}
+
 /** An author row's house, from pubinfo's `ASSEMBLY` / `SENATE`. */
 export function authorHouse(house: string | null): 'A' | 'S' | undefined {
   if (house === 'ASSEMBLY') return 'A';

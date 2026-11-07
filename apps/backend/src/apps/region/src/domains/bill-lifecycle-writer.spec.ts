@@ -371,6 +371,21 @@ describe('flagsFor (bills-phase-b.md, B8)', () => {
     });
   });
 
+  it('ends a legacy row that is still active when its session closes', () => {
+    // The session rule reads no status, so it is safe on a legacy row; without
+    // it a legacy bill no source lists any more stays active forever.
+    const legacy = {
+      ...activeBill,
+      ...stored,
+      statusSource: null,
+      status: 'Amended IN Assembly January 22, 2026',
+    };
+    expect(flagsFor(legacy, NEXT_SESSION)).toEqual({
+      isDead: true,
+      isActive: false,
+    });
+  });
+
   it('refresh leaves a legacy row alone', async () => {
     const db = createMockDbService();
     db.bill.findMany

@@ -1,5 +1,9 @@
 import { DataType, type DataSourceConfig } from "@opuspopuli/common";
-import { exportUrl, newestWeekday } from "../src/handlers/rotating-file";
+import {
+  assertRotatingFileFresh,
+  exportUrl,
+  newestWeekday,
+} from "../src/handlers/rotating-file";
 
 const PACIFIC = "America/Los_Angeles";
 
@@ -63,8 +67,44 @@ describe("exportUrl", () => {
     );
   });
 
+  it("refuses a file name that leaves the source's origin", () => {
+    const away = {
+      ...base,
+      bulk: {
+        ...base.bulk!,
+        rotatingFile: {
+          name: "//elsewhere.example/{weekday}.zip",
+          publishedAfter: "21:30",
+        },
+      },
+    };
+    expect(() => exportUrl(away)).toThrow("leaves");
+  });
+
   it("is the source url for an export that does not rotate", () => {
     const fixed = { ...base, bulk: { format: "zip_tsv" as const } };
     expect(exportUrl(fixed)).toBe(base.url);
+  });
+});
+
+describe("assertRotatingFileFresh", () => {
+  const now = new Date("2026-11-06T10:00:00Z");
+
+  it("passes the newest daily file", () => {
+    // Published Thu 21:23 PST, fetched Fri 02:00.
+    expect(() =>
+      assertRotatingFileFresh("u", "Fri, 06 Nov 2026 05:23:00 GMT", now),
+    ).not.toThrow();
+  });
+
+  it("refuses last week's file, which today's has not replaced yet", () => {
+    expect(() =>
+      assertRotatingFileFresh("u", "Fri, 30 Oct 2026 05:23:00 GMT", now),
+    ).toThrow("over 48 hours ago");
+  });
+
+  it("passes when the header is missing or unreadable", () => {
+    expect(() => assertRotatingFileFresh("u", null, now)).not.toThrow();
+    expect(() => assertRotatingFileFresh("u", "soon", now)).not.toThrow();
   });
 });

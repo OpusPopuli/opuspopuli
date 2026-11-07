@@ -68,6 +68,20 @@ const PINS: { version: string; files: Record<string, string> }[] = [
         "8c7041aae12b827ce0eb948ae4cda750bc26d6fbc2b591b5432fedd0fae0ac62",
     },
   },
+  {
+    // Lob text resolved in the parser; an empty entry reads as empty.
+    version: "bm3",
+    files: {
+      "src/handlers/bulk-line-parser.ts":
+        "8dd029217b4d9d835cb038afa42e722d5bee785d9d827ba0c36a62f68d75ca2e",
+      "src/handlers/handler-utils.ts":
+        "fa3e04b485108e6412010fe09f36e8407b3be11556950ffcdd4f3ea5d48d4aec",
+      "src/mapping/domain-mapper.service.ts":
+        "8cfeb1839a8479149c8a59ed9d057edd83893978caf3d5fa7506bf169898af86",
+      "src/mapping/pubinfo-schemas.ts":
+        "8c7041aae12b827ce0eb948ae4cda750bc26d6fbc2b591b5432fedd0fae0ac62",
+    },
+  },
 ];
 
 function hashOf(file: string): string {
@@ -97,6 +111,17 @@ describe("bulkImportKey (campaign-finance-phase-b.md, D2)", () => {
     expect(bulkImportKey(changed)).not.toBe(bulkImportKey(source));
   });
 
+  it("changes when a bill status map changes, which the derive reads", () => {
+    const withMap = (status: "active" | "dead") =>
+      ({
+        ...source,
+        billStatusLifecycle: { "In Floor Process": status },
+      }) as unknown as DataSourceConfig;
+    expect(bulkImportKey(withMap("active"))).not.toBe(
+      bulkImportKey(withMap("dead")),
+    );
+  });
+
   it("covers the mapping version, so a bump changes every key", () => {
     expect(bulkImportKey(source)).toBe(
       stableHash({
@@ -104,6 +129,7 @@ describe("bulkImportKey (campaign-finance-phase-b.md, D2)", () => {
         dataType: source.dataType,
         category: source.category,
         bulk: source.bulk,
+        billStatusLifecycle: null,
       }),
     );
   });

@@ -48,6 +48,7 @@ function exportRows(billStatus: string): PubinfoRow[] {
       legislatorName: 'Example, Ada',
       houseType: 'A',
       authorName: 'Example',
+      lastName: 'Example',
     }),
     withHash({
       table: 'LEGISLATOR_TBL',
@@ -57,6 +58,7 @@ function exportRows(billStatus: string): PubinfoRow[] {
       legislatorName: 'Sample, Ben',
       houseType: 'S',
       authorName: 'Sample',
+      lastName: 'Sample',
     }),
     withHash({
       table: 'LOCATION_CODE_TBL',
@@ -344,5 +346,92 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
       statusSource: 'official',
       isActive: true,
     });
+  });
+
+  it('derives a bill a failed derive left behind, though no line changed', async () => {
+    await run(exportRows('In Committee Process'), false);
+    // As a derive that died after the import was recorded complete leaves it.
+    await db.pubinfoBill.update({
+      where: { externalId: '202520260AB9001' },
+      data: { derivedAt: null },
+    });
+
+    const again = await run(exportRows('In Committee Process'));
+
+    expect(again).toMatchObject({ updated: 0, derived: 1 });
+  });
+
+  it('re-derives a bill when only its author row changed', async () => {
+    await run(exportRows('In Committee Process'), false);
+    const rows = exportRows('In Committee Process').map((row) =>
+      row.table === 'BILL_VERSION_AUTHORS_TBL' &&
+      row.contribution === 'COAUTHOR'
+        ? withHash({ ...row, contribution: 'PRINCIPAL_COAUTHOR' } as Unhashed)
+        : row,
+    );
+
+    const after = await run(rows);
+
+    expect(after).toMatchObject({ updated: 1, derived: 1 });
+    const coAuthors = await db.billCoAuthor.findMany();
+    expect(coAuthors.map((c) => c.coAuthorType)).toEqual([
+      'principal_coauthor',
+    ]);
+  });
+
+  it('re-derives every bill when a legislator row changes', async () => {
+    await run(exportRows('In Committee Process'), false);
+    const rows = exportRows('In Committee Process').map((row) =>
+      row.table === 'LEGISLATOR_TBL' && row.district === 'SD03'
+        ? withHash({ ...row, party: 'X' } as Unhashed)
+        : row,
+    );
+
+    const after = await run(rows);
+
+    expect(after).toMatchObject({ updated: 1, derived: 1 });
+  });
+
+  it("does not credit a predecessor's vote to the seat's current member (D15)", async () => {
+    const rows = [
+      ...exportRows('In Committee Process'),
+      // AD07's earlier member, who left mid-session; Ada Example holds it now.
+      withHash({
+        table: 'LEGISLATOR_TBL',
+        externalId: `${SESSION}:AD07:A:Former`,
+        district: 'AD07',
+        sessionYear: SESSION,
+        legislatorName: 'Former, Cal',
+        houseType: 'A',
+        authorName: 'Former',
+        lastName: 'Former',
+      }),
+      withHash({
+        table: 'BILL_DETAIL_VOTE_TBL',
+        externalId: `202520260AB9001:CX25:Former:2025-04-01 10:00:00:1:7`,
+        billId: '202520260AB9001',
+        locationCode: 'CX25',
+        legislatorName: 'Former',
+        voteDateTime: '2025-04-01 10:00:00',
+        voteDateSeq: 1,
+        voteCode: 'NOE',
+        motionId: 7,
+      }),
+    ];
+
+    await run(rows, false);
+
+    const ada = await db.representative.findUniqueOrThrow({
+      where: { externalId: 'rep-ad7' },
+    });
+    const votes = await db.billVote.findMany({
+      orderBy: { representativeName: 'asc' },
+    });
+    expect(
+      votes.map((v) => [v.representativeName, v.representativeId]),
+    ).toEqual([
+      ['Example', ada.id],
+      ['Former', null],
+    ]);
   });
 });

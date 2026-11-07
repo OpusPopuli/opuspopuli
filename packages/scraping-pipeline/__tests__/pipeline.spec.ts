@@ -473,7 +473,11 @@ describe("ScrapingPipelineService", () => {
         sourceType: "bulk_download",
         bulk: { format: "csv", columnMappings: { CMTE_ID: "committeeId" } },
       });
-      const bulkDownloads = { acquire: jest.fn(), close: jest.fn() };
+      const bulkDownloads = {
+        acquire: jest.fn(),
+        close: jest.fn(),
+        startedAt: new Date(),
+      };
 
       await pipeline.execute(source, "california", undefined, "job-1", {
         bulkDownloads,

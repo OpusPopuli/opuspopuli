@@ -39,9 +39,9 @@ import type {
   ScopedDownload,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
-import { createLineParser, withLobContentHash } from "./bulk-line-parser.js";
+import { createLineParser, resolveLobColumns } from "./bulk-line-parser.js";
 import { openZipEntryReader, type ZipEntryReader } from "./zip-entry-reader.js";
-import { exportUrl } from "./rotating-file.js";
+import { assertRotatingFileFresh, exportUrl } from "./rotating-file.js";
 import {
   ExecutionTrackerService,
   type ExecutionSession,
@@ -92,6 +92,13 @@ async function removeStaleExports(dir: string, now: number): Promise<void> {
 /** Default batch size for record processing (trades memory for fewer DB round-trips) */
 const DEFAULT_BATCH_SIZE = 10_000;
 
+/**
+ * Batch size for a source with `.lob` text, unless it sets its own: each row
+ * carries its text, up to ~2 MB, and 10,000 of them held a third of the
+ * export's text in memory at once (bills-phase-b.md, review of UAT run 1).
+ */
+const LOB_BATCH_SIZE = 500;
+
 /** An export on local disk, deleted by `release` (D4: maybe shared). */
 interface DownloadedExport extends ScopedDownload {
   path: string;
@@ -107,40 +114,6 @@ export type OnBatchCallback<T> = (
   items: T[],
   context: BulkBatchContext,
 ) => Promise<void>;
-
-/**
- * Replace each `.lob` cell — the name of the archive entry holding the cell's
- * content — with that content, and fold the content into the record's hash
- * (`bills-phase-b.md`, D9). A record with an empty lob cell keeps it empty; the
- * empty content still takes its place in the hash, so positions never shift.
- */
-async function resolveLobColumns(
-  records: Record<string, unknown>[],
-  bulk: BulkDownloadConfig,
-  lobs: ZipEntryReader | undefined,
-): Promise<Record<string, unknown>[]> {
-  if (!lobs || !bulk.lobColumns?.length) return records;
-  const fields = bulk.lobColumns
-    .map((col) => bulk.columnMappings?.[col])
-    .filter((field): field is string => !!field);
-  const resolved: Record<string, unknown>[] = [];
-  for (const record of records) {
-    const next = { ...record };
-    const contents: string[] = [];
-    for (const field of fields) {
-      const name = next[field];
-      const content = typeof name === "string" ? await lobs.read(name) : "";
-      if (content) next[field] = content;
-      contents.push(content);
-    }
-    next["sourceRecordHash"] = withLobContentHash(
-      next["sourceRecordHash"] as string,
-      contents,
-    );
-    resolved.push(next);
-  }
-  return resolved;
-}
 
 @Injectable()
 export class BulkDownloadHandler {
@@ -300,7 +273,7 @@ export class BulkDownloadHandler {
       // 1. The export on disk: this sync's shared copy, or this source's own.
       // Resolved once, so the shared copy, the fetch and the archived snapshot
       // all name the same file even if a rotating export turns over mid-run.
-      const url = exportUrl(source);
+      const url = exportUrl(source, bulkDownloads?.startedAt);
       const fetchExport = () =>
         this.downloadExport(url, source, regionId, session.executionId);
       download = await (bulkDownloads
@@ -317,7 +290,12 @@ export class BulkDownloadHandler {
       if (isZip) {
         contentStream = await this.extractZipEntryStream(download.path, bulk);
         if (bulk.lobColumns?.length) {
-          lobs = await openZipEntryReader(download.path);
+          lobs = await openZipEntryReader(download.path).catch(
+            (error: unknown) => {
+              contentStream.destroy();
+              throw error;
+            },
+          );
         }
       } else {
         contentStream = createReadStream(download.path, { encoding: "utf-8" });
@@ -325,7 +303,9 @@ export class BulkDownloadHandler {
 
       // 3. Parse and process in batches (streaming)
       if (onBatch) {
-        const batchSize = bulk.batchSize ?? DEFAULT_BATCH_SIZE;
+        const batchSize =
+          bulk.batchSize ??
+          (bulk.lobColumns?.length ? LOB_BATCH_SIZE : DEFAULT_BATCH_SIZE);
         let totalItems = 0;
 
         // On retry, the session exposes already-applied batch indexes so we
@@ -496,6 +476,14 @@ export class BulkDownloadHandler {
 
       if (!response.body) {
         throw new Error("Response has no body");
+      }
+      if (source.bulk?.rotatingFile) {
+        try {
+          assertRotatingFileFresh(url, response.headers?.get("last-modified"));
+        } catch (error) {
+          await response.body.cancel?.().catch(() => undefined);
+          throw error;
+        }
       }
 
       // Convert web ReadableStream to Node Readable if needed

@@ -10,6 +10,7 @@ import { Logger } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { BulkDownloadConfig, DataSourceConfig } from "@opuspopuli/common";
 import { inferSourceSystem } from "./handler-utils.js";
+import type { ZipEntryReader } from "./zip-entry-reader.js";
 
 // Logged under the handler's name, as before the split.
 const logger = new Logger("BulkDownloadHandler");
@@ -92,6 +93,45 @@ export function withLobContentHash(
     );
   }
   return h.digest("hex");
+}
+
+/**
+ * Replace each `.lob` cell — the name of the archive entry holding the cell's
+ * content — with that content, and fold the content into the record's hash
+ * (`bills-phase-b.md`, D9). An empty cell, or an empty entry, leaves the field
+ * empty; the empty content still takes its place in the hash, so positions
+ * never shift.
+ *
+ * Here rather than in the handler because it shapes the row after its line is
+ * hashed, so it belongs under the mapping-version pin with the parser.
+ */
+export async function resolveLobColumns(
+  records: Record<string, unknown>[],
+  bulk: BulkDownloadConfig,
+  lobs: ZipEntryReader | undefined,
+): Promise<Record<string, unknown>[]> {
+  if (!lobs || !bulk.lobColumns?.length) return records;
+  const fields = bulk.lobColumns
+    .map((col) => bulk.columnMappings?.[col])
+    .filter((field): field is string => !!field);
+  const resolved: Record<string, unknown>[] = [];
+  for (const record of records) {
+    const next = { ...record };
+    const contents: string[] = [];
+    for (const field of fields) {
+      const name = next[field];
+      const content = typeof name === "string" ? await lobs.read(name) : "";
+      // Never the entry's name: an empty entry is empty text, not a filename.
+      next[field] = content || undefined;
+      contents.push(content);
+    }
+    next["sourceRecordHash"] = withLobContentHash(
+      next["sourceRecordHash"] as string,
+      contents,
+    );
+    resolved.push(next);
+  }
+  return resolved;
 }
 
 /**

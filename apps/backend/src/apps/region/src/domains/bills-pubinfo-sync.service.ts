@@ -5,13 +5,14 @@ import {
   type PubinfoRow,
   type PubinfoTable,
 } from '@opuspopuli/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import type { OfficialLifecycle } from './bill-lifecycle';
 import { upsertOfficialBill } from './bill-lifecycle-writer';
 import {
   authorHouse,
   billNumber,
   camlTitle,
+  isSeatHolder,
   lastAction,
   latestVersion,
   legislatorKey,
@@ -57,28 +58,8 @@ interface MirrorDelegate {
 /** Bills derived per round trip: one read of each mirror per chunk. */
 const DERIVE_CHUNK = 100;
 
-/** Tables whose rows name one bill directly. */
-const BILL_KEYED: Partial<Record<PubinfoTable, 'externalId' | 'billId'>> = {
-  BILL_TBL: 'externalId',
-  BILL_VERSION_TBL: 'billId',
-  BILL_HISTORY_TBL: 'billId',
-  BILL_SUMMARY_VOTE_TBL: 'billId',
-  BILL_DETAIL_VOTE_TBL: 'billId',
-};
-
-/** Lookup tables: a change can touch any bill, so every bill is derived. */
-const LOOKUPS: ReadonlySet<PubinfoTable> = new Set([
-  'BILL_MOTION_TBL',
-  'LEGISLATOR_TBL',
-  'LOCATION_CODE_TBL',
-]);
-
-/** Which bills this sync's written rows touch. */
-interface Touched {
-  billIds: Set<string>;
-  versionIds: Set<string>;
-  everything: boolean;
-}
+/** Long enough for a bill with a thousand votes; Prisma's default is 5 s. */
+const DERIVE_TX_TIMEOUT_MS = 30_000;
 
 /** Lookups loaded once per derive. */
 interface DeriveIndex {
@@ -91,10 +72,14 @@ interface DeriveIndex {
 /**
  * Bills from a legislature's published database export (`bills-phase-b.md`,
  * D9/D10). Each export table is mirrored row for row, skipping lines that
- * are unchanged since the last completed import (K4); then every bill a
- * written row touched is derived from the mirrors: its status and lifecycle
- * (D11), last action, title, author, co-authors and votes (D15–D17). No
- * fetch beyond the one download, and no LLM.
+ * are unchanged since the last completed import (K4); then every bill whose
+ * mirror rows changed since it was last derived is derived from the mirrors:
+ * its status and lifecycle (D11), last action, title, author, co-authors and
+ * votes (D15–D17). No fetch beyond the one download, and no LLM.
+ *
+ * What to derive is read from the database, not carried from the import: the
+ * ledger records an import complete before the derive runs, so a derive that
+ * died would otherwise leave its bills stale until a line changed again.
  */
 @Injectable()
 export class BillsPubinfoSyncService {
@@ -120,11 +105,6 @@ export class BillsPubinfoSyncService {
     };
     if (!provider.fetchBillsBulk) return result;
 
-    const touched: Touched = {
-      billIds: new Set(),
-      versionIds: new Set(),
-      everything: false,
-    };
     await provider.fetchBillsBulk(async (rows, context) => {
       for (const [table, group] of groupByTable(rows)) {
         const counts = await this.upsertMirror(
@@ -136,11 +116,10 @@ export class BillsPubinfoSyncService {
         result.created += counts.created;
         result.updated += counts.written.length - counts.created;
         result.skipped += group.length - counts.written.length;
-        noteTouched(touched, table, counts.written);
       }
     }, opts.pipelineJobId);
 
-    const billIds = await this.billsToDerive(touched);
+    const billIds = await this.billsToDerive();
     result.derived = await this.derive(billIds, {
       regionId: opts.regionId,
       statusLifecycle: opts.statusLifecycle,
@@ -204,22 +183,43 @@ export class BillsPubinfoSyncService {
     return delegates[table] as MirrorDelegate;
   }
 
-  /** Bill ids to derive: those a written row named, or all of them. */
-  private async billsToDerive(touched: Touched): Promise<string[]> {
-    if (touched.everything) {
-      const all = await this.db.pubinfoBill.findMany({
-        select: { externalId: true },
-      });
-      return all.map((b) => b.externalId);
-    }
-    if (touched.versionIds.size > 0) {
-      const versions = await this.db.pubinfoBillVersion.findMany({
-        where: { externalId: { in: [...touched.versionIds] } },
-        select: { billId: true },
-      });
-      for (const v of versions) touched.billIds.add(v.billId);
-    }
-    return [...touched.billIds];
+  /**
+   * Bills to derive: never derived, or with a mirror row written since. A
+   * changed legislator or location code can change any bill, and so can a
+   * representative added or removed (the seat a vote links to); an edited
+   * representative cannot, so `updated_at` there is not read. A changed motion
+   * re-derives only the bills whose votes use it.
+   */
+  private async billsToDerive(): Promise<string[]> {
+    const rows = await this.db.$queryRaw<{ external_id: string }[]>`
+      WITH lookups AS (
+        SELECT GREATEST(
+          (SELECT max(updated_at) FROM pubinfo_legislators),
+          (SELECT max(updated_at) FROM pubinfo_location_codes),
+          (SELECT max(GREATEST(created_at, deleted_at)) FROM representatives
+            WHERE chamber IN ('Assembly', 'Senate'))
+        ) AS changed_at
+      )
+      SELECT b.external_id FROM pubinfo_bills b, lookups l
+      WHERE b.derived_at IS NULL
+        OR b.updated_at > b.derived_at
+        OR l.changed_at > b.derived_at
+        OR EXISTS (SELECT 1 FROM pubinfo_bill_versions v
+          WHERE v.bill_id = b.external_id AND v.updated_at > b.derived_at)
+        OR EXISTS (SELECT 1 FROM pubinfo_bill_versions v
+          JOIN pubinfo_bill_version_authors a ON a.bill_version_id = v.external_id
+          WHERE v.bill_id = b.external_id AND a.updated_at > b.derived_at)
+        OR EXISTS (SELECT 1 FROM pubinfo_bill_history h
+          WHERE h.bill_id = b.external_id AND h.updated_at > b.derived_at)
+        OR EXISTS (SELECT 1 FROM pubinfo_bill_summary_votes s
+          WHERE s.bill_id = b.external_id AND s.updated_at > b.derived_at)
+        OR EXISTS (SELECT 1 FROM pubinfo_bill_detail_votes d
+          WHERE d.bill_id = b.external_id AND d.updated_at > b.derived_at)
+        OR EXISTS (SELECT 1 FROM pubinfo_bill_motions m
+          JOIN pubinfo_bill_detail_votes d ON d.motion_id = m.external_id::int
+          WHERE d.bill_id = b.external_id AND m.updated_at > b.derived_at)
+      ORDER BY b.external_id`;
+    return rows.map((r) => r.external_id);
   }
 
   private async derive(
@@ -231,16 +231,27 @@ export class BillsPubinfoSyncService {
     },
   ): Promise<number> {
     if (billIds.length === 0) return 0;
+    // Stamped on each bill derived: a mirror row written after this moment
+    // is newer than what the bill was derived from.
+    const run = { ...opts, derivedAt: new Date() };
     const index = await this.deriveIndex();
-    let derived = 0;
+    const tally = { derived: 0, failed: 0 };
     for (let i = 0; i < billIds.length; i += DERIVE_CHUNK) {
-      derived += await this.deriveChunk(
+      await this.deriveChunk(
         billIds.slice(i, i + DERIVE_CHUNK),
         index,
-        opts,
+        run,
+        tally,
       );
     }
-    return derived;
+    if (tally.failed > 0) {
+      // The failed bills keep their old `derived_at`, so the next sync
+      // derives them again; the job is recorded failed meanwhile (B7).
+      throw new Error(
+        `pubinfo: ${tally.failed} of ${billIds.length} bills failed to derive (${tally.derived} derived); they are retried next sync`,
+      );
+    }
+    return tally.derived;
   }
 
   private async deriveIndex(): Promise<DeriveIndex> {
@@ -250,28 +261,29 @@ export class BillsPubinfoSyncService {
           sessionYear: true,
           houseType: true,
           authorName: true,
+          lastName: true,
           district: true,
         },
       }),
       this.db.representative.findMany({
         where: { deletedAt: null, chamber: { in: ['Assembly', 'Senate'] } },
-        select: { id: true, chamber: true, district: true },
+        select: { id: true, chamber: true, district: true, name: true },
       }),
       this.db.pubinfoLocationCode.findMany({
         select: { sessionYear: true, locationCode: true, description: true },
       }),
     ]);
     const repBySeat = new Map(
-      reps.map((r) => [`${r.chamber}|${r.district}`, r.id]),
+      reps.map((r) => [`${r.chamber}|${r.district}`, r]),
     );
     const repByLegislator = new Map<string, string>();
     for (const l of legislators) {
       const seat = seatKey(l.district);
-      const repId = seat ? repBySeat.get(seat) : undefined;
-      if (repId && l.authorName) {
+      const rep = seat ? repBySeat.get(seat) : undefined;
+      if (rep && l.authorName && isSeatHolder(rep.name, l.lastName)) {
         repByLegislator.set(
           legislatorKey(l.sessionYear, l.houseType, l.authorName),
-          repId,
+          rep.id,
         );
       }
     }
@@ -288,92 +300,115 @@ export class BillsPubinfoSyncService {
   private async deriveChunk(
     billIds: string[],
     index: DeriveIndex,
-    opts: {
-      regionId: string;
-      statusLifecycle: Readonly<Record<string, OfficialLifecycle>>;
-      today: Date;
-    },
-  ): Promise<number> {
+    run: DeriveRun,
+    tally: { derived: number; failed: number },
+  ): Promise<void> {
     const data = await this.loadChunk(billIds);
-    let derived = 0;
     for (const pb of data.bills) {
-      const versions = data.versionsByBill.get(pb.externalId) ?? [];
-      const latest = latestVersion(versions);
-      const authors = latest
-        ? (data.authorsByVersion.get(latest.externalId) ?? [])
-        : [];
-      const action = lastAction(data.historyByBill.get(pb.externalId) ?? []);
-      const lead = authors.find((a) => a.contribution === 'LEAD_AUTHOR');
-      const session = sessionLabel(pb.sessionYear);
-      const { id } = await upsertOfficialBill(
-        this.db,
-        pb.externalId,
-        {
-          regionId: opts.regionId,
-          billNumber: billNumber(pb.measureType, pb.measureNum),
-          sessionYear: session,
-          measureTypeCode: pb.measureType,
-          title:
-            camlTitle(
-              latest ? data.xmlByVersion.get(latest.externalId) : null,
-            ) ??
-            latest?.subject ??
-            billNumber(pb.measureType, pb.measureNum),
-          subject: latest?.subject ?? null,
-          status: pb.currentStatus,
-          lastAction: action?.action ?? null,
-          lastActionDate: action?.actionDate ?? null,
-          authorName: lead?.name ?? null,
-          authorId: lead
-            ? this.repFor(
-                index,
-                pb.sessionYear,
-                authorHouse(lead.house),
-                lead.name,
-              )
-            : null,
-          sourceUrl: leginfoUrl('billStatusClient', pb.externalId),
-          fullTextUrl: leginfoUrl('billTextClient', pb.externalId),
-          needsStatusRecheck: false,
-          pipelineExecutionId: pb.pipelineExecutionId,
-          extractedAt: opts.today,
-        },
-        {
-          statusLifecycle: opts.statusLifecycle,
-          today: opts.today,
-          stored: data.storedFlags.get(pb.externalId),
-        },
-      );
-      await this.replaceLinks(
-        { id, externalId: pb.externalId, sessionYear: pb.sessionYear },
-        authors,
-        data,
-        index,
-      );
-      derived++;
+      try {
+        await this.db.$transaction(
+          (tx) => this.deriveBill(tx, pb, data, index, run),
+          { timeout: DERIVE_TX_TIMEOUT_MS },
+        );
+        tally.derived++;
+      } catch (e) {
+        // One bad bill must not stop the rest; it stays underived.
+        tally.failed++;
+        this.logger.warn(
+          `pubinfo: deriving ${pb.externalId} failed: ${(e as Error).message}`,
+        );
+      }
     }
-    return derived;
   }
 
-  /** Co-authors and votes, replaced together so a bill never shows half a set. */
+  /**
+   * One bill, its co-authors, its votes and its `derived_at`, in one
+   * transaction: a crash leaves either all of it or none, never new status
+   * beside old votes.
+   */
+  private async deriveBill(
+    tx: Prisma.TransactionClient,
+    pb: ChunkData['bills'][number],
+    data: ChunkData,
+    index: DeriveIndex,
+    run: DeriveRun,
+  ): Promise<void> {
+    const versions = data.versionsByBill.get(pb.externalId) ?? [];
+    const latest = latestVersion(versions);
+    const authors = latest
+      ? (data.authorsByVersion.get(latest.externalId) ?? [])
+      : [];
+    const action = lastAction(data.historyByBill.get(pb.externalId) ?? []);
+    const lead = authors.find((a) => a.contribution === 'LEAD_AUTHOR');
+    const number = billNumber(pb.measureType, pb.measureNum);
+    const { id } = await upsertOfficialBill(
+      tx,
+      pb.externalId,
+      {
+        regionId: run.regionId,
+        billNumber: number,
+        sessionYear: sessionLabel(pb.sessionYear),
+        measureTypeCode: pb.measureType,
+        title:
+          camlTitle(latest ? data.xmlByVersion.get(latest.externalId) : null) ??
+          latest?.subject ??
+          number,
+        subject: latest?.subject ?? null,
+        status: pb.currentStatus,
+        lastAction: action?.action ?? null,
+        lastActionDate: action?.actionDate ?? null,
+        authorName: lead?.name ?? null,
+        authorId: lead
+          ? this.repFor(
+              index,
+              pb.sessionYear,
+              authorHouse(lead.house),
+              lead.name,
+            )
+          : null,
+        sourceUrl: leginfoUrl('billStatusClient', pb.externalId),
+        fullTextUrl: leginfoUrl('billTextClient', pb.externalId),
+        needsStatusRecheck: false,
+        pipelineExecutionId: pb.pipelineExecutionId,
+        extractedAt: run.today,
+      },
+      {
+        statusLifecycle: run.statusLifecycle,
+        today: run.today,
+        stored: data.storedFlags.get(pb.externalId),
+      },
+    );
+    await this.replaceLinks(
+      tx,
+      { id, externalId: pb.externalId, sessionYear: pb.sessionYear },
+      authors,
+      data,
+      index,
+    );
+    // Raw, so Prisma's @updatedAt does not move past it and mark the bill
+    // changed again.
+    await tx.$executeRaw`UPDATE pubinfo_bills SET derived_at = ${run.derivedAt} WHERE external_id = ${pb.externalId}`;
+  }
+
+  /** Co-authors and votes, replaced inside the bill's transaction. */
   private async replaceLinks(
+    tx: Prisma.TransactionClient,
     bill: BillRef,
     authors: AuthorRow[],
     data: ChunkData,
     index: DeriveIndex,
   ): Promise<void> {
     const billId = bill.id;
-    const coAuthors = this.coAuthorRows(bill, authors, index);
-    const votes = this.voteRows(bill, data, index);
-    await this.db.$transaction([
-      this.db.billCoAuthor.deleteMany({ where: { billId } }),
-      this.db.billCoAuthor.createMany({
-        data: coAuthors,
-        skipDuplicates: true,
-      }),
-      this.db.billVote.deleteMany({ where: { billId } }),
-      this.db.billVote.createMany({ data: votes, skipDuplicates: true }),
-    ]);
+    await tx.billCoAuthor.deleteMany({ where: { billId } });
+    await tx.billCoAuthor.createMany({
+      data: this.coAuthorRows(bill, authors, index),
+      skipDuplicates: true,
+    });
+    await tx.billVote.deleteMany({ where: { billId } });
+    await tx.billVote.createMany({
+      data: this.voteRows(bill, data, index),
+      skipDuplicates: true,
+    });
   }
 
   private coAuthorRows(
@@ -575,6 +610,14 @@ interface ChunkData {
   storedFlags: Map<string, { isDead: boolean; isActive: boolean }>;
 }
 
+/** One derive pass: the region's settings and the moment it started. */
+interface DeriveRun {
+  regionId: string;
+  statusLifecycle: Readonly<Record<string, OfficialLifecycle>>;
+  today: Date;
+  derivedAt: Date;
+}
+
 /** A derived bill: its row id, and the pubinfo id and session it came from. */
 interface BillRef {
   id: string;
@@ -597,33 +640,10 @@ function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
   return groups;
 }
 
-function noteTouched(
-  touched: Touched,
-  table: PubinfoTable,
-  written: PubinfoRow[],
-): void {
-  if (written.length === 0) return;
-  if (LOOKUPS.has(table)) {
-    touched.everything = true;
-    return;
-  }
-  if (table === 'BILL_VERSION_AUTHORS_TBL') {
-    for (const row of written) {
-      touched.versionIds.add((row as { billVersionId: string }).billVersionId);
-    }
-    return;
-  }
-  const field = BILL_KEYED[table];
-  if (!field) return;
-  for (const row of written) {
-    touched.billIds.add((row as unknown as Record<string, string>)[field]);
-  }
-}
-
 /**
  * The bill's public page on leginfo, for readers: the pages a person opens in
  * a browser, which robots.txt does not govern. Nothing here fetches them.
  */
 function leginfoUrl(page: string, billId: string): string {
-  return `https://leginfo.legislature.ca.gov/faces/${page}.xhtml?bill_id=${billId}`;
+  return `https://leginfo.legislature.ca.gov/faces/${page}.xhtml?bill_id=${encodeURIComponent(billId)}`;
 }

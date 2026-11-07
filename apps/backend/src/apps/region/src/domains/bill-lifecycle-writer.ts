@@ -102,9 +102,12 @@ export interface BillLifecycleFlags {
  *  - `official`: set by the bulk derive from the region's status map, so a
  *    stage or summary write leaves them alone; only the session-expired rule
  *    moves them, ending a bill still active when its session closes.
- *  - none (legacy): kept as stored. On most pre-pubinfo rows the status is an
- *    LLM read of the text page, and recomputing from it flipped 2,180 dev
- *    bills out of the feed on 2026-11-06.
+ *  - none (legacy): kept as stored, except by the session-expired rule. On
+ *    most pre-pubinfo rows the status is an LLM read of the text page, and
+ *    recomputing from it flipped 2,180 dev bills out of the feed on
+ *    2026-11-06. The session rule reads no status, so it is safe, and a
+ *    legacy bill no source lists any more would otherwise stay active
+ *    forever.
  *
  * A row read without its stored flags is recomputed, as before.
  */
@@ -118,9 +121,6 @@ export function flagsFor(
     row.isActive === undefined
   ) {
     return lifecycleFlags(row, today);
-  }
-  if (row.statusSource !== 'official') {
-    return { isDead: row.isDead, isActive: row.isActive };
   }
   const sessionOpen = computeActiveCaSessionYears(today).includes(
     row.sessionYear,
@@ -353,7 +353,8 @@ export type OfficialBillFields = Omit<
  * does not name the status.
  */
 export async function upsertOfficialBill(
-  db: DbService,
+  // A transaction client too: the derive writes a bill with its links.
+  db: Pick<DbService, 'bill'>,
   externalId: string,
   fields: OfficialBillFields,
   opts: {

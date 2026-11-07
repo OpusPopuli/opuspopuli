@@ -25,12 +25,21 @@ export interface BulkDownloadScope {
   ): Promise<T>;
   /** Releases everything acquired. Safe to call more than once. */
   close(): Promise<void>;
+  /**
+   * When the sync began. A rotating export (a file per weekday) is resolved
+   * from this, not from each source's own clock, so a sync that runs across
+   * the publisher's hour still reads one day's file (bills-phase-b.md).
+   */
+  readonly startedAt: Date;
 }
 
-export function createBulkDownloadScope(): BulkDownloadScope {
+export function createBulkDownloadScope(
+  startedAt: Date = new Date(),
+): BulkDownloadScope {
   const held = new Map<string, Promise<ScopedDownload>>();
   let closed = false;
   return {
+    startedAt,
     acquire<T extends ScopedDownload>(
       key: string,
       download: () => Promise<T>,

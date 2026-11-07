@@ -2,6 +2,8 @@ import {
   authorHouse,
   billNumber,
   camlTitle,
+  foldName,
+  isSeatHolder,
   lastAction,
   latestVersion,
   legislatorKey,
@@ -151,6 +153,18 @@ describe('bills-pubinfo-derive (bills-phase-b.md, D15-D17)', () => {
     expect(seatKey('AD78')).toBe('Assembly|78');
     expect(seatKey('SD02')).toBe('Senate|2');
     expect(seatKey('XD01')).toBeUndefined();
+  });
+
+  it('folds case and accents out of a name', () => {
+    expect(foldName('Ávila Farías')).toBe(foldName('Avila Farias'));
+  });
+
+  it('links a legislator only to the member holding the seat now (D15)', () => {
+    expect(isSeatHolder('Anamarie Ávila Farías', 'Avila Farias')).toBe(true);
+    // A predecessor, and the former member of a seat now vacant.
+    expect(isSeatHolder('Ada Successor', 'Predecessor')).toBe(false);
+    expect(isSeatHolder('Member Vacant', 'Former')).toBe(false);
+    expect(isSeatHolder('Ada Example', null)).toBe(false);
   });
 
   it('reads an author row house', () => {

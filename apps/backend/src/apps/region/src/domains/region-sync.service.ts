@@ -463,10 +463,12 @@ const DEFAULT_COLD_AFTER_DAYS = 180;
 const SUMMARY_CAP_PER_SYNC = 200;
 
 /**
- * Days a bill whose summary failed waits before it is tried again. Without the
- * wait, the same bills (budget bills of up to 2M characters that time out, or
- * return no JSON) led every sync and tripped the five-failure abort before any
- * other bill was reached (bills-phase-b.md, UAT run 2).
+ * Days a bill whose summary attempt produced nothing waits before it is tried
+ * again. Without the wait, the same bills (budget bills of up to 2M characters
+ * that time out, or return no JSON) led every sync and tripped the
+ * five-failure abort before any other bill was reached (bills-phase-b.md, UAT
+ * run 2). A bill with no text waits too, or it would take a place in the cap
+ * every sync.
  */
 const SUMMARY_RETRY_AFTER_DAYS = 7;
 
@@ -2166,8 +2168,12 @@ export class RegionSyncService implements OnModuleDestroy {
             aiSummary: { equals: Prisma.DbNull },
             AND: [summaryRetryDue(new Date())],
           },
-      // Bills never failed first, so a retry cannot crowd them out.
-      orderBy: { aiSummaryFailedAt: { sort: 'asc', nulls: 'first' } },
+      // Bills never failed first, so a retry cannot crowd them out; then by
+      // id, so each sync takes the same bills in the same order.
+      orderBy: [
+        { aiSummaryFailedAt: { sort: 'asc', nulls: 'first' } },
+        { id: 'asc' },
+      ],
       select: {
         id: true,
         regionId: true,
@@ -2359,7 +2365,10 @@ export class RegionSyncService implements OnModuleDestroy {
     if (outcome === 'votes-upserted') updatedRef.total += 1;
   }
 
-  /** Summarize one bill; a failure is recorded so it waits before a retry. */
+  /**
+   * Summarize one bill. An attempt the bill itself defeated (no text, an
+   * unusable answer, a timeout) is recorded, so it waits before a retry.
+   */
   private async enrichSingleBill(
     bill: BillEnrichmentCandidate,
     stagePatterns: StagePattern[],
@@ -2375,8 +2384,8 @@ export class RegionSyncService implements OnModuleDestroy {
       lifecycleStages,
       stageIdSet,
     );
-    if (result.outcome === 'failed') await this.recordSummaryFailure(bill.id);
-    return result;
+    if (result.wait) await this.recordSummaryFailure(bill.id);
+    return { outcome: result.outcome, tokensUsed: result.tokensUsed };
   }
 
   private async recordSummaryFailure(billId: string): Promise<void> {
@@ -2400,6 +2409,8 @@ export class RegionSyncService implements OnModuleDestroy {
   ): Promise<{
     outcome: EnrichmentOutcome;
     tokensUsed: number;
+    /** The bill defeated this attempt; it waits before the next. */
+    wait?: boolean;
   }> {
     try {
       const source = await this.billTextFor(bill);
@@ -2407,7 +2418,7 @@ export class RegionSyncService implements OnModuleDestroy {
         this.logger.debug(
           `Bill enrichment: skipping ${bill.billNumber} — no bill text`,
         );
-        return { outcome: 'skipped', tokensUsed: 0 };
+        return { outcome: 'skipped', tokensUsed: 0, wait: true };
       }
       const html = this.htmlToReadableText(source);
 
@@ -2439,7 +2450,7 @@ export class RegionSyncService implements OnModuleDestroy {
         bill.billNumber,
       );
       if (!parsed) {
-        return { outcome: 'failed', tokensUsed };
+        return { outcome: 'failed', tokensUsed, wait: true };
       }
 
       await this.writeStatusSummary(
@@ -2465,10 +2476,18 @@ export class RegionSyncService implements OnModuleDestroy {
 
       return { outcome: 'enriched', tokensUsed };
     } catch (e) {
+      const message = (e as Error).message;
       this.logger.warn(
-        `Bill enrichment failed for ${bill.billNumber}: ${(e as Error).message}`,
+        `Bill enrichment failed for ${bill.billNumber}: ${message}`,
       );
-      return { outcome: 'failed', tokensUsed: 0 };
+      // A timeout is what a bill too long for the model produces. Anything
+      // else (prompt service or model unreachable, a failed write) is not
+      // the bill's doing, so it is tried again next sync.
+      return {
+        outcome: 'failed',
+        tokensUsed: 0,
+        wait: /timed out/i.test(message),
+      };
     }
   }
 
@@ -2508,7 +2527,14 @@ export class RegionSyncService implements OnModuleDestroy {
       this.logger.warn(`Bill enrichment: no JSON returned for ${billNumber}`);
       return null;
     }
-    const raw: unknown = JSON.parse(candidate);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(candidate);
+    } catch {
+      // Not the parser's message: V8 quotes the model's output in it.
+      this.logger.warn(`Bill enrichment: unparseable JSON for ${billNumber}`);
+      return null;
+    }
     // Reject non-object payloads — the LLM occasionally returns `null` or
     // `[]` instead of the structured object. Storing those would lock the
     // bill out of the retry query (`ai_summary IS NULL`) with garbage in

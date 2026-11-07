@@ -11,7 +11,9 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /**
  * The URL to download: the source url, or for a rotating export the newest
- * file's name resolved against it (the directory it is published in).
+ * file's name resolved against it (the directory it is published in). The
+ * name must stay on the source's origin: a config name such as `//host/x.zip`
+ * would otherwise move the fetch to another host.
  */
 export function exportUrl(source: DataSourceConfig, now = new Date()): string {
   const rotating = source.bulk?.rotatingFile;
@@ -21,10 +23,40 @@ export function exportUrl(source: DataSourceConfig, now = new Date()): string {
     source.timezone ?? "UTC",
     rotating.publishedAfter,
   );
-  return new URL(
-    rotating.name.replace("{weekday}", day),
-    source.url,
-  ).toString();
+  const url = new URL(rotating.name.replace("{weekday}", day), source.url);
+  if (url.origin !== new URL(source.url).origin) {
+    throw new Error(
+      `Rotating file ${rotating.name} leaves ${source.url}'s origin`,
+    );
+  }
+  return url.toString();
+}
+
+/**
+ * Oldest a rotating export may be. A daily file is at most about a day old
+ * when fetched; one published a week ago means today's has not appeared yet
+ * (a run just after `publishedAfter` on a late night), and importing it would
+ * write a week-old status over every row that changed since.
+ */
+export const MAX_ROTATING_AGE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Throws when a rotating export's `last-modified` is older than
+ * {@link MAX_ROTATING_AGE_MS}. A missing or unreadable header passes: the
+ * guard is for a file known to be stale, not a proof of freshness.
+ */
+export function assertRotatingFileFresh(
+  url: string,
+  lastModified: string | null | undefined,
+  now = new Date(),
+): void {
+  const modified = lastModified ? Date.parse(lastModified) : Number.NaN;
+  if (Number.isNaN(modified)) return;
+  if (now.getTime() - modified > MAX_ROTATING_AGE_MS) {
+    throw new Error(
+      `${url} was last modified ${lastModified}, over 48 hours ago: not the newest export, so it is not imported over newer data`,
+    );
+  }
 }
 
 /**

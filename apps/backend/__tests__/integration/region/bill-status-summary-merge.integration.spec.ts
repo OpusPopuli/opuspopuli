@@ -786,4 +786,36 @@ describe('bill-status-summary merge — integration (#823)', () => {
     });
     expect(summarized.map((b) => b.id)).toEqual(['b-fresh']);
   });
+
+  it('makes a bill with no text wait, so it does not hold a place every sync', async () => {
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db, { fullTextUrl: null });
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const row = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(row.aiSummaryFailedAt).not.toBeNull();
+  });
+
+  it('makes a bill wait after a timeout, not when the model is unreachable', async () => {
+    await seedCivicsTaxonomy(db);
+    const timedOut = await seedBill(db, { id: 'a-timed-out' });
+    const unreachable = await seedBill(db, { id: 'b-unreachable' });
+    stubFetchUrlText();
+    mockLlm.generate
+      .mockRejectedValueOnce(new Error('Request timed out after 120000ms'))
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:11434'));
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const rows = await db.bill.findMany({
+      where: { id: { in: [timedOut.id, unreachable.id] } },
+      orderBy: { id: 'asc' },
+      select: { id: true, aiSummaryFailedAt: true },
+    });
+    expect(rows.map((r) => [r.id, r.aiSummaryFailedAt !== null])).toEqual([
+      ['a-timed-out', true],
+      ['b-unreachable', false],
+    ]);
+  });
 });

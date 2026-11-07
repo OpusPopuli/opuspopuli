@@ -37,7 +37,11 @@ export function openZipEntryReader(zipPath: string): Promise<ZipEntryReader> {
         zip.readEntry();
       });
       zip.on("end", () => resolve(readerFor(zip, entries)));
-      zip.on("error", reject);
+      // autoClose is off, so a failed index must close the file itself.
+      zip.on("error", (error: Error) => {
+        zip.close();
+        reject(error);
+      });
       zip.readEntry();
     });
   });

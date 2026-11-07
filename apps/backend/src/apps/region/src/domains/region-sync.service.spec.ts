@@ -2204,6 +2204,12 @@ describe('RegionSyncService', () => {
     });
   });
 
+  /** Stubs a private method of `target` to resolve to `value`. */
+  const stubResolved = (target: object) => (name: string, value: unknown) =>
+    jest
+      .spyOn(target as never, name as never)
+      .mockResolvedValue(value as never);
+
   describe('syncBills — discovery reaches the prune (F2), flags are refreshed (F4)', () => {
     it('hands the prune every discovered id, even when every bill failed', async () => {
       const STATUS =
@@ -2216,10 +2222,7 @@ describe('RegionSyncService', () => {
       };
       internals.promptClient = {};
       internals.llm = {};
-      const stub = (name: string, value: unknown) =>
-        jest
-          .spyOn(internals as never, name as never)
-          .mockResolvedValue(value as never);
+      const stub = stubResolved(internals);
       stub('buildRepNameIndex', new Map());
       stub('buildCommitteeNameIndex', new Map());
       stub('buildStagePatterns', []);
@@ -2284,10 +2287,7 @@ describe('RegionSyncService', () => {
           derived: 0,
         }),
       };
-      const stub = (name: string, value: unknown) =>
-        jest
-          .spyOn(internals as never, name as never)
-          .mockResolvedValue(value as never);
+      const stub = stubResolved(internals);
       stub('refreshLifecycleFlags', undefined);
       stub('buildStagePatterns', []);
       stub('buildLifecycleStageInputs', null);

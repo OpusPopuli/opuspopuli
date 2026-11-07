@@ -32,6 +32,10 @@ const PINNED_FILES = {
   // only when one of its lines changes, so a derive change needs a bump too.
   billsDerive: join(__dirname, 'bills-pubinfo-derive.ts'),
   billsSync: join(__dirname, 'bills-pubinfo-sync.service.ts'),
+  // A bill's flags come from these, so a change to either alters what an
+  // unchanged line's bill becomes (review of the final diff).
+  billLifecycle: join(__dirname, 'bill-lifecycle.ts'),
+  billLifecycleWriter: join(__dirname, 'bill-lifecycle-writer.ts'),
 };
 
 const PINS: { version: string; files: Record<string, string> }[] = [
@@ -62,6 +66,26 @@ const PINS: { version: string; files: Record<string, string> }[] = [
         '40f61c9b90995d001365a8289e0995effaf3ab99ee0b49e504c4ad5209cd1f20',
     },
   },
+  {
+    // The derive is crash-safe and links by seat holder; lifecycle files pinned.
+    version: 'bm3',
+    files: {
+      writeShape:
+        'd46277fe1f25132ae0231325ad4a468f651ea807814640cf830d8eb3d4d917d3',
+      routing:
+        'd7a0a6fe9eb69212b359d58a4e542e99a6e5f59f590b068adfcaa1f350a6cc88',
+      billsWriteShape:
+        '033cc3971012617482c15c4c2cc1c5ba7c25dabe5241d856b5804a15f6cedbf3',
+      billsDerive:
+        '204701119de34fd03a4f10117253f5a7cd8a3c7c3cb3b698b82b9988c82cdb40',
+      billsSync:
+        'edf7e5cd5ed81a3f52575b3ee237cc2ae430e590a0430f379239feaa1a6f60a1',
+      billLifecycle:
+        '088a2d4f6c9cf157a47a453453e21dc3b2d6553a59d5e2d5393d451915787621',
+      billLifecycleWriter:
+        '89e0295e7c720e77b618031f87c6a9ca59869064d51428b46b574733d35758cb',
+    },
+  },
 ];
 
 function hashOf(path: string): string {
@@ -82,6 +106,8 @@ describe('the finance write shape (campaign-finance-phase-b.md, D2)', () => {
         billsWriteShape: hashOf(PINNED_FILES.billsWriteShape),
         billsDerive: hashOf(PINNED_FILES.billsDerive),
         billsSync: hashOf(PINNED_FILES.billsSync),
+        billLifecycle: hashOf(PINNED_FILES.billLifecycle),
+        billLifecycleWriter: hashOf(PINNED_FILES.billLifecycleWriter),
       },
     }).toEqual(latest);
   });
