@@ -573,6 +573,44 @@ touches only the derive, and the new NULL column re-derives every bill.
 - **Run 7 (same file):** 0 written, 0 derived. The derive query now takes
   under a second (it was 40 s).
 
+## Review of the last fixes (`a349e738..545b34a2`, 2026-11-07)
+
+A single-agent review across all lenses found no blocker. Its checks:
+- `billsToDerive` misses no bill: a NULL `min(derived_at)`, a bill derived
+  long after the oldest, and same-instant writes were each checked.
+- The query is parameterized.
+- The links hash captures renames, soft deletes and added legislators.
+- The bm3 in-place re-pin is within the spec's rule: the version never left
+  dev, and the change is equivalent to deleting the rows.
+
+**Fixed (suggestions):**
+- **Outages made bills wait.** Skips reset the abort streak and concurrent
+  batches overshoot it, so an outage could hold back up to 200 bills for a
+  week. A failed attempt now waits only if the model answers `isAvailable()`
+  afterwards. A bill with no text still waits, since no model is involved.
+  Mutation-checked.
+- **Model output could reach the log.** The summary catch logged Prisma's
+  full message, which can quote the summary the model wrote. `shortError`
+  moved to `short-error.ts` (with its own spec) and is used there too.
+- **The links hash could flip.** Legislators are now read in a fixed order, so
+  a key two rows share resolves the same way every run.
+- **Generational suffixes broke the match.** They are dropped when matching,
+  so "Smith Jr." matches "John Smith". O'Brien and O’Brien match too.
+  Mutation-checked.
+- **Motion id overflow.** The id cast is capped at 9 digits, so an id too
+  long for an integer cannot fail the query.
+- **Vacuous test.** The "any failed attempt" test now also asserts it found
+  both rows.
+
+**UAT run 8 (job 206), same file, final code:** 0 written, 0 derived; the
+links hash is unchanged across all bills; 599,199 votes linked.
+
+**Recorded, not changed:** bills that never change keep their first
+`derived_at`, so `min(derived_at)` stays put and the prefilter reads more
+rows over time. That costs speed only. If it shows in timings, compare per
+table against each bill's own `derived_at` through `(bill_id, updated_at)`
+indexes.
+
 **Not new:** the 1.1 GB zip exceeds local Supabase storage's object limit,
 so the snapshot was not archived. The finance zip has never archived
 locally either. The import continues, and the snapshot row records no
