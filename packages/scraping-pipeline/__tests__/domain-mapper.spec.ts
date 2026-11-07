@@ -2277,6 +2277,82 @@ describe("DomainMapperService", () => {
   });
 });
 
+describe("DomainMapperService — pubinfo bills rows (bills-phase-b.md, D10)", () => {
+  const mapper = new DomainMapperService();
+  const HASH = "b".repeat(64);
+  const bills = (category: string): DataSourceConfig =>
+    createSource({
+      dataType: DataType.BILLS,
+      sourceType: "bulk_download",
+      category,
+    });
+  const map = (category: string, record: Record<string, unknown>) =>
+    mapper.map(createRawResult({ items: [record] }), bills(category));
+
+  it("tags a row with the table its category names", () => {
+    const result = map("pubinfo:BILL_TBL", {
+      externalId: "202520260AB1165",
+      sessionYear: "20252026",
+      measureType: "AB",
+      measureNum: "1165",
+      currentStatus: "Vetoed",
+      sourceRecordHash: HASH,
+    });
+    expect(result.items).toEqual([
+      {
+        table: "BILL_TBL",
+        externalId: "202520260AB1165",
+        sessionYear: "20252026",
+        measureType: "AB",
+        measureNum: 1165,
+        currentStatus: "Vetoed",
+        sourceRecordHash: HASH,
+      },
+    ]);
+  });
+
+  it("keeps the calendar date of a zone-less pubinfo timestamp", () => {
+    const result = map("pubinfo:BILL_HISTORY_TBL", {
+      externalId: "1",
+      billId: "202520260AB1165",
+      actionDate: "2026-09-30 00:00:00",
+      action: "Vetoed by Governor.",
+    });
+    expect(result.items[0]).toMatchObject({ actionDate: "2026-09-30" });
+  });
+
+  it("coerces roll-call counts to numbers", () => {
+    const result = map("pubinfo:BILL_SUMMARY_VOTE_TBL", {
+      externalId: "k",
+      billId: "202520260AB1165",
+      locationCode: "AFLOOR",
+      voteDateTime: "2026-05-28 10:00:00",
+      voteDateSeq: "1",
+      motionId: "7",
+      ayes: "60",
+      noes: "15",
+    });
+    expect(result.items[0]).toMatchObject({ ayes: 60, noes: 15, motionId: 7 });
+  });
+
+  it("drops a bills row whose category names no pubinfo table", () => {
+    expect(map("Legislature", { externalId: "x" }).items).toEqual([]);
+    expect(map("pubinfo:NOT_A_TABLE", { externalId: "x" }).items).toEqual([]);
+  });
+
+  it("rejects a row missing what its table keys on", () => {
+    const result = map("pubinfo:BILL_DETAIL_VOTE_TBL", {
+      externalId: "k",
+      billId: "202520260AB1165",
+      locationCode: "AFLOOR",
+      voteDateTime: "2026-05-28 10:00:00",
+      voteDateSeq: "1",
+      motionId: "7",
+    });
+    expect(result.items).toEqual([]);
+  });
+});
+
 describe("schema rejection diagnostics (#966 W1)", () => {
   let mapper: DomainMapperService;
 

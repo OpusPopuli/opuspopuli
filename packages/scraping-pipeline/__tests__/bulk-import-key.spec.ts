@@ -21,6 +21,7 @@ const PINNED_FILES = [
   "src/handlers/bulk-line-parser.ts",
   "src/handlers/handler-utils.ts",
   "src/mapping/domain-mapper.service.ts",
+  "src/mapping/pubinfo-schemas.ts",
 ];
 
 /**
@@ -33,18 +34,52 @@ const PINNED_FILES = [
  * config (so a new import key) or has had its rows deleted. bm1 was re-pinned
  * for F8 on that basis: only S496 and CVR2 changed, their config changed with
  * regions#98, and the migration deleted their old rows
- * (`docs/plans/campaign-finance-phase-b.md`, "F8 built").
+ * (`docs/plans/campaign-finance-phase-b.md`, "F8 built"). It was re-pinned
+ * again for the pubinfo bills source (`docs/plans/bills-phase-b.md`, D9):
+ * quoteChar, nullToken and lobColumns are opt-in and leave every existing
+ * source's rows and line hashes as they were, and the bills mirrors are new
+ * tables under a new source config.
  */
 const PINS: { version: string; files: Record<string, string> }[] = [
   {
     version: "bm1",
     files: {
       "src/handlers/bulk-line-parser.ts":
-        "ee4be5221719924f820e7441478cc2efb3fdc89c046eb40dc5e932ca8ed9b57f",
+        "dc49873dd5d883a4dbd497f4b74d2de6281280a731c4399ad295876fd26c9eb7",
       "src/handlers/handler-utils.ts":
         "fa3e04b485108e6412010fe09f36e8407b3be11556950ffcdd4f3ea5d48d4aec",
       "src/mapping/domain-mapper.service.ts":
-        "65d8a003ba03eb3e3b974a68517e2fd8f0efe8d3245e85c1ff861e8fd359ca1e",
+        "8cfeb1839a8479149c8a59ed9d057edd83893978caf3d5fa7506bf169898af86",
+      "src/mapping/pubinfo-schemas.ts":
+        "8c7041aae12b827ce0eb948ae4cda750bc26d6fbc2b591b5432fedd0fae0ac62",
+    },
+  },
+  {
+    // The bills derive changed (pinned in the backend); these files did not.
+    version: "bm2",
+    files: {
+      "src/handlers/bulk-line-parser.ts":
+        "dc49873dd5d883a4dbd497f4b74d2de6281280a731c4399ad295876fd26c9eb7",
+      "src/handlers/handler-utils.ts":
+        "fa3e04b485108e6412010fe09f36e8407b3be11556950ffcdd4f3ea5d48d4aec",
+      "src/mapping/domain-mapper.service.ts":
+        "8cfeb1839a8479149c8a59ed9d057edd83893978caf3d5fa7506bf169898af86",
+      "src/mapping/pubinfo-schemas.ts":
+        "8c7041aae12b827ce0eb948ae4cda750bc26d6fbc2b591b5432fedd0fae0ac62",
+    },
+  },
+  {
+    // Lob text resolved in the parser; an empty entry reads as empty.
+    version: "bm3",
+    files: {
+      "src/handlers/bulk-line-parser.ts":
+        "8dd029217b4d9d835cb038afa42e722d5bee785d9d827ba0c36a62f68d75ca2e",
+      "src/handlers/handler-utils.ts":
+        "fa3e04b485108e6412010fe09f36e8407b3be11556950ffcdd4f3ea5d48d4aec",
+      "src/mapping/domain-mapper.service.ts":
+        "8cfeb1839a8479149c8a59ed9d057edd83893978caf3d5fa7506bf169898af86",
+      "src/mapping/pubinfo-schemas.ts":
+        "8c7041aae12b827ce0eb948ae4cda750bc26d6fbc2b591b5432fedd0fae0ac62",
     },
   },
 ];
@@ -76,6 +111,17 @@ describe("bulkImportKey (campaign-finance-phase-b.md, D2)", () => {
     expect(bulkImportKey(changed)).not.toBe(bulkImportKey(source));
   });
 
+  it("changes when a bill status map changes, which the derive reads", () => {
+    const withMap = (status: "active" | "dead") =>
+      ({
+        ...source,
+        billStatusLifecycle: { "In Floor Process": status },
+      }) as unknown as DataSourceConfig;
+    expect(bulkImportKey(withMap("active"))).not.toBe(
+      bulkImportKey(withMap("dead")),
+    );
+  });
+
   it("covers the mapping version, so a bump changes every key", () => {
     expect(bulkImportKey(source)).toBe(
       stableHash({
@@ -83,6 +129,7 @@ describe("bulkImportKey (campaign-finance-phase-b.md, D2)", () => {
         dataType: source.dataType,
         category: source.category,
         bulk: source.bulk,
+        billStatusLifecycle: null,
       }),
     );
   });

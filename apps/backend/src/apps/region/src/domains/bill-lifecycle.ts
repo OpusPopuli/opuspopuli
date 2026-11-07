@@ -219,3 +219,35 @@ export function isBillActive(
  *  doesn't begin with this prefix is treated as inactive — chaptered,
  *  vetoed, died, withdrawn, inactive file, or unknown. */
 const ACTIVE_STATUS_PATTERN = /^active bill\b/i;
+
+/** Where an official status leaves a bill, as a region's config maps it. */
+export type OfficialLifecycle = 'active' | 'enacted' | 'dead';
+
+/**
+ * Flags from a publisher's structured status (`bills-phase-b.md`, D11): the
+ * region config maps each status to active, enacted or dead, and the
+ * session-expired rule still ends an active bill whose session has closed. A
+ * status the map does not name keeps `stored` (or inactive, for a new bill)
+ * rather than a guess.
+ */
+export function officialLifecycleFlags(
+  status: string | null,
+  sessionYear: string,
+  statusLifecycle: Readonly<Record<string, OfficialLifecycle>>,
+  ctx: BillLifecycleContext,
+  stored?: { isDead: boolean; isActive: boolean },
+): { isDead: boolean; isActive: boolean } {
+  const lifecycle = status ? statusLifecycle[status] : undefined;
+  switch (lifecycle) {
+    case 'dead':
+      return { isDead: true, isActive: false };
+    case 'enacted':
+      return { isDead: false, isActive: false };
+    case 'active':
+      return ctx.activeSessionYears.includes(sessionYear)
+        ? { isDead: false, isActive: true }
+        : { isDead: true, isActive: false };
+    default:
+      return stored ?? { isDead: false, isActive: false };
+  }
+}

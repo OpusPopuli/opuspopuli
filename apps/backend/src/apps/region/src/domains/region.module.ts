@@ -40,6 +40,7 @@ import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
 import { CampaignFinanceSyncService } from './campaign-finance-sync.service';
+import { BillsPubinfoSyncService } from './bills-pubinfo-sync.service';
 import { CivicsSyncService } from './civics-sync.service';
 import { ChildJobQueues } from 'src/common/child-jobs/child-job-queues';
 import { CountyThresholdSyncService } from './county-threshold-sync.service';
@@ -291,6 +292,7 @@ const promptClientAsyncConfig = {
     MeetingsSyncService,
     RepresentativesSyncService,
     CampaignFinanceSyncService,
+    BillsPubinfoSyncService,
     CivicsSyncService,
     ChildJobQueues,
     CountyThresholdSyncService,

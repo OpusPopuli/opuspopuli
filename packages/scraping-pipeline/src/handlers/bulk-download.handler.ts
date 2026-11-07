@@ -39,7 +39,9 @@ import type {
   ScopedDownload,
 } from "@opuspopuli/common";
 import { DomainMapperService } from "../mapping/domain-mapper.service.js";
-import { createLineParser } from "./bulk-line-parser.js";
+import { createLineParser, resolveLobColumns } from "./bulk-line-parser.js";
+import { openZipEntryReader, type ZipEntryReader } from "./zip-entry-reader.js";
+import { assertRotatingFileFresh, exportUrl } from "./rotating-file.js";
 import {
   ExecutionTrackerService,
   type ExecutionSession,
@@ -89,6 +91,13 @@ async function removeStaleExports(dir: string, now: number): Promise<void> {
 
 /** Default batch size for record processing (trades memory for fewer DB round-trips) */
 const DEFAULT_BATCH_SIZE = 10_000;
+
+/**
+ * Batch size for a source with `.lob` text, unless it sets its own: each row
+ * carries its text, up to ~2 MB, and 10,000 of them held a third of the
+ * export's text in memory at once (bills-phase-b.md, review of UAT run 1).
+ */
+const LOB_BATCH_SIZE = 500;
 
 /** An export on local disk, deleted by `release` (D4: maybe shared). */
 interface DownloadedExport extends ScopedDownload {
@@ -259,12 +268,16 @@ export class BulkDownloadHandler {
       );
 
     let download: DownloadedExport | undefined;
+    let lobs: ZipEntryReader | undefined;
     try {
       // 1. The export on disk: this sync's shared copy, or this source's own.
+      // Resolved once, so the shared copy, the fetch and the archived snapshot
+      // all name the same file even if a rotating export turns over mid-run.
+      const url = exportUrl(source, bulkDownloads?.startedAt);
       const fetchExport = () =>
-        this.downloadExport(source, regionId, session.executionId);
+        this.downloadExport(url, source, regionId, session.executionId);
       download = await (bulkDownloads
-        ? bulkDownloads.acquire(source.url, fetchExport)
+        ? bulkDownloads.acquire(url, fetchExport)
         : fetchExport());
       // Every source that read this export points at it, not only the one
       // that downloaded it (D5).
@@ -276,13 +289,23 @@ export class BulkDownloadHandler {
 
       if (isZip) {
         contentStream = await this.extractZipEntryStream(download.path, bulk);
+        if (bulk.lobColumns?.length) {
+          lobs = await openZipEntryReader(download.path).catch(
+            (error: unknown) => {
+              contentStream.destroy();
+              throw error;
+            },
+          );
+        }
       } else {
         contentStream = createReadStream(download.path, { encoding: "utf-8" });
       }
 
       // 3. Parse and process in batches (streaming)
       if (onBatch) {
-        const batchSize = bulk.batchSize ?? DEFAULT_BATCH_SIZE;
+        const batchSize =
+          bulk.batchSize ??
+          (bulk.lobColumns?.length ? LOB_BATCH_SIZE : DEFAULT_BATCH_SIZE);
         let totalItems = 0;
 
         // On retry, the session exposes already-applied batch indexes so we
@@ -307,7 +330,7 @@ export class BulkDownloadHandler {
             async (rawBatch) => {
               const currentBatch = batchIndex++;
               const items = mapBatchItems<T>(
-                rawBatch,
+                await resolveLobColumns(rawBatch, bulk, lobs),
                 source,
                 this.mapper,
                 warnings,
@@ -397,7 +420,7 @@ export class BulkDownloadHandler {
       );
 
       return mapAndReturn<T>(
-        rawRecords,
+        await resolveLobColumns(rawRecords, bulk, lobs),
         warnings,
         errors,
         source,
@@ -417,6 +440,7 @@ export class BulkDownloadHandler {
       });
       return buildFailureResult<T>(error, warnings, errors, pipelineStart);
     } finally {
+      lobs?.close();
       // A shared download is the scope's to release, once every source has
       // read it.
       if (!bulkDownloads) await download?.release();
@@ -428,6 +452,7 @@ export class BulkDownloadHandler {
    * the bulk archive. Deletes the file itself if anything here fails.
    */
   private async downloadExport(
+    url: string,
     source: DataSourceConfig,
     regionId: string,
     executionId: string | null | undefined,
@@ -439,9 +464,9 @@ export class BulkDownloadHandler {
     };
     try {
       // 1. Stream download to temp file (no memory buffering)
-      this.logger.log(`Downloading ${source.url}...`);
-      await this.hostSlot?.(source.url);
-      const response = await fetch(source.url, {
+      this.logger.log(`Downloading ${url}...`);
+      await this.hostSlot?.(url);
+      const response = await fetch(url, {
         signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
       });
 
@@ -451,6 +476,14 @@ export class BulkDownloadHandler {
 
       if (!response.body) {
         throw new Error("Response has no body");
+      }
+      if (source.bulk?.rotatingFile) {
+        try {
+          assertRotatingFileFresh(url, response.headers?.get("last-modified"));
+        } catch (error) {
+          await response.body.cancel?.().catch(() => undefined);
+          throw error;
+        }
       }
 
       // Convert web ReadableStream to Node Readable if needed
@@ -497,7 +530,8 @@ export class BulkDownloadHandler {
       // only window in which it can be read.
       const snapshotId = await this.archiveSnapshot({
         contentHash,
-        sourceUrl: source.url,
+        // The file actually fetched: for a rotating export, that day's name.
+        sourceUrl: url,
         byteSize: fileSize,
         fetchedAt: new Date().toISOString(),
         // Optional metadata, read defensively: a missing or unusual header

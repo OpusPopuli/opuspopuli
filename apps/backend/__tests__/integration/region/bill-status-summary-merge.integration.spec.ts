@@ -141,6 +141,10 @@ async function seedBill(
     status: string | null;
     currentStageId: string | null;
     fullTextUrl: string | null;
+    statusSource: string | null;
+    isActive: boolean;
+    isDead: boolean;
+    lastActionDate: Date | null;
   }> = {},
 ): Promise<{ id: string }> {
   const id = overrides.id ?? `bill-${Math.random().toString(36).slice(2, 10)}`;
@@ -161,8 +165,10 @@ async function seedBill(
           : overrides.fullTextUrl,
       status: overrides.status ?? null,
       currentStageId: overrides.currentStageId ?? null,
-      isActive: true,
-      isDead: false,
+      statusSource: overrides.statusSource ?? null,
+      lastActionDate: overrides.lastActionDate ?? null,
+      isActive: overrides.isActive ?? true,
+      isDead: overrides.isDead ?? false,
     },
   });
   return { id };
@@ -201,7 +207,12 @@ describe('bill-status-summary merge — integration (#823)', () => {
   };
   let mockLoader: { loadPlugin: jest.Mock };
   let mockPromptClient: ReturnType<typeof buildPromptClientStub>;
-  let mockLlm: { generate: jest.Mock; getModelName: jest.Mock };
+  let mockLlm: {
+    generate: jest.Mock;
+    getModelName: jest.Mock;
+    getModelDigest: jest.Mock;
+    isAvailable: jest.Mock;
+  };
 
   beforeAll(async () => {
     db = await getDbService();
@@ -229,6 +240,8 @@ describe('bill-status-summary merge — integration (#823)', () => {
       // reports failed:1 with no visible error — exactly how this mock
       // gap was found.
       getModelName: jest.fn().mockReturnValue('qwen-it:9b'),
+      getModelDigest: jest.fn().mockResolvedValue('sha256:it-digest'),
+      isAvailable: jest.fn().mockResolvedValue(true),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -283,17 +296,20 @@ describe('bill-status-summary merge — integration (#823)', () => {
 
   type StagePattern = { stageId: string; regex: RegExp };
   type LifecycleStageInput = { id: string; name: string; description: string };
+  type HotSelection = { coldAfterDays: number; today: Date };
   type EnrichFn = (
     regionId: string,
     stagePatterns: StagePattern[],
     lifecycleStages: LifecycleStageInput[] | null,
     maxBills?: number,
+    hot?: HotSelection,
   ) => Promise<{ enriched: number; skipped: number; failed: number }>;
 
   const callEnrich = (
     regionId: string,
     stagePatterns: StagePattern[],
     lifecycleStages: LifecycleStageInput[] | null,
+    hot?: HotSelection,
   ): Promise<{ enriched: number; skipped: number; failed: number }> =>
     (
       service as unknown as { enrichBillSummaries: EnrichFn }
@@ -301,6 +317,8 @@ describe('bill-status-summary merge — integration (#823)', () => {
       regionId,
       stagePatterns,
       lifecycleStages,
+      undefined,
+      hot,
     );
 
   /**
@@ -411,6 +429,8 @@ describe('bill-status-summary merge — integration (#823)', () => {
     expect(row.aiSummaryPromptVersion).toBe('v1');
     expect(row.aiSummaryPromptHash).toBe('h');
     expect(row.aiSummaryLlmModel).toBe('qwen-it:9b');
+    // F3/K6: and the exact model build.
+    expect(row.aiSummaryLlmDigest).toBe('sha256:it-digest');
   });
 
   it('persists the { skip: true } sentinel without touching status / stage / lastActionDate', async () => {
@@ -579,5 +599,238 @@ describe('bill-status-summary merge — integration (#823)', () => {
       plainEnglishSummary: 'Pre-existing.',
     });
     expect(settled.aiSummaryVersion).toBe('v0');
+  });
+
+  // -----------------------------------------------------------------------
+  // Bills from the pubinfo export (bills-phase-b.md, D9, K6, D5)
+  // -----------------------------------------------------------------------
+
+  const SUMMARY_RESPONSE = {
+    text: JSON.stringify({
+      status: { raw: 'X', stage: 'in_committee' },
+      summary: { plainEnglishSummary: 'From the export text.' },
+    }),
+    tokensUsed: 10,
+  };
+  const TODAY = new Date('2026-10-22T12:00:00Z');
+  const HOT = { coldAfterDays: 180, today: TODAY };
+  const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
+
+  it("reads an official bill's text from the export mirror, not the page", async () => {
+    await seedCivicsTaxonomy(db);
+    await seedBill(db, {
+      id: 'official',
+      externalId: '202520260AB9001',
+      statusSource: 'official',
+      status: 'In Committee Process',
+    });
+    await db.pubinfoBillVersion.createMany({
+      data: [
+        {
+          externalId: 'V99',
+          billId: '202520260AB9001',
+          versionNum: 99,
+          billVersionActionDate: new Date('2025-02-01'),
+          billXml: '<caml:Bill>introduced text</caml:Bill>',
+        },
+        {
+          externalId: 'V98',
+          billId: '202520260AB9001',
+          versionNum: 98,
+          billVersionActionDate: new Date('2025-04-01'),
+          billXml: '<caml:Bill>current amended text</caml:Bill>',
+        },
+      ],
+    });
+    const fetch = stubFetchUrlText();
+    mockLlm.generate.mockResolvedValueOnce(SUMMARY_RESPONSE);
+
+    const result = await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS);
+
+    expect(result.enriched).toBe(1);
+    expect(fetch).not.toHaveBeenCalled();
+    const { html } = mockPromptClient.getBillStatusSummaryPrompt.mock
+      .calls[0][0] as { html: string };
+    expect(html).toContain('current amended text');
+    expect(html).not.toContain('introduced text');
+  });
+
+  it("keeps an official bill's flags through the summary write", async () => {
+    // The summary write recomputes flags (F4). For an official row it must
+    // leave them as the export derive set them: the regex rules would read
+    // "In Committee Process" as not "Active Bill", so inactive (B8).
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db, {
+      statusSource: 'official',
+      status: 'In Committee Process',
+      isActive: true,
+    });
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValueOnce(SUMMARY_RESPONSE);
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS);
+
+    const row = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(row).toMatchObject({ isActive: true, isDead: false });
+  });
+
+  it('summarizes hot bills only (K6, D1, D2)', async () => {
+    await seedCivicsTaxonomy(db);
+    await seedBill(db, { id: 'active', isActive: true });
+    await seedBill(db, {
+      id: 'recently-enacted',
+      isActive: false,
+      lastActionDate: daysAgo(30),
+    });
+    await seedBill(db, {
+      id: 'cold',
+      isActive: false,
+      lastActionDate: daysAgo(200),
+    });
+    await seedBill(db, {
+      id: 'dead',
+      isActive: false,
+      isDead: true,
+      lastActionDate: daysAgo(5),
+    });
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const summarized = await db.bill.findMany({
+      where: { NOT: { aiSummary: { equals: Prisma.DbNull } } },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    expect(summarized.map((b) => b.id)).toEqual(['active', 'recently-enacted']);
+  });
+
+  it('regenerates a hot summary with no prompt hash, never the skip sentinel (D5)', async () => {
+    await seedCivicsTaxonomy(db);
+    const unattributed = await seedBill(db, { id: 'unattributed' });
+    const sentinel = await seedBill(db, { id: 'sentinel' });
+    await db.bill.update({
+      where: { id: unattributed.id },
+      data: {
+        aiSummary: { plainEnglishSummary: 'Old.' } as Prisma.InputJsonValue,
+      },
+    });
+    await db.bill.update({
+      where: { id: sentinel.id },
+      data: { aiSummary: { skip: true } as Prisma.InputJsonValue },
+    });
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+    const row = await db.bill.findUniqueOrThrow({
+      where: { id: unattributed.id },
+    });
+    expect(row.aiSummary).toMatchObject({
+      plainEnglishSummary: 'From the export text.',
+    });
+    expect(row.aiSummaryPromptHash).toBe('h');
+  });
+
+  it('records a failed summary and waits a week before trying it again', async () => {
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db);
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValueOnce({ text: '[]', tokensUsed: 50 });
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+    const failed = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(failed.aiSummaryFailedAt).not.toBeNull();
+
+    // The next sync leaves it alone: it would lead again and trip the abort.
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+
+    // A week on it is tried again, and a success clears the mark.
+    await db.bill.update({
+      where: { id },
+      data: { aiSummaryFailedAt: daysAgo(8) },
+    });
+    mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+    const retried = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(retried.aiSummary).not.toBeNull();
+    expect(retried.aiSummaryFailedAt).toBeNull();
+  });
+
+  it('tries bills that never failed before a retry', async () => {
+    await seedCivicsTaxonomy(db);
+    const retry = await seedBill(db, { id: 'a-retry' });
+    await seedBill(db, { id: 'b-fresh' });
+    await db.bill.update({
+      where: { id: retry.id },
+      data: { aiSummaryFailedAt: daysAgo(8) },
+    });
+    stubFetchUrlText();
+    mockLlm.generate.mockResolvedValue(SUMMARY_RESPONSE);
+
+    await (
+      service as unknown as { enrichBillSummaries: EnrichFn }
+    ).enrichBillSummaries.bind(service)(
+      REGION_ID,
+      STAGE_PATTERNS,
+      STAGE_INPUTS,
+      1,
+      HOT,
+    );
+
+    const summarized = await db.bill.findMany({
+      where: { NOT: { aiSummary: { equals: Prisma.DbNull } } },
+      select: { id: true },
+    });
+    expect(summarized.map((b) => b.id)).toEqual(['b-fresh']);
+  });
+
+  it('makes a bill with no text wait, so it does not hold a place every sync', async () => {
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db, { fullTextUrl: null });
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const row = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(row.aiSummaryFailedAt).not.toBeNull();
+  });
+
+  it('makes a bill wait after any failed attempt, a timeout or not', async () => {
+    // A failure the code cannot classify would otherwise lead every sync.
+    await seedCivicsTaxonomy(db);
+    const timedOut = await seedBill(db, { id: 'a-timed-out' });
+    const refused = await seedBill(db, { id: 'b-refused' });
+    stubFetchUrlText();
+    mockLlm.generate
+      .mockRejectedValueOnce(new Error('Request timed out after 120000ms'))
+      .mockRejectedValueOnce(new Error('HTTP 403 Forbidden'));
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const rows = await db.bill.findMany({
+      where: { id: { in: [timedOut.id, refused.id] } },
+      select: { aiSummaryFailedAt: true },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.aiSummaryFailedAt !== null)).toBe(true);
+  });
+
+  it('does not make a bill wait for a failure while the model is down', async () => {
+    await seedCivicsTaxonomy(db);
+    const { id } = await seedBill(db);
+    stubFetchUrlText();
+    mockLlm.isAvailable.mockResolvedValue(false);
+    mockLlm.generate.mockRejectedValueOnce(
+      new Error('connect ECONNREFUSED 127.0.0.1:11434'),
+    );
+
+    await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS, HOT);
+
+    const row = await db.bill.findUniqueOrThrow({ where: { id } });
+    expect(row.aiSummaryFailedAt).toBeNull();
   });
 });

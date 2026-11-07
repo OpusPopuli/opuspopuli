@@ -9,6 +9,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import { detectSummaryEcho } from "./summary-echo.js";
+import { PUBINFO_SCHEMAS } from "./pubinfo-schemas.js";
 import { zonedWallClockToISO } from "../extraction/composite-template.js";
 import {
   DataType,
@@ -24,6 +25,8 @@ import {
   type CommitteeMeasureFiling,
   type CvrFiling,
   type FilingSummary,
+  type PubinfoRow,
+  pubinfoTableOf,
   type RawExtractionResult,
   type ExtractionResult,
   type DataSourceConfig,
@@ -233,6 +236,7 @@ export class DomainMapperService {
     | CommitteeMeasureFiling
     | CvrFiling
     | FilingSummary
+    | PubinfoRow
     | null {
     switch (source.dataType) {
       case DataType.PROPOSITIONS:
@@ -243,9 +247,31 @@ export class DomainMapperService {
         return this.mapRepresentative(record, diag, source.category);
       case DataType.CAMPAIGN_FINANCE:
         return this.mapCampaignFinanceItem(record, diag, source.category);
+      case DataType.BILLS:
+        return this.mapPubinfoRow(record, diag, source.category);
       default:
         return null;
     }
+  }
+
+  /**
+   * A bulk bills row: one table of the pubinfo export, named by the source's
+   * `pubinfo:<TABLE>` category (`bills-phase-b.md`, D10). A bills source of
+   * any other kind is a page source, which does not come through here.
+   */
+  private mapPubinfoRow(
+    record: Record<string, unknown>,
+    diag: MappingDiagnostics,
+    category?: string,
+  ): PubinfoRow | null {
+    const table = pubinfoTableOf(category);
+    if (!table) return null;
+    return this.parseOrCollect(
+      PUBINFO_SCHEMAS[table],
+      { ...record, table },
+      table,
+      diag,
+    );
   }
 
   /**

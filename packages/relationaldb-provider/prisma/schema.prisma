@@ -1835,6 +1835,11 @@ model Bill {
   subject            String?   @db.VarChar(500)
   /// Lifecycle status string as it appears on the official source page.
   status             String?   @db.VarChar(200)
+  /// Where `status` came from. 'official' is a publisher's structured status
+  /// (pubinfo current_status); NULL is legacy or page-scraped, which on most
+  /// pre-pubinfo rows is an LLM read of the text page. The lifecycle refresh
+  /// recomputes flags only from an official status (bills-phase-b.md, B8).
+  statusSource       String?   @map("status_source") @db.VarChar(20)
   /// Id of the matching LifecycleStage from civics data (string ref, not FK).
   currentStageId     String?   @map("current_stage_id") @db.VarChar(100)
   lastAction         String?   @map("last_action") @db.Text
@@ -1875,6 +1880,12 @@ model Bill {
   aiSummaryPromptHash    String?   @map("ai_summary_prompt_hash") @db.VarChar(64)
   aiSummaryPromptVersion String?   @map("ai_summary_prompt_version") @db.VarChar(20)
   aiSummaryLlmModel      String?   @map("ai_summary_llm_model") @db.VarChar(80)
+  /// Model digest of the run that produced aiSummary (F3/K6), so a summary can
+  /// be regenerated when the model changes, as reps and committees already are.
+  aiSummaryLlmDigest     String?   @map("ai_summary_llm_digest") @db.VarChar(80)
+  /// Last failed summary attempt. The bill waits a week before it is a
+  /// candidate again; a success clears it (bills-phase-b.md, UAT run 2).
+  aiSummaryFailedAt      DateTime? @map("ai_summary_failed_at") @db.Timestamptz
 
   /// Procedurally dead — vetoed without override, withdrawn, failed deadline,
   /// inactive file, failed passage, OR from a closed session that did not
@@ -2010,13 +2021,17 @@ model BillVote {
   /// length); e.g. "Do Pass" or a verbose multi-clause CA reading motion (#901).
   motionText         String?  @map("motion_text")
   sourceUrl          String   @map("source_url")
+  /// The source's roll-call identity, so same-day roll calls stay apart
+  /// (pubinfo: `location:vote_date_time:vote_date_seq`); "" when the source
+  /// gives none, which keeps one vote per member per day.
+  rollCall           String   @default("") @map("roll_call") @db.VarChar(100)
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   bill           Bill            @relation(fields: [billId], references: [id], onDelete: Cascade)
   representative Representative? @relation(fields: [representativeId], references: [id], onDelete: SetNull)
 
-  @@unique([billId, representativeId, voteDate, chamber])
+  @@unique([billId, representativeId, voteDate, chamber, rollCall], map: "bill_votes_bill_id_representative_id_vote_date_chamber_roll_key")
   @@index([billId])
   @@index([representativeId, voteDate(sort: Desc)])
   @@index([voteDate(sort: Desc)])
@@ -2687,6 +2702,219 @@ model BulkImport {
   @@map("bulk_imports")
 }
 
+/// pubinfo `BILL_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBill {
+  id                  String    @id @default(uuid())
+  externalId          String    @unique @map("external_id") @db.VarChar(30)
+  sessionYear         String    @map("session_year") @db.VarChar(8)
+  measureType         String    @map("measure_type") @db.VarChar(4)
+  measureNum          Int       @map("measure_num")
+  measureState        String?   @map("measure_state") @db.VarChar(40)
+  chapterYear         String?   @map("chapter_year") @db.VarChar(4)
+  chapterNum          String?   @map("chapter_num") @db.VarChar(10)
+  latestBillVersionId String?   @map("latest_bill_version_id") @db.VarChar(30)
+  currentLocation     String?   @map("current_location") @db.VarChar(200)
+  currentHouse        String?   @map("current_house") @db.VarChar(60)
+  currentStatus       String?   @map("current_status") @db.VarChar(60)
+  sourceRecordHash    String?   @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?   @map("pipeline_execution_id")
+  /// When the bill, co-authors and votes were last derived from this bill's
+  /// mirror rows; NULL = never. Written by raw SQL so `updatedAt` stays the
+  /// time the export line last changed.
+  derivedAt           DateTime? @map("derived_at") @db.Timestamptz
+  /// Hash of the legislator-to-representative links the bill was derived
+  /// under: a rep renamed in place changes it, which no timestamp shows.
+  derivedLinksHash    String?   @map("derived_links_hash") @db.VarChar(64)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bills")
+}
+
+/// pubinfo `BILL_VERSION_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBillVersion {
+  id                    String   @id @default(uuid())
+  externalId            String   @unique @map("external_id") @db.VarChar(30)
+  billId                String   @map("bill_id") @db.VarChar(30)
+  versionNum            Int      @map("version_num")
+  billVersionActionDate DateTime @map("bill_version_action_date") @db.Date
+  billVersionAction     String?  @map("bill_version_action") @db.VarChar(100)
+  subject               String?  @db.VarChar(1000)
+  voteRequired          String?  @map("vote_required") @db.VarChar(100)
+  appropriation         String?  @db.VarChar(3)
+  fiscalCommittee       String?  @map("fiscal_committee") @db.VarChar(3)
+  localProgram          String?  @map("local_program") @db.VarChar(3)
+  urgency               String?  @db.VarChar(3)
+  taxlevy               String?  @db.VarChar(3)
+  /// The version's full text: every version, so amendments can be compared.
+  billXml               String?  @map("bill_xml") @db.Text
+  sourceRecordHash      String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId   String?  @map("pipeline_execution_id")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([billId, versionNum])
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bill_versions")
+}
+
+/// pubinfo `BILL_VERSION_AUTHORS_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBillVersionAuthor {
+  id                  String   @id @default(uuid())
+  externalId          String   @unique @map("external_id") @db.VarChar(400)
+  billVersionId       String   @map("bill_version_id") @db.VarChar(30)
+  type                String   @db.VarChar(15)
+  house               String?  @db.VarChar(100)
+  name                String?  @db.VarChar(100)
+  contribution        String?  @db.VarChar(100)
+  primaryAuthorFlg    String?  @map("primary_author_flg") @db.VarChar(1)
+  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?  @map("pipeline_execution_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([billVersionId])
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bill_version_authors")
+}
+
+/// pubinfo `BILL_HISTORY_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBillHistory {
+  id                  String    @id @default(uuid())
+  externalId          String    @unique @map("external_id") @db.VarChar(30)
+  billId              String    @map("bill_id") @db.VarChar(30)
+  actionDate          DateTime? @map("action_date") @db.Date
+  action              String?   @db.Text
+  actionSequence      Int?      @map("action_sequence")
+  actionCode          String?   @map("action_code") @db.VarChar(5)
+  actionStatus        String?   @map("action_status") @db.VarChar(60)
+  sourceRecordHash    String?   @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?   @map("pipeline_execution_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([billId, actionDate])
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bill_history")
+}
+
+/// pubinfo `BILL_SUMMARY_VOTE_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBillSummaryVote {
+  id                  String   @id @default(uuid())
+  externalId          String   @unique @map("external_id") @db.VarChar(200)
+  billId              String   @map("bill_id") @db.VarChar(30)
+  locationCode        String   @map("location_code") @db.VarChar(6)
+  voteDateTime        String   @map("vote_date_time") @db.VarChar(19)
+  voteDateSeq         Int      @map("vote_date_seq")
+  motionId            Int      @map("motion_id")
+  ayes                Int?
+  noes                Int?
+  abstain             Int?
+  voteResult          String?  @map("vote_result") @db.VarChar(6)
+  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?  @map("pipeline_execution_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([billId])
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bill_summary_votes")
+}
+
+/// pubinfo `BILL_DETAIL_VOTE_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBillDetailVote {
+  id                  String   @id @default(uuid())
+  externalId          String   @unique @map("external_id") @db.VarChar(250)
+  billId              String   @map("bill_id") @db.VarChar(30)
+  locationCode        String   @map("location_code") @db.VarChar(6)
+  legislatorName      String   @map("legislator_name") @db.VarChar(50)
+  voteDateTime        String   @map("vote_date_time") @db.VarChar(19)
+  voteDateSeq         Int      @map("vote_date_seq")
+  voteCode            String?  @map("vote_code") @db.VarChar(5)
+  motionId            Int      @map("motion_id")
+  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?  @map("pipeline_execution_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([billId])
+  @@index([motionId])
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bill_detail_votes")
+}
+
+/// pubinfo `BILL_MOTION_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoBillMotion {
+  id                  String   @id @default(uuid())
+  externalId          String   @unique @map("external_id") @db.VarChar(20)
+  motionText          String?  @map("motion_text") @db.VarChar(250)
+  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?  @map("pipeline_execution_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_bill_motions")
+}
+
+/// pubinfo `LEGISLATOR_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoLegislator {
+  id                  String   @id @default(uuid())
+  externalId          String   @unique @map("external_id") @db.VarChar(200)
+  district            String   @db.VarChar(5)
+  sessionYear         String   @map("session_year") @db.VarChar(8)
+  legislatorName      String   @map("legislator_name") @db.VarChar(50)
+  houseType           String   @map("house_type") @db.VarChar(1)
+  authorName          String?  @map("author_name") @db.VarChar(200)
+  firstName           String?  @map("first_name") @db.VarChar(30)
+  lastName            String?  @map("last_name") @db.VarChar(50)
+  party               String?  @db.VarChar(4)
+  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?  @map("pipeline_execution_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_legislators")
+}
+
+/// pubinfo `LOCATION_CODE_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
+model PubinfoLocationCode {
+  id                  String   @id @default(uuid())
+  externalId          String   @unique @map("external_id") @db.VarChar(40)
+  sessionYear         String   @map("session_year") @db.VarChar(8)
+  locationCode        String   @map("location_code") @db.VarChar(6)
+  locationType        String?  @map("location_type") @db.VarChar(1)
+  description         String?  @db.VarChar(60)
+  longDescription     String?  @map("long_description") @db.VarChar(200)
+  sourceRecordHash    String?  @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?  @map("pipeline_execution_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_location_codes")
+}
+
 /// How confident we are that a claim is supported by the source it cites.
 ///
 /// There is no default and no "assumed verified": a claim acquires a state only
@@ -2914,48 +3142,57 @@ model StructuralManifest {
 
 /// Pipeline execution metrics for monitoring and debugging.
 model PipelineExecution {
-  id                      String                   @id @default(uuid())
-  regionId                String                   @map("region_id") @db.VarChar(100)
-  sourceUrl               String                   @map("source_url") @db.VarChar(1000)
-  dataType                String                   @map("data_type") @db.VarChar(50)
-  manifestId              String?                  @map("manifest_id")
-  manifestVersion         Int?                     @map("manifest_version")
-  manifestCacheHit        Boolean                  @default(false) @map("manifest_cache_hit")
-  structureChanged        Boolean                  @default(false) @map("structure_changed")
-  selfHealTriggered       Boolean                  @default(false) @map("self_heal_triggered")
-  itemsExtracted          Int                      @default(0) @map("items_extracted")
-  itemsFailed             Int                      @default(0) @map("items_failed")
-  analysisTimeMs          Int?                     @map("analysis_time_ms")
-  extractionTimeMs        Int                      @default(0) @map("extraction_time_ms")
-  totalTimeMs             Int                      @default(0) @map("total_time_ms")
-  success                 Boolean                  @default(true)
-  status                  String                   @default("completed") @db.VarChar(20)
-  errorMessage            String?                  @map("error_message") @db.Text
-  llmProvider             String?                  @map("llm_provider") @db.VarChar(50)
-  llmModel                String?                  @map("llm_model") @db.VarChar(100)
-  llmTokensUsed           Int?                     @map("llm_tokens_used")
-  executedAt              DateTime                 @default(now()) @map("executed_at") @db.Timestamptz
-  pipelineJobId           String?                  @map("pipeline_job_id")
-  pipelineJob             PipelineJob?             @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
+  id                        String                     @id @default(uuid())
+  regionId                  String                     @map("region_id") @db.VarChar(100)
+  sourceUrl                 String                     @map("source_url") @db.VarChar(1000)
+  dataType                  String                     @map("data_type") @db.VarChar(50)
+  manifestId                String?                    @map("manifest_id")
+  manifestVersion           Int?                       @map("manifest_version")
+  manifestCacheHit          Boolean                    @default(false) @map("manifest_cache_hit")
+  structureChanged          Boolean                    @default(false) @map("structure_changed")
+  selfHealTriggered         Boolean                    @default(false) @map("self_heal_triggered")
+  itemsExtracted            Int                        @default(0) @map("items_extracted")
+  itemsFailed               Int                        @default(0) @map("items_failed")
+  analysisTimeMs            Int?                       @map("analysis_time_ms")
+  extractionTimeMs          Int                        @default(0) @map("extraction_time_ms")
+  totalTimeMs               Int                        @default(0) @map("total_time_ms")
+  success                   Boolean                    @default(true)
+  status                    String                     @default("completed") @db.VarChar(20)
+  errorMessage              String?                    @map("error_message") @db.Text
+  llmProvider               String?                    @map("llm_provider") @db.VarChar(50)
+  llmModel                  String?                    @map("llm_model") @db.VarChar(100)
+  llmTokensUsed             Int?                       @map("llm_tokens_used")
+  executedAt                DateTime                   @default(now()) @map("executed_at") @db.Timestamptz
+  pipelineJobId             String?                    @map("pipeline_job_id")
+  pipelineJob               PipelineJob?               @relation(fields: [pipelineJobId], references: [id], onDelete: SetNull)
   /// The bulk export this run read, whether or not it was the run that
   /// fetched it (campaign-finance-phase-b.md, D5, F5).
-  bulkSnapshotId          String?                  @map("bulk_snapshot_id")
-  bulkSnapshot            BulkSnapshot?            @relation("ExecutionReadSnapshot", fields: [bulkSnapshotId], references: [id], onDelete: SetNull)
-  batches                 PipelineExecutionBatch[]
-  sourceVersions          SourceVersion[]
-  bulkSnapshots           BulkSnapshot[]           @relation("SnapshotFetchedBy")
-  propositions            Proposition[]
-  minutes                 Minutes[]
-  meetings                Meeting[]
-  bills                   Bill[]
-  contributions           Contribution[]
-  expenditures            Expenditure[]
-  filingSummaries         FilingSummary[]
-  independentExpenditures IndependentExpenditure[]
-  cvrFilings              CvrFiling[]
-  cvr2Filings             Cvr2Filing[]
-  bulkImports             BulkImport[]
-  Claim                   Claim[]
+  bulkSnapshotId            String?                    @map("bulk_snapshot_id")
+  bulkSnapshot              BulkSnapshot?              @relation("ExecutionReadSnapshot", fields: [bulkSnapshotId], references: [id], onDelete: SetNull)
+  batches                   PipelineExecutionBatch[]
+  sourceVersions            SourceVersion[]
+  bulkSnapshots             BulkSnapshot[]             @relation("SnapshotFetchedBy")
+  propositions              Proposition[]
+  minutes                   Minutes[]
+  meetings                  Meeting[]
+  bills                     Bill[]
+  contributions             Contribution[]
+  expenditures              Expenditure[]
+  filingSummaries           FilingSummary[]
+  independentExpenditures   IndependentExpenditure[]
+  cvrFilings                CvrFiling[]
+  cvr2Filings               Cvr2Filing[]
+  bulkImports               BulkImport[]
+  pubinfoBills              PubinfoBill[]
+  pubinfoBillVersions       PubinfoBillVersion[]
+  pubinfoBillVersionAuthors PubinfoBillVersionAuthor[]
+  pubinfoBillHistory        PubinfoBillHistory[]
+  pubinfoBillSummaryVotes   PubinfoBillSummaryVote[]
+  pubinfoBillDetailVotes    PubinfoBillDetailVote[]
+  pubinfoBillMotions        PubinfoBillMotion[]
+  pubinfoLegislators        PubinfoLegislator[]
+  pubinfoLocationCodes      PubinfoLocationCode[]
+  Claim                     Claim[]
 
   @@index([regionId, dataType, executedAt])
   @@index([bulkSnapshotId])

@@ -20,11 +20,23 @@ import {
   computeActiveCaSessionYears,
   isBillActive,
   isBillDead,
+  officialLifecycleFlags,
   type BillLifecycleInput,
+  type OfficialLifecycle,
 } from './bill-lifecycle';
 
 /** A bill's current lifecycle inputs, as the writers below need them. */
-export type BillLifecycleRow = BillLifecycleInput & { id: string };
+/**
+ * A bill as a lifecycle writer reads it. `statusSource` and the stored flags
+ * decide how the flags may move ({@link flagsFor}); a row read without them
+ * is treated as page-scraped, as every row was before pubinfo.
+ */
+export type BillLifecycleRow = BillLifecycleInput & {
+  id: string;
+  statusSource?: string | null;
+  isDead?: boolean;
+  isActive?: boolean;
+};
 
 /** Select exactly the columns a {@link BillLifecycleRow} needs. */
 export const BILL_LIFECYCLE_SELECT = {
@@ -34,6 +46,9 @@ export const BILL_LIFECYCLE_SELECT = {
   sessionYear: true,
   lastAction: true,
   lastActionDate: true,
+  statusSource: true,
+  isDead: true,
+  isActive: true,
 } as const;
 
 /**
@@ -66,6 +81,7 @@ export type BillNonLifecycleUpdate = Omit<
  */
 type LifecycleColumn =
   | 'status'
+  | 'statusSource'
   | 'lastAction'
   | 'lastActionDate'
   | 'currentStageId'
@@ -76,6 +92,42 @@ type LifecycleColumn =
 export interface BillLifecycleFlags {
   isDead: boolean;
   isActive: boolean;
+}
+
+/**
+ * The flags a stored row may move to, by where its status came from
+ * (`bills-phase-b.md`, B8):
+ *
+ *  - `page`: recomputed from the status by the regex rules.
+ *  - `official`: set by the bulk derive from the region's status map, so a
+ *    stage or summary write leaves them alone; only the session-expired rule
+ *    moves them, ending a bill still active when its session closes.
+ *  - none (legacy): kept as stored, except by the session-expired rule. On
+ *    most pre-pubinfo rows the status is an LLM read of the text page, and
+ *    recomputing from it flipped 2,180 dev bills out of the feed on
+ *    2026-11-06. The session rule reads no status, so it is safe, and a
+ *    legacy bill no source lists any more would otherwise stay active
+ *    forever.
+ *
+ * A row read without its stored flags is recomputed, as before.
+ */
+export function flagsFor(
+  row: BillLifecycleRow,
+  today: Date,
+): BillLifecycleFlags {
+  if (
+    row.statusSource === 'page' ||
+    row.isDead === undefined ||
+    row.isActive === undefined
+  ) {
+    return lifecycleFlags(row, today);
+  }
+  const sessionOpen = computeActiveCaSessionYears(today).includes(
+    row.sessionYear,
+  );
+  return row.isActive && !sessionOpen
+    ? { isDead: true, isActive: false }
+    : { isDead: row.isDead, isActive: row.isActive };
 }
 
 /** Both flags, from one snapshot of the date so they cannot disagree. */
@@ -132,7 +184,7 @@ export async function writeBillLifecycleFields(
       data: {
         ...extra,
         ...changes,
-        ...lifecycleFlags({ ...row, ...changes }, today),
+        ...flagsFor({ ...row, ...changes }, today),
       },
     });
 
@@ -253,7 +305,7 @@ async function refreshRow(
   dryRun: boolean,
   counts: LifecycleRefreshCounts,
 ): Promise<void> {
-  const next = lifecycleFlags(row, today);
+  const next = flagsFor(row, today);
   const flipDead = next.isDead !== row.isDead;
   const flipActive = next.isActive !== row.isActive;
   if (!flipDead && !flipActive) return;
@@ -281,4 +333,55 @@ async function refreshRow(
   }
   if (flipDead) counts.flippedDead += 1;
   if (flipActive) counts.flippedActive += 1;
+}
+
+/**
+ * A bill as a publisher's structured record describes it (`bills-phase-b.md`,
+ * D10): everything the bulk derive writes. `sessionYear` and `status` are the
+ * lifecycle inputs; the flags are computed here, not passed in.
+ */
+export type OfficialBillFields = Omit<
+  Prisma.BillUncheckedCreateInput,
+  'externalId' | 'statusSource' | 'isDead' | 'isActive' | 'sessionYear'
+> & { sessionYear: string; status: string | null };
+
+/**
+ * Create or rewrite a bill from its official record, with the flags the
+ * region's status map gives it (D11) in the same statement, and mark the
+ * status `official` so later writes leave the flags to this path
+ * ({@link flagsFor}). `stored` is the row's current flags, kept when the map
+ * does not name the status.
+ */
+export async function upsertOfficialBill(
+  // A transaction client too: the derive writes a bill with its links.
+  db: Pick<DbService, 'bill'>,
+  externalId: string,
+  fields: OfficialBillFields,
+  opts: {
+    statusLifecycle: Readonly<Record<string, OfficialLifecycle>>;
+    today: Date;
+    stored?: BillLifecycleFlags;
+  },
+): Promise<{ id: string }> {
+  const ctx = {
+    today: opts.today,
+    activeSessionYears: computeActiveCaSessionYears(opts.today),
+  };
+  const values = {
+    ...fields,
+    statusSource: 'official',
+    ...officialLifecycleFlags(
+      fields.status,
+      fields.sessionYear,
+      opts.statusLifecycle,
+      ctx,
+      opts.stored,
+    ),
+  };
+  return db.bill.upsert({
+    where: { externalId },
+    create: { externalId, ...values },
+    update: values,
+    select: { id: true },
+  });
 }

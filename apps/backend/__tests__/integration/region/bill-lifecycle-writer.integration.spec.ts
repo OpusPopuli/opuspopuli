@@ -40,6 +40,8 @@ async function seedBill(
       title: `Test bill ${externalId}`,
       sourceUrl: `https://leginfo.legislature.ca.gov/faces/billStatusClient.xhtml?bill_id=${externalId}`,
       status: overrides.status ?? 'Active Bill - In Committee Process',
+      // Page-scraped, so the regex rules own the flags (bills-phase-b.md, B8).
+      statusSource: 'page',
       currentStageId:
         overrides.currentStageId === undefined
           ? 'in_committee'

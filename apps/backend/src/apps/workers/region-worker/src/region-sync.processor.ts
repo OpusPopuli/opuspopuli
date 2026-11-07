@@ -419,7 +419,16 @@ export class RegionSyncProcessor
         dataType: r.dataType as unknown as DataTypeGQL,
       }));
 
-      await this.pipelineJobService.markSucceeded(effectiveJobId, gqlResults);
+      const errors = results.flatMap((r) => r.errors ?? []);
+      if (errors.length > 0) {
+        await this.pipelineJobService.markFinishedWithErrors(
+          effectiveJobId,
+          gqlResults,
+          errors.join('; '),
+        );
+      } else {
+        await this.pipelineJobService.markSucceeded(effectiveJobId, gqlResults);
+      }
 
       this.logger.log(
         {
@@ -427,8 +436,11 @@ export class RegionSyncProcessor
           jobId: job.id,
           trigger_source: triggerSource,
           resultCount: results.length,
+          errorCount: errors.length,
         },
-        'Region-sync job succeeded',
+        errors.length > 0
+          ? 'Region-sync job finished with errors'
+          : 'Region-sync job succeeded',
       );
 
       return results as unknown as RegionSyncJobResult[];

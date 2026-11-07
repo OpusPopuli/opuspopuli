@@ -10,6 +10,7 @@ import { Logger } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { BulkDownloadConfig, DataSourceConfig } from "@opuspopuli/common";
 import { inferSourceSystem } from "./handler-utils.js";
+import type { ZipEntryReader } from "./zip-entry-reader.js";
 
 // Logged under the handler's name, as before the split.
 const logger = new Logger("BulkDownloadHandler");
@@ -33,6 +34,7 @@ const COMPOSITE_KEY_SEPARATOR = ":";
  */
 interface ParseContext {
   delimiter: string;
+  cell: CellReader;
   mappings: Record<string, string>;
   filters: Record<string, string>;
   colIndices: Record<string, number>;
@@ -40,6 +42,9 @@ interface ParseContext {
   compositeIndices: number[];
   sourceSystem: string | undefined;
 }
+
+/** Reads one raw cell into the value a record carries. */
+type CellReader = (raw: string) => string;
 
 /**
  * SHA-256 of one raw export line, hex-encoded (#1277).
@@ -54,6 +59,82 @@ function hashSourceRecord(line: string): string {
 }
 
 /**
+ * The line a record's hash witnesses. A `.lob` cell holds only the name of
+ * the entry carrying its content, and the export renumbers those names every
+ * time, so hashing the name would make every row look changed on every import
+ * (K4). The cell is blanked here; the handler folds in the content's own hash
+ * once it has read the entry ({@link withLobContentHash}).
+ */
+function hashedLine(
+  line: string,
+  delimiter: string,
+  lobIndices: number[],
+): string {
+  if (lobIndices.length === 0) return line;
+  const values = line.split(delimiter);
+  for (const idx of lobIndices) values[idx] = "";
+  return values.join(delimiter);
+}
+
+/**
+ * Extend a record's line hash with the content of its `.lob` cells, in the
+ * order `lobColumns` lists them, so a changed text changes the hash even when
+ * the row that points at it does not.
+ */
+export function withLobContentHash(
+  lineHash: string,
+  contents: string[],
+): string {
+  const h = createHash("sha256").update(lineHash, "utf8");
+  for (const content of contents) {
+    h.update("\n", "utf8").update(
+      createHash("sha256").update(content, "utf8").digest("hex"),
+      "utf8",
+    );
+  }
+  return h.digest("hex");
+}
+
+/**
+ * Replace each `.lob` cell — the name of the archive entry holding the cell's
+ * content — with that content, and fold the content into the record's hash
+ * (`bills-phase-b.md`, D9). An empty cell, or an empty entry, leaves the field
+ * empty; the empty content still takes its place in the hash, so positions
+ * never shift.
+ *
+ * Here rather than in the handler because it shapes the row after its line is
+ * hashed, so it belongs under the mapping-version pin with the parser.
+ */
+export async function resolveLobColumns(
+  records: Record<string, unknown>[],
+  bulk: BulkDownloadConfig,
+  lobs: ZipEntryReader | undefined,
+): Promise<Record<string, unknown>[]> {
+  if (!lobs || !bulk.lobColumns?.length) return records;
+  const fields = bulk.lobColumns
+    .map((col) => bulk.columnMappings?.[col])
+    .filter((field): field is string => !!field);
+  const resolved: Record<string, unknown>[] = [];
+  for (const record of records) {
+    const next = { ...record };
+    const contents: string[] = [];
+    for (const field of fields) {
+      const name = next[field];
+      const content = typeof name === "string" ? await lobs.read(name) : "";
+      // Never the entry's name: an empty entry is empty text, not a filename.
+      next[field] = content || undefined;
+      contents.push(content);
+    }
+    next["sourceRecordHash"] = withLobContentHash(
+      next["sourceRecordHash"] as string,
+      contents,
+    );
+    resolved.push(next);
+  }
+  return resolved;
+}
+
+/**
  * Create a stateful line parser that handles headers, skipping, and mapping.
  */
 export function createLineParser(
@@ -61,6 +142,8 @@ export function createLineParser(
   source: DataSourceConfig,
 ) {
   const delimiter = getDelimiter(bulk);
+  const cell = cellReader(bulk);
+  const lobColumns = bulk.lobColumns ?? [];
   // Presence is guaranteed by the up-front guard in execute().
   const mappings = bulk.columnMappings!;
   const filters = bulk.filters ?? {};
@@ -72,6 +155,7 @@ export function createLineParser(
   let colIndices: Record<string, number> = {};
   let filterIndices: Record<string, number> = {};
   let compositeIndices: number[] = [];
+  let lobIndices: number[] = [];
 
   const hasExplicitHeaders = bulk.headers && bulk.headers.length > 0;
   if (hasExplicitHeaders) {
@@ -79,12 +163,14 @@ export function createLineParser(
     colIndices = buildColumnIndices(headers, mappings);
     filterIndices = buildColumnIndices(headers, filters);
     compositeIndices = buildCompositeIndices(headers, compositeKey);
+    lobIndices = buildRequiredIndices(headers, lobColumns, "lobColumns");
   }
 
   const headerLineNum = headerSkip;
 
   const context = (): ParseContext => ({
     delimiter,
+    cell,
     mappings,
     filters,
     colIndices,
@@ -101,10 +187,11 @@ export function createLineParser(
       }
 
       if (!hasExplicitHeaders && lineNum === headerLineNum) {
-        const headers = line.split(delimiter).map((h) => stripQuotes(h));
+        const headers = line.split(delimiter).map(cell);
         colIndices = buildColumnIndices(headers, mappings);
         filterIndices = buildColumnIndices(headers, filters);
         compositeIndices = buildCompositeIndices(headers, compositeKey);
+        lobIndices = buildRequiredIndices(headers, lobColumns, "lobColumns");
         lineNum++;
         return null;
       }
@@ -122,7 +209,12 @@ export function createLineParser(
       // ingested, so there is no row whose provenance it would describe.
       return record === null
         ? null
-        : { ...record, sourceRecordHash: hashSourceRecord(line) };
+        : {
+            ...record,
+            sourceRecordHash: hashSourceRecord(
+              hashedLine(line, delimiter, lobIndices),
+            ),
+          };
     },
   };
 }
@@ -140,14 +232,12 @@ function processDataLine(
   const { compositeIndices, sourceSystem } = ctx;
   const values = line.split(ctx.delimiter);
 
-  if (!passesFilters(values, ctx.filters, ctx.filterIndices)) return null;
+  if (!passesFilters(values, ctx)) return null;
 
-  const record = mapRow(values, ctx.mappings, ctx.colIndices);
+  const record = mapRow(values, ctx);
 
   if (compositeIndices.length > 0) {
-    const segments = compositeIndices.map((idx) =>
-      stripQuotes(values[idx] ?? ""),
-    );
+    const segments = compositeIndices.map((idx) => ctx.cell(values[idx] ?? ""));
     // An all-empty key identifies nothing and would collide with every other
     // all-empty row, so drop the line rather than upserting them onto each other.
     if (segments.every((s) => !s)) return null;
@@ -185,11 +275,29 @@ function getDelimiter(bulk: BulkDownloadConfig): string {
  * parse layer so every downstream consumer (mapper, upsert, linker)
  * sees clean strings.
  */
-function stripQuotes(val: string): string {
-  return val
-    .replaceAll("\u0000", "")
-    .trim()
-    .replaceAll(/(^"|"$)/g, "");
+function stripQuotes(val: string, quoteChar = '"'): string {
+  const trimmed = val.replaceAll("\u0000", "").trim();
+  const start = trimmed.startsWith(quoteChar) ? quoteChar.length : 0;
+  const end =
+    trimmed.length > start && trimmed.endsWith(quoteChar)
+      ? trimmed.length - quoteChar.length
+      : trimmed.length;
+  return trimmed.slice(start, end);
+}
+
+/**
+ * How this source's cells are read: quotes stripped (`quoteChar`, default
+ * `"`), and the `nullToken` — pubinfo's bare `NULL` — read as empty, so the
+ * word is never stored as data. Only an unquoted token is null: a quoted
+ * `` `NULL` `` is text that happens to say NULL.
+ */
+function cellReader(bulk: BulkDownloadConfig): CellReader {
+  const quoteChar = bulk.quoteChar ?? '"';
+  const nullToken = bulk.nullToken;
+  return (raw) => {
+    if (nullToken !== undefined && raw.trim() === nullToken) return "";
+    return stripQuotes(raw, quoteChar);
+  };
 }
 
 /**
@@ -231,7 +339,19 @@ function buildCompositeIndices(
   headers: string[],
   compositeKey: string[],
 ): number[] {
-  const missing = compositeKey.filter((col) => !headers.includes(col));
+  return buildRequiredIndices(headers, compositeKey, "compositeKey");
+}
+
+/**
+ * Resolve columns the parse cannot do without — `compositeKey`, `lobColumns`
+ * — to their positions, in the order given, throwing on any that is absent.
+ */
+function buildRequiredIndices(
+  headers: string[],
+  columns: string[],
+  setting: string,
+): number[] {
+  const missing = columns.filter((col) => !headers.includes(col));
   if (missing.length > 0) {
     // Report the shape of the header row, never its contents. `headers` is
     // just the file's first non-skipped line — and this error fires precisely
@@ -239,26 +359,22 @@ function buildCompositeIndices(
     // its cells would put donor name/employer/city/ZIP into an error-level log
     // that propagates to the persisted pipeline errors[] and on to Loki.
     throw new Error(
-      `compositeKey column(s) not found in file headers: ${missing.join(", ")}. ` +
+      `${setting} column(s) not found in file headers: ${missing.join(", ")}. ` +
         `Header row has ${headers.length} column(s); ` +
         `expected columns are configured in the region plugin.`,
     );
   }
-  return compositeKey.map((col) => headers.indexOf(col));
+  return columns.map((col) => headers.indexOf(col));
 }
 
 /**
  * Check if a row passes all filter criteria.
  */
-function passesFilters(
-  values: string[],
-  filters: Record<string, string>,
-  filterIndices: Record<string, number>,
-): boolean {
-  for (const [filterCol, filterVal] of Object.entries(filters)) {
-    const idx = filterIndices[filterCol];
+function passesFilters(values: string[], ctx: ParseContext): boolean {
+  for (const [filterCol, filterVal] of Object.entries(ctx.filters)) {
+    const idx = ctx.filterIndices[filterCol];
     if (idx === undefined) continue;
-    const cellVal = stripQuotes(values[idx] ?? "");
+    const cellVal = ctx.cell(values[idx] ?? "");
     if (cellVal !== filterVal) return false;
   }
   return true;
@@ -267,16 +383,12 @@ function passesFilters(
 /**
  * Map a row's values to a domain record using column mappings.
  */
-function mapRow(
-  values: string[],
-  mappings: Record<string, string>,
-  colIndices: Record<string, number>,
-): Record<string, unknown> {
+function mapRow(values: string[], ctx: ParseContext): Record<string, unknown> {
   const record: Record<string, unknown> = {};
-  for (const [sourceCol, targetField] of Object.entries(mappings)) {
-    const idx = colIndices[sourceCol];
+  for (const [sourceCol, targetField] of Object.entries(ctx.mappings)) {
+    const idx = ctx.colIndices[sourceCol];
     if (idx === undefined) continue;
-    const val = stripQuotes(values[idx] ?? "");
+    const val = ctx.cell(values[idx] ?? "");
     if (val) record[targetField] = val;
   }
   return record;
