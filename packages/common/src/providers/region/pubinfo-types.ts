@@ -18,6 +18,7 @@ export const PUBINFO_TABLES = [
   "BILL_MOTION_TBL",
   "LEGISLATOR_TBL",
   "LOCATION_CODE_TBL",
+  "COMMITTEE_HEARING_TBL",
 ] as const;
 
 export type PubinfoTable = (typeof PUBINFO_TABLES)[number];
@@ -142,6 +143,17 @@ export interface PubinfoLocationCodeRow extends PubinfoRowBase {
   longDescription?: string;
 }
 
+/** A bill's hearing in a committee (D13/D20): the source of its referrals. */
+export interface PubinfoCommitteeHearingRow extends PubinfoRowBase {
+  table: "COMMITTEE_HEARING_TBL";
+  billId: string;
+  committeeType?: string;
+  committeeNr?: number;
+  hearingDate?: string;
+  locationCode: string;
+  transUpdateDate?: string;
+}
+
 export type PubinfoRow =
   | PubinfoBillRow
   | PubinfoBillVersionRow
@@ -151,4 +163,5 @@ export type PubinfoRow =
   | PubinfoBillDetailVoteRow
   | PubinfoBillMotionRow
   | PubinfoLegislatorRow
-  | PubinfoLocationCodeRow;
+  | PubinfoLocationCodeRow
+  | PubinfoCommitteeHearingRow;

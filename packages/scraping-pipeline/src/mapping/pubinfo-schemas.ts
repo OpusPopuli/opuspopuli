@@ -78,6 +78,16 @@ export const PUBINFO_SCHEMAS: Record<PubinfoTable, z.ZodType<PubinfoRow>> = {
     actionCode: text,
     actionStatus: text,
   }),
+  COMMITTEE_HEARING_TBL: z.object({
+    ...base,
+    table: z.literal("COMMITTEE_HEARING_TBL"),
+    billId: z.string().min(1),
+    committeeType: text,
+    committeeNr: int.optional(),
+    hearingDate: calendarDate.optional(),
+    locationCode: z.string().min(1),
+    transUpdateDate: text,
+  }),
   BILL_SUMMARY_VOTE_TBL: z.object({
     ...base,
     table: z.literal("BILL_SUMMARY_VOTE_TBL"),

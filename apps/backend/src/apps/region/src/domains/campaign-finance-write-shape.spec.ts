@@ -88,6 +88,26 @@ const PINS: { version: string; files: Record<string, string> }[] = [
         '89e0295e7c720e77b618031f87c6a9ca59869064d51428b46b574733d35758cb',
     },
   },
+  {
+    // Committee referrals from hearings (D13/D20).
+    version: 'bm4',
+    files: {
+      writeShape:
+        'd46277fe1f25132ae0231325ad4a468f651ea807814640cf830d8eb3d4d917d3',
+      routing:
+        'd7a0a6fe9eb69212b359d58a4e542e99a6e5f59f590b068adfcaa1f350a6cc88',
+      billsWriteShape:
+        'e7ce16540182470c479f38e6234d18b61b603a12f5c5bbf71a52aeabd3145510',
+      billsDerive:
+        '05d699c576c083b76b4f67596268853d7586e70188020c2a3e3a2ed39beff9ad',
+      billsSync:
+        'c0a651ca8be5ff382d2085f5d5cb10626aa05d233cf46f5e96cdb5841f1ea230',
+      billLifecycle:
+        '088a2d4f6c9cf157a47a453453e21dc3b2d6553a59d5e2d5393d451915787621',
+      billLifecycleWriter:
+        '89e0295e7c720e77b618031f87c6a9ca59869064d51428b46b574733d35758cb',
+    },
+  },
 ];
 
 function hashOf(path: string): string {

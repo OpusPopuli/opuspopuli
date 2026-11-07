@@ -66,7 +66,33 @@ function exportRows(billStatus: string): PubinfoRow[] {
       sessionYear: SESSION,
       locationCode: 'CX25',
       description: 'Asm Appropriations',
+      longDescription: 'Appropriations',
     }),
+    withHash({
+      table: 'LOCATION_CODE_TBL',
+      externalId: `${SESSION}:CS61:`,
+      sessionYear: SESSION,
+      locationCode: 'CS61',
+      description: 'Sen Appropriations',
+      longDescription: 'Appropriations',
+    }),
+    // Heard in Assembly Appropriations once and Senate Appropriations twice.
+    ...[
+      ['CX25', '2025-04-01'],
+      ['CS61', '2025-06-01'],
+      ['CS61', '2025-06-15'],
+    ].map(([code, date]) =>
+      withHash({
+        table: 'COMMITTEE_HEARING_TBL',
+        externalId: `202520260AB9001:${code}:${date}:${date} 09:00:00`,
+        billId: '202520260AB9001',
+        committeeType: code.slice(0, 2),
+        committeeNr: Number(code.slice(2)),
+        hearingDate: date,
+        locationCode: code,
+        transUpdateDate: `${date} 09:00:00`,
+      }),
+    ),
     withHash({
       table: 'BILL_MOTION_TBL',
       externalId: '7',
@@ -527,5 +553,60 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
       ['Example', ada.id],
       ['Former', null],
     ]);
+  });
+
+  describe('committee referrals from hearings (D13/D20)', () => {
+    it('refers a bill to each committee it was heard in, once', async () => {
+      // An Assembly committee the member pages already gave us; the Senate
+      // one exists only in the export.
+      const assembly = await db.legislativeCommittee.create({
+        data: {
+          externalId: 'assembly:appropriations',
+          name: 'Appropriations',
+          chamber: 'Assembly',
+        },
+      });
+
+      await run(exportRows('In Committee Process'), false);
+
+      const senate = await db.legislativeCommittee.findUniqueOrThrow({
+        where: { externalId: 'senate:appropriations' },
+      });
+      expect(senate.chamber).toBe('Senate');
+      const bill = await db.bill.findUniqueOrThrow({
+        where: { externalId: '202520260AB9001' },
+        include: { committeeReferrals: true },
+      });
+      expect(
+        bill.committeeReferrals.map((a) => a.legislativeCommitteeId).sort(),
+      ).toEqual([assembly.id, senate.id].sort());
+      expect(bill.committeeReferrals.every((a) => !a.referredAt)).toBe(true);
+    });
+
+    it('re-derives only the bill a new hearing belongs to', async () => {
+      await run(twoBills(), false);
+      const rows = [
+        ...twoBills(),
+        withHash({
+          table: 'COMMITTEE_HEARING_TBL',
+          externalId: '202520260AB9002:CX25:2025-05-01:2025-05-01 09:00:00',
+          billId: '202520260AB9002',
+          committeeType: 'CX',
+          committeeNr: 25,
+          hearingDate: '2025-05-01',
+          locationCode: 'CX25',
+          transUpdateDate: '2025-05-01 09:00:00',
+        }),
+      ];
+
+      const after = await run(rows);
+
+      expect(after).toMatchObject({ created: 1, derived: 1 });
+      const second = await db.bill.findUniqueOrThrow({
+        where: { externalId: '202520260AB9002' },
+        include: { committeeReferrals: true },
+      });
+      expect(second.committeeReferrals).toHaveLength(1);
+    });
   });
 });

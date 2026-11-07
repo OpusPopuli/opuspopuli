@@ -28,6 +28,7 @@ import {
 } from './bills-pubinfo-derive';
 import { pubinfoWriteValues } from './bills-pubinfo-write-shape';
 import { withoutUnchanged } from './bulk-row-skip';
+import { committeeExternalId } from './legislative-committee-linker.service';
 import { shortError } from './short-error';
 
 /**
@@ -85,7 +86,15 @@ interface DeriveIndex {
   linksHash: string;
   /** `session|code` → location description. */
   locations: Map<string, string>;
+  /** Committee location code (`CX25`) → legislative committee id (D13). */
+  committeeByCode: Map<string, string>;
 }
+
+/** A committee location code's chamber: `CX` Assembly, `CS` Senate. */
+const COMMITTEE_CHAMBERS: Record<string, string> = {
+  CX: 'Assembly',
+  CS: 'Senate',
+};
 
 /**
  * Bills from a legislature's published database export (`bills-phase-b.md`,
@@ -201,6 +210,7 @@ export class BillsPubinfoSyncService {
       BILL_MOTION_TBL: this.db.pubinfoBillMotion,
       LEGISLATOR_TBL: this.db.pubinfoLegislator,
       LOCATION_CODE_TBL: this.db.pubinfoLocationCode,
+      COMMITTEE_HEARING_TBL: this.db.pubinfoCommitteeHearing,
     };
     return delegates[table] as MirrorDelegate;
   }
@@ -235,6 +245,9 @@ export class BillsPubinfoSyncService {
           UNION ALL
           SELECT d.bill_id, d.updated_at FROM pubinfo_bill_detail_votes d,
             since WHERE d.updated_at > since.at
+          UNION ALL
+          SELECT c.bill_id, c.updated_at FROM pubinfo_committee_hearings c,
+            since WHERE c.updated_at > since.at
           UNION ALL
           SELECT d.bill_id, m.updated_at FROM pubinfo_bill_motions m
             JOIN pubinfo_bill_detail_votes d ON d.motion_id = CASE
@@ -302,7 +315,12 @@ export class BillsPubinfoSyncService {
         select: { id: true, chamber: true, district: true, name: true },
       }),
       this.db.pubinfoLocationCode.findMany({
-        select: { sessionYear: true, locationCode: true, description: true },
+        select: {
+          sessionYear: true,
+          locationCode: true,
+          description: true,
+          longDescription: true,
+        },
       }),
     ]);
     const repBySeat = new Map(
@@ -319,17 +337,73 @@ export class BillsPubinfoSyncService {
         );
       }
     }
+    const committeeByCode = await this.committeeIndex(locations);
     return {
       repByLegislator,
+      // Votes, authors and committee referrals all link through these maps;
+      // a change in either re-derives every bill.
       linksHash: createHash('sha256')
-        .update(JSON.stringify([...repByLegislator].sort()))
+        .update(
+          JSON.stringify([
+            [...repByLegislator].sort(),
+            [...committeeByCode].sort(),
+          ]),
+        )
         .digest('hex'),
+      committeeByCode,
       locations: new Map(
         locations
           .filter((l) => l.description)
           .map((l) => [`${l.sessionYear}|${l.locationCode}`, l.description!]),
       ),
     };
+  }
+
+  /**
+   * The committee for every location code bills were heard in (D13): matched
+   * by the linker's own key (`chamber:normalized-name`), and created when
+   * missing — the export names every committee, including the Senate's, which
+   * no member page lists. A committee later scraped from a page lands on the
+   * same row.
+   */
+  private async committeeIndex(
+    locations: {
+      locationCode: string;
+      description: string | null;
+      longDescription: string | null;
+    }[],
+  ): Promise<Map<string, string>> {
+    const heard = await this.db.pubinfoCommitteeHearing.findMany({
+      distinct: ['locationCode'],
+      select: { locationCode: true },
+    });
+    const nameOf = new Map(
+      locations.map((l) => [
+        l.locationCode,
+        // The long form is the committee's name ("Appropriations"); the short
+        // one carries the house ("Asm Appropriations"), which the key drops.
+        l.longDescription ?? (l.description ?? '').replace(/^(Asm|Sen)\s+/, ''),
+      ]),
+    );
+    const committeeByCode = new Map<string, string>();
+    for (const { locationCode } of heard.sort((a, b) =>
+      a.locationCode.localeCompare(b.locationCode),
+    )) {
+      const chamber = COMMITTEE_CHAMBERS[locationCode.slice(0, 2)];
+      const name = nameOf.get(locationCode);
+      const externalId =
+        chamber && name ? committeeExternalId(chamber, name) : null;
+      if (!chamber || !name || !externalId) continue;
+      const committee = await this.db.legislativeCommittee.upsert({
+        where: { externalId },
+        // An existing committee keeps the name its member pages gave it.
+        update: {},
+        create: { externalId, name, chamber },
+        select: { id: true },
+      });
+      committeeByCode.set(locationCode, committee.id);
+    }
+    return committeeByCode;
   }
 
   private async deriveChunk(
@@ -444,6 +518,11 @@ export class BillsPubinfoSyncService {
       data: this.voteRows(bill, data, index),
       skipDuplicates: true,
     });
+    await tx.billCommitteeAssignment.deleteMany({ where: { billId } });
+    await tx.billCommitteeAssignment.createMany({
+      data: committeeRows(bill, data, index),
+      skipDuplicates: true,
+    });
   }
 
   private coAuthorRows(
@@ -515,44 +594,51 @@ export class BillsPubinfoSyncService {
   }
 
   private async loadChunk(billIds: string[]): Promise<ChunkData> {
-    const [bills, versions, history, votes, stored] = await Promise.all([
-      this.db.pubinfoBill.findMany({ where: { externalId: { in: billIds } } }),
-      this.db.pubinfoBillVersion.findMany({
-        where: { billId: { in: billIds } },
-        select: {
-          externalId: true,
-          billId: true,
-          versionNum: true,
-          subject: true,
-        },
-      }),
-      this.db.pubinfoBillHistory.findMany({
-        where: { billId: { in: billIds } },
-        select: {
-          externalId: true,
-          billId: true,
-          actionDate: true,
-          action: true,
-          actionSequence: true,
-        },
-      }),
-      this.db.pubinfoBillDetailVote.findMany({
-        where: { billId: { in: billIds } },
-        select: {
-          billId: true,
-          locationCode: true,
-          legislatorName: true,
-          voteDateTime: true,
-          voteDateSeq: true,
-          voteCode: true,
-          motionId: true,
-        },
-      }),
-      this.db.bill.findMany({
-        where: { externalId: { in: billIds } },
-        select: { externalId: true, isDead: true, isActive: true },
-      }),
-    ]);
+    const [bills, versions, history, votes, stored, hearings] =
+      await Promise.all([
+        this.db.pubinfoBill.findMany({
+          where: { externalId: { in: billIds } },
+        }),
+        this.db.pubinfoBillVersion.findMany({
+          where: { billId: { in: billIds } },
+          select: {
+            externalId: true,
+            billId: true,
+            versionNum: true,
+            subject: true,
+          },
+        }),
+        this.db.pubinfoBillHistory.findMany({
+          where: { billId: { in: billIds } },
+          select: {
+            externalId: true,
+            billId: true,
+            actionDate: true,
+            action: true,
+            actionSequence: true,
+          },
+        }),
+        this.db.pubinfoBillDetailVote.findMany({
+          where: { billId: { in: billIds } },
+          select: {
+            billId: true,
+            locationCode: true,
+            legislatorName: true,
+            voteDateTime: true,
+            voteDateSeq: true,
+            voteCode: true,
+            motionId: true,
+          },
+        }),
+        this.db.bill.findMany({
+          where: { externalId: { in: billIds } },
+          select: { externalId: true, isDead: true, isActive: true },
+        }),
+        this.db.pubinfoCommitteeHearing.findMany({
+          where: { billId: { in: billIds } },
+          select: { billId: true, locationCode: true },
+        }),
+      ]);
     const versionsByBill = groupBy(versions, (v) => v.billId);
     const latestIds = [...versionsByBill.values()]
       .map((vs) => latestVersion(vs)?.externalId)
@@ -588,6 +674,7 @@ export class BillsPubinfoSyncService {
       authorsByVersion: groupBy(authors, (a) => a.billVersionId),
       historyByBill: groupBy(history, (h) => h.billId),
       votesByBill: groupBy(votes, (v) => v.billId),
+      hearingsByBill: groupBy(hearings, (h) => h.billId),
       motions: new Map(
         motions.map((m) => [Number(m.externalId), m.motionText]),
       ),
@@ -610,6 +697,8 @@ interface AuthorRow {
 }
 
 interface ChunkData {
+  /** A bill's committee hearings: the committees it was referred to (D13). */
+  hearingsByBill: Map<string, { billId: string; locationCode: string }[]>;
   bills: {
     externalId: string;
     sessionYear: string;
@@ -643,6 +732,22 @@ interface ChunkData {
   >;
   motions: Map<number, string | null>;
   storedFlags: Map<string, { isDead: boolean; isActive: boolean }>;
+}
+
+/**
+ * A bill's committee referrals (D13): one row per distinct committee it was
+ * heard in. `referredAt` stays NULL — a hearing date is not a referral date.
+ */
+function committeeRows(bill: BillRef, data: ChunkData, index: DeriveIndex) {
+  const committees = new Set<string>();
+  for (const h of data.hearingsByBill.get(bill.externalId) ?? []) {
+    const id = index.committeeByCode.get(h.locationCode);
+    if (id) committees.add(id);
+  }
+  return [...committees].map((legislativeCommitteeId) => ({
+    billId: bill.id,
+    legislativeCommitteeId,
+  }));
 }
 
 /** One derive pass: the region's settings and the moment it started. */

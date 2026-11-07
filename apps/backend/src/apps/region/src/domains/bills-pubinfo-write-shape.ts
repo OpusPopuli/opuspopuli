@@ -85,6 +85,14 @@ export const PUBINFO_WRITE_FIELDS = {
     'lastName',
     'party',
   ],
+  COMMITTEE_HEARING_TBL: [
+    'billId',
+    'committeeType',
+    'committeeNr',
+    'hearingDate',
+    'locationCode',
+    'transUpdateDate',
+  ],
   LOCATION_CODE_TBL: [
     'sessionYear',
     'locationCode',
@@ -98,6 +106,7 @@ export const PUBINFO_WRITE_FIELDS = {
 const DATE_FIELDS: ReadonlySet<string> = new Set([
   'billVersionActionDate',
   'actionDate',
+  'hearingDate',
 ]);
 
 /** Provenance written on every mirror row (#1277, #1280). */

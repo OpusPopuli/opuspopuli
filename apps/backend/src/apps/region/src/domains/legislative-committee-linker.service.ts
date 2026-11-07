@@ -288,31 +288,8 @@ export class LegislativeCommitteeLinkerService {
       }));
   }
 
-  /**
-   * Normalize a committee name into a stable lookup key. Strategy:
-   *  - lowercase
-   *  - drop non-alphanumeric (keeps only letters, digits, single spaces)
-   *  - drop chamber-prefix words (Assembly, Senate) since chamber is in
-   *    the key separately
-   *  - drop "committee", "committee on", "standing committee on" wrappers
-   *  - collapse whitespace
-   * Result for "Standing Committee on the Budget" / "Budget" /
-   *   "Budget Committee" / "Assembly Budget" → all collapse to "budget".
-   */
   private normalize(name: string): string {
-    let n = name.toLowerCase().replaceAll(/[^a-z0-9\s]/g, ' ');
-    // Strip wrapper phrases — order matters, longer-first.
-    n = n
-      .replaceAll(/\bstanding committee on the\b/g, ' ')
-      .replaceAll(/\bstanding committee on\b/g, ' ')
-      .replaceAll(/\bcommittee on the\b/g, ' ')
-      .replaceAll(/\bcommittee on\b/g, ' ')
-      .replaceAll(/\bsubcommittee on\b/g, ' ')
-      .replaceAll(/\bcommittee\b/g, ' ')
-      .replaceAll(/\bsubcommittee\b/g, ' ')
-      .replaceAll(/\bassembly\b/g, ' ')
-      .replaceAll(/\bsenate\b/g, ' ');
-    return n.replaceAll(/\s+/g, ' ').trim();
+    return normalizeLegislativeCommitteeName(name);
   }
 
   /** Build the unique external_id for a (chamber, normalized name) pair. */
@@ -330,9 +307,7 @@ export class LegislativeCommitteeLinkerService {
    * LegislativeCommittee.id without duplicating normalization logic.
    */
   externalIdFor(chamber: string, rawName: string): string | null {
-    const normalized = this.normalize(rawName);
-    if (!normalized) return null;
-    return this.externalId(chamber, normalized);
+    return committeeExternalId(chamber, rawName);
   }
 
   /**
@@ -346,4 +321,40 @@ export class LegislativeCommitteeLinkerService {
     if (CHAIR_PATTERN.test(raw)) return 'Chair';
     return 'Member';
   }
+}
+
+/**
+ * A committee's name with its wrapper phrases removed, so variants collapse:
+ * "Standing Committee on Budget", "Budget Committee" and "Assembly Budget"
+ * all become "budget". Shared with the bills derive (D13), which creates
+ * committees from the export under the same key.
+ */
+export function normalizeLegislativeCommitteeName(name: string): string {
+  const n = name
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9\s]/g, ' ')
+    // Wrapper phrases, longer first.
+    .replaceAll(/\bstanding committee on the\b/g, ' ')
+    .replaceAll(/\bstanding committee on\b/g, ' ')
+    .replaceAll(/\bcommittee on the\b/g, ' ')
+    .replaceAll(/\bcommittee on\b/g, ' ')
+    .replaceAll(/\bsubcommittee on\b/g, ' ')
+    .replaceAll(/\bcommittee\b/g, ' ')
+    .replaceAll(/\bsubcommittee\b/g, ' ')
+    .replaceAll(/\bassembly\b/g, ' ')
+    .replaceAll(/\bsenate\b/g, ' ');
+  return n.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
+ * The `legislative_committees.external_id` for a chamber and raw name, or
+ * null when the name normalizes to nothing. One key for the linker and the
+ * bills derive, so a committee found by either lands on the same row.
+ */
+export function committeeExternalId(
+  chamber: string,
+  rawName: string,
+): string | null {
+  const normalized = normalizeLegislativeCommitteeName(rawName);
+  return normalized ? `${chamber.toLowerCase()}:${normalized}` : null;
 }
