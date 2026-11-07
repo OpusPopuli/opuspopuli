@@ -640,6 +640,17 @@ findings. Its four notes:
   unique key treats as distinct. Each bill's votes are replaced as a set, and
   the export has no duplicate roll-call rows, so nothing duplicates.
 
+**Fourth pre-push gate:** passed, with no critical or high findings.
+- **Fixed:** a bulk bills source with `BillsPubinfoSyncService` not
+  registered logged a warning and reported an empty, successful sync. It now
+  fails. Unit test, mutation-checked.
+- **Already recorded:**
+  - the B7 scope;
+  - the one-time rewrite under bm3;
+  - the `min(derived_at)` prefilter;
+  - the roll-call rollback dropping the extra same-day votes, which its
+    rollback file states.
+
 **Recorded, not changed:** bills that never change keep their first
 `derived_at`, so `min(derived_at)` stays put and the prefilter reads more
 rows over time. That costs speed only. If it shows in timings, compare per

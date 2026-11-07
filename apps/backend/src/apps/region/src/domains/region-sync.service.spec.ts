@@ -2326,6 +2326,15 @@ describe('RegionSyncService', () => {
       expect(await summaryCapFor(10_000)).toBe(200);
     });
 
+    it('fails, rather than reporting an empty sync, when the export service is not bound', async () => {
+      const internals = service as unknown as Internals;
+      internals.billsPubinfoSync = undefined;
+
+      await expect(
+        internals.syncBills(undefined, exportPlugin),
+      ).rejects.toThrow('BillsPubinfoSyncService is not registered');
+    });
+
     it('still refreshes and summarizes when a bill failed to derive, then fails', async () => {
       const sync = exportSync(1);
 

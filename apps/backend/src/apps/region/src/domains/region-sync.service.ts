@@ -1423,10 +1423,11 @@ export class RegionSyncService implements OnModuleDestroy {
     skipped: number;
   }> {
     if (!this.billsPubinfoSync) {
-      this.logger.warn(
-        'Bulk bills source configured but no pubinfo sync bound; skipping',
+      // A misconfigured module, not a quiet day: a warning and zero counts
+      // would read as a successful sync that imported nothing.
+      throw new Error(
+        'Bulk bills source configured but BillsPubinfoSyncService is not registered',
       );
-      return { processed: 0, created: 0, updated: 0, skipped: 0 };
     }
     const regionId = plugin.getName?.() ?? 'unknown';
     const statusLifecycle =
