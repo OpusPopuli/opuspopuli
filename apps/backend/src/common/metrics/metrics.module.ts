@@ -394,6 +394,12 @@ export class MetricsModule {
         help: 'Age of the oldest waiting job in a BullMQ queue (0 when none waits)',
         labelNames: ['queue'],
       }),
+      /** The host memory gate (#1434) — see `HostMemoryMetric`. */
+      makeCounterProvider({
+        name: 'llm_host_gate_total',
+        help: 'Host memory gate checks by outcome (admitted, deferred, probe_unreachable); a waiting job counts once per re-check',
+        labelNames: ['model', 'outcome'],
+      }),
       /** Reader-requested analysis (§5.2) — see `LazyAnalysisMetric`. */
       makeCounterProvider({
         name: 'lazy_analysis_requests_total',

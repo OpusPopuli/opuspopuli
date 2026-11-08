@@ -3,9 +3,11 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
+  OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { EventEmitter } from 'node:events';
 import {
   LaneMetric,
@@ -19,7 +21,10 @@ import {
   type GpuLaneJob,
   type MetricsObserver,
 } from '@opuspopuli/common';
-import { createLaneProvider } from '@opuspopuli/llm-provider';
+import {
+  createLaneProvider,
+  isHostMemoryUnavailable,
+} from '@opuspopuli/llm-provider';
 import {
   createWorker,
   QUEUE_CONNECTION,
@@ -111,6 +116,12 @@ const DIRECT_WARN_INTERVAL_MS = 60_000;
  * starts.
  */
 const LANE_LOCK_MS = 300_000;
+/**
+ * How often a consumer holding a job asks the host again for room to load
+ * its model (#1434). Holding the slot while it waits is deliberate: the
+ * global bound is one, and the next job would need the same load.
+ */
+const HOST_RECHECK_MS = 15_000;
 /** A missing liveness key is re-checked once after this — see `isAlive`. */
 const LIVENESS_GRACE_MS = 5_000;
 /** Ceilings on what a job read from Redis may ask of the GPU. */
@@ -148,7 +159,9 @@ const endpointKey = (lane: string, url: string, model: string): string =>
  * Redis while it shuts down.
  */
 @Injectable()
-export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
+export class GpuLaneDispatcher
+  implements IGpuLaneDispatcher, OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(GpuLaneDispatcher.name);
   private readonly lanes = new Map<string, Promise<LaneHandles>>();
   private readonly endpoints = new Map<string, GpuLaneEndpoint>();
@@ -167,6 +180,16 @@ export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
   private readonly deadProducers = new Set<string>();
   /** lane|model pairs already warned about — once each, not once per job. */
   private readonly refusalsWarned = new Set<string>();
+  /**
+   * Ends every wait for host memory at shutdown (#1434), on the signal and
+   * not at `onModuleDestroy`. This module is destroyed LAST, after every
+   * queue worker has closed, and a worker closes only once its active job
+   * ends. A sync job waiting on a lane job that is waiting for room would hold
+   * its worker open until the container was killed: exit 137, and the slot
+   * held until its lock lapsed. Seen on UAT, 2026-11-07.
+   */
+  private readonly shutdown = new AbortController();
+  private readonly onStopSignal = (): void => this.shutdown.abort();
 
   constructor(
     @Inject(QUEUE_CONNECTION) private readonly connection: IORedis,
@@ -178,6 +201,17 @@ export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
     @Inject(GPU_LANE_PROVIDER_FACTORY)
     private readonly providerFactory: LaneProviderFactory = createLaneProvider,
   ) {}
+
+  /**
+   * Here, not in the constructor: every lane process calls
+   * `enableShutdownHooks()` before init. A SIGTERM arriving in between would
+   * otherwise reach only this listener, and nothing would exit the process.
+   * `once`, and removed at destroy, so Nest's re-raised signal exits it.
+   */
+  onModuleInit(): void {
+    process.once('SIGTERM', this.onStopSignal);
+    process.once('SIGINT', this.onStopSignal);
+  }
 
   private get redis(): IORedis {
     this.ownConnection ??= this.connection.duplicate();
@@ -240,6 +274,9 @@ export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
+    this.shutdown.abort();
+    process.off('SIGTERM', this.onStopSignal);
+    process.off('SIGINT', this.onStopSignal);
     const closing = new Error('GPU lane dispatcher is shutting down');
     for (const reject of this.waiters) reject(closing);
     this.waiters.clear();
@@ -405,7 +442,8 @@ export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
     name: string,
     job: Job<LaneJobData>,
   ): Promise<GenerateResult> {
-    const { lane, endpoint, prompt, options, deadline, producer } = job.data;
+    const { lane, endpoint, prompt, options, producer } = job.data;
+    const deadline = this.deadlineOf(job);
     // Out of Redis before the call, not after the job is reaped.
     await job.updateData({ ...job.data, prompt: '' }).catch(() => {
       this.logger.warn(
@@ -430,9 +468,12 @@ export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
       const started = job.processedOn ?? Date.now();
       this.observeWait(lane, name, (started - job.timestamp) / 1000);
       await this.assertSomeoneWaiting(deadline, producer);
-      return await this.providerFor(lane, local).generate(
+      return await this.generateWhenHostHasRoom(
+        this.providerFor(lane, local),
         prompt,
         safeOptions(options),
+        deadline,
+        producer,
       );
     } catch (error) {
       // The provider's LLMError already names the operation; the waiter wraps
@@ -441,6 +482,56 @@ export class GpuLaneDispatcher implements IGpuLaneDispatcher, OnModuleDestroy {
         error instanceof LLMError ? error.originalError : (error as Error);
       throw new Error(truncate(cause.message));
     }
+  }
+
+  /**
+   * Run the call, waiting while the host has no room to load the model
+   * (`docs/plans/gpu-lane-host-memory-gate.md` §3). Each wait ends at the
+   * job's deadline, at shutdown, or once its caller is gone. The job then
+   * fails as deferred: the caller's own `isAvailable` says "not now", so a
+   * sync skips the item rather than recording it as failed.
+   */
+  private async generateWhenHostHasRoom(
+    provider: ILLMProvider,
+    prompt: string,
+    options: GpuLaneJob['options'],
+    deadline: number,
+    producer: string,
+  ): Promise<GenerateResult> {
+    for (;;) {
+      try {
+        return await provider.generate(prompt, options);
+      } catch (error) {
+        const giveUp =
+          !isHostMemoryUnavailable(error) ||
+          this.shutdown.signal.aborted ||
+          Date.now() + HOST_RECHECK_MS > deadline;
+        if (giveUp) throw error;
+      }
+      // Aborted at shutdown, so a worker that is stopping neither waits out
+      // the sleep nor starts a load once it ends.
+      await sleep(HOST_RECHECK_MS, undefined, {
+        signal: this.shutdown.signal,
+      }).catch(() => undefined);
+      if (this.shutdown.signal.aborted) {
+        throw new Error('GPU lane dispatcher is shutting down');
+      }
+      await this.assertSomeoneWaiting(deadline, producer);
+    }
+  }
+
+  /**
+   * The job's deadline, no later than this process would have set it.
+   * It comes from Redis. Before the wait for host memory it was read once;
+   * now a far-off or missing value would hold the only GPU slot for as long
+   * as the host stays full (review of #1434). A value that isn't a number
+   * counts as already passed.
+   */
+  private deadlineOf(job: Job<LaneJobData>): number {
+    const { deadline } = job.data;
+    if (typeof deadline !== 'number' || !Number.isFinite(deadline)) return 0;
+    const latest = job.timestamp + this.options.waitTimeoutMs;
+    return Number.isFinite(latest) ? Math.min(deadline, latest) : 0;
   }
 
   /** A job whose caller timed out or died is not worth a GPU slot. */

@@ -27,6 +27,20 @@ jest.mock('bullmq', () => ({
     close: jest.fn(),
   })),
 }));
+// The 15 s re-check, made instant: the loop is what is under test. Past 50
+// waits it throws, synchronously so the loop's own catch of an aborted sleep
+// can't swallow it, and a loop that never ends fails the test instead of
+// exhausting the heap.
+let waits = 0;
+/** Runs during each wait, as if it happened mid-sleep. */
+let duringWait: () => void = () => undefined;
+jest.mock('node:timers/promises', () => ({
+  setTimeout: jest.fn(() => {
+    if (++waits > 50) throw new Error('waited without end');
+    duringWait();
+    return Promise.resolve(undefined);
+  }),
+}));
 jest.mock('@opuspopuli/queue-provider', () => ({
   QUEUE_CONNECTION: 'QUEUE_CONNECTION',
   createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
@@ -34,6 +48,7 @@ jest.mock('@opuspopuli/queue-provider', () => ({
 }));
 
 import { createWorker } from '@opuspopuli/queue-provider';
+import { HostMemoryUnavailableError } from '@opuspopuli/llm-provider';
 import { GpuLaneDispatcher, safeOptions } from './gpu-lane.dispatcher';
 
 describe('GpuLaneDispatcher — direct fallback (S7)', () => {
@@ -143,6 +158,176 @@ describe('GpuLaneDispatcher — direct fallback (S7)', () => {
     await Promise.all([a, c]);
 
     expect(intervals).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GpuLaneDispatcher — waiting for host memory (#1434)', () => {
+  const redis = {
+    quit: jest.fn().mockResolvedValue('OK'),
+    set: jest.fn().mockResolvedValue('OK'),
+    del: jest.fn().mockResolvedValue(1),
+    xtrim: jest.fn().mockResolvedValue(0),
+    exists: jest.fn().mockResolvedValue(1),
+    duplicate: () => ({ quit: jest.fn().mockResolvedValue('OK') }),
+  };
+  const endpoint = { url: 'http://ollama:11434', model: 'm' };
+  const WAIT_MS = 60 * 60_000;
+  const noRoom = () =>
+    new HostMemoryUnavailableError('Ollama', 'generate', 'deferred', {
+      model: 'm',
+    });
+  let dispatcher: GpuLaneDispatcher;
+  let generate: jest.Mock;
+
+  /** The consumer createWorker was given, run on one job. */
+  async function consume(
+    deadlineInMs: number,
+    data: { producer?: string; deadline?: unknown } = {},
+    queuedAgoMs = 0,
+  ) {
+    (createWorker as jest.Mock).mockClear();
+    add.mockResolvedValue({
+      id: '1',
+      waitUntilFinished: () => Promise.resolve({ text: 'q' }),
+      remove: jest.fn(),
+    });
+    await dispatcher.generate({ lane: 'analysis', endpoint, prompt: 'P' });
+    const processor = (createWorker as jest.Mock).mock.calls[0][2];
+    return processor({
+      id: '9',
+      timestamp: Date.now() - queuedAgoMs,
+      processedOn: Date.now(),
+      updateData: jest.fn().mockResolvedValue(undefined),
+      data: {
+        lane: 'analysis',
+        endpoint,
+        prompt: 'P',
+        deadline: Date.now() + deadlineInMs,
+        producer: (dispatcher as unknown as { producerId: string }).producerId,
+        triggerSource: 'lane',
+        ...data,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    waits = 0;
+    duringWait = () => undefined;
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    generate = jest.fn();
+    dispatcher = new GpuLaneDispatcher(
+      { duplicate: () => redis } as never,
+      { prefix: 'bullmq', globalConcurrency: 1, waitTimeoutMs: WAIT_MS },
+      undefined,
+      () => ({ generate }) as unknown as ILLMProvider,
+    );
+    dispatcher.register('analysis', endpoint);
+  });
+
+  afterEach(async () => {
+    await dispatcher.onModuleDestroy();
+    jest.restoreAllMocks();
+  });
+
+  it('keeps the job and tries again once the host has room', async () => {
+    generate
+      .mockRejectedValueOnce(noRoom())
+      .mockRejectedValueOnce(noRoom())
+      .mockResolvedValue({ text: 'done' });
+
+    await expect(consume(10 * 60_000)).resolves.toEqual({ text: 'done' });
+    expect(generate).toHaveBeenCalledTimes(3);
+  });
+
+  it('gives up as deferred when the deadline comes first', async () => {
+    generate.mockRejectedValue(noRoom());
+
+    await expect(consume(5_000)).rejects.toThrow(/reclaimable/);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a load after shutdown begins during a wait', async () => {
+    generate.mockRejectedValueOnce(noRoom()).mockResolvedValue({ text: 'x' });
+    // Not awaited: shutdown begins mid-sleep and finishes on its own.
+    duringWait = () => {
+      dispatcher.onModuleDestroy().catch(() => undefined);
+    };
+
+    await expect(consume(10 * 60_000)).rejects.toThrow(/shutting down/);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a wait on the stop signal, before the module is destroyed', async () => {
+    // Nest destroys this module after every queue worker has closed, and a
+    // worker waits for its job: the wait must end on the signal itself.
+    const onStop = (dispatcher as unknown as { onStopSignal: () => void })
+      .onStopSignal;
+    // Registered at init, after Nest's own shutdown hooks, not at construction.
+    expect(process.listeners('SIGTERM')).not.toContain(onStop);
+    dispatcher.onModuleInit();
+    expect(process.listeners('SIGTERM')).toContain(onStop);
+    generate.mockRejectedValueOnce(noRoom()).mockResolvedValue({ text: 'x' });
+    duringWait = onStop;
+
+    await expect(consume(10 * 60_000)).rejects.toThrow(/shutting down/);
+    expect(generate).toHaveBeenCalledTimes(1);
+
+    await dispatcher.onModuleDestroy();
+    expect(process.listeners('SIGTERM')).not.toContain(onStop);
+    expect(process.listeners('SIGINT')).not.toContain(onStop);
+  });
+
+  it('does not wait at all once shutdown has begun', async () => {
+    generate.mockImplementationOnce(() => {
+      dispatcher.onModuleDestroy().catch(() => undefined);
+      return Promise.reject(noRoom());
+    });
+
+    await expect(consume(10 * 60_000)).rejects.toThrow(/reclaimable/);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(waits).toBe(0);
+  });
+
+  it('stops waiting once its caller is gone', async () => {
+    const internals = dispatcher as unknown as { deadProducers: Set<string> };
+    generate.mockImplementationOnce(() => {
+      // The caller's liveness key lapses while the job waits.
+      redis.exists.mockResolvedValue(0);
+      internals.deadProducers.add('caller');
+      return Promise.reject(noRoom());
+    });
+
+    await expect(consume(10 * 60_000, { producer: 'caller' })).rejects.toThrow(
+      /no longer running/,
+    );
+    expect(generate).toHaveBeenCalledTimes(1);
+    redis.exists.mockResolvedValue(1);
+  });
+
+  it('holds the slot no longer than this process would have set', async () => {
+    // A job read from Redis asking to wait for ever, queued as long ago as
+    // this process's own wait limit: its real deadline is now.
+    generate.mockRejectedValue(noRoom());
+
+    await expect(
+      consume(0, { deadline: Number.MAX_SAFE_INTEGER }, WAIT_MS),
+    ).rejects.toThrow(/reclaimable/);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a deadline that is not a number as passed', async () => {
+    await expect(consume(0, { deadline: 'soon' })).rejects.toThrow(
+      /expired before a GPU slot came free/,
+    );
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it('does not retry any other failure', async () => {
+    generate.mockRejectedValue(new Error('HTTP 500'));
+
+    await expect(consume(10 * 60_000)).rejects.toThrow('HTTP 500');
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 });
 

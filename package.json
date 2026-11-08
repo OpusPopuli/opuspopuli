@@ -9,6 +9,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:ci": "pnpm -r test -- --coverage",
+    "test:host-probe": "node --experimental-strip-types --test scripts/host-memory-probe/probe.test.ts",
     "test:integration": "pnpm --filter backend test:integration",
     "test:integration:docker": "bash scripts/test-integration-docker.sh",
     "integration:up": "NODE_AUTH_TOKEN=${NODE_AUTH_TOKEN:-$(gh auth token)} docker compose -f docker-compose-integration.yml up -d --build",

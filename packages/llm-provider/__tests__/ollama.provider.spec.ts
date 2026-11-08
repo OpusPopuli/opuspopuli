@@ -4,6 +4,10 @@ import {
   OllamaConfig,
 } from "../src/providers/ollama.provider";
 import { LLMError } from "@opuspopuli/common";
+import {
+  HostMemoryUnavailableError,
+  type HostMemoryGate,
+} from "../src/providers/host-memory-gate";
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -605,6 +609,87 @@ describe("OllamaLLMProvider", () => {
         expect.objectContaining({
           signal: expect.any(AbortSignal),
         }),
+      );
+    });
+  });
+
+  describe("host memory gate (#1434)", () => {
+    const refuse = (outcome: "deferred" | "probe_unreachable") => ({
+      check: jest.fn().mockResolvedValue({
+        outcome,
+        model: "llama3.2",
+        neededBytes: 28 * 1024 ** 3,
+        reclaimableBytes: 20 * 1024 ** 3,
+      }),
+      release: jest.fn(),
+    });
+    const gated = (gate: HostMemoryGate) =>
+      new OllamaLLMProvider({ ...config, hostGate: gate });
+
+    it("refuses before anything reaches Ollama, with the numbers", async () => {
+      const call = gated(refuse("deferred")).generate("hi");
+      await expect(call).rejects.toBeInstanceOf(HostMemoryUnavailableError);
+      await expect(call).rejects.toThrow(
+        "the host has 20.0 GiB reclaimable and it needs 28.0 GiB",
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("gates chat and streaming too", async () => {
+      const provider = gated(refuse("probe_unreachable"));
+      await expect(
+        provider.chat([{ role: "user", content: "hi" }]),
+      ).rejects.toBeInstanceOf(HostMemoryUnavailableError);
+      await expect(provider.generateStream("hi").next()).rejects.toBeInstanceOf(
+        HostMemoryUnavailableError,
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("does not open the circuit breaker: a full host is not a failing Ollama", async () => {
+      const provider = gated(refuse("deferred"));
+      for (let i = 0; i < 10; i++) {
+        await provider.generate("hi").catch(() => undefined);
+      }
+      expect(provider.getCircuitBreakerHealth().state).toBe("closed");
+    });
+
+    it("reports unavailable while there is no room, so a sync skips rather than fails", async () => {
+      mockFetch.mockResolvedValue({ ok: true });
+      expect(await gated(refuse("deferred")).isAvailable()).toBe(false);
+    });
+
+    it("gives the load reservation back when an admitted call fails", async () => {
+      const gate = {
+        check: jest
+          .fn()
+          .mockResolvedValue({ outcome: "admitted", model: "llama3.2" }),
+        release: jest.fn(),
+      };
+      mockFetch.mockRejectedValue(new Error("ECONNRESET"));
+      await expect(gated(gate).generate("hi")).rejects.toThrow();
+      expect(gate.release).toHaveBeenCalledWith(
+        "http://localhost:11434",
+        "llama3.2",
+      );
+    });
+
+    it("goes ahead when the gate admits", async () => {
+      const gate = {
+        check: jest
+          .fn()
+          .mockResolvedValue({ outcome: "admitted", model: "llama3.2" }),
+        release: jest.fn(),
+      };
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ response: "ok", done: true }),
+      });
+      const result = await gated(gate).generate("hi");
+      expect(result.text).toBe("ok");
+      expect(gate.check).toHaveBeenCalledWith(
+        "http://localhost:11434",
+        "llama3.2",
       );
     });
   });

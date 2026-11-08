@@ -36,5 +36,17 @@ export {
 // NestJS module
 export { LLMModule } from "./llm.module.js";
 
+// Host memory gate (#1434): the GPU lane waits on this error rather than
+// failing a job the host merely had no room for yet.
+export {
+  createHostMemoryGate,
+  sharedHostMemoryGate,
+  isHostMemoryUnavailable,
+  HostMemoryUnavailableError,
+  type HostMemoryGate,
+  type HostGateDecision,
+  type HostGateOutcome,
+} from "./providers/host-memory-gate.js";
+
 // Lane queue (S7): the consumer side builds a job's provider with this.
 export { createLaneProvider, withLaneQueue } from "./providers/lane-queue.js";
