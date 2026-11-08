@@ -4,6 +4,13 @@
 #   scripts/host-memory-probe/install.sh            # install or update, then start
 #   scripts/host-memory-probe/install.sh --uninstall
 #
+#   HOST_MEMORY_PROBE_NODE=/path/to/node   the node to run it with (default:
+#                                          the first on PATH). create-op-node
+#                                          passes the one it runs on.
+#   HOST_MEMORY_PROBE_PORT=11500
+#
+# Exit 0 once the probe answers; non-zero, with the reason on stderr, if not.
+#
 # It runs as you, binds 127.0.0.1:${HOST_MEMORY_PROBE_PORT:-11500}, and starts at
 # login. The node binary is resolved now and written into the plist, because
 # launchd does not read your shell's PATH or nvm. The probe is COPIED into
@@ -35,11 +42,12 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   exit 0
 fi
 
-NODE="$(command -v node || true)"
-[[ -n "$NODE" ]] || { echo "node not found on PATH" >&2; exit 1; }
+NODE="${HOST_MEMORY_PROBE_NODE:-$(command -v node || true)}"
+[[ -n "$NODE" && -x "$NODE" ]] || { echo "node not found (set HOST_MEMORY_PROBE_NODE or put node on PATH)" >&2; exit 1; }
 NODE="$(cd "$(dirname "$NODE")" && pwd -P)/$(basename "$NODE")"
-MAJOR="$("$NODE" -p 'process.versions.node.split(".")[0]')"
-(( MAJOR >= 22 )) || { echo "need Node 22 or later, found $("$NODE" -v)" >&2; exit 1; }
+# 22.6 is the first release that runs a .ts file with --experimental-strip-types.
+"$NODE" -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' ||
+  { echo "need Node 22.6 or later, found $("$NODE" -v)" >&2; exit 1; }
 
 mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")" "$INSTALL_DIR"
 cp "$HERE/probe.ts" "$HERE/package.json" "$INSTALL_DIR/"
