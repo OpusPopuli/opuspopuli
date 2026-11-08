@@ -332,6 +332,9 @@ export class LegislativeCommitteeLinkerService {
 export function normalizeLegislativeCommitteeName(name: string): string {
   const n = name
     .toLowerCase()
+    // "Growth, & Household Impact" (the export) is "Growth, and Household
+    // Impact" (member pages): one committee, one key.
+    .replaceAll('&', ' and ')
     .replaceAll(/[^a-z0-9\s]/g, ' ')
     // Wrapper phrases, longer first.
     .replaceAll(/\bstanding committee on the\b/g, ' ')
