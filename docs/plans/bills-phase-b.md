@@ -190,7 +190,7 @@ vocabulary of B8's corrupt `status` strings.
 | D10 | Import each table into a **mirror table** (`pubinfo_*`, one row per source line, keyed as the source keys it), then **derive** `bills`, `bill_co_authors`, `bill_votes` from the mirrors in code | A bill joins six tables, but the bulk path maps one table at a time. Mirrors keep K4's per-line skip and the line hash (#1277), and the derive step runs only for bills whose mirror lines changed |
 | D11 | The lifecycle comes from `current_status` through a **status → lifecycle map in region config**, not from "Active Bill - …" regexes | Config-only regions. The regexes stay for regions without a structured status |
 | D12 | Store only the **latest version's** text (`latest_bill_version_id`) | The summary reads that one. All versions would be 666 MB with nothing reading them |
-| D13 | Committee referrals derive from history actions in a later step; existing rows are left alone | Not needed for the feed or B8; the action text needs its own parser |
+| D13 | Committee referrals derive from history actions in a later step; existing rows are left alone | Not needed for the feed or B8; the action text needs its own parser. **Superseded by D20 (2026-11-07):** referrals come from the hearings table, and the derive replaces a bill's referrals as it does its votes and co-authors |
 | D14 | Retire the California page source in regions config; keep the page-scrape code | Other regions may have no bulk source. K3/K5/B1/B3/B4 move to the issue backlog for those |
 | D12′ | **Revised while building:** store **every** version's text, not only the latest | Lines arrive unordered, so the latest version is only known after the table is read; and comparing amendments needs the earlier texts. ~666 MB a session, TOAST-compressed |
 | D15 | Link votes and authors to representatives **by chamber and district**, through `LEGISLATOR_TBL` | Roll calls name legislators as pubinfo's `legislator_name`; the legislator table maps that name and house to a district, and dev holds exactly one representative per Assembly (80) and Senate (40) district. The page path's last-name match lets two members with one surname collide |
@@ -1295,3 +1295,46 @@ committee now holds its 38 bills; Assembly 85, Senate 24.
 **Gateway:** `bills(committeeId)` for Senate Appropriations, a committee that
 did not exist before, returns 1,803 bills. That is the committee page's bill
 list, which had 3 rows in dev before.
+
+### D13 review (`origin/main...5c237e4c`)
+
+A single-agent `/op-review` found no blocker.
+
+**Fixed (suggestions):**
+- **Committee codes are per session.** A code like `CX25` can name another
+  committee in 2027–28, and the location table holds every session. The
+  committee map is now keyed `session|code`, as the vote path already was.
+  Each hearing takes its session from the bill id, and the location query
+  is ordered so the links hash cannot flip. Integration test,
+  mutation-checked.
+- **The committee key was outside the pin.** The key functions moved to
+  `legislative-committee-key.ts`, which joins the backend pin (bm4, updated
+  in place since bm4 has not left the branch).
+- **The "&" fold re-keyed every caller.** I had folded "&" into the linker's
+  normalization; the review showed that re-keys any existing "&" name for the
+  linker, the region query and the action linker. Prod (v1.28.0) was never
+  checked. So the linker's rule is back exactly as it was. The derive
+  instead matches an existing committee under either spelling, and creates
+  a new one under the "and" form that member pages produce. No existing key
+  changes on any node. Integration test, mutation-checked.
+- **One lookup, then create:** the committee index now looks up every
+  candidate key at once and upserts only the missing ones, instead of about
+  55 upserts on every sync.
+- **Tests added:**
+  - the CX25 committee is asserted by key;
+  - an existing committee keeps its member-page name;
+  - a referral the page path wrote is replaced;
+  - a non-committee code is skipped;
+  - "&" matches "and";
+  - session keying.
+- **Plan:** the D13 row is corrected; it is superseded by D20.
+
+**Recorded, not changed:** a hearing that drops out of the export stays in
+the mirror, so its referral is never removed. Every mirror shares this
+limitation (see "Removed export lines").
+
+**UAT, final code:**
+- **First run (job 212):** 0 rows written. Every bill was derived once, as
+  the session key changed the links hash. Referrals stay 13,099 across 4,154
+  bills; committees stay Assembly 85 and Senate 24, with no duplicate.
+- **Second run:** 0 written and 0 derived.

@@ -36,6 +36,8 @@ const PINNED_FILES = {
   // unchanged line's bill becomes (review of the final diff).
   billLifecycle: join(__dirname, 'bill-lifecycle.ts'),
   billLifecycleWriter: join(__dirname, 'bill-lifecycle-writer.ts'),
+  // Referrals link through this key; a change re-keys committees (D13).
+  committeeKey: join(__dirname, 'legislative-committee-key.ts'),
 };
 
 const PINS: { version: string; files: Record<string, string> }[] = [
@@ -101,11 +103,13 @@ const PINS: { version: string; files: Record<string, string> }[] = [
       billsDerive:
         '05d699c576c083b76b4f67596268853d7586e70188020c2a3e3a2ed39beff9ad',
       billsSync:
-        'c0a651ca8be5ff382d2085f5d5cb10626aa05d233cf46f5e96cdb5841f1ea230',
+        'e084be151c9557308f8b86ba98ebc8503f8158fe6699e911d9a314f7cdb86908',
       billLifecycle:
         '088a2d4f6c9cf157a47a453453e21dc3b2d6553a59d5e2d5393d451915787621',
       billLifecycleWriter:
         '89e0295e7c720e77b618031f87c6a9ca59869064d51428b46b574733d35758cb',
+      committeeKey:
+        '6031eccdc5368d3667aa246ad0b5eab557d7c5b5968c138286f9777fe6fb58e3',
     },
   },
 ];
@@ -130,6 +134,7 @@ describe('the finance write shape (campaign-finance-phase-b.md, D2)', () => {
         billsSync: hashOf(PINNED_FILES.billsSync),
         billLifecycle: hashOf(PINNED_FILES.billLifecycle),
         billLifecycleWriter: hashOf(PINNED_FILES.billLifecycleWriter),
+        committeeKey: hashOf(PINNED_FILES.committeeKey),
       },
     }).toEqual(latest);
   });

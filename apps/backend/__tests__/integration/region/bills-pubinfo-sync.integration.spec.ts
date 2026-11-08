@@ -604,9 +604,152 @@ describe('Bills from the pubinfo export (bills-phase-b.md, D9-D17)', () => {
       expect(after).toMatchObject({ created: 1, derived: 1 });
       const second = await db.bill.findUniqueOrThrow({
         where: { externalId: '202520260AB9002' },
-        include: { committeeReferrals: true },
+        include: { committeeReferrals: { include: { committee: true } } },
       });
-      expect(second.committeeReferrals).toHaveLength(1);
+      expect(
+        second.committeeReferrals.map((r) => r.committee.externalId),
+      ).toEqual(['assembly:appropriations']);
+    });
+
+    it('keeps the name member pages gave an existing committee', async () => {
+      await db.legislativeCommittee.create({
+        data: {
+          externalId: 'assembly:appropriations',
+          name: 'Committee on Appropriations',
+          chamber: 'Assembly',
+        },
+      });
+
+      await run(exportRows('In Committee Process'), false);
+
+      const committee = await db.legislativeCommittee.findUniqueOrThrow({
+        where: { externalId: 'assembly:appropriations' },
+      });
+      expect(committee.name).toBe('Committee on Appropriations');
+    });
+
+    it('matches a committee written with "&" to one spelled "and"', async () => {
+      const existing = await db.legislativeCommittee.create({
+        data: {
+          externalId: 'assembly:growth and impact',
+          name: 'Growth and Impact',
+          chamber: 'Assembly',
+        },
+      });
+      const rows = [
+        ...exportRows('In Committee Process'),
+        withHash({
+          table: 'LOCATION_CODE_TBL',
+          externalId: `${SESSION}:CX40:`,
+          sessionYear: SESSION,
+          locationCode: 'CX40',
+          longDescription: 'Growth, & Impact',
+        }),
+        withHash({
+          table: 'COMMITTEE_HEARING_TBL',
+          externalId: '202520260AB9001:CX40:2025-05-01:t',
+          billId: '202520260AB9001',
+          hearingDate: '2025-05-01',
+          locationCode: 'CX40',
+        }),
+      ];
+
+      await run(rows, false);
+
+      const referred = await db.billCommitteeAssignment.findMany({
+        where: { legislativeCommitteeId: existing.id },
+      });
+      expect(referred).toHaveLength(1);
+      expect(
+        await db.legislativeCommittee.count({
+          where: { externalId: { startsWith: 'assembly:growth' } },
+        }),
+      ).toBe(1);
+    });
+
+    it("maps a code by its session: another session's CX25 is another committee", async () => {
+      const LATER = '20272028';
+      const rows = [
+        ...exportRows('In Committee Process'),
+        withHash({
+          table: 'LOCATION_CODE_TBL',
+          externalId: `${LATER}:CX25:`,
+          sessionYear: LATER,
+          locationCode: 'CX25',
+          longDescription: 'Budget',
+        }),
+        withHash({
+          table: 'BILL_TBL',
+          externalId: '202720280AB1',
+          sessionYear: LATER,
+          measureType: 'AB',
+          measureNum: 1,
+          currentStatus: 'In Committee Process',
+        }),
+        withHash({
+          table: 'COMMITTEE_HEARING_TBL',
+          externalId: '202720280AB1:CX25:2027-02-01:t',
+          billId: '202720280AB1',
+          hearingDate: '2027-02-01',
+          locationCode: 'CX25',
+        }),
+      ];
+
+      await run(rows, false);
+
+      const referrals = await db.billCommitteeAssignment.findMany({
+        include: { bill: true, committee: true },
+      });
+      const byBill = Object.fromEntries(
+        referrals
+          .filter((r) => r.committee.chamber === 'Assembly')
+          .map((r) => [r.bill.externalId, r.committee.externalId]),
+      );
+      expect(byBill).toEqual({
+        '202520260AB9001': 'assembly:appropriations',
+        '202720280AB1': 'assembly:budget',
+      });
+    });
+
+    it('replaces a referral the page path wrote, and skips a code that is no committee', async () => {
+      const legacy = await db.bill.create({
+        data: {
+          externalId: '202520260AB9001',
+          regionId: 'california',
+          billNumber: 'AB 9001',
+          sessionYear: '2025-2026',
+          measureTypeCode: 'AB',
+          title: 'Old',
+          sourceUrl: 'https://example.test/old',
+        },
+      });
+      const stale = await db.legislativeCommittee.create({
+        data: { externalId: 'assembly:old', name: 'Old', chamber: 'Assembly' },
+      });
+      await db.billCommitteeAssignment.create({
+        data: { billId: legacy.id, legislativeCommitteeId: stale.id },
+      });
+      const rows = [
+        ...exportRows('In Committee Process'),
+        withHash({
+          table: 'COMMITTEE_HEARING_TBL',
+          externalId: '202520260AB9001:ZZ01:2025-05-01:t',
+          billId: '202520260AB9001',
+          hearingDate: '2025-05-01',
+          locationCode: 'ZZ01',
+        }),
+      ];
+
+      await run(rows, false);
+
+      const referrals = await db.billCommitteeAssignment.findMany({
+        where: { billId: legacy.id },
+        include: { committee: true },
+      });
+      expect(referrals.map((r) => r.committee.externalId).sort()).toEqual([
+        'assembly:appropriations',
+        'senate:appropriations',
+      ]);
     });
   });
 });

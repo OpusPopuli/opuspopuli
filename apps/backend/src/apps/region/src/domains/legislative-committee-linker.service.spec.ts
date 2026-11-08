@@ -3,10 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 
-import {
-  committeeExternalId,
-  LegislativeCommitteeLinkerService,
-} from './legislative-committee-linker.service';
+import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 
 interface RepRow {
   id: string;
@@ -338,27 +335,5 @@ describe('LegislativeCommitteeLinkerService', () => {
       // Multiple findMany calls because batch size is 3.
       expect(built.mocks.findManyReps.mock.calls.length).toBeGreaterThan(1);
     });
-  });
-});
-
-describe('committeeExternalId (bills-phase-b.md D13)', () => {
-  it('keys a committee the same however its name is spelled', () => {
-    // The export and member pages spell this one committee two ways; two
-    // keys would make the derive create a duplicate.
-    expect(
-      committeeExternalId(
-        'Assembly',
-        'Economic Development, Growth, & Household Impact',
-      ),
-    ).toBe(
-      committeeExternalId(
-        'Assembly',
-        'Economic Development, Growth, and Household Impact',
-      ),
-    );
-    expect(committeeExternalId('Senate', 'Committee on Appropriations')).toBe(
-      'senate:appropriations',
-    );
-    expect(committeeExternalId('Senate', 'Committee')).toBeNull();
   });
 });

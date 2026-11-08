@@ -28,7 +28,7 @@ import {
 } from './bills-pubinfo-derive';
 import { pubinfoWriteValues } from './bills-pubinfo-write-shape';
 import { withoutUnchanged } from './bulk-row-skip';
-import { committeeExternalId } from './legislative-committee-linker.service';
+import { committeeKeyCandidates } from './legislative-committee-key';
 import { shortError } from './short-error';
 
 /**
@@ -86,7 +86,10 @@ interface DeriveIndex {
   linksHash: string;
   /** `session|code` → location description. */
   locations: Map<string, string>;
-  /** Committee location code (`CX25`) → legislative committee id (D13). */
+  /**
+   * `session|code` (`20252026|CX25`) → legislative committee id (D13). By
+   * session: a code can name another committee in another session.
+   */
   committeeByCode: Map<string, string>;
 }
 
@@ -315,6 +318,8 @@ export class BillsPubinfoSyncService {
         select: { id: true, chamber: true, district: true, name: true },
       }),
       this.db.pubinfoLocationCode.findMany({
+        // Ordered, so the derive (and the links hash) is the same every run.
+        orderBy: [{ sessionYear: 'asc' }, { locationCode: 'asc' }],
         select: {
           sessionYear: true,
           locationCode: true,
@@ -360,48 +365,63 @@ export class BillsPubinfoSyncService {
   }
 
   /**
-   * The committee for every location code bills were heard in (D13): matched
-   * by the linker's own key (`chamber:normalized-name`), and created when
-   * missing — the export names every committee, including the Senate's, which
-   * no member page lists. A committee later scraped from a page lands on the
-   * same row.
+   * The committee for every session and location code bills were heard in
+   * (D13), matched by the linker's key in either spelling ("&"/"and") and
+   * created under the "and" form when missing — the export names every
+   * committee, the Senate's included, which no member page lists. A committee
+   * later scraped from a page lands on the same row. One lookup, then only
+   * the missing ones are created.
    */
   private async committeeIndex(
     locations: {
+      sessionYear: string;
       locationCode: string;
       description: string | null;
       longDescription: string | null;
     }[],
   ): Promise<Map<string, string>> {
-    const heard = await this.db.pubinfoCommitteeHearing.findMany({
-      distinct: ['locationCode'],
-      select: { locationCode: true },
-    });
+    const heard = await this.db.$queryRaw<
+      { session: string; location_code: string }[]
+    >`
+      SELECT DISTINCT substring(bill_id from 1 for 8) AS session, location_code
+      FROM pubinfo_committee_hearings
+      ORDER BY 1, 2`;
     const nameOf = new Map(
       locations.map((l) => [
-        l.locationCode,
+        `${l.sessionYear}|${l.locationCode}`,
         // The long form is the committee's name ("Appropriations"); the short
         // one carries the house ("Asm Appropriations"), which the key drops.
         l.longDescription ?? (l.description ?? '').replace(/^(Asm|Sen)\s+/, ''),
       ]),
     );
+    const wanted = heard.flatMap(({ session, location_code: code }) => {
+      const chamber = COMMITTEE_CHAMBERS[code.slice(0, 2)];
+      const name = nameOf.get(`${session}|${code}`);
+      const keys =
+        chamber && name ? committeeKeyCandidates(chamber, name) : null;
+      return keys && chamber && name
+        ? [{ key: `${session}|${code}`, chamber, name, ...keys }]
+        : [];
+    });
+    const existing = await this.db.legislativeCommittee.findMany({
+      where: { externalId: { in: wanted.flatMap((w) => w.match) } },
+      select: { id: true, externalId: true },
+    });
+    const idByExternalId = new Map(existing.map((c) => [c.externalId, c.id]));
     const committeeByCode = new Map<string, string>();
-    for (const { locationCode } of heard.sort((a, b) =>
-      a.locationCode.localeCompare(b.locationCode),
-    )) {
-      const chamber = COMMITTEE_CHAMBERS[locationCode.slice(0, 2)];
-      const name = nameOf.get(locationCode);
-      const externalId =
-        chamber && name ? committeeExternalId(chamber, name) : null;
-      if (!chamber || !name || !externalId) continue;
-      const committee = await this.db.legislativeCommittee.upsert({
-        where: { externalId },
-        // An existing committee keeps the name its member pages gave it.
-        update: {},
-        create: { externalId, name, chamber },
-        select: { id: true },
-      });
-      committeeByCode.set(locationCode, committee.id);
+    for (const w of wanted) {
+      let id = w.match.map((k) => idByExternalId.get(k)).find(Boolean);
+      if (!id) {
+        ({ id } = await this.db.legislativeCommittee.upsert({
+          where: { externalId: w.create },
+          // An existing committee keeps the name its member pages gave it.
+          update: {},
+          create: { externalId: w.create, name: w.name, chamber: w.chamber },
+          select: { id: true },
+        }));
+        idByExternalId.set(w.create, id);
+      }
+      committeeByCode.set(w.key, id);
     }
     return committeeByCode;
   }
@@ -741,7 +761,9 @@ interface ChunkData {
 function committeeRows(bill: BillRef, data: ChunkData, index: DeriveIndex) {
   const committees = new Set<string>();
   for (const h of data.hearingsByBill.get(bill.externalId) ?? []) {
-    const id = index.committeeByCode.get(h.locationCode);
+    const id = index.committeeByCode.get(
+      `${bill.sessionYear}|${h.locationCode}`,
+    );
     if (id) committees.add(id);
   }
   return [...committees].map((legislativeCommitteeId) => ({
