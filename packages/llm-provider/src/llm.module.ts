@@ -15,6 +15,7 @@ import {
 } from "./context-tokens.js";
 import { withLaneMetrics } from "./providers/lane-metrics.js";
 import { withLaneQueue } from "./providers/lane-queue.js";
+import { sharedHostMemoryGate } from "./providers/host-memory-gate.js";
 import {
   OllamaLLMProvider,
   OllamaConfig,
@@ -159,6 +160,8 @@ function buildLane(
       : {}),
     // Per lane, because the two can run different models on different hosts.
     ...(contextTokens ? { contextTokens } : {}),
+    // One per process, shared by every provider in it (#1434).
+    hostGate: sharedHostMemoryGate(observer),
   };
 
   // Headers timeout before any generation fires. Derived from the configured

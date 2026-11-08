@@ -20,6 +20,7 @@ import type {
 } from "@opuspopuli/common";
 import type { GpuLane } from "./lane-metrics.js";
 import { OllamaLLMProvider } from "./ollama.provider.js";
+import { sharedHostMemoryGate } from "./host-memory-gate.js";
 
 export function withLaneQueue(
   provider: ILLMProvider,
@@ -56,5 +57,10 @@ export function withLaneQueue(
  * calls that cannot succeed.
  */
 export function createLaneProvider(endpoint: GpuLaneEndpoint): ILLMProvider {
-  return new OllamaLLMProvider({ ...endpoint });
+  // The process's host gate (#1434): a consumer is the one that would load
+  // the model, so it is the one that must ask.
+  return new OllamaLLMProvider({
+    ...endpoint,
+    hostGate: sharedHostMemoryGate(),
+  });
 }

@@ -179,6 +179,25 @@ export const LaneMetric = {
 } as const;
 
 /**
+ * The host memory gate (`docs/plans/gpu-lane-host-memory-gate.md`): whether a
+ * call that would load a model was let through.
+ */
+export const HostMemoryMetric = {
+  /**
+   * Counter. Labels: `model`, `outcome`:
+   * - `admitted`: resident already, or room to load it;
+   * - `deferred`: no room;
+   * - `probe_unreachable`: the probe didn't answer, so no room was assumed.
+   *
+   * It counts CHECKS, not jobs. Every generation is checked, so `admitted`
+   * includes calls to a model already loaded. A job waiting for room counts
+   * once per 15 s re-check. A steady `deferred` rate is a host too full to
+   * load the model. Any `probe_unreachable` is a probe to restart.
+   */
+  GateTotal: "llm_host_gate_total",
+} as const;
+
+/**
  * BullMQ job metrics, reported by every worker `createWorker` builds
  * (queue-provider's `setDefaultWorkerMetrics`, bound by the metrics module).
  */

@@ -76,6 +76,9 @@ export class PromMetricsObserver implements MetricsObserver {
     @Optional()
     @InjectMetric('db_lane_busy_seconds_total')
     dbBusy?: Counter<string>,
+    @Optional()
+    @InjectMetric('llm_host_gate_total')
+    hostGate?: Counter<string>,
   ) {
     this.histograms = asMap({
       llm_request_duration_seconds: llmRequestDuration,
@@ -91,6 +94,7 @@ export class PromMetricsObserver implements MetricsObserver {
       bullmq_job_attempts_total: jobAttempts,
       pdf_parse_total: pdfParses,
       db_lane_busy_seconds_total: dbBusy,
+      llm_host_gate_total: hostGate,
     });
   }
 

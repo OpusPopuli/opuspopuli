@@ -110,6 +110,19 @@ x-backend-env: &backend-env
   # silently rather than erroring (opuspopuli#1231).
   EMBEDDINGS_OLLAMA_MODEL: ${EMBEDDINGS_OLLAMA_MODEL:-nomic-embed-text-v2-moe:latest}
   #
+  # Host memory gate (#1434, docs/plans/gpu-lane-host-memory-gate.md): ask the
+  # host before LOADING a model. UAT shares a Mac with the desktop, which is
+  # where loading a 24 GB model into a full host froze it. Install the probe
+  # once with scripts/host-memory-probe/install.sh. Without it the gate fails
+  # closed: nothing loads, and each LLM service warns, naming this URL. Set
+  # LLM_HOST_MEMORY_URL= (empty) to turn the gate off.
+  LLM_HOST_MEMORY_URL: ${LLM_HOST_MEMORY_URL-http://host.docker.internal:11500/memory}
+  LLM_HOST_HEADROOM_GB: ${LLM_HOST_HEADROOM_GB:-4}
+  # Must match the host Ollama's OLLAMA_MAX_LOADED_MODELS (1 on the dev Mac
+  # and every node). Ollama's own default when unset is 3, and a gate that
+  # assumes 1 would count an eviction that never happens.
+  LLM_HOST_MAX_LOADED_MODELS: ${LLM_HOST_MAX_LOADED_MODELS:-1}
+  #
   # Petition OCR engine (opuspopuli#1050). `tesseract` here, NOT the `vision`
   # default the nodes run: UAT has no guaranteed vision model, and a stack that
   # silently scans nothing is worse for testing than one that scans poorly.

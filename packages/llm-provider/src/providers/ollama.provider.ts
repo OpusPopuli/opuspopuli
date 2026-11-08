@@ -11,6 +11,11 @@ import {
   LLMError,
   type LlmPhaseDurations,
 } from "@opuspopuli/common";
+import {
+  HostMemoryUnavailableError,
+  type HostGateDecision,
+  type HostMemoryGate,
+} from "./host-memory-gate.js";
 
 /**
  * Total tokens for a call, from Ollama's separate prompt/completion counts.
@@ -260,6 +265,11 @@ export interface OllamaConfig {
    * this is an explicit deployment setting rather than a computed one.
    */
   contextTokens?: number;
+  /**
+   * Asked before any call that would load the model
+   * (`docs/plans/gpu-lane-host-memory-gate.md`). Unset or null means no gate.
+   */
+  hostGate?: HostMemoryGate | null;
 }
 
 /**
@@ -447,8 +457,9 @@ export class OllamaLLMProvider implements ILLMProvider {
     const effectiveTimeoutMs =
       options?.requestTimeoutMs ?? this.requestTimeoutMs;
 
+    await this.admit("generate");
     // Wrap the call with circuit breaker protection
-    return this.circuitBreaker.execute(async () => {
+    const call = this.circuitBreaker.execute(async () => {
       try {
         this.logger.log(
           `Generating completion with Ollama/${this.config.model} (${prompt.length} chars, timeout ${effectiveTimeoutMs}ms)`,
@@ -518,12 +529,14 @@ export class OllamaLLMProvider implements ILLMProvider {
         throw new LLMError(this.getName(), "generate", error as Error);
       }
     });
+    return this.releasingOnFailure(call);
   }
 
   async *generateStream(
     prompt: string,
     options?: GenerateOptions,
   ): AsyncGenerator<string, void, unknown> {
+    await this.admit("generateStream");
     const timeoutManager = this.createStreamingTimeoutManager();
 
     try {
@@ -552,6 +565,7 @@ export class OllamaLLMProvider implements ILLMProvider {
       yield* this.processStreamResponse(response, timeoutManager);
     } catch (error) {
       timeoutManager.clearAll();
+      this.config.hostGate?.release(this.config.url, this.config.model);
       this.handleStreamError(error);
     }
   }
@@ -729,8 +743,9 @@ export class OllamaLLMProvider implements ILLMProvider {
     messages: ChatMessage[],
     options?: GenerateOptions,
   ): Promise<GenerateResult> {
+    await this.admit("chat");
     // Wrap the call with circuit breaker protection
-    return this.circuitBreaker.execute(async () => {
+    const call = this.circuitBreaker.execute(async () => {
       try {
         this.logger.log(
           `Chat completion with Ollama/${this.config.model} (${messages.length} messages)`,
@@ -787,6 +802,7 @@ export class OllamaLLMProvider implements ILLMProvider {
         throw new LLMError(this.getName(), "chat", error as Error);
       }
     });
+    return this.releasingOnFailure(call);
   }
 
   async isAvailable(): Promise<boolean> {
@@ -796,11 +812,53 @@ export class OllamaLLMProvider implements ILLMProvider {
         return false;
       }
       const response = await this.fetchFn(`${this.config.url}/api/tags`);
-      return response.ok;
+      if (!response.ok) return false;
+      // Reachable, but not loadable now: callers that ask before a pass, or
+      // after a failure (the bill sync's `modelReachable`), read that as "not
+      // now". A pass under memory pressure then skips its bills rather than
+      // recording each one as failed.
+      return (await this.hostDecision()).outcome === "admitted";
     } catch (error) {
       this.logger.error("Ollama availability check failed:", error);
       return false;
     }
+  }
+
+  /** What the host gate says about this model now; `admitted` with no gate. */
+  private hostDecision(): Promise<HostGateDecision> {
+    return this.config.hostGate
+      ? this.config.hostGate.check(this.config.url, this.config.model)
+      : Promise.resolve({ outcome: "admitted", model: this.config.model });
+  }
+
+  /**
+   * Run an admitted call, giving its load reservation back if it fails, so
+   * a load that never happens doesn't hold other models back.
+   */
+  private async releasingOnFailure<T>(call: Promise<T>): Promise<T> {
+    try {
+      return await call;
+    } catch (error) {
+      this.config.hostGate?.release(this.config.url, this.config.model);
+      throw error;
+    }
+  }
+
+  /**
+   * Throw, before the circuit breaker, when the gate says the host has no
+   * room to load the model. Outside the breaker on purpose: a full host is
+   * not a failing Ollama, and must not open the circuit for calls to a model
+   * that is already loaded.
+   */
+  private async admit(operation: string): Promise<void> {
+    const { outcome, ...detail } = await this.hostDecision();
+    if (outcome === "admitted") return;
+    throw new HostMemoryUnavailableError(
+      this.getName(),
+      operation,
+      outcome,
+      detail,
+    );
   }
 
   /**
