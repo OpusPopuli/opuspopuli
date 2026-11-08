@@ -1264,3 +1264,34 @@ table, not from parsing history text.
 - the committee page's bill list;
 - an unchanged re-import;
 - the reviews.
+
+### D13 on UAT (jobs 209, 210, 211), regions 1.0.108
+
+**Version pin:** regions pinned at 1.0.108. Only the five regions lines of
+the lockfile changed (`browserslist` drift reverted); a frozen install
+accepts it.
+
+**Run 209 (bm4, full rewrite):** 977,019 rows, including 17,166 hearings
+created. All 5,065 bills were derived.
+- **Referrals:** 13,099 across 4,154 bills, exactly the raw file's distinct
+  bill–committee pairs. Compared bill by bill, 0 differ.
+- **Committees:** all 24 Senate committees were created.
+- **Found: a duplicate committee.** The export names "Economic Development,
+  Growth, & Household Impact"; member pages spell it "and". The linker key
+  did not fold "&", so the derive created a second Assembly committee.
+  - My pre-check folded "&" itself and so missed this.
+  - Fix: the shared `normalizeLegislativeCommitteeName` folds "&" into "and".
+    No existing committee or member committee list contains "&", so no
+    existing key changes. Unit test, mutation-checked.
+  - The orphan row run 209 created had 0 referrals and 0 members, and was
+    deleted (one row, a test artifact).
+
+**Run 210 (same file, after the fix):** 0 rows written. Every bill was
+derived again because the committee map changed, as designed. The existing
+committee now holds its 38 bills; Assembly 85, Senate 24.
+
+**Run 211 (same file again):** 0 written and 0 derived.
+
+**Gateway:** `bills(committeeId)` for Senate Appropriations, a committee that
+did not exist before, returns 1,803 bills. That is the committee page's bill
+list, which had 3 rows in dev before.
