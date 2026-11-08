@@ -19,8 +19,10 @@ import { stableHash, type DataSourceConfig } from "@opuspopuli/common";
  * bm3: lob text is resolved under the pin, an empty entry reads as empty, and
  * the bills derive links a vote only to the member holding the seat (review
  * of the final diff).
+ * bm4: the committee hearings mirror, and committee referrals derived from it
+ * (bills-phase-b.md, D13/D20).
  */
-export const BULK_MAPPING_VERSION = "bm3";
+export const BULK_MAPPING_VERSION = "bm4";
 
 /**
  * What a bulk import's rows were written under: the mapping version, and the

@@ -2811,6 +2811,31 @@ model PubinfoBillHistory {
   @@map("pubinfo_bill_history")
 }
 
+/// pubinfo `COMMITTEE_HEARING_TBL`, one row per export line
+/// (`docs/plans/bills-phase-b.md`, D13/D20). Bills' committee referrals are
+/// derived from it.
+model PubinfoCommitteeHearing {
+  id                  String    @id @default(uuid())
+  /// bill_id:location_code:hearing_date:trans_update_date
+  externalId          String    @unique @map("external_id") @db.VarChar(100)
+  billId              String    @map("bill_id") @db.VarChar(30)
+  committeeType       String?   @map("committee_type") @db.VarChar(2)
+  committeeNr         Int?      @map("committee_nr")
+  hearingDate         DateTime? @map("hearing_date") @db.Date
+  locationCode        String    @map("location_code") @db.VarChar(6)
+  transUpdateDate     String?   @map("trans_update_date") @db.VarChar(19)
+  sourceRecordHash    String?   @map("source_record_hash") @db.VarChar(64)
+  pipelineExecutionId String?   @map("pipeline_execution_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  pipelineExecution PipelineExecution? @relation(fields: [pipelineExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([billId])
+  @@index([pipelineExecutionId])
+  @@map("pubinfo_committee_hearings")
+}
+
 /// pubinfo `BILL_SUMMARY_VOTE_TBL`, one row per export line (`docs/plans/bills-phase-b.md`, D10).
 model PubinfoBillSummaryVote {
   id                  String   @id @default(uuid())
@@ -3191,6 +3216,7 @@ model PipelineExecution {
   pubinfoBillVersions       PubinfoBillVersion[]
   pubinfoBillVersionAuthors PubinfoBillVersionAuthor[]
   pubinfoBillHistory        PubinfoBillHistory[]
+  pubinfoCommitteeHearings  PubinfoCommitteeHearing[]
   pubinfoBillSummaryVotes   PubinfoBillSummaryVote[]
   pubinfoBillDetailVotes    PubinfoBillDetailVote[]
   pubinfoBillMotions        PubinfoBillMotion[]

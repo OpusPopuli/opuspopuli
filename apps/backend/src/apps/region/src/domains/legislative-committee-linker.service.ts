@@ -2,6 +2,10 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import { readPositiveInt } from './config-helpers';
+import {
+  committeeExternalId,
+  normalizeLegislativeCommitteeName,
+} from './legislative-committee-key';
 
 /**
  * Shape of one entry inside Representative.committees JSON.
@@ -288,31 +292,8 @@ export class LegislativeCommitteeLinkerService {
       }));
   }
 
-  /**
-   * Normalize a committee name into a stable lookup key. Strategy:
-   *  - lowercase
-   *  - drop non-alphanumeric (keeps only letters, digits, single spaces)
-   *  - drop chamber-prefix words (Assembly, Senate) since chamber is in
-   *    the key separately
-   *  - drop "committee", "committee on", "standing committee on" wrappers
-   *  - collapse whitespace
-   * Result for "Standing Committee on the Budget" / "Budget" /
-   *   "Budget Committee" / "Assembly Budget" → all collapse to "budget".
-   */
   private normalize(name: string): string {
-    let n = name.toLowerCase().replaceAll(/[^a-z0-9\s]/g, ' ');
-    // Strip wrapper phrases — order matters, longer-first.
-    n = n
-      .replaceAll(/\bstanding committee on the\b/g, ' ')
-      .replaceAll(/\bstanding committee on\b/g, ' ')
-      .replaceAll(/\bcommittee on the\b/g, ' ')
-      .replaceAll(/\bcommittee on\b/g, ' ')
-      .replaceAll(/\bsubcommittee on\b/g, ' ')
-      .replaceAll(/\bcommittee\b/g, ' ')
-      .replaceAll(/\bsubcommittee\b/g, ' ')
-      .replaceAll(/\bassembly\b/g, ' ')
-      .replaceAll(/\bsenate\b/g, ' ');
-    return n.replaceAll(/\s+/g, ' ').trim();
+    return normalizeLegislativeCommitteeName(name);
   }
 
   /** Build the unique external_id for a (chamber, normalized name) pair. */
@@ -330,9 +311,7 @@ export class LegislativeCommitteeLinkerService {
    * LegislativeCommittee.id without duplicating normalization logic.
    */
   externalIdFor(chamber: string, rawName: string): string | null {
-    const normalized = this.normalize(rawName);
-    if (!normalized) return null;
-    return this.externalId(chamber, normalized);
+    return committeeExternalId(chamber, rawName);
   }
 
   /**
