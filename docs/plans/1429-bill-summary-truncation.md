@@ -120,3 +120,40 @@ Accepted, not changed:
 - `generateStream` doesn't run the pre-flight. No stream caller sets the option, and the option's doc says so.
 
 **Needs a human countersign** for separation of duties.
+
+## Subtask 4: UAT measurements (2026-11-09) and decisions
+
+Read-only, against UAT's `postgres` database. Prompt size is estimated as
+the current version's text with tags stripped, divided by 4, plus about 1K
+template tokens.
+
+| Estimated prompt | Bills | With a summary |
+|---|---|---|
+| under 16K | 4,732 | 4,207 |
+| 16K–65K | 266 | 230 |
+| 65K–129K | 39 | 15 |
+| 129K or more | 28 | 4 |
+| **Refused by this fix at 131072** | **33** (0.65%) | 4 |
+
+Summaries by when they were written: **4,239 from July 2026 with no
+provenance** (no model, prompt hash, digest or source version), and 217 from
+November by `nemotron-3.5-lightning:30b-a3b` at 131072. **Only 21 of 4,456
+count as `CURRENT`.** The other 4,435 are `STALE` under `summaryStateOf`, and
+the frontend still shows a stale summary's text, with a notice and an Update
+button.
+
+The July summaries' context window can't be recovered, so any of them could be
+a partial read. That is the case this issue exists to prevent, and it can't be
+checked after the fact.
+
+- **D2 (decided 2026-11-09): keep `num_ctx` 131072 for Window B.** The 33
+  oversized bills (SB 105 among them) show "summary unavailable". Raising the
+  window comes later, after measuring Ollama's memory at 262144 with
+  `OLLAMA_NUM_PARALLEL=4` on the Studio and the Mac. That's a separate change,
+  not part of the corpus window.
+- **D3 (decided 2026-11-09): drop at export.** The transfer tool ships a bill
+  summary only when it has full provenance: prompt hash, model digest, and a
+  source version equal to the bill's current version. Every other summary
+  arrives `MISSING` and is written on first read in production (D7's lazy
+  path). Nothing unattributable ships, and UAT's own rows are untouched. The
+  rule is in `production-cutover-maintenance-window.md` §5a.3.
