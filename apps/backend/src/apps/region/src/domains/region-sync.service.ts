@@ -64,7 +64,11 @@ import { LegislativeCommitteeLinkerService } from './legislative-committee-linke
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { LegislativeCommitteeService } from './legislative-committee.service';
 import { LegislativeCommitteeDescriptionGeneratorService } from './legislative-committee-description-generator.service';
-import { htmlToReadableText, networkLaneConcurrency } from '@opuspopuli/common';
+import {
+  htmlToReadableText,
+  networkLaneConcurrency,
+  PromptTooLargeError,
+} from '@opuspopuli/common';
 import {
   fetchBytesWithRetry,
   fetchTextWithRetry,
@@ -188,8 +192,35 @@ interface RollCallExtraction {
   votes?: RollCallRecord[];
 }
 
-/** Outcome of enriching a single bill (summarize phase). */
-export type EnrichmentOutcome = 'enriched' | 'skipped' | 'failed';
+/**
+ * Outcome of enriching a single bill (summarize phase).
+ *
+ * `tooLarge` and `truncated` are #1429's: the bill was refused before the
+ * call because it cannot fit the context window, or the model read only part
+ * of it. Neither writes a summary, because a summary counts as current for its
+ * `sourceVersion` once stored, and a fluent summary of half a bill is the
+ * failure this platform most needs not to publish.
+ */
+export type EnrichmentOutcome =
+  | 'enriched'
+  | 'skipped'
+  | 'failed'
+  | 'tooLarge'
+  | 'truncated';
+
+/** Bills per outcome over one enrichment run. */
+type EnrichmentCounts = Record<EnrichmentOutcome, number>;
+
+/** Outcomes recorded as a failed attempt without asking whether the model is up. */
+const WAITS_WITHOUT_CHECK: ReadonlySet<EnrichmentOutcome> = new Set([
+  'skipped',
+  'tooLarge',
+  'truncated',
+]);
+
+function emptyEnrichmentCounts(): EnrichmentCounts {
+  return { enriched: 0, skipped: 0, failed: 0, tooLarge: 0, truncated: 0 };
+}
 
 const VALID_VOTE_POSITIONS: ReadonlySet<string> = new Set<BillVotePosition>([
   'yes',
@@ -350,6 +381,8 @@ function describeEnrichmentResult(
 ): {
   outcomeLabel: string;
   outcome: 'created' | 'updated' | 'skipped' | 'error';
+  /** #1429's two outcomes, counted on their own in the phase-complete line. */
+  reason?: 'too-large' | 'truncated';
 } {
   if (outcome === 'enriched') {
     return {
@@ -359,6 +392,24 @@ function describeEnrichmentResult(
   }
   if (outcome === 'skipped') {
     return { outcomeLabel: 'skipped: no fullTextUrl', outcome: 'skipped' };
+  }
+  if (outcome === 'tooLarge') {
+    return {
+      outcomeLabel: 'skipped: too large for the context window',
+      outcome: 'skipped',
+      reason: 'too-large',
+    };
+  }
+  // An error, so it counts toward the phase's consecutive-failure abort. That
+  // is intended: the pre-flight refuses every bill it expects not to fit, so
+  // a run of truncations means its estimate is wrong for this model's
+  // tokenizer, and stopping is better than paying a discarded prefill per bill.
+  if (outcome === 'truncated') {
+    return {
+      outcomeLabel: 'failed: model read only part of the bill',
+      outcome: 'error',
+      reason: 'truncated',
+    };
   }
   return { outcomeLabel: 'failed', outcome: 'error' };
 }
@@ -2290,9 +2341,9 @@ export class RegionSyncService implements OnModuleDestroy {
     lifecycleStages: LifecycleStageInput[] | null,
     maxBills?: number,
     hot?: { coldAfterDays: number; today: Date },
-  ): Promise<{ enriched: number; skipped: number; failed: number }> {
+  ): Promise<EnrichmentCounts> {
     if (!this.promptClient || !this.llm) {
-      return { enriched: 0, skipped: 0, failed: 0 };
+      return emptyEnrichmentCounts();
     }
 
     // Civics-data taxonomy is a hard prerequisite for the merged call —
@@ -2302,7 +2353,7 @@ export class RegionSyncService implements OnModuleDestroy {
       this.logger.warn(
         `Bill enrichment ${regionId}: skipping summarize phase — no civics_blocks.lifecycleStages taxonomy. Run a civics-extraction sync first.`,
       );
-      return { enriched: 0, skipped: 0, failed: 0 };
+      return emptyEnrichmentCounts();
     }
 
     const live = hot
@@ -2313,7 +2364,7 @@ export class RegionSyncService implements OnModuleDestroy {
       this.logger.warn(
         `Bill enrichment ${regionId}: skipping summarize phase — the ${BILL_SUMMARY_TEMPLATE} template could not be read`,
       );
-      return { enriched: 0, skipped: 0, failed: 0 };
+      return emptyEnrichmentCounts();
     }
 
     const candidates = await this.db.bill.findMany({
@@ -2341,10 +2392,10 @@ export class RegionSyncService implements OnModuleDestroy {
     });
     if (candidates.length === 0) {
       tracker.complete();
-      return { enriched: 0, skipped: 0, failed: 0 };
+      return emptyEnrichmentCounts();
     }
 
-    const counts = { enriched: 0, skipped: 0, failed: 0 };
+    const counts = emptyEnrichmentCounts();
     const tokensRef = { total: 0 };
     const startMs = Date.now();
 
@@ -2393,12 +2444,14 @@ export class RegionSyncService implements OnModuleDestroy {
         billsEnriched: counts.enriched,
         billsSkippedNoText: counts.skipped,
         billsFailed: counts.failed,
+        billsTooLargeForWindow: counts.tooLarge,
+        billsTruncated: counts.truncated,
         totalTokens,
         totalDurationMs,
         avgTokensPerEnrichedBill:
           counts.enriched > 0 ? Math.round(totalTokens / counts.enriched) : 0,
       },
-      `Bill enrichment ${regionId}: enriched=${counts.enriched} skipped=${counts.skipped} failed=${counts.failed} tokens=${totalTokens} ms=${totalDurationMs}`,
+      `Bill enrichment ${regionId}: enriched=${counts.enriched} skipped=${counts.skipped} failed=${counts.failed} tooLargeForWindow=${counts.tooLarge} truncated=${counts.truncated} tokens=${totalTokens} ms=${totalDurationMs}`,
     );
 
     return counts;
@@ -2413,13 +2466,13 @@ export class RegionSyncService implements OnModuleDestroy {
   private applyEnrichmentResult(
     result: { outcome: EnrichmentOutcome; tokensUsed: number },
     bill: { billNumber: string },
-    counts: { enriched: number; skipped: number; failed: number },
+    counts: EnrichmentCounts,
     tokensRef: { total: number },
     tracker: SyncPhaseTracker<BillSyncPhase>,
   ): void {
     counts[result.outcome] += 1;
     tokensRef.total += result.tokensUsed;
-    const { outcomeLabel, outcome } = describeEnrichmentResult(
+    const { outcomeLabel, outcome, reason } = describeEnrichmentResult(
       result.outcome,
       result.tokensUsed,
     );
@@ -2428,6 +2481,9 @@ export class RegionSyncService implements OnModuleDestroy {
       externalId: null,
       outcomeLabel,
       outcome,
+      // As applyVotesResult does: the bucket puts "N too-large" in the
+      // phase-complete line, and the reason labels pipeline_items_total.
+      ...(reason ? { extraCounters: [reason], reason } : {}),
     });
   }
 
@@ -2549,8 +2605,12 @@ export class RegionSyncService implements OnModuleDestroy {
       lifecycleStages,
       stageIdSet,
     );
+    // A refused or truncated bill keeps any summary it already has (and that
+    // summary's sourceVersion, so it stays stale) and waits like any other
+    // failure. Retrying a refusal costs no GPU time; it is refused again until
+    // the window grows (#1429).
     const waits =
-      result.outcome === 'skipped' ||
+      WAITS_WITHOUT_CHECK.has(result.outcome) ||
       (result.outcome === 'failed' && (await this.modelReachable()));
     if (waits) await this.recordSummaryFailure(bill.id);
     return result;
@@ -2615,9 +2675,21 @@ export class RegionSyncService implements OnModuleDestroy {
         // Provider default is too short for the largest full-text bills
         // (#889 follow-up) — ~4.4% aborted without this. Env-tunable.
         requestTimeoutMs: this.billEnrichmentTimeoutMs,
+        // #1429: a bill that cannot fit the window is refused before the
+        // call. Its summary would be of a fragment, which we would discard.
+        refuseIfPromptExceedsContext: true,
       });
       const llmMs = Date.now() - llmStart;
       const tokensUsed = llmResult.tokensUsed ?? 0;
+      if (llmResult.promptTruncated) {
+        // Numbers only: never the bill text or the model's answer.
+        this.logger.warn(
+          `Bill enrichment: ${bill.billNumber} not summarized, the model read ` +
+            `${llmResult.tokensIn} of ~${llmResult.promptTokensEstimated} ` +
+            `estimated tokens (${promptText.length} prompt chars)`,
+        );
+        return { outcome: 'truncated', tokensUsed };
+      }
 
       const parsed = this.parseStatusSummaryResponse(
         llmResult.text,
@@ -2650,6 +2722,14 @@ export class RegionSyncService implements OnModuleDestroy {
 
       return { outcome: 'enriched', tokensUsed };
     } catch (e) {
+      if (e instanceof PromptTooLargeError) {
+        this.logger.warn(
+          `Bill enrichment: ${bill.billNumber} too large for the context ` +
+            `window (~${e.estimatedTokens} tokens + ${e.maxTokens} output > ` +
+            `${e.contextTokens})`,
+        );
+        return { outcome: 'tooLarge', tokensUsed: 0 };
+      }
       this.logger.warn(
         `Bill enrichment failed for ${bill.billNumber}: ${shortError(e)}`,
       );

@@ -3,7 +3,7 @@ import {
   OllamaLLMProvider,
   OllamaConfig,
 } from "../src/providers/ollama.provider";
-import { LLMError } from "@opuspopuli/common";
+import { LLMError, PromptTooLargeError } from "@opuspopuli/common";
 import {
   HostMemoryUnavailableError,
   type HostMemoryGate,
@@ -353,6 +353,156 @@ describe("OllamaLLMProvider", () => {
       const result = await provider.generate("a".repeat(400000));
 
       expect(result.promptTruncated).toBeUndefined();
+    });
+  });
+
+  /**
+   * #1429. On overflow llama.cpp reads half the window plus two, so a bill a
+   * little over 131,072 reads ~65,538 tokens: about 53% of a chars/4 estimate,
+   * which the 0.5 ratio passes. The window makes the cut exact.
+   */
+  describe("half-window overflow (#1429)", () => {
+    const reply = (promptEval: number) => ({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          response: '{"ok":true}',
+          prompt_eval_count: promptEval,
+          eval_count: 40,
+          done: true,
+          done_reason: "stop",
+        }),
+    });
+    // ~123,000 estimated tokens: 65,538 of it is 53%, over the ratio.
+    const bill = "b".repeat(492000);
+
+    it("flags the exact fingerprint the ratio misses", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      mockFetch.mockResolvedValueOnce(reply(65538));
+
+      const result = await sized.generate(bill);
+
+      expect(result.promptTruncated).toBe(true);
+    });
+
+    it("is the ratio alone that misses it, when the window is unknown", async () => {
+      mockFetch.mockResolvedValueOnce(reply(65538));
+
+      const result = await provider.generate(bill);
+
+      expect(result.promptTruncated).toBe(false);
+    });
+
+    it("does not flag a full read that is merely near the fingerprint", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      mockFetch.mockResolvedValueOnce(reply(65539));
+
+      const result = await sized.generate(bill);
+
+      expect(result.promptTruncated).toBe(false);
+    });
+
+    it("does not flag a prompt that is genuinely ctx/2 + 2 tokens long", async () => {
+      // ~70,000 estimated, well inside the window: reading 65,538 is 94% of
+      // it, a full read that happens to land on the number. Flagging it
+      // would leave that bill unsummarizable until its text changed.
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+      mockFetch.mockResolvedValueOnce(reply(65538));
+
+      const result = await sized.generate("s".repeat(280000));
+
+      expect(result.promptTruncated).toBe(false);
+    });
+
+    it("flags the fingerprint on the chat path too", async () => {
+      const sized = new OllamaLLMProvider({ ...config, contextTokens: 32768 });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: { content: "ok" },
+            prompt_eval_count: 16386,
+            eval_count: 5,
+            done: true,
+          }),
+      });
+
+      // ~30,000 estimated: 16,386 is 55%, over the ratio.
+      const result = await sized.chat([
+        { role: "user", content: "c".repeat(120000) },
+      ]);
+
+      expect(result.promptTruncated).toBe(true);
+    });
+  });
+
+  /**
+   * #1429 pre-flight. ceil(chars / 4 * 1.15) + maxTokens against the window:
+   * at 131,072 with 2,000 reserved, 448,900 chars fits (131,059) and 449,000
+   * does not (131,088).
+   */
+  describe("refusing a prompt that cannot fit (#1429)", () => {
+    const opts = { maxTokens: 2000, refuseIfPromptExceedsContext: true };
+    const sized = () =>
+      new OllamaLLMProvider({ ...config, contextTokens: 131072 });
+    const ok = () => ({
+      ok: true,
+      json: () => Promise.resolve({ response: "fine", done: true }),
+    });
+
+    it("refuses before calling the model, with the numbers", async () => {
+      const call = sized().generate("r".repeat(449000), opts);
+
+      await expect(call).rejects.toBeInstanceOf(PromptTooLargeError);
+      await expect(call).rejects.toMatchObject({
+        estimatedTokens: 129088,
+        contextTokens: 131072,
+        maxTokens: 2000,
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("calls the model when the prompt just fits", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await expect(
+        sized().generate("r".repeat(448900), opts),
+      ).resolves.toMatchObject({ text: "fine" });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("reserves Ollama's default output when maxTokens is unset", async () => {
+      // 451,000 chars: 129,663 + 512 fits; + 2,000 would not.
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await expect(
+        sized().generate("r".repeat(451000), {
+          refuseIfPromptExceedsContext: true,
+        }),
+      ).resolves.toMatchObject({ text: "fine" });
+    });
+
+    it("does not refuse unless the caller asked", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await expect(
+        sized().generate("r".repeat(449000), { maxTokens: 2000 }),
+      ).resolves.toMatchObject({ text: "fine" });
+    });
+
+    it("cannot refuse when the window is unknown", async () => {
+      mockFetch.mockResolvedValueOnce(ok());
+
+      await expect(
+        provider.generate("r".repeat(449000), opts),
+      ).resolves.toMatchObject({ text: "fine" });
+    });
+
+    it("refuses on the chat path too", async () => {
+      await expect(
+        sized().chat([{ role: "user", content: "r".repeat(449000) }], opts),
+      ).rejects.toBeInstanceOf(PromptTooLargeError);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 

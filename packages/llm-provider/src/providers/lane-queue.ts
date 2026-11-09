@@ -19,7 +19,7 @@ import type {
   GpuLaneEndpoint,
 } from "@opuspopuli/common";
 import type { GpuLane } from "./lane-metrics.js";
-import { OllamaLLMProvider } from "./ollama.provider.js";
+import { OllamaLLMProvider, assertPromptFits } from "./ollama.provider.js";
 import { sharedHostMemoryGate } from "./host-memory-gate.js";
 
 export function withLaneQueue(
@@ -31,9 +31,14 @@ export function withLaneQueue(
   if (!dispatcher) return provider;
   dispatcher.register(lane, endpoint);
   return {
-    // The one call batch work makes, queued for a consumer to run.
-    generate: (prompt: string, options?: GenerateOptions) =>
-      dispatcher.generate({ lane, endpoint, prompt, options }),
+    // The one call batch work makes, queued for a consumer to run. A prompt
+    // too large for the window is refused HERE, before it is queued (#1429):
+    // the typed error would not survive Redis, so a consumer-side refusal
+    // would reach this caller as an anonymous failure.
+    generate: async (prompt: string, options?: GenerateOptions) => {
+      assertPromptFits(prompt.length, options, endpoint.contextTokens);
+      return dispatcher.generate({ lane, endpoint, prompt, options });
+    },
     // No production caller uses these; they pass through rather than grow a
     // second job shape nothing exercises.
     chat: (messages: ChatMessage[], options?: GenerateOptions) =>

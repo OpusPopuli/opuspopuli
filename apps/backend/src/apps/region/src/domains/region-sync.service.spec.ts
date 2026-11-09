@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import {
   emptyCampaignFinanceResult,
   METRICS_OBSERVER,
+  PromptTooLargeError,
 } from '@opuspopuli/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -10,7 +11,9 @@ import {
   billPruneLimit,
   isSessionCovered,
   normalizeCommitteeName,
+  type EnrichmentOutcome,
 } from './region-sync.service';
+import { SyncPhaseTracker } from './sync-phase-logger';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
@@ -3027,7 +3030,13 @@ describe('RegionSyncService', () => {
           undefined,
         );
 
-        expect(result).toEqual({ enriched: 0, skipped: 0, failed: 0 });
+        expect(result).toEqual({
+          enriched: 0,
+          skipped: 0,
+          failed: 0,
+          tooLarge: 0,
+          truncated: 0,
+        });
         const warnedMessages = warnSpy.mock.calls.map((c) => String(c.at(-1)));
         expect(
           warnedMessages.some((m) =>
@@ -3074,9 +3083,7 @@ describe('RegionSyncService', () => {
       };
 
       /** Spy enrichSingleBill, tracking max concurrent in-flight calls. */
-      const spyEnrichSingle = (
-        outcomes?: Array<'enriched' | 'skipped' | 'failed'>,
-      ) => {
+      const spyEnrichSingle = (outcomes?: Array<EnrichmentOutcome>) => {
         let inFlight = 0;
         let maxInFlight = 0;
         let call = 0;
@@ -3106,6 +3113,37 @@ describe('RegionSyncService', () => {
       };
 
       beforeEach(() => setProviders());
+
+      it('counts and labels too-large and truncated bills on their own (#1429)', async () => {
+        seedCandidates(3);
+        spyEnrichSingle(['tooLarge', 'truncated', 'enriched']);
+        const item = jest.spyOn(SyncPhaseTracker.prototype, 'item');
+
+        const result = await callEnrich();
+
+        expect(result).toMatchObject({
+          enriched: 1,
+          tooLarge: 1,
+          truncated: 1,
+        });
+        // The bucket is what puts "N too-large" in the phase-complete line.
+        expect(item).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'AB 0',
+            outcome: 'skipped',
+            reason: 'too-large',
+            extraCounters: ['too-large'],
+          }),
+        );
+        expect(item).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'AB 1',
+            outcome: 'error',
+            reason: 'truncated',
+            extraCounters: ['truncated'],
+          }),
+        );
+      });
 
       it('runs bills in parallel batches when concurrency > 1 (max in-flight == concurrency)', async () => {
         setConcurrency(3);
@@ -3143,7 +3181,13 @@ describe('RegionSyncService', () => {
 
         const result = await callEnrich();
 
-        expect(result).toEqual({ enriched: 3, skipped: 1, failed: 1 });
+        expect(result).toEqual({
+          enriched: 3,
+          skipped: 1,
+          failed: 1,
+          tooLarge: 0,
+          truncated: 0,
+        });
       });
 
       it('passes the configured requestTimeoutMs through to llm.generate', async () => {
@@ -3185,6 +3229,134 @@ describe('RegionSyncService', () => {
         expect(generate).toHaveBeenCalledWith(
           'P',
           expect.objectContaining({ requestTimeoutMs: 120_000 }),
+        );
+      });
+    });
+
+    /**
+     * #1429. A summary counts as current for its sourceVersion once stored,
+     * so a fluent summary of half a bill would never be regenerated. Neither a
+     * refused bill nor a partial read may write one, and an existing summary
+     * must survive the attempt.
+     */
+    describe('partial reads are never stored (#1429)', () => {
+      type EnrichSingleFn = (
+        bill: ReturnType<typeof mkBill>,
+        stagePatterns: typeof STAGE_PATTERNS,
+        lifecycleStages: typeof STAGE_INPUTS,
+        stageIdSet: Set<string>,
+      ) => Promise<{ outcome: string; tokensUsed: number }>;
+
+      const run = () =>
+        (
+          service as unknown as { enrichSingleBill: EnrichSingleFn }
+        ).enrichSingleBill.bind(service)(
+          mkBill(),
+          STAGE_PATTERNS,
+          STAGE_INPUTS,
+          STAGE_ID_SET,
+        );
+
+      const arrange = (generate: jest.Mock) => {
+        (service as unknown as { llm: unknown }).llm = {
+          generate,
+          getModelName: () => 'nemotron',
+          getModelDigest: () => Promise.resolve('sha256:abc'),
+          isAvailable: () => Promise.resolve(true),
+        };
+        (service as unknown as { promptClient: unknown }).promptClient = {
+          getBillStatusSummaryPrompt: jest.fn().mockResolvedValue({
+            promptText: 'P',
+            promptVersion: 'v1',
+            promptHash: 'h',
+          }),
+        };
+        jest
+          .spyOn(
+            service as unknown as {
+              fetchUrlText: (u: string) => Promise<string>;
+            },
+            'fetchUrlText',
+          )
+          .mockResolvedValue('<html>body</html>');
+        jest
+          .spyOn(
+            (service as unknown as { logger: { warn: jest.Mock } }).logger,
+            'warn',
+          )
+          .mockImplementation(() => undefined);
+        mockDb.bill.update.mockResolvedValue({} as never);
+      };
+
+      /** Every column any bill.update in the attempt wrote. */
+      const writtenColumns = () =>
+        mockDb.bill.update.mock.calls.flatMap(([args]) =>
+          Object.keys((args as { data: object }).data),
+        );
+
+      it('asks the provider to refuse a bill that cannot fit', async () => {
+        const generate = jest
+          .fn()
+          .mockResolvedValue({ text: '{"skip":true}', tokensUsed: 5 });
+        arrange(generate);
+
+        await run();
+
+        expect(generate).toHaveBeenCalledWith(
+          'P',
+          expect.objectContaining({ refuseIfPromptExceedsContext: true }),
+        );
+      });
+
+      it('does not store a summary the model wrote from part of the bill', async () => {
+        arrange(
+          jest.fn().mockResolvedValue({
+            text: '{"summary":{"plainLanguage":"half a bill"}}',
+            tokensUsed: 65600,
+            tokensIn: 65538,
+            promptTokensEstimated: 123000,
+            promptTruncated: true,
+          }),
+        );
+
+        const result = await run();
+
+        expect(result.outcome).toBe('truncated');
+        // Only the failure stamp: the existing summary, its sourceVersion
+        // and its provenance are untouched, so the bill stays stale and is
+        // retried, and a good summary is never replaced by a partial one.
+        expect(writtenColumns()).toEqual(['aiSummaryFailedAt']);
+      });
+
+      it('records a refused bill without calling the model again', async () => {
+        const generate = jest
+          .fn()
+          .mockRejectedValue(new PromptTooLargeError(150_000, 131_072, 2000));
+        arrange(generate);
+
+        const result = await run();
+
+        expect(result).toEqual({ outcome: 'tooLarge', tokensUsed: 0 });
+        expect(generate).toHaveBeenCalledTimes(1);
+        expect(writtenColumns()).toEqual(['aiSummaryFailedAt']);
+      });
+
+      it('still stores a summary from a full read', async () => {
+        arrange(
+          jest.fn().mockResolvedValue({
+            text: '{"skip":true}',
+            tokensUsed: 40,
+            tokensIn: 30,
+            promptTokensEstimated: 30,
+            promptTruncated: false,
+          }),
+        );
+
+        const result = await run();
+
+        expect(result.outcome).toBe('enriched');
+        expect(writtenColumns()).toEqual(
+          expect.arrayContaining(['aiSummary', 'aiSummaryFailedAt']),
         );
       });
     });
