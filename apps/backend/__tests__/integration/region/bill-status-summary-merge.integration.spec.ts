@@ -43,7 +43,10 @@ import {
   PluginRegistryService,
   type IRegionPlugin,
 } from '@opuspopuli/region-provider';
-import { RegionSyncService } from '../../../src/apps/region/src/domains/region-sync.service';
+import {
+  RegionSyncService,
+  type EnrichmentOutcome,
+} from '../../../src/apps/region/src/domains/region-sync.service';
 import { RegionCacheService } from '../../../src/apps/region/src/domains/region-cache.service';
 import { REGION_CACHE } from '../../../src/apps/region/src/domains/region.tokens';
 import { PropositionsSyncService } from '../../../src/apps/region/src/domains/propositions-sync.service';
@@ -311,14 +314,14 @@ describe('bill-status-summary merge — integration (#823)', () => {
     lifecycleStages: LifecycleStageInput[] | null,
     maxBills?: number,
     hot?: HotSelection,
-  ) => Promise<{ enriched: number; skipped: number; failed: number }>;
+  ) => Promise<Record<EnrichmentOutcome, number>>;
 
   const callEnrich = (
     regionId: string,
     stagePatterns: StagePattern[],
     lifecycleStages: LifecycleStageInput[] | null,
     hot?: HotSelection,
-  ): Promise<{ enriched: number; skipped: number; failed: number }> =>
+  ): Promise<Record<EnrichmentOutcome, number>> =>
     (
       service as unknown as { enrichBillSummaries: EnrichFn }
     ).enrichBillSummaries.bind(service)(
@@ -396,7 +399,13 @@ describe('bill-status-summary merge — integration (#823)', () => {
 
     const result = await callEnrich(REGION_ID, STAGE_PATTERNS, STAGE_INPUTS);
 
-    expect(result).toEqual({ enriched: 1, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      enriched: 1,
+      skipped: 0,
+      failed: 0,
+      tooLarge: 0,
+      truncated: 0,
+    });
 
     // The per-region taxonomy + prior-state both have to reach the prompt
     // client verbatim — drift here is the failure mode #823 explicitly
@@ -548,7 +557,13 @@ describe('bill-status-summary merge — integration (#823)', () => {
 
     const result = await callEnrich(REGION_ID, STAGE_PATTERNS, null);
 
-    expect(result).toEqual({ enriched: 0, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      enriched: 0,
+      skipped: 0,
+      failed: 0,
+      tooLarge: 0,
+      truncated: 0,
+    });
     expect(mockLlm.generate).not.toHaveBeenCalled();
     const row = await db.bill.findUniqueOrThrow({ where: { id } });
     expect(row.aiSummary).toBeNull();
@@ -1036,7 +1051,13 @@ describe('bill-status-summary merge — integration (#823)', () => {
         HOT,
       );
 
-      expect(result).toEqual({ enriched: 0, skipped: 0, failed: 0 });
+      expect(result).toEqual({
+        enriched: 0,
+        skipped: 0,
+        failed: 0,
+        tooLarge: 0,
+        truncated: 0,
+      });
       expect(mockLlm.generate).not.toHaveBeenCalled();
       const row = await db.bill.findUniqueOrThrow({ where: { id: bill.id } });
       expect(row.aiSummary).toBeNull();
