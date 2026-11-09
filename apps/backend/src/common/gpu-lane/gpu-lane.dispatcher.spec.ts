@@ -306,12 +306,16 @@ describe('GpuLaneDispatcher — waiting for host memory (#1434)', () => {
   });
 
   it('holds the slot no longer than this process would have set', async () => {
-    // A job read from Redis asking to wait for ever, queued as long ago as
-    // this process's own wait limit: its real deadline is now.
+    // A job read from Redis asking to wait for ever, queued almost as long
+    // ago as this process's own wait limit: its real deadline is moments
+    // away, nearer than the next recheck, so it gets one call and no wait.
+    // Queued exactly WAIT_MS ago, the deadline would be "now" and a runner
+    // that spent a millisecond getting to the pre-call check would expire
+    // the job before the call this test is about (flaked in CI on #1438).
     generate.mockRejectedValue(noRoom());
 
     await expect(
-      consume(0, { deadline: Number.MAX_SAFE_INTEGER }, WAIT_MS),
+      consume(0, { deadline: Number.MAX_SAFE_INTEGER }, WAIT_MS - 5_000),
     ).rejects.toThrow(/reclaimable/);
     expect(generate).toHaveBeenCalledTimes(1);
   });
