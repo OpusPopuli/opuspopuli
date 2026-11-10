@@ -72,6 +72,38 @@ describe('verifyArchive', () => {
     expect(() => verifyArchive(leaked)).toThrow(/1 entr\(ies\) outside/);
   });
 
+  it.each([
+    [
+      'an entry in public merely named corpus_staging',
+      '999; 1259 1 INDEX public corpus_staging postgres',
+    ],
+    [
+      'an entry in public owned by a role called corpus_staging',
+      '999; 1259 1 INDEX public users_email_idx corpus_staging',
+    ],
+    [
+      'a function in the staging schema',
+      '999; 1255 1 FUNCTION corpus_staging f() postgres',
+    ],
+    [
+      'a rule in the staging schema',
+      '999; 2618 1 RULE corpus_staging bills r postgres',
+    ],
+    ['a line that is not an entry at all', 'COPY public.users FROM stdin'],
+  ])('refuses %s', (_label, line) => {
+    expect(() => verifyArchive(`${goodToc()}\n${line}`)).toThrow(RefusalError);
+  });
+
+  it('accepts the schema, its grant and its comment', () => {
+    const extra = [
+      '5; 0 0 ACL - SCHEMA corpus_staging postgres',
+      '6; 0 0 COMMENT - SCHEMA corpus_staging postgres',
+      '7; 0 0 ACL corpus_staging TABLE bills postgres',
+      '8; 0 0 COMMENT corpus_staging TABLE bills postgres',
+    ].join('\n');
+    expect(() => verifyArchive(`${goodToc()}\n${extra}`)).not.toThrow();
+  });
+
   it('refuses a dump missing a civic table', () => {
     const short = CIVIC_TABLES.filter((t) => t !== 'bills');
     const missing = toc([
@@ -132,12 +164,17 @@ function fakePg(handle: Handler, toc = goodToc()) {
 }
 
 /** A healthy source: no unfinished migrations, all civic tables, idle. */
-function healthy(sessions = 0, onPrepare?: () => Error | undefined): Handler {
+function healthy(
+  sessions = 0,
+  onPrepare?: () => Error | undefined,
+  stale: string[] = [],
+): Handler {
   return (db, sql) => {
     if (sql.includes('finished_at IS NULL')) return [['0']];
     if (sql.includes('SELECT migration_name')) return [['m1'], ['m2']];
     if (sql.includes('FROM pg_tables')) return CIVIC_TABLES.map((t) => [t]);
     if (sql.includes('pg_stat_activity')) return [[String(sessions)]];
+    if (sql.includes("LIKE 'corpus")) return stale.map((d) => [d]);
     if (sql.includes('ai_summary IS NOT NULL),')) return [['10', '7']];
     if (sql.startsWith('BEGIN;')) return onPrepare?.() ?? [];
     if (sql.includes('UNION ALL')) return CIVIC_TABLES.map((t) => [t, '1']);
@@ -179,6 +216,35 @@ describe('runExport', () => {
     });
     expect(created(calls)).toBe(0);
     expect(readdirSync(outDir)).toEqual([]);
+  });
+
+  it('drops clones an interrupted export left, before anything else', async () => {
+    const { pg, calls } = fakePg(
+      healthy(0, undefined, ['corpus_export_20261101000000']),
+    );
+    const dry = await runExport(pg, options({ apply: false }));
+    expect(dry.staleClones).toEqual(['corpus_export_20261101000000']);
+    expect(dropped(calls)).toBe(0);
+
+    await runExport(pg, options());
+    const drops = calls.filter((c) => c.sql.startsWith('DROP DATABASE'));
+    expect(drops[0].sql).toContain('"corpus_export_20261101000000"');
+    expect(
+      calls.findIndex((c) => c.sql.startsWith('DROP DATABASE')),
+    ).toBeLessThan(calls.findIndex((c) => c.sql.startsWith('CREATE DATABASE')));
+  });
+
+  it('keeps the original error when the clone cannot be dropped', async () => {
+    const error = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const { pg } = fakePg((db, sql) => {
+      if (sql.startsWith('DROP DATABASE')) return new Error('drop failed');
+      return healthy(0, () => new Error('boom'))(db, sql);
+    });
+    await expect(runExport(pg, options())).rejects.toThrow('boom');
+    expect(error.mock.calls.join()).toMatch(/could not drop the clone/);
+    error.mockRestore();
   });
 
   it('refuses to clone a source other sessions are using', async () => {

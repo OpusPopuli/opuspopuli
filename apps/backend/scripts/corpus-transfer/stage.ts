@@ -11,7 +11,8 @@
  *   npx ts-node --compiler-options '{"module":"commonjs"}' \
  *     scripts/corpus-transfer/stage.ts --target-db postgres \
  *     --manifest <dir>/corpus-<ts>.dump.manifest.json \
- *     [--apply] [--replace] [--container opuspopuli-db | --local]
+ *     [--apply --expect-sha256 <hex>] [--replace]
+ *     [--container opuspopuli-db | --local]
  *
  * Without `--apply` it checks the dump and the target and restores nothing.
  * `--replace` drops a previous staging first. Exit codes: 0 staged and
@@ -29,19 +30,28 @@ import {
   schemaExists,
 } from './catalog';
 import { inspectSource, tableCounts, verifyArchive } from './export';
+import { argValue, hasFlag, runCommand, runnerFromArgs } from './cli';
 import {
-  MANIFEST_FORMAT,
   STAGING_SCHEMA,
+  parseManifest,
   sha256File,
   type CorpusManifest,
 } from './manifest';
-import { RefusalError, containerPg, ident, localPg, type PgRunner } from './pg';
+import { RefusalError, ident, type PgRunner } from './pg';
+import { CIVIC_TABLES } from './tables';
 
 export interface StageOptions {
   targetDb: string;
   manifestPath: string;
   apply: boolean;
   replace: boolean;
+  /**
+   * The dump's sha256 as `export` printed it, carried to the operator by a
+   * route other than the files. Required to restore: the manifest's own
+   * hash proves only that the two files agree, and whoever could replace
+   * the dump could replace the manifest with it.
+   */
+  expectSha256?: string;
 }
 
 export interface StageResult {
@@ -49,15 +59,19 @@ export interface StageResult {
   dependencies: string[];
   differences: string[];
   countMismatches: string[];
+  /** Regions enabled, added or reconfigured by the swap (plan O2). */
+  regionPlugins: string[];
 }
 
 export function readManifest(path: string): {
   manifest: CorpusManifest;
   dumpPath: string;
 } {
-  const manifest = JSON.parse(readFileSync(path, 'utf8')) as CorpusManifest;
-  if (manifest.format !== MANIFEST_FORMAT) {
-    throw new RefusalError(`not a corpus manifest: format ${manifest.format}`);
+  let manifest: CorpusManifest;
+  try {
+    manifest = parseManifest(readFileSync(path, 'utf8'), CIVIC_TABLES);
+  } catch (error) {
+    throw new RefusalError((error as Error).message);
   }
   return { manifest, dumpPath: join(dirname(path), manifest.dump.file) };
 }
@@ -79,22 +93,76 @@ export function migrationDifferences(
   ];
 }
 
+/** Every civic table whose staged count is not the manifest's, either way. */
 export function countMismatches(
   expected: Record<string, number>,
   actual: Record<string, number>,
 ): string[] {
-  return Object.entries(expected)
-    .filter(([table, rows]) => actual[table] !== rows)
+  const tables = new Set([
+    ...CIVIC_TABLES,
+    ...Object.keys(expected),
+    ...Object.keys(actual),
+  ]);
+  return [...tables]
+    .filter((table) => actual[table] !== expected[table])
     .map(
-      ([table, rows]) => `${table}: manifest ${rows}, staged ${actual[table]}`,
-    );
+      (table) =>
+        `${table}: manifest ${expected[table]}, staged ${actual[table]}`,
+    )
+    .sort((a, b) => a.localeCompare(b));
 }
 
-async function checkDump(manifest: CorpusManifest, dumpPath: string) {
+/**
+ * How the swap would change region configuration (plan O2): regions on one
+ * side only, and enabled flags, types, versions and parents that differ.
+ * Config is compared but not printed; these are names and flags, never
+ * user data.
+ */
+export function regionPluginsSql(): string {
+  const l = 'public.region_plugins';
+  const s = `${ident(STAGING_SCHEMA)}.region_plugins`;
+  const changed = (col: string) =>
+    `CASE WHEN l.${col} IS DISTINCT FROM s.${col} THEN '${col} ' || coalesce(l.${col}::text, '-') || ' -> ' || coalesce(s.${col}::text, '-') END`;
+  return `SELECT concat_ws(': ', coalesce(l.name, s.name),
+  CASE
+    WHEN l.name IS NULL THEN 'only staged, enabled ' || s.enabled::text
+    WHEN s.name IS NULL THEN 'only live, enabled ' || l.enabled::text
+    ELSE concat_ws(', ', ${['enabled', 'plugin_type', 'version', 'parent_region_id'].map(changed).join(', ')},
+      CASE WHEN l.config IS DISTINCT FROM s.config THEN 'config changed' END)
+  END)
+FROM ${l} l FULL JOIN ${s} s ON s.name = l.name
+WHERE l.name IS NULL OR s.name IS NULL
+   OR (l.enabled, l.plugin_type, l.version, l.parent_region_id, l.config)
+      IS DISTINCT FROM (s.enabled, s.plugin_type, s.version, s.parent_region_id, s.config)
+ORDER BY 1`;
+}
+
+/**
+ * Statistics for the staged tables. A restore brings none, and `SET SCHEMA`
+ * keeps whatever a table has — so without this, 33 GB could go live with no
+ * statistics at all as the site reopens. Separate statements: VACUUM cannot
+ * run inside a transaction.
+ */
+export function analyzeStagedSql(): string {
+  return CIVIC_TABLES.map(
+    (t) => `VACUUM (ANALYZE) ${ident(STAGING_SCHEMA)}.${ident(t)};`,
+  ).join('\n');
+}
+
+async function checkDump(
+  manifest: CorpusManifest,
+  dumpPath: string,
+  expected: string | undefined,
+) {
   const actual = await sha256File(dumpPath);
   if (actual !== manifest.dump.sha256) {
     throw new RefusalError(
       `dump checksum ${actual} does not match the manifest's ${manifest.dump.sha256}`,
+    );
+  }
+  if (expected !== undefined && actual !== expected.toLowerCase()) {
+    throw new RefusalError(
+      `dump checksum ${actual} is not the one given with --expect-sha256`,
     );
   }
 }
@@ -129,14 +197,27 @@ export async function runStage(
   options: StageOptions,
 ): Promise<StageResult> {
   ident(options.targetDb);
+  if (options.apply && !options.expectSha256) {
+    throw new RefusalError(
+      'restoring needs --expect-sha256 <hex>, the checksum export printed, ' +
+        'carried separately from the files',
+    );
+  }
   const { manifest, dumpPath } = readManifest(options.manifestPath);
-  await checkDump(manifest, dumpPath);
+  await checkDump(manifest, dumpPath, options.expectSha256);
+  // The listing is checked again here, not just at export, and before a
+  // previous staging is dropped. It cannot prove what each entry's SQL does
+  // — the checksum above, given out of band, is what makes the file the one
+  // that was exported — but it does mean no `-n` filter is needed, which
+  // matters: `pg_restore -n` skips the schema's own CREATE SCHEMA entry.
+  verifyArchive(await pg.listArchive(dumpPath));
   const dependencies = await checkTarget(pg, options, manifest);
   const result: StageResult = {
     applied: false,
     dependencies,
     differences: [],
     countMismatches: [],
+    regionPlugins: [],
   };
   if (!options.apply) return result;
   if (dependencies.length > 0) {
@@ -148,17 +229,14 @@ export async function runStage(
   if (await schemaExists(pg, options.targetDb, STAGING_SCHEMA)) {
     await pg.psql(options.targetDb, dropStagingSql());
   }
-  // The archive is checked again here, not just at export: the checksum
-  // proves the file is the one the manifest describes, this proves what it
-  // restores. Then no `-n` filter is needed — which matters, because
-  // `pg_restore -n` skips the schema's own CREATE SCHEMA entry.
-  verifyArchive(await pg.listArchive(dumpPath));
   // One transaction: a restore that fails leaves no half-built schema.
   await pg.restoreFromFile(
     options.targetDb,
     ['--single-transaction', '--exit-on-error'],
     dumpPath,
   );
+
+  await pg.psql(options.targetDb, analyzeStagedSql());
 
   const [live, staged] = await Promise.all([
     readCatalog(pg, options.targetDb, 'public'),
@@ -172,6 +250,9 @@ export async function runStage(
       manifest.tables,
       await tableCounts(pg, options.targetDb, STAGING_SCHEMA),
     ),
+    regionPlugins: (await pg.psql(options.targetDb, regionPluginsSql())).map(
+      ([line]) => line,
+    ),
   };
 }
 
@@ -184,13 +265,6 @@ export function isReady(result: StageResult): boolean {
     result.countMismatches.length === 0
   );
 }
-
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i === -1 ? undefined : process.argv[i + 1];
-}
-
-const flag = (name: string) => process.argv.includes(`--${name}`);
 
 function printList(title: string, lines: string[]): void {
   console.log(`${title}: ${lines.length === 0 ? 'none' : lines.length}`);
@@ -206,6 +280,10 @@ function report(result: StageResult): void {
   }
   printList('definition differences, staged vs live', result.differences);
   printList('row counts differing from the manifest', result.countMismatches);
+  printList(
+    'region configuration the swap would change (owner decides, plan O2)',
+    result.regionPlugins,
+  );
   console.log(
     isReady(result)
       ? `staged: ${STAGING_SCHEMA} is identical in definition to public and ready to swap`
@@ -214,33 +292,25 @@ function report(result: StageResult): void {
 }
 
 async function main(): Promise<void> {
-  const targetDb = arg('target-db');
-  const manifestPath = arg('manifest');
-  if (!targetDb || !manifestPath) {
-    console.error(
-      'usage: stage.ts --target-db <db> --manifest <file> [--apply]',
-    );
-    process.exit(1);
-  }
-  const pg = flag('local')
-    ? localPg()
-    : containerPg(arg('container') ?? 'opuspopuli-db');
-  try {
-    const result = await runStage(pg, {
+  await runCommand(async () => {
+    const targetDb = argValue('target-db');
+    const manifestPath = argValue('manifest');
+    if (!targetDb || !manifestPath) {
+      throw new RefusalError(
+        'usage: stage.ts --target-db <db> --manifest <file> ' +
+          '[--apply --expect-sha256 <hex>] [--replace]',
+      );
+    }
+    const result = await runStage(runnerFromArgs(), {
       targetDb,
       manifestPath,
-      apply: flag('apply'),
-      replace: flag('replace'),
+      apply: hasFlag('apply'),
+      replace: hasFlag('replace'),
+      expectSha256: argValue('expect-sha256'),
     });
     report(result);
     if (result.applied && !isReady(result)) process.exit(2);
-  } catch (error) {
-    const refused = error instanceof RefusalError;
-    console.error(
-      `${refused ? 'refused' : 'error'}: ${(error as Error).message}`,
-    );
-    process.exit(refused ? 2 : 1);
-  }
+  });
 }
 
 if (require.main === module) void main();

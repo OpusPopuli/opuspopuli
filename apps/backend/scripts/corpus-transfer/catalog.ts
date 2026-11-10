@@ -61,7 +61,7 @@ ${REPARSE_FUNCTION}
 WITH t AS (
   SELECT c.oid, c.relname, c.relowner, c.relacl, c.relpersistence,
          c.relrowsecurity, c.relforcerowsecurity, c.relreplident, c.reloptions,
-         c.relkind
+         c.relkind, c.reltablespace
   FROM pg_catalog.pg_class c
   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = ${literal(schema)} AND c.relname = ANY(${tableList()})
@@ -74,12 +74,20 @@ SELECT t.relname, 'column', a.attname, ${one(`concat_ws(' ',
     NULLIF('identity:' || a.attidentity::text, 'identity:'),
     NULLIF('generated:' || a.attgenerated::text, 'generated:'),
     'collation:' || NULLIF(a.attcollation, 0)::pg_catalog.regcollation::text,
-    'acl:' || a.attacl::text)`)}
+    'storage:' || a.attstorage::text,
+    NULLIF('compression:' || a.attcompression::text, 'compression:'),
+    'statistics:' || a.attstattarget::text,
+    'acl:' || a.attacl::text,
+    'comment:' || pg_catalog.col_description(t.oid, a.attnum))`)}
 FROM t
 JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0 AND NOT a.attisdropped
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = t.oid AND d.adnum = a.attnum
 UNION ALL
-SELECT t.relname, 'index', ic.relname, ${one('pg_catalog.pg_get_indexdef(i.indexrelid)')}
+SELECT t.relname, 'index', ic.relname, ${one(`concat_ws(' ',
+    pg_catalog.pg_get_indexdef(i.indexrelid),
+    CASE WHEN NOT i.indisvalid THEN 'INVALID' END,
+    CASE WHEN i.indisreplident THEN 'REPLICA IDENTITY' END,
+    CASE WHEN i.indisclustered THEN 'CLUSTERED' END)`)}
 FROM t
 JOIN pg_catalog.pg_index i ON i.indrelid = t.oid
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
@@ -102,7 +110,9 @@ UNION ALL
 SELECT t.relname, 'table', 'options', concat_ws(' ',
     'kind:' || t.relkind::text, 'persistence:' || t.relpersistence::text,
     'rls:' || t.relrowsecurity::text, 'force-rls:' || t.relforcerowsecurity::text,
-    'replica-identity:' || t.relreplident::text, 'reloptions:' || t.reloptions::text)
+    'replica-identity:' || t.relreplident::text, 'reloptions:' || t.reloptions::text,
+    'tablespace:' || NULLIF(t.reltablespace, 0)::text,
+    ${one(`'comment:' || pg_catalog.obj_description(t.oid, 'pg_class')`)})
 FROM t;`;
 }
 
@@ -162,6 +172,10 @@ UNION
 SELECT 'trigger ' || tg.tgname || ' on ' || tg.tgrelid::pg_catalog.regclass::text
 FROM pg_catalog.pg_trigger tg
 WHERE tg.tgrelid IN ${civic} AND NOT tg.tgisinternal
+UNION
+SELECT 'rule ' || r.rulename || ' on ' || r.ev_class::pg_catalog.regclass::text
+FROM pg_catalog.pg_rewrite r
+WHERE r.ev_class IN ${civic} AND r.rulename <> '_RETURN'
 UNION
 SELECT 'policy ' || p.polname || ' on ' || p.polrelid::pg_catalog.regclass::text
 FROM pg_catalog.pg_policy p

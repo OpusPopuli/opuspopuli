@@ -27,12 +27,19 @@ describe('migrationDifferences', () => {
 });
 
 describe('countMismatches', () => {
-  it('names each table whose staged count differs, or is missing', () => {
-    expect(
-      countMismatches({ bills: 2, votes: 5, x: 1 }, { bills: 2, votes: 4 }),
-    ).toEqual([
-      'votes: manifest 5, staged 4',
-      'x: manifest 1, staged undefined',
+  const all = (n: number) =>
+    Object.fromEntries(CIVIC_TABLES.map((t) => [t, n]));
+
+  it('names each table whose staged count differs', () => {
+    expect(countMismatches(all(2), { ...all(2), bills: 3 })).toEqual([
+      'bills: manifest 2, staged 3',
+    ]);
+  });
+
+  it('counts a civic table the manifest leaves out as a mismatch', () => {
+    const { bills: _omitted, ...rest } = all(2);
+    expect(countMismatches(rest, all(2))).toEqual([
+      'bills: manifest undefined, staged 2',
     ]);
   });
 });
@@ -80,6 +87,8 @@ function fakePg(world: World) {
           ],
         ];
       }
+      if (sql.includes('FULL JOIN'))
+        return [['san_diego: only staged, enabled true']];
       if (sql.includes('UNION ALL')) {
         return CIVIC_TABLES.map((t) => [t, String(world.stagedRows)]);
       }
@@ -93,6 +102,9 @@ function fakePg(world: World) {
   };
   return { pg, restored, statements };
 }
+
+const DUMP = 'corpus-20261109000000.dump';
+const SHA = createHash('sha256').update('dump-bytes').digest('hex');
 
 describe('runStage', () => {
   let dir: string;
@@ -108,7 +120,7 @@ describe('runStage', () => {
     contents = 'dump-bytes',
     over: Partial<CorpusManifest> = {},
   ) {
-    writeFileSync(join(dir, 'corpus.dump'), contents);
+    writeFileSync(join(dir, DUMP), contents);
     const manifest: CorpusManifest = {
       format: 'opuspopuli-corpus/1',
       createdAt: '2026-11-09T00:00:00Z',
@@ -119,13 +131,13 @@ describe('runStage', () => {
       tables: Object.fromEntries(CIVIC_TABLES.map((t) => [t, 3])),
       rules: { billSummaries: { present: 0, kept: 0, cleared: 0 } },
       dump: {
-        file: 'corpus.dump',
+        file: DUMP,
         bytes: contents.length,
         sha256: createHash('sha256').update('dump-bytes').digest('hex'),
       },
       ...over,
     };
-    const path = join(dir, 'corpus.dump.manifest.json');
+    const path = join(dir, `${DUMP}.manifest.json`);
     writeFileSync(path, JSON.stringify(manifest));
     return path;
   }
@@ -138,6 +150,7 @@ describe('runStage', () => {
     manifestPath,
     apply: true,
     replace: false,
+    expectSha256: SHA,
     ...over,
   });
 
@@ -166,6 +179,80 @@ describe('runStage', () => {
       /checksum/,
     );
     expect(restored).toEqual([]);
+  });
+
+  it('will not restore without the checksum given out of band', async () => {
+    const { pg, restored } = fakePg(healthy());
+    await expect(
+      runStage(pg, options(writeDump(), { expectSha256: undefined })),
+    ).rejects.toThrow(/--expect-sha256/);
+    expect(restored).toEqual([]);
+  });
+
+  it('refuses a dump and manifest replaced together', async () => {
+    // Both files agree with each other; only the operator's checksum
+    // shows they are not what was exported.
+    const { pg, restored } = fakePg(healthy());
+    const path = writeDump('forged', {
+      dump: {
+        file: DUMP,
+        bytes: 6,
+        sha256: createHash('sha256').update('forged').digest('hex'),
+      },
+    });
+    await expect(runStage(pg, options(path))).rejects.toThrow(
+      /not the one given with --expect-sha256/,
+    );
+    expect(restored).toEqual([]);
+  });
+
+  it.each([
+    [
+      'a path outside its directory',
+      { dump: { file: '../../etc/passwd', bytes: 1, sha256: SHA } },
+    ],
+    ['a table left out', { tables: { bills: 1 } }],
+    [
+      'a count that is not a count',
+      { tables: Object.fromEntries(CIVIC_TABLES.map((t) => [t, -1])) },
+    ],
+  ])('refuses a manifest with %s', async (_label, over) => {
+    const { pg, restored } = fakePg(healthy());
+    await expect(
+      runStage(
+        pg,
+        options(writeDump('dump-bytes', over as Partial<CorpusManifest>)),
+      ),
+    ).rejects.toThrow(/not a valid corpus manifest/);
+    expect(restored).toEqual([]);
+  });
+
+  it('checks a new archive before dropping the previous staging', async () => {
+    const { pg, statements } = fakePg({ ...healthy(), stagingExists: true });
+    pg.listArchive = async () =>
+      `${toc}\n999; 0 9 FUNCTION corpus_staging f() postgres`;
+    await expect(
+      runStage(pg, options(writeDump(), { replace: true })),
+    ).rejects.toThrow(/type it never ships/);
+    expect(statements.some((s) => s.includes('DROP SCHEMA'))).toBe(false);
+  });
+
+  it('reports region configuration the swap would change', async () => {
+    const { pg } = fakePg(healthy());
+    const result = await runStage(pg, options(writeDump()));
+    expect(result.regionPlugins).toEqual([
+      'san_diego: only staged, enabled true',
+    ]);
+  });
+
+  it('gathers statistics for the staged tables', async () => {
+    const { pg, statements } = fakePg(healthy());
+    await runStage(pg, options(writeDump()));
+    expect(
+      statements.some((s) =>
+        s.includes('VACUUM (ANALYZE) "corpus_staging"."bills"'),
+      ),
+    ).toBe(true);
   });
 
   it('refuses a target on other migrations', async () => {

@@ -13,6 +13,31 @@ describe('sanitizeStderr', () => {
     expect(clean).not.toContain('COPY users, line');
   });
 
+  it('drops every line of a multi-line DETAIL, not just the first', () => {
+    const stderr = [
+      'psql:<stdin>:12: ERROR:  new row violates check constraint "x"',
+      'DETAIL:  Failing row contains (dst-e1, Dear office,',
+      'my address is 1 Real Street',
+      'and my phone is 555-0100).',
+    ].join('\n');
+    const clean = sanitizeStderr(stderr);
+    expect(clean).toBe(
+      'psql:<stdin>:12: ERROR:  new row violates check constraint "x"',
+    );
+  });
+
+  it("drops pg_restore's echo of the failing command", () => {
+    const stderr = [
+      'pg_restore: error: could not execute query: ERROR:  relation exists',
+      'Command was: CREATE TABLE corpus_staging.bills (',
+      '    id text NOT NULL',
+      ');',
+    ].join('\n');
+    expect(sanitizeStderr(stderr)).toBe(
+      'pg_restore: error: could not execute query: ERROR:  relation exists',
+    );
+  });
+
   it('drops the echoed statement and its caret', () => {
     const stderr = [
       'ERROR:  syntax error at or near "x"',

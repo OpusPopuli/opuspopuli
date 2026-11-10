@@ -58,9 +58,23 @@ describe('remapSql', () => {
       (r) => r.target === 'jurisdictions',
     )!;
     const sql = remapSql(jurisdictions);
-    expect(sql).toContain('COALESCE(k0.id, k1.id)');
+    expect(sql).toContain('THEN k0.id WHEN k1.id IS NOT NULL');
     expect(sql).toContain('k0."ocd_id" = l."ocd_id"');
     expect(sql).toContain('k1."fips_code" = l."fips_code"');
+  });
+});
+
+describe('remapSql identity', () => {
+  it('rejects a fallback match that contradicts an earlier key', () => {
+    const jurisdictions = REMAPPED_REFERENCES.find(
+      (r) => r.target === 'jurisdictions',
+    )!;
+    const sql = remapSql(jurisdictions);
+    // Matched by FIPS, but both rows carry an OCD ID and they differ.
+    expect(sql).toContain(
+      '(l."ocd_id" IS NOT NULL AND k1."ocd_id" IS NOT NULL AND (l."ocd_id") IS DISTINCT FROM (k1."ocd_id"))',
+    );
+    expect(sql).toContain('AS conflict');
   });
 });
 
@@ -96,6 +110,19 @@ describe('runSwap', () => {
         lockTimeout: "5s'; DROP TABLE users; --",
       }),
     ).rejects.toThrow(/lock timeout/);
+    expect(psql).not.toHaveBeenCalled();
+  });
+
+  it('refuses a zero lock timeout, which would mean wait for ever', async () => {
+    const psql = jest.fn();
+    await expect(
+      runSwap({ psql } as unknown as PgRunner, {
+        targetDb: 'postgres',
+        manifestPath: '/nonexistent',
+        mode: 'apply',
+        lockTimeout: '0s',
+      }),
+    ).rejects.toThrow(/positive/);
     expect(psql).not.toHaveBeenCalled();
   });
 });

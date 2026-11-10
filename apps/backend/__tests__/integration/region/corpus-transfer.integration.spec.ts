@@ -126,6 +126,7 @@ SELECT md5(string_agg(x, '|' ORDER BY x)) FROM (
 describe('corpus transfer — integration (#1439)', () => {
   let dir: string;
   let manifestPath: string;
+  let sha: string;
   const swap = (
     mode: 'check' | 'rehearse' | 'apply',
     manifest = manifestPath,
@@ -162,6 +163,7 @@ describe('corpus transfer — integration (#1439)', () => {
       now: new Date(),
     });
     manifestPath = result.manifestPath!;
+    sha = result.manifest!.dump.sha256;
     const toc = await pg.listArchive(join(dir, result.manifest!.dump.file));
 
     expect(toc).not.toMatch(/ TABLE DATA \S+ users /);
@@ -190,6 +192,7 @@ describe('corpus transfer — integration (#1439)', () => {
       manifestPath,
       apply: true,
       replace: false,
+      expectSha256: sha,
     });
     expect(result.differences).toEqual([]);
     expect(isReady(result)).toBe(true);
@@ -238,6 +241,48 @@ describe('corpus transfer — integration (#1439)', () => {
       /civic counts differ from the manifest: bills/,
     );
     expect(await one(DST, SNAPSHOT)).toBe(before);
+  });
+
+  it.each([
+    [
+      'a function over a civic row type',
+      'CREATE FUNCTION public.probe_civic(b public.bills) RETURNS int LANGUAGE sql AS $$ SELECT 1 $$',
+      'DROP FUNCTION public.probe_civic(public.bills)',
+      /would also have dropped: function/,
+    ],
+    [
+      'an RLS policy on a user table that reads a civic one',
+      'CREATE POLICY probe_policy ON public.documents USING (EXISTS (SELECT 1 FROM public.bills))',
+      'DROP POLICY probe_policy ON public.documents',
+      /would also have dropped: policy/,
+    ],
+  ])(
+    'refuses a swap whose CASCADE would also drop %s, changing nothing',
+    async (_label, create, drop, refusal) => {
+      await pg.psql(DST, create);
+      const before = await one(DST, SNAPSHOT);
+      await expect(swap('apply')).rejects.toThrow(refusal);
+      expect(await one(DST, SNAPSHOT)).toBe(before);
+      await pg.psql(DST, drop);
+    },
+  );
+
+  it('refuses a jurisdiction matched by FIPS whose OCD ID says otherwise', async () => {
+    await pg.psql(
+      DST,
+      `UPDATE corpus_staging.jurisdictions SET ocd_id = 'ocd-division/x' WHERE id = 'src-j2';
+       UPDATE public.jurisdictions SET ocd_id = 'ocd-division/y' WHERE id = 'dst-j2';`,
+    );
+    const before = await one(DST, SNAPSHOT);
+    await expect(swap('apply')).rejects.toThrow(
+      /1 user_jurisdictions\.jurisdiction_id reference\(s\) match only by a fallback key/,
+    );
+    expect(await one(DST, SNAPSHOT)).toBe(before);
+    await pg.psql(
+      DST,
+      `UPDATE corpus_staging.jurisdictions SET ocd_id = NULL WHERE id = 'src-j2';
+       UPDATE public.jurisdictions SET ocd_id = NULL WHERE id = 'dst-j2';`,
+    );
   });
 
   it('rehearses every step and changes nothing', async () => {
@@ -324,6 +369,7 @@ describe('corpus transfer — integration (#1439)', () => {
       manifestPath,
       apply: true,
       replace: false,
+      expectSha256: sha,
     });
     await pg.psql(
       DST,

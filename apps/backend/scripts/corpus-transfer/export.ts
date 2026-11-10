@@ -37,14 +37,8 @@ import {
   type BillSummaryRule,
   type CorpusManifest,
 } from './manifest';
-import {
-  RefusalError,
-  containerPg,
-  ident,
-  literal,
-  localPg,
-  type PgRunner,
-} from './pg';
+import { argValue, hasFlag, runCommand, runnerFromArgs } from './cli';
+import { RefusalError, ident, literal, type PgRunner } from './pg';
 import { CIVIC_TABLES, FINANCE_TABLES, unclassifiedTables } from './tables';
 
 /** Where CREATE/DROP DATABASE run: never the source, which must be idle. */
@@ -64,6 +58,8 @@ export interface ExportResult {
   migrations: number;
   billSummaries: BillSummaryRule;
   otherSessions: number;
+  /** Clones left by an interrupted export; `--apply` drops them first. */
+  staleClones: string[];
   manifestPath?: string;
   manifest?: CorpusManifest;
 }
@@ -228,51 +224,104 @@ export async function tableCounts(
   return Object.fromEntries(rows.map(([t, n]) => [t, Number(n)]));
 }
 
+const byName = (a: string, b: string) => a.localeCompare(b);
+
+/**
+ * The entry types a corpus dump may hold, longest first so `TABLE DATA` is
+ * not read as `TABLE`. Exactly what `pg_dump -n corpus_staging` produces for
+ * the civic tables (verified 2026-11-09), plus grants and comments.
+ * Anything else — a function, a rule, a view — has no business in it.
+ */
+const ENTRY_TYPES = [
+  'TABLE DATA',
+  'FK CONSTRAINT',
+  'CONSTRAINT',
+  'INDEX',
+  'TABLE',
+  'SCHEMA',
+  'COMMENT',
+  'ACL',
+] as const;
+
+export interface ArchiveEntry {
+  type: string;
+  schema: string;
+  /** Name, then owner; ACL and COMMENT entries carry a kind first. */
+  rest: string[];
+}
+
+/**
+ * One `pg_restore -l` line, read by position: `id; oid oid TYPE schema name
+ * owner`. Undefined for anything else, including an entry of a type a
+ * corpus dump never holds.
+ */
+export function parseArchiveEntry(line: string): ArchiveEntry | undefined {
+  const body = /^\d+; \d+ \d+ (.+)$/.exec(line)?.[1];
+  if (!body) return undefined;
+  const type = ENTRY_TYPES.find((t) => body.startsWith(`${t} `));
+  if (!type) return undefined;
+  const [schema, ...rest] = body.slice(type.length + 1).split(' ');
+  return { type, schema, rest };
+}
+
+/** Whether an entry belongs to the staging schema, read by position. */
+function inStaging(e: ArchiveEntry): boolean {
+  if (e.schema === STAGING_SCHEMA) return e.type !== 'SCHEMA';
+  // The schema itself, its grant and its comment: `TYPE - [SCHEMA] corpus_staging owner`.
+  if (e.schema !== '-') return false;
+  if (e.type === 'SCHEMA') return e.rest[0] === STAGING_SCHEMA;
+  return (
+    (e.type === 'ACL' || e.type === 'COMMENT') &&
+    e.rest[0] === 'SCHEMA' &&
+    e.rest[1] === STAGING_SCHEMA
+  );
+}
+
+function refuseUnlessCivic(type: string, found: string[]): void {
+  const civic: string[] = [...CIVIC_TABLES].sort(byName);
+  if (found.join() === civic.join()) return;
+  const extra = found.filter((t) => !civic.includes(t));
+  const missing = civic.filter((t) => !found.includes(t));
+  throw new RefusalError(
+    `dump's ${type} entries differ from the civic tables` +
+      (extra.length ? `; extra: ${extra.join(', ')}` : '') +
+      (missing.length ? `; missing: ${missing.join(', ')}` : ''),
+  );
+}
+
 /**
  * Refuse a dump that holds anything but the civic tables.
  *
- * This is the export's last word on personal data, and it reads the
- * artifact rather than trusting how it was made: every entry must belong to
- * the staging schema, and the tables and table data present must be
- * exactly the civic set.
+ * Reads the artifact rather than trusting how it was made. Every entry
+ * must be of an expected type and sit in the staging schema, by position —
+ * not merely mention it — and the tables and table data must be exactly
+ * the civic set. What this cannot see is the SQL inside an entry: a dump
+ * built to deceive could carry anything under a well-formed listing. That
+ * is why `stage` also requires the dump's checksum from the operator, out
+ * of band, rather than trusting the manifest that travels beside it.
  */
-const byName = (a: string, b: string) => a.localeCompare(b);
-
 export function verifyArchive(toc: string): void {
-  const entries = toc
+  const lines = toc
     .split('\n')
     .filter((line) => line.length > 0 && !line.startsWith(';'));
-  const outside = entries.filter(
-    (line) => !line.split(/\s+/).includes(STAGING_SCHEMA),
-  );
-  if (outside.length > 0) {
+  const entries = lines.map(parseArchiveEntry);
+  const refused = lines.filter((line, i) => {
+    const e = entries[i];
+    return !e || !inStaging(e);
+  });
+  if (refused.length > 0) {
     throw new RefusalError(
-      `dump holds ${outside.length} entr(ies) outside ${STAGING_SCHEMA}`,
+      `dump holds ${refused.length} entr(ies) outside ${STAGING_SCHEMA} or of a ` +
+        `type it never ships, e.g.: ${refused.slice(0, 3).join(' | ')}`,
     );
   }
   const named = (type: string) =>
     entries
-      .map((line) =>
-        new RegExp(
-          String.raw`^\d+; \d+ \d+ ${type} ${STAGING_SCHEMA} (\S+) `,
-        ).exec(line),
-      )
-      .filter((m): m is RegExpExecArray => m !== null)
-      .map((m) => m[1])
+      .filter((e): e is ArchiveEntry => e?.type === type)
+      .map((e) => e.rest[0])
       .sort(byName);
-  const civic: string[] = [...CIVIC_TABLES].sort(byName);
-  for (const type of ['TABLE', 'TABLE DATA']) {
-    const found = named(type);
-    if (found.join() !== civic.join()) {
-      const extra = found.filter((t) => !civic.includes(t));
-      const missing = civic.filter((t) => !found.includes(t));
-      throw new RefusalError(
-        `dump's ${type} entries differ from the civic tables` +
-          (extra.length ? `; extra: ${extra.join(', ')}` : '') +
-          (missing.length ? `; missing: ${missing.join(', ')}` : ''),
-      );
-    }
-  }
+  refuseUnlessCivic('TABLE', named('TABLE'));
+  refuseUnlessCivic('TABLE DATA', named('TABLE DATA'));
 }
 
 export function stamp(now: Date): string {
@@ -284,6 +333,50 @@ async function dropDatabase(pg: PgRunner, db: string): Promise<void> {
     ADMIN_DATABASE,
     `DROP DATABASE IF EXISTS ${ident(db)} WITH (FORCE)`,
   );
+}
+
+/**
+ * Clones a previous export left behind — killed between the clone and its
+ * cleanup. Each is a full copy of the source, user tables included, so the
+ * next `--apply` drops them before doing anything else.
+ */
+export async function staleClones(pg: PgRunner): Promise<string[]> {
+  return (
+    await pg.psql(
+      ADMIN_DATABASE,
+      `SELECT datname FROM pg_database WHERE datname LIKE 'corpus\\_export\\_%' ORDER BY 1`,
+    )
+  ).map(([name]) => name);
+}
+
+/**
+ * Drop the clone, and never let a failure to do so hide why the export
+ * stopped: that error is the one the operator needs. A clone that could not
+ * be dropped is said so loudly, since it holds a copy of user data.
+ */
+async function dropClone(pg: PgRunner, clone: string): Promise<void> {
+  try {
+    await dropDatabase(pg, clone);
+  } catch (error) {
+    console.error(
+      `WARNING: could not drop the clone ${clone}, which holds a full copy of ` +
+        `the source including user tables. Drop it by hand. (${(error as Error).message})`,
+    );
+  }
+}
+
+/** Drop the clone if the process is interrupted while it exists. */
+function dropOnSignal(pg: PgRunner, clone: string): () => void {
+  const handler = (signal: NodeJS.Signals) => {
+    console.error(`${signal}: dropping the clone ${clone} before exiting`);
+    void dropClone(pg, clone).finally(() => process.exit(130));
+  };
+  process.once('SIGINT', handler);
+  process.once('SIGTERM', handler);
+  return () => {
+    process.off('SIGINT', handler);
+    process.off('SIGTERM', handler);
+  };
 }
 
 async function dumpClone(
@@ -334,13 +427,17 @@ export async function runExport(
   const source = await inspectSource(pg, options.sourceDb);
   const billSummaries = await billSummaryCounts(pg, options.sourceDb, 'public');
   const sessions = await otherSessions(pg, options.sourceDb);
+  const stale = await staleClones(pg);
   const result: ExportResult = {
     applied: false,
     migrations: source.migrations.length,
     billSummaries,
     otherSessions: sessions,
+    staleClones: stale,
   };
   if (!options.apply) return result;
+
+  for (const old of stale) await dropDatabase(pg, old);
 
   if (sessions > 0) {
     throw new RefusalError(
@@ -353,6 +450,7 @@ export async function runExport(
     ADMIN_DATABASE,
     `CREATE DATABASE ${ident(clone)} TEMPLATE ${ident(options.sourceDb)}`,
   );
+  const release = dropOnSignal(pg, clone);
   try {
     return {
       ...result,
@@ -360,17 +458,9 @@ export async function runExport(
       ...(await dumpClone(pg, clone, options, source, billSummaries)),
     };
   } finally {
-    await dropDatabase(pg, clone);
+    await dropClone(pg, clone);
+    release();
   }
-}
-
-function flag(name: string): boolean {
-  return process.argv.includes(`--${name}`);
-}
-
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i === -1 ? undefined : process.argv[i + 1];
 }
 
 function gitSha(): string | null {
@@ -389,6 +479,11 @@ function report(result: ExportResult): void {
   console.log(
     `bill summaries: ${s.present} stored, ${s.kept} ship, ${s.cleared} cleared (#1429 D3)`,
   );
+  if (result.staleClones.length > 0) {
+    console.log(
+      `clones left by an interrupted export (dropped by --apply): ${result.staleClones.join(', ')}`,
+    );
+  }
   if (!result.applied) {
     console.log(`other sessions on source: ${result.otherSessions}`);
     console.log('dry run: nothing written. Re-run with --apply to export.');
@@ -408,35 +503,25 @@ function report(result: ExportResult): void {
 }
 
 async function main(): Promise<void> {
-  const sourceDb = arg('source-db');
-  const outDir = arg('out-dir');
-  if (!sourceDb || !outDir) {
-    console.error(
-      'usage: export.ts --source-db <db> --out-dir <dir> [--apply]',
-    );
-    process.exit(1);
-  }
-  const pg = flag('local')
-    ? localPg()
-    : containerPg(arg('container') ?? 'opuspopuli-db');
-  try {
+  await runCommand(async () => {
+    const sourceDb = argValue('source-db');
+    const outDir = argValue('out-dir');
+    if (!sourceDb || !outDir) {
+      throw new RefusalError(
+        'usage: export.ts --source-db <db> --out-dir <dir> [--apply]',
+      );
+    }
     report(
-      await runExport(pg, {
+      await runExport(runnerFromArgs(), {
         sourceDb,
         outDir,
-        includeFinance: flag('include-finance'),
-        apply: flag('apply'),
+        includeFinance: hasFlag('include-finance'),
+        apply: hasFlag('apply'),
         gitSha: gitSha(),
         now: new Date(),
       }),
     );
-  } catch (error) {
-    const refused = error instanceof RefusalError;
-    console.error(
-      `${refused ? 'refused' : 'error'}: ${(error as Error).message}`,
-    );
-    process.exit(refused ? 2 : 1);
-  }
+  });
 }
 
 if (require.main === module) void main();

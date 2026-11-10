@@ -229,6 +229,59 @@ Per command: counts per table, remaps applied, soft references unmatched,
 summaries kept and cleared, refusals. **Counts and identifiers only, never
 user content or civic text.**
 
+### 4.5 Review changes (2026-11-09)
+
+Two independent reviews (correctness and data safety; security,
+regulated data and quality) found no way for the swap to commit with user
+rows lost or links wrong, and no SQL or command injection. What they did
+find, all fixed:
+
+- **The dump is trusted only by a checksum given out of band.** The
+  manifest's hash proves only that the two files agree; whoever could
+  replace one could replace both, and the archive listing can't see the
+  SQL inside an entry. `stage --apply` requires `--expect-sha256 <hex>`,
+  the value `export` printed, carried by a route other than the files
+  (e.g. read off the terminal into the runbook). The listing check also
+  became positional with a type allowlist: an entry must be one of the
+  types the export produces *and* sit in `corpus_staging` by position, not
+  merely mention it. The manifest is shape-checked before use, and its
+  dump name must be a bare `corpus-<ts>.dump` (no paths).
+- **The CASCADE guard is general.** Before the drop, the swap snapshots
+  every object outside the civic tables by OID — relations, columns,
+  constraints, functions, policies, rules, user triggers — and after it
+  refuses unless the only difference is the recorded foreign keys. A
+  function over a civic row type, or an RLS policy on a user table that
+  reads a civic one, would otherwise have gone silently (both tested). The
+  dependency check also refuses rules on civic tables.
+- **Remap identity.** A match by a fallback key that contradicts an earlier
+  one (FIPS matches, OCD IDs differ) is no match: refused for foreign keys,
+  unmatched for soft ones. Proposition matches whose `election_date`
+  differs are counted in the report, since `external_id`'s meaning changed
+  in #1164 and prod's rows predate it.
+- **After a commit, the tool says so.** A failure after `COMMIT` (NOTIFY,
+  the report, or the client losing psql) used to print "production is as
+  it was". It now checks whether `corpus_staging` still exists and says
+  committed, not committed, or unknown.
+- **Stage** checks the new archive before dropping a previous staging,
+  counts every civic table (not only those the manifest lists), runs
+  `VACUUM (ANALYZE)` on the staged tables so they go live with statistics,
+  and reports the `region_plugins` differences (O2) by name and flag.
+- **Export** drops clones an interrupted export left behind, drops its own
+  on SIGINT/SIGTERM, and never lets a failed clean-up hide the original
+  error (a clone holds a copy of user data, so a failed drop is loud).
+- **Errors** keep an allowlist of Postgres error lines (psql also runs with
+  `VERBOSITY=terse`): a multi-line `DETAIL` can carry a row across several
+  lines, so dropping lines that start with DETAIL was not enough.
+- **Smaller:** stream errors no longer crash the process mid-restore; a lock
+  timeout of 0 (which means wait for ever) is refused; the catalog diff
+  also compares index validity, column storage, compression and statistics
+  targets, tablespace and comments; the three CLIs share `cli.ts`.
+
+**For the runbook (S6):** run `swap --apply` inside tmux or nohup, since an
+interrupted client may not stop a psql already sent its script. Restart
+`region` and `region-worker` after the swap: they load the active region
+plugin at boot.
+
 ## 5. Subtasks
 
 | # | Work | Where |

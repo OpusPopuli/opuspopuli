@@ -46,16 +46,23 @@ interface Invocation {
 }
 
 /**
- * Drop the lines of a Postgres error that quote row values.
+ * Keep only the lines of a Postgres error that state what went wrong.
  *
- * A constraint violation's `DETAIL: Key (email)=(…)` names the row that
- * broke it, and on the swap's side that row can be a user's. The message
- * and hint are enough to act on; the value never needs to reach a log.
+ * A constraint violation's `DETAIL: Failing row contains (…)` prints the
+ * row, and on the swap's side that row can be a user's — across several
+ * lines when a value holds newlines, so dropping the lines that *start*
+ * with DETAIL is not enough. `pg_restore` adds `Command was:` and the
+ * statement. So this keeps an allowlist of line shapes, never the lines
+ * that follow them; psql also runs with VERBOSITY=terse, which stops
+ * DETAIL, HINT and CONTEXT being printed in the first place.
  */
+const STDERR_KEEP =
+  /^(?:psql:\S+: )?(?:ERROR|FATAL|PANIC):|^(?:pg_restore|pg_dump|psql): (?:error|fatal):|^Error response from daemon:/;
+
 export function sanitizeStderr(stderr: string): string {
   return stderr
     .split('\n')
-    .filter((line) => !/^\s*(DETAIL|CONTEXT|LINE \d+|\s*\^)/.test(line))
+    .filter((line) => STDERR_KEEP.test(line))
     .join('\n')
     .trim()
     .slice(0, 2000);
@@ -74,6 +81,7 @@ function invoke({
     const err: Buffer[] = [];
     // A dump is complete when its file is flushed, not when pg_dump exits:
     // checksumming on exit could hash a file still short of its last write.
+    let streamError: Error | undefined;
     const flushed = new Promise<void>((done, fail) => {
       if (!stdoutFile) {
         child.stdout.on('data', (b: Buffer) => out.push(b));
@@ -83,15 +91,18 @@ function invoke({
       file.on('finish', done).on('error', fail);
       child.stdout.pipe(file);
     });
+    // Settled by 'close' below; never an unhandled rejection meanwhile.
+    flushed.catch(() => undefined);
     child.stderr.on('data', (b: Buffer) => err.push(b));
     child.on('error', reject);
     child.on('close', (code) => {
-      if (code !== 0) {
+      if (code !== 0 || streamError) {
         const tool = args.find((a) => /^(psql|pg_dump|pg_restore)$/.test(a));
+        const stderr = sanitizeStderr(Buffer.concat(err).toString('utf8'));
         return reject(
           new Error(
             `${tool ?? command} exited ${code}: ` +
-              sanitizeStderr(Buffer.concat(err).toString('utf8')),
+              (stderr || streamError?.message || 'no error output'),
           ),
         );
       }
@@ -99,8 +110,21 @@ function invoke({
         .then(() => resolve(Buffer.concat(out).toString('utf8')))
         .catch(reject);
     });
-    if (stdinFile) createReadStream(stdinFile).pipe(child.stdin);
-    else child.stdin.end(stdinText ?? '');
+    // A child that exits before reading all its input (pg_restore
+    // --exit-on-error, 20 GB into a dump) closes the pipe: EPIPE here is
+    // expected, and its exit code and stderr say why. Without a listener
+    // it would crash the process and lose both.
+    child.stdin.on('error', (e: NodeJS.ErrnoException) => {
+      if (e.code !== 'EPIPE') streamError = e;
+    });
+    if (stdinFile) {
+      createReadStream(stdinFile)
+        .on('error', (e) => {
+          streamError = e;
+          child.stdin.destroy();
+        })
+        .pipe(child.stdin);
+    } else child.stdin.end(stdinText ?? '');
   });
 }
 
@@ -122,6 +146,8 @@ function runner(wrap: Wrap, dbArg: (db: string) => string[]): PgRunner {
     '-t',
     '-v',
     'ON_ERROR_STOP=1',
+    '-v',
+    'VERBOSITY=terse',
     '-F',
     FIELD_SEP,
     '-f',

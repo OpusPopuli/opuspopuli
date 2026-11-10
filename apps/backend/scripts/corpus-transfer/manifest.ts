@@ -44,3 +44,48 @@ export function sha256File(path: string): Promise<string> {
       .on('error', reject);
   });
 }
+
+const SHA256 = /^[0-9a-f]{64}$/;
+/** What `export` names its dumps. Nothing else is opened: no paths. */
+const DUMP_FILE = /^corpus-\d{14}\.dump$/;
+
+const isCount = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isInteger(n) && n >= 0;
+
+/**
+ * Validate a manifest read from disk. It travels with the dump and is as
+ * easy to edit, so nothing in it is used until its shape is right: the dump
+ * name must be a bare export name (no `../`), the tables exactly the ones
+ * expected, the counts non-negative integers.
+ */
+export function parseManifest(
+  json: string,
+  expectedTables: readonly string[],
+): CorpusManifest {
+  const m = JSON.parse(json) as Partial<CorpusManifest>;
+  const problems: string[] = [];
+  if (m.format !== MANIFEST_FORMAT) problems.push(`format ${String(m.format)}`);
+  if (!m.dump || !DUMP_FILE.test(String(m.dump.file)))
+    problems.push('dump.file');
+  if (!m.dump || !SHA256.test(String(m.dump.sha256)))
+    problems.push('dump.sha256');
+  if (
+    !Array.isArray(m.migrations) ||
+    !m.migrations.every((x) => typeof x === 'string')
+  ) {
+    problems.push('migrations');
+  }
+  const tables = Object.entries(m.tables ?? {});
+  const names = tables.map(([t]) => t).sort((a, b) => a.localeCompare(b));
+  const expected = [...expectedTables].sort((a, b) => a.localeCompare(b));
+  if (
+    names.join() !== expected.join() ||
+    !tables.every(([, n]) => isCount(n))
+  ) {
+    problems.push('tables');
+  }
+  if (problems.length > 0) {
+    throw new Error(`not a valid corpus manifest: ${problems.join(', ')}`);
+  }
+  return m as CorpusManifest;
+}

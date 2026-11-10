@@ -198,6 +198,12 @@ export interface RemappedReference {
   column: string;
   target: string;
   naturalKeys: readonly (readonly string[])[];
+  /**
+   * Columns that should agree between the live row and the staged row its
+   * key matched. A matched key with a different value here may be a
+   * different record under the same key; the swap reports how many.
+   */
+  sameRecordColumns?: readonly string[];
 }
 
 export const REMAPPED_REFERENCES: readonly RemappedReference[] = [
@@ -206,6 +212,8 @@ export const REMAPPED_REFERENCES: readonly RemappedReference[] = [
     column: 'proposition_id',
     target: 'propositions',
     naturalKeys: [['region_plugin_name', 'external_id']],
+    // external_id's meaning changed in #1164; prod's rows predate it.
+    sameRecordColumns: ['election_date'],
   },
   {
     table: 'user_jurisdictions',
@@ -238,5 +246,6 @@ export const SOFT_REFERENCES: readonly RemappedReference[] = [
     column: 'proposition_id',
     target: 'propositions',
     naturalKeys: [['region_plugin_name', 'external_id']],
+    sameRecordColumns: ['election_date'],
   },
 ];
