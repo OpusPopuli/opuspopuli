@@ -51,6 +51,19 @@ export interface GenerateOptions {
    * produced it, and a seed is the remaining variable in that chain.
    */
   seed?: number;
+  /**
+   * Refuse, before any model call, a prompt that will not fit the provider's
+   * context window (#1429). Throws {@link PromptTooLargeError}.
+   *
+   * Opt-in because the size check is an estimate, and a refusal costs a
+   * caller its output. A caller that would discard a partial read anyway
+   * (a bill summary, which counts as current once stored) should set it:
+   * when a prompt overflows `num_ctx`, Ollama reads HALF the window and
+   * answers fluently about that fragment, so the call is wasted GPU time at
+   * best. Applies to `generate` and `chat`, not to streams. Has no effect when
+   * the provider's window is unknown.
+   */
+  refuseIfPromptExceedsContext?: boolean;
 }
 
 /**
@@ -223,5 +236,31 @@ export class LLMError extends Error {
       `LLM operation '${operation}' failed in ${provider}: ${originalError.message}`,
     );
     this.name = "LLMError";
+  }
+}
+
+/**
+ * A prompt refused before the model was called, because it would not fit the
+ * context window (#1429, {@link GenerateOptions.refuseIfPromptExceedsContext}).
+ *
+ * Not an {@link LLMError}: nothing failed, and nothing reached the model, its
+ * circuit breaker or the host-memory gate. A caller that catches every error
+ * as "the model failed" should check for this first. Carries numbers only,
+ * never the prompt.
+ */
+export class PromptTooLargeError extends Error {
+  constructor(
+    /** Estimated prompt tokens, after the safety margin. */
+    public readonly estimatedTokens: number,
+    /** The provider's configured `num_ctx`. */
+    public readonly contextTokens: number,
+    /** Output tokens the caller asked to reserve. */
+    public readonly maxTokens: number,
+  ) {
+    super(
+      `Prompt of ~${estimatedTokens} tokens plus ${maxTokens} output tokens ` +
+        `does not fit the ${contextTokens}-token context window`,
+    );
+    this.name = "PromptTooLargeError";
   }
 }

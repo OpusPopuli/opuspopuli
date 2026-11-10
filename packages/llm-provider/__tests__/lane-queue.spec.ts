@@ -1,12 +1,15 @@
 import "reflect-metadata";
 import {
   laneQueueName,
+  PromptTooLargeError,
   type GenerateResult,
   type ILLMProvider,
   type IGpuLaneDispatcher,
   type GpuLaneJob,
+  type MetricsObserver,
 } from "@opuspopuli/common";
 import { withLaneQueue } from "../src/providers/lane-queue";
+import { withLaneMetrics } from "../src/providers/lane-metrics";
 
 /**
  * S7 — batch inference routed through the lane queue
@@ -63,6 +66,57 @@ describe("withLaneQueue (S7)", () => {
     expect(dispatcher.register).toHaveBeenCalledWith("ingestion", endpoint);
     // Not called directly as well — that would be two inferences.
     expect(provider.generate).not.toHaveBeenCalled();
+  });
+
+  // #1429: a typed error does not survive Redis, so the refusal has to
+  // happen here, on the caller's side, or the caller sees an anonymous
+  // failure and cannot tell "too large" from "the model broke".
+  describe("refusing a prompt too large for the window (#1429)", () => {
+    const sized = () => {
+      const dispatcher: IGpuLaneDispatcher = {
+        register: jest.fn(),
+        generate: jest.fn().mockResolvedValue({ text: "queued" }),
+      };
+      const queued = withLaneQueue(provider, dispatcher, "analysis", {
+        ...endpoint,
+        contextTokens: 131072,
+      });
+      return { dispatcher, queued };
+    };
+    const refuse = { maxTokens: 2000, refuseIfPromptExceedsContext: true };
+
+    it("refuses before queueing it", async () => {
+      const { dispatcher, queued } = sized();
+
+      await expect(
+        queued.generate("r".repeat(449000), refuse),
+      ).rejects.toBeInstanceOf(PromptTooLargeError);
+      expect(dispatcher.generate).not.toHaveBeenCalled();
+    });
+
+    it("queues a prompt that fits", async () => {
+      const { queued } = sized();
+
+      await expect(
+        queued.generate("r".repeat(448900), refuse),
+      ).resolves.toEqual({ text: "queued" });
+    });
+
+    it("reaches the caller typed through the metrics wrapper, as built in production", async () => {
+      // buildLane wraps the queue in withLaneMetrics; the bills sync's
+      // instanceof check depends on the error surviving both.
+      const { dispatcher, queued } = sized();
+      const observer: MetricsObserver = {
+        observe: jest.fn(),
+        increment: jest.fn(),
+      };
+      const built = withLaneMetrics(queued, "analysis", observer);
+
+      await expect(
+        built.generate("r".repeat(449000), refuse),
+      ).rejects.toBeInstanceOf(PromptTooLargeError);
+      expect(dispatcher.generate).not.toHaveBeenCalled();
+    });
   });
 
   it("passes chat through, which no production caller uses", async () => {

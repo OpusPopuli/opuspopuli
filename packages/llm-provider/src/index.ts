@@ -23,6 +23,9 @@ export {
   // bless a window the provider flags as truncated.
   CHARS_PER_TOKEN_ESTIMATE,
   MIN_PROMPT_COVERAGE,
+  PROMPT_SIZE_SAFETY_FACTOR,
+  assertPromptFits,
+  overflowFingerprint,
 } from "./providers/ollama.provider.js";
 
 // Context-window validation, shared with the eval harness so `--num-ctx` is

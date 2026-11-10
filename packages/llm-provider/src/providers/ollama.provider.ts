@@ -9,6 +9,7 @@ import {
   GenerateResult,
   ILLMProvider,
   LLMError,
+  PromptTooLargeError,
   type LlmPhaseDurations,
 } from "@opuspopuli/common";
 import {
@@ -47,6 +48,61 @@ export const CHARS_PER_TOKEN_ESTIMATE = 4;
 export const MIN_PROMPT_COVERAGE = 0.5;
 
 /**
+ * Margin on the chars/4 estimate when deciding, BEFORE a call, whether a
+ * prompt fits (#1429).
+ *
+ * The estimate undershoots in the direction that matters: SB 105 estimated
+ * 132,961 tokens and was 145,501 on nemotron, 9% short. 1.15 covers that with
+ * room. A prompt is refused only when its caller asked for refusal
+ * ({@link GenerateOptions.refuseIfPromptExceedsContext}).
+ */
+export const PROMPT_SIZE_SAFETY_FACTOR = 1.15;
+
+/**
+ * A prompt whose estimate is below this share of the window cannot have
+ * overflowed it, so the overflow fingerprint does not apply (see
+ * {@link detectPromptTruncation}).
+ */
+const OVERFLOW_MIN_ESTIMATE_SHARE = 0.6;
+
+/** Ollama's output reservation when a caller sets no `maxTokens`. */
+const DEFAULT_NUM_PREDICT = 512;
+
+/**
+ * Tokens llama.cpp reports reading when a prompt overflows `num_ctx`: half the
+ * window plus two (#1429). Measured on SB 105: 32,768 → 16,386 and
+ * 131,072 → 65,538. An exact match is a cut input whatever the ratio to the
+ * estimate says, which is the case `MIN_PROMPT_COVERAGE` misses: a bill a
+ * little over the window reads at ~53% of the estimate and passes the ratio.
+ */
+export function overflowFingerprint(contextTokens: number): number {
+  return Math.floor(contextTokens / 2) + 2;
+}
+
+/**
+ * Throw {@link PromptTooLargeError} when the caller asked for refusal and the
+ * prompt plus its output reservation will not fit the window.
+ *
+ * Exported because the lane queue runs it on the CALLER's side, before
+ * enqueueing: a typed error does not survive Redis, so a refusal made by the
+ * consumer would reach the caller as a generic failure.
+ */
+export function assertPromptFits(
+  promptChars: number,
+  options: GenerateOptions | undefined,
+  contextTokens: number | undefined,
+): void {
+  if (!options?.refuseIfPromptExceedsContext || !contextTokens) return;
+  const estimatedTokens = Math.ceil(
+    (promptChars / CHARS_PER_TOKEN_ESTIMATE) * PROMPT_SIZE_SAFETY_FACTOR,
+  );
+  const maxTokens = options.maxTokens || DEFAULT_NUM_PREDICT;
+  if (estimatedTokens + maxTokens > contextTokens) {
+    throw new PromptTooLargeError(estimatedTokens, contextTokens, maxTokens);
+  }
+}
+
+/**
  * Did the model read materially less than we sent it?
  *
  * Ollama enforces `num_ctx` by silently truncating the prompt: no error, no
@@ -55,16 +111,29 @@ export const MIN_PROMPT_COVERAGE = 0.5;
  * against ~112,000 tokens of input, and both returned valid JSON describing
  * the first 15% of the document. Output that is wrong in this way is worse
  * than output that fails, because nothing downstream can tell.
+ *
+ * Two tests, either sufficient: the coarse ratio, and — when the window is
+ * known — the exact overflow fingerprint (see {@link overflowFingerprint}).
  */
 function detectPromptTruncation(
   promptChars: number | undefined,
   promptEvalCount: number | undefined,
+  contextTokens: number | undefined,
 ): { promptTruncated?: boolean; promptTokensEstimated?: number } {
   if (!promptChars || !promptEvalCount) return {};
   const estimated = Math.ceil(promptChars / CHARS_PER_TOKEN_ESTIMATE);
+  // The size floor keeps a prompt that is genuinely ctx/2 + 2 tokens long
+  // from being flagged forever: a real overflow sent more than the window,
+  // and with measured tokenizer ratios of 0.84-1.49 its estimate is always
+  // above ~0.67 of it.
+  const overflowed =
+    !!contextTokens &&
+    estimated > contextTokens * OVERFLOW_MIN_ESTIMATE_SHARE &&
+    promptEvalCount === overflowFingerprint(contextTokens);
   return {
     promptTokensEstimated: estimated,
-    promptTruncated: promptEvalCount < estimated * MIN_PROMPT_COVERAGE,
+    promptTruncated:
+      overflowed || promptEvalCount < estimated * MIN_PROMPT_COVERAGE,
   };
 }
 
@@ -82,7 +151,8 @@ function tokenTelemetry(
     done?: boolean;
     done_reason?: string;
   },
-  promptChars?: number,
+  promptChars: number | undefined,
+  contextTokens: number | undefined,
 ): {
   tokensUsed?: number;
   tokensIn?: number;
@@ -96,7 +166,11 @@ function tokenTelemetry(
     tokensIn: data.prompt_eval_count || undefined,
     tokensOut: data.eval_count || undefined,
     finishReason: mapFinishReason(data.done, data.done_reason),
-    ...detectPromptTruncation(promptChars, data.prompt_eval_count),
+    ...detectPromptTruncation(
+      promptChars,
+      data.prompt_eval_count,
+      contextTokens,
+    ),
   };
 }
 
@@ -257,6 +331,9 @@ export interface OllamaConfig {
    * 132,961 estimated is 49%, tripping the 0.5 threshold by one point. A document
    * overflowing a larger window lands ABOVE 50% and passes silently. The
    * threshold was calibrated on 15% truncations, not on half-window overflow.
+   * So when this window is set, the provider also flags the exact overflow
+   * count (`overflowFingerprint`, #1429), and a caller can ask for an oversized
+   * prompt to be refused before the call (`refuseIfPromptExceedsContext`).
    *
    * An earlier revision of this provider sized the window per call. That was
    * reverted: at the 6.6K-token civics prompts it was tested on, `num_ctx`
@@ -457,6 +534,8 @@ export class OllamaLLMProvider implements ILLMProvider {
     const effectiveTimeoutMs =
       options?.requestTimeoutMs ?? this.requestTimeoutMs;
 
+    // Before the host gate and the breaker: a refused prompt reached neither.
+    assertPromptFits(prompt.length, options, this.contextTokens);
     await this.admit("generate");
     // Wrap the call with circuit breaker protection
     const call = this.circuitBreaker.execute(async () => {
@@ -518,7 +597,7 @@ export class OllamaLLMProvider implements ILLMProvider {
 
         const result = {
           text: data.response || "",
-          ...tokenTelemetry(data, prompt.length),
+          ...tokenTelemetry(data, prompt.length, this.contextTokens),
           ...phaseTelemetry(data),
         };
         this.warnIfPromptTruncated(result, prompt.length);
@@ -743,6 +822,11 @@ export class OllamaLLMProvider implements ILLMProvider {
     messages: ChatMessage[],
     options?: GenerateOptions,
   ): Promise<GenerateResult> {
+    assertPromptFits(
+      messages.reduce((n, m) => n + m.content.length, 0),
+      options,
+      this.contextTokens,
+    );
     await this.admit("chat");
     // Wrap the call with circuit breaker protection
     const call = this.circuitBreaker.execute(async () => {
@@ -791,7 +875,7 @@ export class OllamaLLMProvider implements ILLMProvider {
         const chatChars = messages.reduce((n, m) => n + m.content.length, 0);
         const result = {
           text: data.message?.content || "",
-          ...tokenTelemetry(data, chatChars),
+          ...tokenTelemetry(data, chatChars, this.contextTokens),
           ...phaseTelemetry(data),
         };
         this.warnIfPromptTruncated(result, chatChars);
