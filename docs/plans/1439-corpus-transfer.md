@@ -65,9 +65,16 @@ database whose `public` holds a table no class names**.
 |---|---|---|
 | `document_propositions.proposition_id` | FK, `ON DELETE CASCADE` | Remap by `(region_plugin_name, external_id)`. **Refuse** if any is unmatched |
 | `user_jurisdictions.jurisdiction_id` | FK, no action | Remap by `ocd_id`, else `fips_code`. **Refuse** if any is unmatched |
-| `email_correspondence.representative_id`, `.proposition_id` | soft | Remap where matched; report the rest by count, never content |
+| `email_correspondence.representative_id`, `.proposition_id` | soft | Remap where matched (`external_id`; `(region_plugin_name, external_id)`); report the rest by count, never content |
 | relevance and briefing caches | FK, cascade | Emptied before the swap |
 | `user_events.object_id`, `audit_logs.entity_id` | soft, historical | Left as is: they record IDs that were valid at the time |
+
+Audited 2026-11-09 (S4): every non-FK, ID-shaped or JSON column on a user
+table. None but the above holds a corpus ID: the JSON columns hold tags
+(`convictionStrength` is keyed by tag) and extracted text, and petition
+links go only through `document_propositions`. The soft references live in
+`tables.ts` beside the hard ones, and a test fails if one gains a foreign
+key without moving to the refusing list.
 
 ## 4. The three commands
 
@@ -176,26 +183,43 @@ civic tables were each found by the dependency check.
 
 ### 4.3 `swap` (in the window, after W2–W3)
 
-One transaction, `lock_timeout` set so it fails rather than waits:
+As built in S4 (`swap.ts`). Three modes: no flag runs the pre-checks only
+and takes no lock; `--rehearse` runs the **whole transaction and rolls it
+back**; `--apply` commits. The rehearsal is the same script byte for byte,
+so the window runs an operation already proven on the same data. It takes
+the same exclusive locks, so it too runs with writers stopped.
 
-1. Re-run the catalog diff and the dependency checks (no views, triggers,
-   policies or foreign schemas referencing the tables).
-2. Snapshot the user-table counts (users, passkeys, addresses,
-   `document_propositions`, `user_jurisdictions`, `email_correspondence`).
-3. Build the remaps of §3 into temp tables. Any unmatched cascade reference: **abort**.
-4. Empty the per-user caches.
-5. Record the definitions of every FK constraint from a non-civic table into a
-   civic one (`pg_get_constraintdef`).
-6. For each civic table: `DROP TABLE public.<t> CASCADE`. In this schema this
-   drops only those recorded constraints, and the tool asserts that. Then
-   `ALTER TABLE corpus_staging.<t> SET SCHEMA public`.
-7. Apply the remaps to the three user tables.
-8. Recreate the recorded constraints verbatim, validated.
-9. Assert: user-table counts unchanged; civic counts equal the manifest;
-   `corpus_staging` is empty. Then **commit**. Otherwise roll back, and prod is
-   exactly as it was.
-10. `NOTIFY pgrst, 'reload schema'`.
+Pre-checks, outside the transaction: migrations equal the manifest's,
+every table classified, staging present, no dependency findings, and a
+catalog diff of zero.
 
+Then one script, one transaction, `SET LOCAL lock_timeout` (default 5s)
+so it fails rather than waits. Every check is a `DO` block that raises, so
+any failure aborts the whole transaction:
+
+1. Lock the live and staged civic tables, the caches and every user table.
+2. Count every user table that exists on the target.
+3. Build each remap into a temp table, old live ID to new staged ID, by
+   natural key (in order: `ocd_id`, then `fips_code`). **Refuse** any
+   foreign-key reference with no match, by count. Refuse a remap that
+   would chain one ID into another mid-update. Count the unmatched soft
+   references now: once re-pointed, a matched one no longer holds the ID
+   its remap is keyed by. (Counting afterwards over-reported, found by the
+   integration spec.)
+4. Count, then `TRUNCATE`, the per-user caches.
+5. Record every foreign key from a non-civic `public` table into a civic
+   one, and the number of constraints and tables outside the civic set.
+6. `DROP TABLE <all civic> CASCADE` in one statement. Then assert the
+   non-civic tables are all there and exactly the recorded keys went.
+7. `ALTER TABLE corpus_staging.<t> SET SCHEMA public`, each.
+8. Re-point the hard and soft references.
+9. Recreate the recorded keys verbatim, which validates them. Assert every
+   one is back with an identical definition.
+10. Assert user counts unchanged, civic counts equal to the manifest's, and
+    `corpus_staging` empty. Drop it. Report, then `COMMIT` (or `ROLLBACK`).
+11. After commit: `NOTIFY pgrst, 'reload schema'`.
+
+The report is counts per reference, cache and table, never content.
 Post-commit rollback is the W3 backup (`restore-db.sh --quick`), as in §7 of
 the cutover plan.
 
@@ -213,7 +237,7 @@ user content or civic text.**
 | S2 | `export`: scratch DB, the D3 rule, the finance switch, the schema rename, dump, manifest | `export.ts` |
 | S3 | `stage`: checksum, migration check, restore, catalog diff | `stage.ts`, `catalog.ts` |
 | S4 | `swap`: remaps, constraint capture and recreation, the transaction, the assertions | `swap.ts` |
-| S5 | Integration tests on a real database: two databases in the test container (source and target with diverged UUIDs). Cases: round trip; petition-scan links and jurisdictions survive; unmatched cascade reference refused; catalog mismatch refused; failure injected mid-swap leaves the target byte-identical; user counts identical; D3 rule; no user table in the dump. Each mutation-checked | `__tests__/integration/region/corpus-transfer.integration.spec.ts` |
+| S5 | Integration tests on two real databases the spec creates and migrates (a "UAT" source, a "prod" target sharing natural keys but not IDs). **Done 2026-11-09, 7 cases:** export (D3 rule, no user table, clone dropped); stage (identical); an unmatched petition link refused with the target unchanged; a failure at the very last check, after the drop, move, remaps and key rebuild, rolled back with the target unchanged; rehearsal unchanged; the swap (UAT IDs live, a petition link and jurisdictions by OCD ID and by FIPS re-pointed, a soft reference re-pointed and one left, caches empty, prod users untouched, UAT's user absent, keys enforced); a definition difference refused. Mutation-checked: each of six reintroduced faults fails a case | `__tests__/integration/region/corpus-transfer.integration.spec.ts` |
 | S6 | Runbook section: where each command runs (see O1), timings, the W8 procedure | cutover plan, W8 |
 | S7 | G4 rehearsal against a copy of prod on the Studio; the report becomes W8's expected output | — |
 

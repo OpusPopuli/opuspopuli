@@ -114,6 +114,13 @@ export const USER_TABLES = [
    * here — they are columns on the civic tables themselves.
    */
   'default_embeddings_vectors',
+  /**
+   * Bookkeeping from the #1071 signal backfill migration (user ID and the
+   * field it wrote), so its rollback undoes only its own writes. Not a
+   * Prisma model, and present only where that migration's run left it:
+   * found by the runtime check on a freshly migrated database (2026-11-09).
+   */
+  '_backfill_1071_signal_writes',
 ] as const;
 
 /**
@@ -205,5 +212,31 @@ export const REMAPPED_REFERENCES: readonly RemappedReference[] = [
     column: 'jurisdiction_id',
     target: 'jurisdictions',
     naturalKeys: [['ocd_id'], ['fips_code']],
+  },
+];
+
+/**
+ * Columns in kept data that hold a corpus ID with no foreign key behind
+ * them. The swap re-points each where the natural key matches and reports
+ * the rest by count: an unmatched one names a record UAT doesn't have, and
+ * there is nothing better to point it at. Never content, never the user.
+ *
+ * Audited 2026-11-09 against every non-FK, ID-shaped or JSON column on a
+ * user table: `user_events.object_id` and `audit_logs.entity_id` record
+ * IDs that were valid when written and are left alone; the JSON columns
+ * hold tags and extracted text, not IDs.
+ */
+export const SOFT_REFERENCES: readonly RemappedReference[] = [
+  {
+    table: 'email_correspondence',
+    column: 'representative_id',
+    target: 'representatives',
+    naturalKeys: [['external_id']],
+  },
+  {
+    table: 'email_correspondence',
+    column: 'proposition_id',
+    target: 'propositions',
+    naturalKeys: [['region_plugin_name', 'external_id']],
   },
 ];

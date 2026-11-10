@@ -6,6 +6,7 @@ import {
   FINANCE_TABLES,
   INFRA_TABLES,
   REMAPPED_REFERENCES,
+  SOFT_REFERENCES,
   SEED_TABLES,
   USER_TABLES,
   classOf,
@@ -96,7 +97,11 @@ const EDGES = foreignKeys(MODELS).map((fk) => ({
 }));
 
 /** Tables in the classes that no Prisma model defines, each on purpose. */
-const NOT_IN_PRISMA = ['default_embeddings_vectors', ...INFRA_TABLES];
+const NOT_IN_PRISMA = [
+  'default_embeddings_vectors',
+  '_backfill_1071_signal_writes',
+  ...INFRA_TABLES,
+];
 
 const ALL_CLASSIFIED = [
   ...CIVIC_TABLES,
@@ -153,7 +158,7 @@ describe('corpus-transfer table classes (#1439)', () => {
   });
 
   it.each(
-    REMAPPED_REFERENCES.flatMap((r) =>
+    [...REMAPPED_REFERENCES, ...SOFT_REFERENCES].flatMap((r) =>
       r.naturalKeys.map((k): [string, readonly string[]] => [r.target, k]),
     ),
   )('matches %s by a unique key (%s)', (target, key) => {
@@ -162,6 +167,20 @@ describe('corpus-transfer table classes (#1439)', () => {
       (u) => u.length === key.length && key.every((c) => u.includes(c)),
     );
     expect(unique).toBe(true);
+  });
+
+  it('re-points soft references only where no foreign key exists', () => {
+    // A soft reference that gains a foreign key must move to
+    // REMAPPED_REFERENCES, where an unmatched row refuses the swap.
+    const fks = new Set(EDGES.map((e) => `${e.table}.${e.columns.join(',')}`));
+    const both = SOFT_REFERENCES.map((r) => `${r.table}.${r.column}`).filter(
+      (key) => fks.has(key),
+    );
+    expect(both).toEqual([]);
+    for (const r of SOFT_REFERENCES) {
+      const model = [...MODELS.values()].find((m) => m.table === r.table)!;
+      expect([...model.columns.values()]).toContain(r.column);
+    }
   });
 
   it('lets finance be emptied without breaking the rest of the corpus', () => {
