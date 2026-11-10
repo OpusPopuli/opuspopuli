@@ -168,7 +168,9 @@ export function classOf(table: string): TableClass | undefined {
  * personal data, or civic data the swap would silently leave behind.
  */
 export function unclassifiedTables(tables: Iterable<string>): string[] {
-  return [...tables].filter((t) => !CLASS_OF.has(t)).sort();
+  return [...tables]
+    .filter((t) => !CLASS_OF.has(t))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export function isFinanceTable(table: string): boolean {

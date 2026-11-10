@@ -123,15 +123,56 @@ permissions too.
 
 ### 4.2 `stage` (Studio, prod live)
 
+As built in S3 (`stage.ts`, `catalog.ts`).
+
 1. Verify the dump's sha256 against the manifest.
-2. Refuse unless prod's migration list equals the manifest's.
-3. `pg_restore -n corpus_staging` into the prod database. Prod's `public` is
-   not read or written. Run it at low priority; the node keeps serving.
-4. **Catalog diff:** for every table, compare columns (name, type, nullability,
-   default), indexes (definition), and constraints (definition, renamed schema
-   aside) between `corpus_staging.<t>` and `public.<t>`. Any difference is a
-   refusal that names it.
-5. Verify the staged row counts against the manifest.
+2. Refuse unless prod's applied migrations equal the manifest's (naming
+   each one on one side only), every table in `public` is classified, and
+   no `corpus_staging` exists (`--replace` drops a previous one, table by
+   table and then the schema, never `CASCADE`).
+3. **Dependency check:** refuse if anything would make dropping a live civic
+   table do more than drop the user-side foreign keys the swap rebuilds, or
+   would be silently lost with it: views, non-internal triggers, RLS
+   policies, publications that include a civic table or cover all tables
+   (Supabase's `supabase_realtime` exists and is empty today), foreign keys
+   from other schemas, owned sequences. Re-run by the swap.
+4. Read the archive's table of contents again (the export's check), then
+   `pg_restore --single-transaction --exit-on-error` with no `-n` filter.
+   The checksum proves the file is the manifest's; this proves what it
+   restores. No filter is needed, and one would break the restore:
+   `pg_restore -n` skips the schema's own `CREATE SCHEMA` entry (found
+   2026-11-09). A failed restore leaves nothing behind. Prod's `public` is
+   not written. The restore can't be reniced from outside the server; the
+   site is closed until Window B anyway.
+5. **Catalog diff**, for every civic table, staged against live: each
+   column (position, type, nullability, default, identity, generated,
+   collation, column grants), each index definition, each constraint
+   definition and validity, the owner, the table grants, and the table's
+   options (kind, persistence, RLS, replica identity, storage options).
+   Read with an empty `search_path` so both sides print qualified names;
+   the staged schema is then normalised to `public`.
+   - **CHECK constraints are compared after a round trip.** A dump prints a
+     constraint and the restore parses it again, and Postgres doesn't always
+     print the result the same way: `ANY ((ARRAY['a'::varchar])::text[])`
+     came back as `ANY (ARRAY[('a'::varchar)::text])`, so a correct staging
+     showed two false differences. Instead of loosening the comparison,
+     each CHECK is re-added from its printed text to a temporary copy of its
+     table's columns and read back, on both sides. Printing is stable after
+     one round, so a real change still differs.
+   - **Grants are compared.** The local database grants `grafana_ro` on five
+     user tables and no civic ones. If prod grants it on civic tables and
+     UAT doesn't, stage reports the difference and the swap refuses. Fix it
+     by granting on the staged tables, not by skipping the check.
+6. Verify the staged row counts against the manifest.
+
+Stage exits 0 only when staged, identical and counted; otherwise it leaves
+the schema in place for inspection and exits 2.
+
+**Verified 2026-11-09 on `postgres_test`:** a dump from the same database
+staged with no differences. Then, on the staged copy, a changed CHECK
+value, an added column, a changed default, a dropped index and an added
+grant were each reported, and a view, a trigger and a publication on live
+civic tables were each found by the dependency check.
 
 ### 4.3 `swap` (in the window, after W2–W3)
 

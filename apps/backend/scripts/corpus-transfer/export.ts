@@ -236,6 +236,8 @@ export async function tableCounts(
  * the staging schema, and the tables and table data present must be
  * exactly the civic set.
  */
+const byName = (a: string, b: string) => a.localeCompare(b);
+
 export function verifyArchive(toc: string): void {
   const entries = toc
     .split('\n')
@@ -251,14 +253,14 @@ export function verifyArchive(toc: string): void {
   const named = (type: string) =>
     entries
       .map((line) =>
-        new RegExp(`^\\d+; \\d+ \\d+ ${type} ${STAGING_SCHEMA} (\\S+) `).exec(
-          line,
-        ),
+        new RegExp(
+          String.raw`^\d+; \d+ \d+ ${type} ${STAGING_SCHEMA} (\S+) `,
+        ).exec(line),
       )
       .filter((m): m is RegExpExecArray => m !== null)
       .map((m) => m[1])
-      .sort();
-  const civic: string[] = [...CIVIC_TABLES].sort();
+      .sort(byName);
+  const civic: string[] = [...CIVIC_TABLES].sort(byName);
   for (const type of ['TABLE', 'TABLE DATA']) {
     const found = named(type);
     if (found.join() !== civic.join()) {
