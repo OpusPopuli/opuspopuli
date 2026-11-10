@@ -76,27 +76,50 @@ database whose `public` holds a table no class names**.
 
 ### 4.1 `export` (dev machine, against UAT)
 
-1. Refuse unless UAT's `_prisma_migrations` set is complete and has no failed rows.
-2. Create a scratch database `corpus_export_<ts>` and copy **only the civic
-   tables** into it (`pg_dump -t` for each listed table, then restore). UAT itself is never written.
-3. In the scratch DB, apply the export rules:
-   - **#1429 D3:** clear `bills.ai_summary*` unless prompt hash and model
-     digest are set and `ai_summary_source_version` equals the current
-     pubinfo version.
-   - **Finance:** included only with `--include-finance`, which the runbook
-     passes only after D3a records the raw-archive verification.
-4. Move only the civic tables into a new `corpus_staging` schema
-   (`ALTER TABLE ... SET SCHEMA`), then `pg_dump -Fc -n corpus_staging`.
-   Not a rename of `public`: 26 enum types live in `public` and are shared by
-   civic and user tables, so staged tables must keep referencing
-   `public.<enum>`, which exists identically in prod because the migration
-   lists match. Same for extension types (`vector`, `geometry`). The scratch
-   database is therefore built from UAT's schema-only dump plus the civic
-   tables' data, never user rows.
-5. Write a manifest next to the dump: per-table row counts and content hashes,
-   the migration list, the git SHA, the export rules applied with their counts,
-   and the dump's sha256.
-6. Drop the scratch database.
+As built in S2 (`export.ts`); it differs from the first draft in how the
+scratch copy is made, for the reason given in step 2.
+
+1. Refuse unless UAT's `_prisma_migrations` has no unfinished rows, every
+   table in `public` is classified, and every civic table is present.
+2. Refuse while other sessions use UAT, then clone it at file level:
+   `CREATE DATABASE corpus_export_<ts> TEMPLATE <uat>`. UAT itself is never
+   written. A clone, not a table-by-table copy: civic tables depend on 26
+   enum types, extension types (`vector`, `geography`) and operator classes
+   (`vector_cosine_ops`, `gin_trgm_ops`), which a copy would have to rebuild
+   one by one. The clone needs UAT idle, which the D3a freeze implies: stop
+   the stack's services, keep the database up.
+3. In the clone, one transaction:
+   - **#1429 D3:** clear `bills.ai_summary*` unless the prompt hash and model
+     digest are set and, for an official bill, the summary was written from
+     the version the app treats as current (`summaryStateOf` minus the live
+     template and model, which are prod's to judge). Dry run on UAT,
+     2026-11-09: 4,456 stored, **21 ship**, 4,435 cleared.
+   - **Finance:** emptied unless `--include-finance` (O4). It still ships,
+     as definitions with no rows.
+   - Move only the civic tables into a new `corpus_staging` schema
+     (`ALTER TABLE ... SET SCHEMA`). Not a rename of `public`: the enum and
+     extension types stay there, and the staged tables keep referencing
+     `public.<type>`, which prod has from the same migrations.
+4. `pg_dump -Fc -n corpus_staging`.
+5. **Read the dump back** (`pg_restore -l`) and refuse, deleting it, unless
+   every entry is in `corpus_staging` and its tables and table data are
+   exactly the civic set. This, not the way the clone was built, is what
+   keeps personal data in: the clone briefly holds UAT's user rows on the
+   same server, and the check is on the artifact that leaves.
+6. Write a manifest next to the dump: per-table row counts, the migration
+   list, the git SHA, the D3 counts, whether finance is included, and the
+   dump's size and sha256. No per-table content hashes: hashing 15 GB tables
+   on both sides costs more than it proves, given the dump checksum, the row
+   counts and the catalog diff.
+7. Drop the clone, whatever happened.
+
+The tools run inside the database container (`docker exec`), which has
+`pg_dump` at the server's exact version and needs no password; neither host
+has the client binaries. Verified end to end on `postgres_test`
+(2026-11-09): 51 tables, 51 table-data entries, 73 foreign keys, 211
+indexes, no grants, all owned by `postgres`. UAT and prod may carry
+Supabase role grants on these tables, so S3's catalog diff compares
+permissions too.
 
 ### 4.2 `stage` (Studio, prod live)
 
@@ -173,7 +196,12 @@ No migration, no GraphQL change, no federation impact. `pg_dump` and
   and `pipeline_executions` has no natural key to remap by. Nothing outside
   finance references finance (tested), so the two workable fallbacks are
   shipping the finance tables **empty** or **holding Window B** until D3a
-  passes. Owner to decide before G4.
+  passes. **Decided (owner, 2026-11-09): ship empty, transfer later.**
+  Without `--include-finance` the export carries the finance tables'
+  definitions with no rows. After the swap, prod's propositions and
+  representatives carry UAT's IDs, so a later finance-only transfer from
+  the same UAT lines up without remapping; the tool will refuse one whose
+  references don't resolve.
 
 ## 7. Risk register
 
