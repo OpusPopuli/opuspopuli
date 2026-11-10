@@ -45,8 +45,19 @@ From `schema.prisma`, every model:
 - **Per-user caches (emptied, rebuilt on demand):** `bill_relevance_cache`, `proposition_relevance_cache`, `representative_relevance_cache`, `committee_relevance_cache`, `briefing_summary_cache`, `personalized_impact_cache`, `llm_rerank_jobs`
 - **Seed (untouched):** `prompt_templates`, re-seeded by the deploy
 
-The lists are constants in the tool. A test parses `schema.prisma` and fails
-if a model belongs to no class, so a new table can't silently fall through.
+- **Not in Prisma, found in the live `public` schema (S1, 2026-11-09):**
+  `default_embeddings_vectors` is **user** (the knowledge service's RAG chunks
+  of users' documents, keyed by `user_id` and `document_id`, created at boot by
+  `pgvector.provider.ts`; civic embeddings are columns on the civic tables).
+  `_prisma_migrations` and PostGIS's `spatial_ref_sys` are **infra**, kept per
+  database.
+
+The lists are constants in `tables.ts`. `tables.spec.ts` parses
+`schema.prisma` and fails if a model belongs to no class, if a class lists a
+table the schema dropped, if a civic table references a non-civic one, or if
+the foreign keys from kept data into the corpus differ from the declared
+remaps. Prisma can't see every table, so each command also **refuses a
+database whose `public` holds a table no class names**.
 
 ## 3. References from user data into the corpus
 
@@ -74,8 +85,14 @@ if a model belongs to no class, so a new table can't silently fall through.
      pubinfo version.
    - **Finance:** included only with `--include-finance`, which the runbook
      passes only after D3a records the raw-archive verification.
-4. `ALTER SCHEMA public RENAME TO corpus_staging`, then
-   `pg_dump -Fc -n corpus_staging`.
+4. Move only the civic tables into a new `corpus_staging` schema
+   (`ALTER TABLE ... SET SCHEMA`), then `pg_dump -Fc -n corpus_staging`.
+   Not a rename of `public`: 26 enum types live in `public` and are shared by
+   civic and user tables, so staged tables must keep referencing
+   `public.<enum>`, which exists identically in prod because the migration
+   lists match. Same for extension types (`vector`, `geometry`). The scratch
+   database is therefore built from UAT's schema-only dump plus the civic
+   tables' data, never user rows.
 5. Write a manifest next to the dump: per-table row counts and content hashes,
    the migration list, the git SHA, the export rules applied with their counts,
    and the dump's sha256.
@@ -150,6 +167,13 @@ No migration, no GraphQL change, no federation impact. `pg_dump` and
   the same regions. The tool should report a diff, and the owner decides at G4.
 - **O3, object-storage payloads** (D3b) aren't in the database and aren't
   moved by this tool.
+- **O4, finance when D3a does not verify it.** Finance can't be kept from
+  prod beside a replaced corpus: its tables reference `propositions`,
+  `representatives`, `pipeline_executions` and `structural_manifests` by ID,
+  and `pipeline_executions` has no natural key to remap by. Nothing outside
+  finance references finance (tested), so the two workable fallbacks are
+  shipping the finance tables **empty** or **holding Window B** until D3a
+  passes. Owner to decide before G4.
 
 ## 7. Risk register
 
