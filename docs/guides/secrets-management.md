@@ -94,16 +94,20 @@ The current list lives in `apps/backend/src/common/bootstrap.ts` as `VAULT_BACKE
 | `R2_ACCOUNT_ID` | ❌ operator | Cloudflare R2 storage — only needed when `STORAGE_PROVIDER=cloudflare` |
 | `R2_ACCESS_KEY_ID` | ❌ operator | Same |
 | `R2_SECRET_ACCESS_KEY` | ❌ operator | Same |
-| `REDIS_URL` | ✅ defaults to `redis://redis:6379` | Override via `SEED_REDIS_URL` env at deploy time for managed Redis with auth |
-| `SUPABASE_ANON_KEY` | ✅ defaults to well-known self-hosted dev JWT | Override via `SEED_SUPABASE_ANON_KEY` for hosted Supabase projects |
+| `REDIS_URL` | ✅ defaults to `redis://redis:6379` | Override via `SEED_REDIS_URL` env at deploy time for managed Redis with auth. Written only when absent, outside dev stacks |
+| `SUPABASE_ANON_KEY` | Dev stacks only (the demo JWT) | Elsewhere written only from `SEED_SUPABASE_ANON_KEY`, and only when absent. A node seeded before #1441 may hold the demo JWT in Vault, which then overrides the real env value at boot: check and correct it by hand |
 | `FEC_API_KEY` | ❌ operator | data.gov API key for federal campaign-finance data |
-| `SENSITIVE_PROFILE_ENCRYPTION_KEY` | ✅ defaults to deterministic dev key | Consumed by `EncryptionService` via per-consumer DI; override via `SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY` |
+| `SENSITIVE_PROFILE_ENCRYPTION_KEY` | ✅ dev stacks get the published dev key; elsewhere a random key, or `SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY` | Consumed by `EncryptionService` via per-consumer DI. Outside dev stacks it is written only when absent and the published key is refused. A node seeded before #1441 holds the published key: rotate it and re-encrypt |
+
+**Dev defaults are opt-in (#1441).** `db-migrate` writes the published dev values (and creates `admin@opuspopuli.local` / `Admin1234!`) only where `SEED_DEV_DEFAULTS=true`, which the UAT, integration and e2e compose files set. Every other stack, whatever its `NODE_ENV`, never overwrites a secret already in Vault, never writes a published default, and creates the first admin only from `SEED_ADMIN_PASSWORD`. It also leaves out of Vault any secret the container's env already holds, because Vault overrides env at boot. The encryption key is generated only when neither holds one, and that generation is logged loudly: back the key up.
+
+**The Vault RPCs are `service_role` (and `postgres`) only.** Calling them with the anon key or a user JWT is refused.
 
 **`JWT_SECRET`, `AUTH_JWT_SECRET`, `GATEWAY_HMAC_SECRET`, and `API_KEYS` are intentionally NOT in this list.** They need fail-fast semantics on missing-secret rather than the current tolerant warn-and-continue. Migrating them requires extending the hydration mechanism with a strict mode — tracked as a future enhancement.
 
 ### Seeding Operator-Required Secrets
 
-Use the idempotent `vault_create_secret` RPC (installed by `db-migrate`):
+Use the idempotent `vault_create_secret` RPC (installed by `db-migrate`). It upserts, so this is also how a secret is rotated; `db-migrate` itself never will outside dev stacks:
 
 ```sql
 -- From Supabase Studio's SQL Editor, or psql against the project database
@@ -120,7 +124,7 @@ SELECT public.vault_create_secret(
 );
 ```
 
-For prod deploys, prefer setting `SEED_*` env vars on the `db-migrate` job so the seed values come from your deployment secrets and not from a manual SQL session.
+`SEED_*` values only reach `db-migrate` if the node's compose file passes them, and they only take effect for a secret not yet in Vault.
 
 ### Switching Magic-Link Delivery (Inbucket ↔ Resend)
 

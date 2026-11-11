@@ -22,6 +22,8 @@ COPY apps/backend/tsconfig.* ./apps/backend/
 COPY apps/backend/nest-cli.json ./apps/backend/
 COPY apps/backend/src/ ./apps/backend/src/
 COPY apps/backend/__tests__/ ./apps/backend/__tests__/
+# Bootstrap seed (admin + Vault secrets) that db-migrate.sh runs with ts-node
+COPY apps/backend/scripts/bootstrap-seed/ ./apps/backend/scripts/bootstrap-seed/
 
 # Copy Supabase SQL migrations (vault RPC functions etc.) — db-migrate.sh
 # applies these via pg-meta HTTP at startup. Required so the secrets-

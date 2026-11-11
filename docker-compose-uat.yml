@@ -182,6 +182,9 @@ services:
     logging: *logging
     environment:
       <<: *backend-env
+      # Dev-default admin and Vault secrets (#1441). Anything without this
+      # gets the production seed policy: no published defaults, no overwrite.
+      SEED_DEV_DEFAULTS: 'true'
     depends_on:
       opuspopuli-db:
         condition: service_healthy
