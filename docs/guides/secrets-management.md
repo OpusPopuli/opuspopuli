@@ -99,7 +99,7 @@ The current list lives in `apps/backend/src/common/bootstrap.ts` as `VAULT_BACKE
 | `FEC_API_KEY` | ❌ operator | data.gov API key for federal campaign-finance data |
 | `SENSITIVE_PROFILE_ENCRYPTION_KEY` | ✅ dev stacks get the published dev key; elsewhere a random key, or `SEED_SENSITIVE_PROFILE_ENCRYPTION_KEY` | Consumed by `EncryptionService` via per-consumer DI. Outside dev stacks it is written only when absent and the published key is refused. A node seeded before #1441 holds the published key: rotate it and re-encrypt |
 
-**Dev defaults are opt-in (#1441).** `db-migrate` writes the published dev values (and creates `admin@opuspopuli.local` / `Admin1234!`) only where `SEED_DEV_DEFAULTS=true`, which the UAT, integration and e2e compose files set. Every other stack, whatever its `NODE_ENV`, never overwrites a secret already in Vault, never writes a published default, and creates the first admin only from `SEED_ADMIN_PASSWORD`.
+**Dev defaults are opt-in (#1441).** `db-migrate` writes the published dev values (and creates `admin@opuspopuli.local` / `Admin1234!`) only where `SEED_DEV_DEFAULTS=true`, which the UAT, integration and e2e compose files set. Every other stack, whatever its `NODE_ENV`, never overwrites a secret already in Vault, never writes a published default, and creates the first admin only from `SEED_ADMIN_PASSWORD`. It also leaves out of Vault any secret the container's env already holds, because Vault overrides env at boot. The encryption key is generated only when neither holds one, and that generation is logged loudly: back the key up.
 
 **The Vault RPCs are `service_role` (and `postgres`) only.** Calling them with the anon key or a user JWT is refused.
 

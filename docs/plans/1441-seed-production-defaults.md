@@ -18,7 +18,7 @@ Found while testing the fix: every Vault RPC (`vault_read_secret`, `vault_list_s
 
 1. The admin and Vault seeds move from inline `node -e` into `apps/backend/scripts/bootstrap-seed/seed.ts`, run with ts-node, with unit tests.
 2. **Dev defaults are opt-in.** Only `SEED_DEV_DEFAULTS=true` (set in the UAT, integration and e2e compose files) gives the old behaviour. Every other stack gets the strict policy: no published default, no overwrite of an existing secret, and the first admin only from `SEED_ADMIN_PASSWORD`. When absent, the encryption key is generated. `NODE_ENV` isn't used, because `--local-only` nodes run as `development`.
-3. The strict policy lists Vault names first and writes nothing if it can't.
+3. The strict policy lists Vault names first and writes nothing if it can't. A secret the container's env already holds is never written to Vault, which would override it at boot (pre-push review finding). The encryption key is generated only when neither Vault nor env holds one, and that is logged loudly.
 4. `99_vault_functions.sql` revokes `EXECUTE` from `PUBLIC, anon, authenticated`. Only `service_role` and `postgres` keep it. It's re-applied by every deploy.
 5. Shell hardening: the admin id passes to psql as a variable and only if it's a single UUID, and a missing ts-node is reported loudly.
 

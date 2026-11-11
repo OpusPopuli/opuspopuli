@@ -136,6 +136,30 @@ describe('planSecrets in production', () => {
     expect(key).toMatchObject({ action: 'write', value: 'operator-key' });
   });
 
+  it('leaves a secret the env already holds out of Vault, rather than override it', () => {
+    const plans = planSecrets(
+      prod({
+        SENSITIVE_PROFILE_ENCRYPTION_KEY: 'key-the-node-runs-on',
+        REDIS_URL: 'redis://managed:6380',
+      }),
+      NONE,
+      fixedKey,
+    );
+    expect(byName(plans, 'SENSITIVE_PROFILE_ENCRYPTION_KEY')).toMatchObject({
+      action: 'skip',
+    });
+    expect(byName(plans, 'REDIS_URL')).toMatchObject({ action: 'skip' });
+  });
+
+  it('flags a generated key so it is logged loudly', () => {
+    expect(
+      byName(
+        planSecrets(prod(), NONE, fixedKey),
+        'SENSITIVE_PROFILE_ENCRYPTION_KEY',
+      ),
+    ).toMatchObject({ action: 'write', generated: true });
+  });
+
   it('never writes the demo anon JWT', () => {
     const cases: Record<string, string>[] = [
       {},

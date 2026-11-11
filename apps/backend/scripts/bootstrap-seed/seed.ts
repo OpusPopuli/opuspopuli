@@ -35,6 +35,12 @@ export const DEV_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.KR1jqUlyHtwAxCJf6B0QVoRpobrdPEv8ALnNJUlGxPE';
 export const DEV_REDIS_URL = 'redis://redis:6379';
 
+export const BOOTSTRAP_SECRETS = [
+  'SENSITIVE_PROFILE_ENCRYPTION_KEY',
+  'SUPABASE_ANON_KEY',
+  'REDIS_URL',
+] as const;
+
 export interface SeedEnv {
   /** Only with `SEED_DEV_DEFAULTS=true`. Otherwise the strict policy. */
   devDefaults: boolean;
@@ -44,6 +50,12 @@ export interface SeedEnv {
   admin: { email: string; username: string; password?: string };
   secrets: { encryptionKey?: string; anonKey?: string; redisUrl?: string };
   vaultFunctionsFile: string;
+  /**
+   * Bootstrap secret names this container's env already holds. Vault
+   * overrides env at boot (`hydrateEnvFromVault`), so writing one of these
+   * would replace the value the node runs on.
+   */
+  envHolds: ReadonlySet<string>;
 }
 
 const nonEmpty = (v: string | undefined): string | undefined =>
@@ -68,6 +80,7 @@ export function readEnv(env: NodeJS.ProcessEnv): SeedEnv {
     vaultFunctionsFile:
       env.VAULT_FUNCTIONS_FILE ||
       '/usr/src/app/supabase/migrations/99_vault_functions.sql',
+    envHolds: new Set(BOOTSTRAP_SECRETS.filter((n) => nonEmpty(env[n]))),
   };
 }
 
@@ -103,7 +116,13 @@ export function planAdmin(env: SeedEnv, existingId?: string): AdminPlan {
 // ── Vault ────────────────────────────────────────────────────────────────
 
 export type SecretPlan =
-  | { name: string; action: 'write'; value: string; description: string }
+  | {
+      name: string;
+      action: 'write';
+      value: string;
+      description: string;
+      generated?: true;
+    }
   | { name: string; action: 'keep' | 'skip'; reason: string };
 
 interface SecretSpec {
@@ -163,11 +182,21 @@ function usableSupplied(spec: SecretSpec): string | undefined {
 function planStrictSecret(
   spec: SecretSpec,
   present: boolean,
+  inEnv: boolean,
   generate: () => string,
 ): SecretPlan {
   const { name, description } = spec;
   if (present) {
     return { name, action: 'keep', reason: 'present; never overwritten' };
+  }
+  if (inEnv) {
+    // Seeding Vault would override the env value the node already runs on:
+    // for the encryption key, every existing row would become unreadable.
+    return {
+      name,
+      action: 'skip',
+      reason: 'absent from Vault but set in env; env stays the source',
+    };
   }
   const usable = usableSupplied(spec);
   if (usable !== undefined) {
@@ -175,7 +204,13 @@ function planStrictSecret(
   }
   switch (spec.strictFallback) {
     case 'generate':
-      return { name, action: 'write', value: generate(), description };
+      return {
+        name,
+        action: 'write',
+        value: generate(),
+        description,
+        generated: true,
+      };
     case 'default':
       return { name, action: 'write', value: spec.devDefault, description };
     case 'none':
@@ -206,7 +241,12 @@ export function planSecrets(
           value: spec.supplied ?? spec.devDefault,
           description: spec.description,
         }
-      : planStrictSecret(spec, present.has(spec.name), generate),
+      : planStrictSecret(
+          spec,
+          present.has(spec.name),
+          env.envHolds.has(spec.name),
+          generate,
+        ),
   );
 }
 
@@ -392,7 +432,11 @@ async function writeSecret(
   if (res.status >= 400) {
     say(`${plan.name}: write failed (non-fatal), status ${res.status}`);
   } else {
-    say(`${plan.name}: written`);
+    say(
+      plan.generated
+        ? `!!! ${plan.name}: GENERATED a new random value and wrote it to Vault. This node had none in Vault or env. Back it up: data encrypted under it is lost with it. !!!`
+        : `${plan.name}: written to Vault`,
+    );
   }
 }
 
