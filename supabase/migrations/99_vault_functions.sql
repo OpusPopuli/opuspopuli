@@ -9,7 +9,8 @@
 --
 -- Usage:
 --   1. Create secrets in Supabase Studio under Database > Vault
---   2. Access via RPC: supabase.rpc('vault_read_secret', { secret_name: 'my-secret' })
+--   2. Access via RPC with the service-role key only:
+--      supabase.rpc('vault_read_secret', { secret_name: 'my-secret' })
 
 -- Function to read a single decrypted secret by name
 CREATE OR REPLACE FUNCTION public.vault_read_secret(secret_name text)
@@ -33,8 +34,6 @@ BEGIN
 END;
 $$;
 
--- Grant execute permission to authenticated and service_role
-GRANT EXECUTE ON FUNCTION public.vault_read_secret(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.vault_read_secret(text) TO service_role;
 
 -- Optional: Function to list all secret names (not values) for debugging
@@ -106,6 +105,21 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.vault_create_secret(text, text, text) TO service_role;
+
+-- Only the service role may call the Vault RPCs (#1441). CREATE FUNCTION
+-- grants EXECUTE to PUBLIC, and Supabase's default privileges add anon and
+-- authenticated, so any anon-key or user JWT holder reaching Kong could read
+-- and rewrite every secret. Re-applied by db-migrate on every deploy, so a
+-- node that already has the functions is corrected on its next `up -d`.
+REVOKE EXECUTE ON FUNCTION public.vault_read_secret(text) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.vault_list_secrets() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.vault_create_secret(text, text, text) FROM PUBLIC, anon, authenticated;
+-- Explicit, because revoking PUBLIC also removes postgres's implicit EXECUTE
+-- where it isn't the owner, and operators seed secrets from psql as postgres
+-- (docs/guides/secrets-management.md).
+GRANT EXECUTE ON FUNCTION public.vault_read_secret(text) TO postgres;
+GRANT EXECUTE ON FUNCTION public.vault_list_secrets() TO postgres;
+GRANT EXECUTE ON FUNCTION public.vault_create_secret(text, text, text) TO postgres;
 
 -- Comment on functions
 COMMENT ON FUNCTION public.vault_read_secret(text) IS 'Read a decrypted secret from Supabase Vault by name';
