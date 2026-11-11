@@ -438,7 +438,10 @@ jobs:
   e2e:
     name: E2E Tests (shard ${{ matrix.shard }})
     if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04 on 2026-11-11, and Playwright's
+    # `install --with-deps chromium` refuses it ("does not support chromium
+    # on ubuntu26.04-x64"). Return to ubuntu-latest once Playwright does.
+    runs-on: ubuntu-24.04
     needs: [packages-build, test, e2e-shards, changes]
     env:
       # Keep Inbucket's web UI publish out of the ephemeral port range —
