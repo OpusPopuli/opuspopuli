@@ -15,6 +15,18 @@ import { CIVIC_TABLES } from './tables';
 /** `table|kind|name` → definition, schema-qualified, normalised to `public`. */
 export type Catalog = Map<string, string>;
 
+/**
+ * The kind of the one entry per table that records its column order.
+ *
+ * Kept apart from the column definitions, so it can be reported without
+ * refusing. Prod and UAT order `propositions` differently (found in the G4
+ * rehearsal, 2026-11-13): two migrations share the timestamp
+ * `20260907000000`, and UAT applied them in deploy order where prod applied
+ * them in name order. Nothing depends on position: Prisma and every query
+ * name their columns. Every column's own definition must still match exactly.
+ */
+export const COLUMN_ORDER = 'column-order';
+
 const tableList = (): string =>
   `ARRAY[${CIVIC_TABLES.map(literal).join(', ')}]::text[]`;
 
@@ -67,7 +79,6 @@ WITH t AS (
   WHERE n.nspname = ${literal(schema)} AND c.relname = ANY(${tableList()})
 )
 SELECT t.relname, 'column', a.attname, ${one(`concat_ws(' ',
-    '#' || row_number() OVER (PARTITION BY t.relname ORDER BY a.attnum),
     pg_catalog.format_type(a.atttypid, a.atttypmod),
     CASE WHEN a.attnotnull THEN 'NOT NULL' END,
     'DEFAULT ' || pg_catalog.pg_get_expr(d.adbin, d.adrelid),
@@ -82,6 +93,12 @@ SELECT t.relname, 'column', a.attname, ${one(`concat_ws(' ',
 FROM t
 JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0 AND NOT a.attisdropped
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = t.oid AND d.adnum = a.attnum
+UNION ALL
+SELECT t.relname, ${literal(COLUMN_ORDER)}, 'columns',
+    string_agg(a.attname::text, ',' ORDER BY a.attnum)
+FROM t
+JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0 AND NOT a.attisdropped
+GROUP BY t.relname
 UNION ALL
 SELECT t.relname, 'index', ic.relname, ${one(`concat_ws(' ',
     pg_catalog.pg_get_indexdef(i.indexrelid),
@@ -141,15 +158,44 @@ export async function readCatalog(
  */
 export function diffCatalogs(live: Catalog, staged: Catalog): string[] {
   const out: string[] = [];
-  for (const [key, def] of live) {
+  const definitions = (c: Catalog) =>
+    [...c].filter(([key]) => !isColumnOrder(key));
+  for (const [key, def] of definitions(live)) {
     const other = staged.get(key);
     if (other === undefined) out.push(`only live: ${key}`);
     else if (other !== def) out.push(`differs: ${key}: ${def} <> ${other}`);
   }
-  for (const key of staged.keys()) {
+  for (const [key] of definitions(staged)) {
     if (!live.has(key)) out.push(`only staged: ${key}`);
   }
   return out.sort((a, b) => a.localeCompare(b));
+}
+
+const isColumnOrder = (key: string): boolean =>
+  key.split('|')[1] === COLUMN_ORDER;
+
+/**
+ * Tables whose columns are the same but in a different order: reported, not
+ * refused (see {@link COLUMN_ORDER}). A column present on one side only is
+ * a definition difference, which {@link diffCatalogs} reports instead.
+ */
+export function columnOrderNotes(live: Catalog, staged: Catalog): string[] {
+  const notes: string[] = [];
+  for (const [key, order] of live) {
+    const other = staged.get(key);
+    if (!isColumnOrder(key) || other === undefined || other === order) continue;
+    const a = order.split(',');
+    const b = other.split(',');
+    const sameColumns = [...a].sort().join() === [...b].sort().join();
+    if (!sameColumns) continue;
+    const moved = a
+      .map((name, i) =>
+        name === b[i] ? undefined : `#${i + 1} ${name} <> ${b[i]}`,
+      )
+      .filter((x): x is string => x !== undefined);
+    notes.push(`${key.split('|')[0]}: ${moved.join(', ')}`);
+  }
+  return notes.sort((x, y) => x.localeCompare(y));
 }
 
 /**

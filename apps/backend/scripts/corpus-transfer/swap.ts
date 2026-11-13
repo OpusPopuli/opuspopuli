@@ -35,6 +35,7 @@
  */
 import {
   dependencyProblems,
+  columnOrderNotes,
   diffCatalogs,
   readCatalog,
   schemaExists,
@@ -72,6 +73,8 @@ export interface SwapResult {
   report?: SwapReport;
   /** Things that went wrong after a commit, which did not undo it. */
   warnings?: string[];
+  /** Tables whose live column order the swap replaces with the staged one. */
+  columnOrder?: string[];
 }
 
 export type SwapOutcome = 'not committed' | 'committed' | 'unknown';
@@ -471,7 +474,7 @@ async function preflight(
   pg: PgRunner,
   db: string,
   manifest: CorpusManifest,
-): Promise<string[]> {
+): Promise<{ userTables: string[]; columnOrder: string[] }> {
   const target = await inspectSource(pg, db);
   const migrations = migrationDifferences(
     manifest.migrations,
@@ -507,7 +510,10 @@ async function preflight(
       )
     ).map(([t]) => t),
   );
-  return USER_TABLES.filter((t) => present.has(t));
+  return {
+    userTables: USER_TABLES.filter((t) => present.has(t)),
+    columnOrder: columnOrderNotes(live, stagedCatalog),
+  };
 }
 
 export function parseReport(rows: string[][]): SwapReport {
@@ -531,8 +537,14 @@ export async function runSwap(
     throw new RefusalError('lock timeout must be positive, like 5s or 500ms');
   }
   const { manifest } = readManifest(options.manifestPath);
-  const userTables = await preflight(pg, options.targetDb, manifest);
-  if (options.mode === 'check') return { mode: 'check', committed: false };
+  const { userTables, columnOrder } = await preflight(
+    pg,
+    options.targetDb,
+    manifest,
+  );
+  if (options.mode === 'check') {
+    return { mode: 'check', committed: false, columnOrder };
+  }
 
   const commit = options.mode === 'apply';
   let rows: string[][];
@@ -556,11 +568,17 @@ export async function runSwap(
     );
   }
   if (!commit) {
-    return { mode: options.mode, committed: false, report: parseReport(rows) };
+    return {
+      mode: options.mode,
+      committed: false,
+      report: parseReport(rows),
+      columnOrder,
+    };
   }
   return {
     mode: options.mode,
     committed: true,
+    columnOrder,
     ...(await afterCommit(pg, options.targetDb, rows)),
   };
 }
@@ -568,6 +586,8 @@ export async function runSwap(
 function report(result: SwapResult): void {
   for (const warning of result.warnings ?? [])
     console.error(`WARNING: ${warning}`);
+  for (const note of result.columnOrder ?? [])
+    console.log(`column order takes the staged one (harmless): ${note}`);
   if (result.committed && !result.report) {
     console.log('COMMITTED. The corpus is live.');
     return;

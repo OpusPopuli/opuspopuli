@@ -165,7 +165,7 @@ function fakePg(handle: Handler, toc = goodToc()) {
 
 /** A healthy source: no unfinished migrations, all civic tables, idle. */
 function healthy(
-  sessions = 0,
+  sessions: string[][] = [],
   onPrepare?: () => Error | undefined,
   stale: string[] = [],
 ): Handler {
@@ -173,7 +173,7 @@ function healthy(
     if (sql.includes('finished_at IS NULL')) return [['0']];
     if (sql.includes('SELECT migration_name')) return [['m1'], ['m2']];
     if (sql.includes('FROM pg_tables')) return CIVIC_TABLES.map((t) => [t]);
-    if (sql.includes('pg_stat_activity')) return [[String(sessions)]];
+    if (sql.includes('pg_stat_activity')) return sessions;
     if (sql.includes("LIKE 'corpus")) return stale.map((d) => [d]);
     if (sql.includes('ai_summary IS NOT NULL),')) return [['10', '7']];
     if (sql.startsWith('BEGIN;')) return onPrepare?.() ?? [];
@@ -205,13 +205,13 @@ describe('runExport', () => {
   });
 
   it('writes nothing on a dry run', async () => {
-    const { pg, calls } = fakePg(healthy(15));
+    const { pg, calls } = fakePg(healthy([['client backend', '15']]));
     const result = await runExport(pg, options({ apply: false }));
 
     expect(result).toMatchObject({
       applied: false,
       migrations: 2,
-      otherSessions: 15,
+      otherSessions: ['client backend: 15'],
       billSummaries: { present: 10, kept: 3, cleared: 7 },
     });
     expect(created(calls)).toBe(0);
@@ -220,7 +220,7 @@ describe('runExport', () => {
 
   it('drops clones an interrupted export left, before anything else', async () => {
     const { pg, calls } = fakePg(
-      healthy(0, undefined, ['corpus_export_20261101000000']),
+      healthy([], undefined, ['corpus_export_20261101000000']),
     );
     const dry = await runExport(pg, options({ apply: false }));
     expect(dry.staleClones).toEqual(['corpus_export_20261101000000']);
@@ -240,7 +240,7 @@ describe('runExport', () => {
       .mockImplementation(() => undefined);
     const { pg } = fakePg((db, sql) => {
       if (sql.startsWith('DROP DATABASE')) return new Error('drop failed');
-      return healthy(0, () => new Error('boom'))(db, sql);
+      return healthy([], () => new Error('boom'))(db, sql);
     });
     await expect(runExport(pg, options())).rejects.toThrow('boom');
     expect(error.mock.calls.join()).toMatch(/could not drop the clone/);
@@ -248,8 +248,43 @@ describe('runExport', () => {
   });
 
   it('refuses to clone a source other sessions are using', async () => {
-    const { pg, calls } = fakePg(healthy(3));
-    await expect(runExport(pg, options())).rejects.toThrow(RefusalError);
+    const { pg, calls } = fakePg(healthy([['client backend', '3']]));
+    await expect(runExport(pg, options())).rejects.toThrow(
+      /client backend: 3.*stop the stack's services/,
+    );
+    expect(created(calls)).toBe(0);
+  });
+
+  it('advises waiting, not a restart, for any other kind of backend', async () => {
+    const { pg } = fakePg(healthy([['parallel worker', '2']]));
+    const refusal = runExport(pg, options());
+    await expect(refusal).rejects.toThrow(/wait for the other backends/);
+    await expect(refusal).rejects.not.toThrow(/cron\.database_name/);
+  });
+
+  it('never counts autovacuum workers, which the clone signals away', async () => {
+    const { pg, calls } = fakePg(healthy());
+    await runExport(pg, options({ apply: false }));
+    const query = calls.find((c) => c.sql.includes('pg_stat_activity'));
+    expect(query?.sql).toContain("backend_type <> 'autovacuum worker'");
+  });
+
+  // 2026-11-13: pg_cron and pg_net pinned UAT with no client connected.
+  it('refuses a source background workers hold, saying how to free it', async () => {
+    const { pg, calls } = fakePg(
+      healthy([
+        ['pg_cron launcher', '1'],
+        ['pg_net 0.20.0 worker', '1'],
+      ]),
+    );
+    const dry = await runExport(pg, options({ apply: false }));
+    expect(dry.otherSessions).toEqual([
+      'pg_cron launcher: 1',
+      'pg_net 0.20.0 worker: 1',
+    ]);
+    await expect(runExport(pg, options())).rejects.toThrow(
+      /cron\.database_name and pg_net\.database_name/,
+    );
     expect(created(calls)).toBe(0);
   });
 
@@ -288,7 +323,7 @@ describe('runExport', () => {
   });
 
   it('drops the clone when preparing it fails', async () => {
-    const { pg, calls } = fakePg(healthy(0, () => new Error('boom')));
+    const { pg, calls } = fakePg(healthy([], () => new Error('boom')));
     await expect(runExport(pg, options())).rejects.toThrow('boom');
     expect(created(calls)).toBe(1);
     expect(dropped(calls)).toBe(1);

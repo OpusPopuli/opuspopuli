@@ -57,7 +57,8 @@ export interface ExportResult {
   applied: boolean;
   migrations: number;
   billSummaries: BillSummaryRule;
-  otherSessions: number;
+  /** Backends on the source other than this tool's, as `kind: count`. */
+  otherSessions: string[];
   /** Clones left by an interrupted export; `--apply` drops them first. */
   staleClones: string[];
   manifestPath?: string;
@@ -115,15 +116,43 @@ export async function inspectSource(
   return { migrations };
 }
 
-/** Client sessions on `db` other than this tool's. */
-export async function otherSessions(pg: PgRunner, db: string): Promise<number> {
-  const [[count]] = await pg.psql(
+/**
+ * Every backend attached to `db` but this tool's, as `kind: count`.
+ *
+ * Background workers count too: `CREATE DATABASE … TEMPLATE` refuses while
+ * any backend but an autovacuum worker (which it signals away) is attached, and on a Supabase image `pg_cron`'s launcher and
+ * `pg_net`'s worker sit on `postgres` for the life of the server. Counting
+ * only client sessions let the 2026-11-13 dry run pass and the export fail.
+ */
+export async function otherSessions(
+  pg: PgRunner,
+  db: string,
+): Promise<string[]> {
+  const rows = await pg.psql(
     ADMIN_DATABASE,
-    `SELECT count(*) FROM pg_stat_activity
-     WHERE datname = ${literal(db)} AND backend_type = 'client backend'
-       AND pid <> pg_backend_pid()`,
+    `SELECT backend_type, count(*) FROM pg_stat_activity
+     WHERE datname = ${literal(db)} AND pid <> pg_backend_pid()
+       AND backend_type <> 'autovacuum worker'
+     GROUP BY backend_type ORDER BY backend_type`,
   );
-  return Number(count);
+  return rows.map(([kind, count]) => `${kind}: ${count}`);
+}
+
+/** What to do about the backends holding the source open. */
+export function sessionsRefusal(db: string, sessions: string[]): string {
+  const pinned = sessions.some((s) => /^pg_(cron|net)\b/.test(s));
+  const others = sessions.some(
+    (s) => !s.startsWith('client backend:') && !/^pg_(cron|net)\b/.test(s),
+  );
+  const advice = [
+    `stop the stack's services (keep the database running)`,
+    pinned &&
+      `point pg_cron and pg_net elsewhere: set cron.database_name and ` +
+        `pg_net.database_name to an empty database and restart Postgres ` +
+        `(plan 1439 §4.6)`,
+    others && `wait for the other backends to finish`,
+  ].filter(Boolean);
+  return `other backends on ${db} (${sessions.join(', ')}); ${advice.join('; ')}, then retry`;
 }
 
 /**
@@ -439,11 +468,8 @@ export async function runExport(
 
   for (const old of stale) await dropDatabase(pg, old);
 
-  if (sessions > 0) {
-    throw new RefusalError(
-      `${sessions} other session(s) on ${options.sourceDb}; stop the stack's ` +
-        'services (keep the database running) and retry',
-    );
+  if (sessions.length > 0) {
+    throw new RefusalError(sessionsRefusal(options.sourceDb, sessions));
   }
   const clone = `corpus_export_${stamp(options.now)}`;
   await pg.psql(
@@ -485,7 +511,10 @@ function report(result: ExportResult): void {
     );
   }
   if (!result.applied) {
-    console.log(`other sessions on source: ${result.otherSessions}`);
+    console.log(
+      `other backends on source: ${result.otherSessions.join(', ') || 'none'}` +
+        (result.otherSessions.length > 0 ? ' (--apply will refuse)' : ''),
+    );
     console.log('dry run: nothing written. Re-run with --apply to export.');
     return;
   }

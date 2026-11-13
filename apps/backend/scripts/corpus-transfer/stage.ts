@@ -23,6 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
+  columnOrderNotes,
   diffCatalogs,
   dependencyProblems,
   dropStagingSql,
@@ -58,6 +59,8 @@ export interface StageResult {
   applied: boolean;
   dependencies: string[];
   differences: string[];
+  /** Same columns in another order: reported, never a refusal. */
+  columnOrder: string[];
   countMismatches: string[];
   /** Regions enabled, added or reconfigured by the swap (plan O2). */
   regionPlugins: string[];
@@ -216,6 +219,7 @@ export async function runStage(
     applied: false,
     dependencies,
     differences: [],
+    columnOrder: [],
     countMismatches: [],
     regionPlugins: [],
   };
@@ -246,6 +250,7 @@ export async function runStage(
     ...result,
     applied: true,
     differences: diffCatalogs(live, staged),
+    columnOrder: columnOrderNotes(live, staged),
     countMismatches: countMismatches(
       manifest.tables,
       await tableCounts(pg, options.targetDb, STAGING_SCHEMA),
@@ -279,6 +284,10 @@ function report(result: StageResult): void {
     return;
   }
   printList('definition differences, staged vs live', result.differences);
+  printList(
+    'column order differing, staged vs live (harmless; not a refusal)',
+    result.columnOrder,
+  );
   printList('row counts differing from the manifest', result.countMismatches);
   printList(
     'region configuration the swap would change (owner decides, plan O2)',

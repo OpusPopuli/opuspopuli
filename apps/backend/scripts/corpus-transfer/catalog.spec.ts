@@ -1,6 +1,7 @@
 import {
   catalogSql,
   dependencySql,
+  columnOrderNotes,
   diffCatalogs,
   dropStagingSql,
   toCatalog,
@@ -53,7 +54,7 @@ describe('toCatalog', () => {
 
 describe('diffCatalogs', () => {
   const live = new Map([
-    ['bills|column|id', '#1 text NOT NULL'],
+    ['bills|column|id', 'text NOT NULL'],
     ['bills|index|bills_pkey', 'CREATE UNIQUE INDEX …'],
     ['bills|table|grants', 'grafana_ro=r/postgres'],
   ]);
@@ -65,7 +66,7 @@ describe('diffCatalogs', () => {
   it('names what is missing, extra or changed', () => {
     const staged = new Map(live);
     staged.delete('bills|index|bills_pkey');
-    staged.set('bills|column|extra', '#2 text');
+    staged.set('bills|column|extra', 'text');
     staged.set('bills|table|grants', '');
     expect(diffCatalogs(live, staged)).toEqual([
       'differs: bills|table|grants: grafana_ro=r/postgres <> ',
@@ -75,8 +76,48 @@ describe('diffCatalogs', () => {
   });
 });
 
+describe('column order', () => {
+  const live = new Map([
+    ['bills|column|a', 'text'],
+    ['bills|column|b', 'text'],
+    ['bills|column-order|columns', 'a,b'],
+  ]);
+
+  it('is not a definition difference', () => {
+    const staged = new Map(live).set('bills|column-order|columns', 'b,a');
+    expect(diffCatalogs(live, staged)).toEqual([]);
+  });
+
+  it('is reported, naming the positions that moved', () => {
+    const staged = new Map(live).set('bills|column-order|columns', 'b,a');
+    expect(columnOrderNotes(live, staged)).toEqual([
+      'bills: #1 a <> b, #2 b <> a',
+    ]);
+  });
+
+  it('is not reported when the columns themselves differ', () => {
+    const staged = new Map(live)
+      .set('bills|column|c', 'text')
+      .set('bills|column-order|columns', 'a,b,c');
+    expect(columnOrderNotes(live, staged)).toEqual([]);
+    expect(diffCatalogs(live, staged)).toEqual(['only staged: bills|column|c']);
+  });
+
+  it('still refuses a column whose definition changed', () => {
+    const staged = new Map(live).set('bills|column|b', 'integer');
+    expect(diffCatalogs(live, staged)).toEqual([
+      'differs: bills|column|b: text <> integer',
+    ]);
+  });
+});
+
 describe('the catalog query', () => {
   const sql = catalogSql('corpus_staging');
+
+  it('keeps column position out of each column, in its own entry', () => {
+    expect(sql).toContain("'column-order', 'columns'");
+    expect(sql).not.toContain('row_number()');
+  });
 
   it('qualifies every name, so the schemas can be compared', () => {
     expect(sql.startsWith("SET search_path = '';")).toBe(true);
