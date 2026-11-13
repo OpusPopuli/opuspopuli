@@ -282,6 +282,24 @@ interrupted client may not stop a psql already sent its script. Restart
 `region` and `region-worker` after the swap: they load the active region
 plugin at boot.
 
+### 4.6 G4 rehearsal findings (2026-11-13)
+
+The rehearsal used the UAT export `corpus-20261113153233` (from `d59cf2f4`: 51 tables, 75 migrations, finance empty under O4, 4,456 bill summaries stored, 21 shipped, 4,435 cleared) and `restore_drill`, restored on the Studio from `opuspopuli-db-unknown-20261113T110000Z.dump.gz` in 374 s. `restore_drill` matched prod: 79 tables, 75 migrations, extensions, JWT settings, and user counts 18 / 0 / 44 / 2 (users, petition links, user jurisdictions, correspondence). Staging the 422 MB dump over SSH took 3 min 14 s.
+
+**Background workers pin the source.** `pg_cron`'s launcher and `pg_net`'s worker sit on `postgres` for the life of the server (`cron.database_name`, `pg_net.database_name`). `CREATE DATABASE … TEMPLATE` refuses while they're attached, even with every container stopped. The dry run counted only client sessions, passed, and the export failed. It now counts every backend and refuses, naming each kind. To free the source, as superuser (`supabase_admin`, through the container's own `POSTGRES_PASSWORD`):
+1. `CREATE DATABASE bgworker_park`.
+2. `ALTER SYSTEM SET` both settings to `bgworker_park`, then restart the database.
+3. Export.
+4. `ALTER SYSTEM RESET` both, restart, then `DROP DATABASE bgworker_park`.
+
+Autovacuum workers aren't counted, because `CREATE DATABASE` signals them away; any other kind of backend gets "wait and retry". Neither worker does anything in UAT: `pg_cron` has no extension, and the app doesn't use `pg_net`.
+
+**Column order is reported, not refused.** Prod and UAT order `propositions` differently: `search_vector` and `region_plugin_name` are at positions 29 and 30 on prod, and the reverse on UAT. Migrations `20260907000000_bills_propositions_search_vectors` (#1153) and `20260907000000_proposition_region_plugin_name` (#1164) share a timestamp. Prisma applied them in name order on prod, and UAT got them in deploy order. Nothing depends on position, on any civic table: Prisma and every query name their columns, and a review found no column-less `INSERT` or `COPY`, and no `row_to_json`, against any civic table, in the app, scripts, packages or migrations. The swap doesn't depend on position either: the remaps name columns, and the foreign keys are rebuilt from `pg_get_constraintdef`. Position is now a separate per-table catalog entry (`column-order`), which stage prints as a note. Every other attribute of every column must still match exactly. `swap` prints the note too, at the moment the live order is replaced.
+
+**Not compared, and none exist today:** triggers, extended statistics and RLS policies on civic tables. The catalog compares only the `rls` flag. A trigger or policy that reads a civic table *from outside* it is still caught by the dependency check (§4.3), but one defined *on* a civic table would not be compared. There's no `CREATE TRIGGER` in the migrations.
+
+**Drill artifacts, not prod differences.** `restore-db.sh --full` restores as `supabase_admin`. That leaves the scratch database and all its tables owned by `supabase_admin`. Prod has both owned by `postgres`, so stage couldn't create `corpus_staging` and reported 51 owner differences. For the rehearsal, ownership was given to `postgres` to match prod. This is also a disaster-recovery gap in `opuspopuli-node`'s restore: a real `--full` restore of prod would leave the app's `postgres` role unable to alter its own tables, so the next `db-migrate` would fail on any `ALTER TABLE`.
+
 ## 5. Subtasks
 
 | # | Work | Where |

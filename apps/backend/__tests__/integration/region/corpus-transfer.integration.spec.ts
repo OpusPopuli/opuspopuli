@@ -14,7 +14,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runExport } from '../../../scripts/corpus-transfer/export';
-import { dropStagingSql } from '../../../scripts/corpus-transfer/catalog';
+import {
+  columnOrderNotes,
+  diffCatalogs,
+  dropStagingSql,
+  readCatalog,
+} from '../../../scripts/corpus-transfer/catalog';
 import type { CorpusManifest } from '../../../scripts/corpus-transfer/manifest';
 import { containerPg } from '../../../scripts/corpus-transfer/pg';
 import { isReady, runStage } from '../../../scripts/corpus-transfer/stage';
@@ -195,6 +200,7 @@ describe('corpus transfer — integration (#1439)', () => {
       expectSha256: sha,
     });
     expect(result.differences).toEqual([]);
+    expect(result.columnOrder).toEqual([]);
     expect(isReady(result)).toBe(true);
     expect(
       await one(
@@ -378,4 +384,45 @@ describe('corpus transfer — integration (#1439)', () => {
     await expect(swap('check')).rejects.toThrow(/1 definition difference/);
     await pg.psql(DST, dropStagingSql());
   });
+
+  // Prod and UAT order `propositions` differently (G4 rehearsal, 2026-11-13).
+  it('swaps the same columns in another order, reporting it', async () => {
+    await runStage(pg, {
+      targetDb: DST,
+      manifestPath,
+      apply: true,
+      replace: false,
+      expectSha256: sha,
+    });
+    // Same definition, moved to the end of the table.
+    await pg.psql(
+      DST,
+      `ALTER TABLE corpus_staging.bills DROP COLUMN fiscal_impact, ADD COLUMN fiscal_impact text`,
+    );
+    const [live, staged] = await Promise.all([
+      readCatalog(pg, DST, 'public'),
+      readCatalog(pg, DST, 'corpus_staging'),
+    ]);
+    expect(diffCatalogs(live, staged)).toEqual([]);
+    expect(columnOrderNotes(live, staged)).toEqual([
+      expect.stringMatching(/^bills: .*fiscal_impact/),
+    ]);
+    const check = await swap('check');
+    expect(check.columnOrder).toEqual([
+      expect.stringMatching(/^bills: .*fiscal_impact/),
+    ]);
+    const applied = await swap('apply');
+    expect(applied.committed).toBe(true);
+    expect(applied.report?.userTablesChecked).toBeGreaterThan(0);
+    // Live now has the staged order; nothing else about bills changed.
+    expect(
+      await one(
+        DST,
+        `SELECT attname FROM pg_attribute WHERE attrelid = 'public.bills'::regclass
+           AND attnum > 0 AND NOT attisdropped ORDER BY attnum DESC LIMIT 1`,
+      ),
+    ).toBe('fiscal_impact');
+    const after = await readCatalog(pg, DST, 'public');
+    expect(diffCatalogs(live, after)).toEqual([]);
+  }, 180_000);
 });
