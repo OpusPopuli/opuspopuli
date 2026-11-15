@@ -37,9 +37,10 @@
 -- contributor names and addresses. Lawfully public is not the same as
 -- world-readable from our object store.
 --
--- `file_size_limit` is 3 GiB against a ~1.52 GB export. Supabase enforces a
--- per-file limit that defaults to 50 MB, which would reject the export outright
--- and is the second thing that had to be right for retention to work at all.
+-- `file_size_limit` is 3 GiB against a ~1.61 GB export. Supabase also
+-- enforces a server-wide FILE_SIZE_LIMIT, and the lower of the two wins. That
+-- was 50 MB on every stack, so this bucket's 3 GiB never applied and no export
+-- was ever kept (#1447). The compose files now set the server limit to 3 GiB.
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('bulk-archives', 'bulk-archives', false, 3221225472)
 on conflict (id) do update
@@ -48,6 +49,14 @@ on conflict (id) do update
         coalesce(storage.buckets.file_size_limit, 0),
         3221225472
       );
+
+-- With the server limit raised, a bucket with no limit of its own would accept
+-- 3 GiB. `documents` takes users' uploads through signed URLs, and storage is
+-- the only size check on that path. Every bucket without a limit keeps the
+-- 50 MB the old server limit gave it.
+update storage.buckets
+   set file_size_limit = 52428800
+ where file_size_limit is null;
 
 -- ---------------------------------------------------------------------------
 -- 2. The grants hosted Supabase provides and self-hosted does not.
