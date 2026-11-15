@@ -37,6 +37,6 @@ No Prisma migration, and no GraphQL or federation change.
 
 ## Verification
 
-- 20 unit tests. Each strict guard was mutation-checked (removing it fails a test).
+- 22 unit tests. Each strict guard was mutation-checked (removing it fails a test).
 - The full `db-migrate.sh` ran in the real image at 256 MB against local UAT, with and without the opt-in, exiting 0 both times. Local UAT's `service_role` lacks `USAGE` on `public`, so writes there return 403. That's a pre-existing gap, not this change.
 - `99_vault_functions.sql` applied in a rolled-back transaction leaves only `postgres` and `service_role`.
