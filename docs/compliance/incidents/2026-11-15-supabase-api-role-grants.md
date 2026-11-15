@@ -6,7 +6,7 @@
 | Contained | 2026-11-13 (Vault RPCs) and 2026-11-15 (tables), by hand on production |
 | Severity | High: personal information was exposed, with no evidence it was accessed |
 | Data classes | `ca-personal-information` (`users`, `user_addresses`, `email_correspondence`, `passkey_credentials`, and `sensitive_profiles`, which is encrypted); the node's Vault secrets |
-| Status | Contained. Permanent enforcement tracked in a follow-up issue |
+| Status | Contained. Permanent enforcement: #1445 |
 
 ## What was exposed
 
@@ -29,8 +29,9 @@ The anon key is public by design: the frontend ships it.
 
 Kong's logs from its last start (2026-11-01) to containment show:
 
-- 11,884 `/rest/v1` requests, every one from the app's own containers, and
-  every one a Vault call (`rpc/vault_*` and `decrypted_secrets`);
+- 11,884 `/rest/v1` requests (read on 2026-11-15), every one from the app's
+  own containers, and every one a Vault call: 6,019 RPCs (`rpc/vault_*`) and
+  5,865 reads of the `decrypted_secrets` view;
 - outside the Docker network, only requests to `/auth/v1` (sign-in and
   health), and none to `/rest/v1`.
 
@@ -69,7 +70,7 @@ Prisma as `postgres`, and calls PostgREST only for Vault, as `service_role`.
 
 ## Follow-ups
 
-1. Enforce the revoke on every deploy, as `99_vault_functions.sql` does for
+1. #1445: enforce the revoke on every deploy, as `99_vault_functions.sql` does for
    Vault. Otherwise a rebuilt cluster gets Supabase's default privileges back.
 2. #1444, the local database without `USAGE` on `public`: its fix must not
    re-grant `anon` or `authenticated` anything.
