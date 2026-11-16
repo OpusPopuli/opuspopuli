@@ -51,25 +51,13 @@ export class PrismaBulkArchive implements IBulkArchive {
   async archive(candidate: BulkSnapshotCandidate): Promise<string | undefined> {
     const existing = await this.db.bulkSnapshot.findUnique({
       where: { contentHash: candidate.contentHash },
-      select: { id: true, lastModified: true, etag: true },
+      select: { id: true, lastModified: true, etag: true, storageKey: true },
     });
 
     if (existing) {
-      // Backfill provenance onto a row archived before these were captured.
-      //
-      // `last_modified` and `etag` were never written here, so every snapshot
-      // taken since #1277 has them null — and #991 surfaces `last_modified`
-      // to readers as `asOfSource`. Returning early on a content-hash match
-      // would make that permanent: the same export re-fetched is "unchanged",
-      // so the null row would never be corrected and the figure could never
-      // be dated. Only ever fills a null; it does not overwrite a recorded
-      // value, because the bytes are identical by definition here and a
-      // differing header would be the less trustworthy of the two.
       const backfill = {
-        ...(existing.lastModified === null &&
-          candidate.lastModified && { lastModified: candidate.lastModified }),
-        ...(existing.etag === null &&
-          candidate.etag && { etag: candidate.etag }),
+        ...this.provenanceBackfill(existing, candidate),
+        ...(await this.bytesBackfill(existing, candidate)),
       };
       if (Object.keys(backfill).length > 0) {
         await this.db.bulkSnapshot.update({
@@ -77,7 +65,7 @@ export class PrismaBulkArchive implements IBulkArchive {
           data: backfill,
         });
         this.logger.log(
-          `Backfilled snapshot provenance (${Object.keys(backfill).join(', ')}): ${candidate.sourceUrl}`,
+          `Backfilled snapshot (${Object.keys(backfill).join(', ')}): ${candidate.sourceUrl}`,
         );
         return existing.id;
       }
@@ -110,6 +98,48 @@ export class PrismaBulkArchive implements IBulkArchive {
       },
     });
     return created.id;
+  }
+
+  /**
+   * Provenance to fill onto a row archived before it was captured.
+   *
+   * `last_modified` and `etag` were never written here, so every snapshot
+   * taken since #1277 has them null — and #991 surfaces `last_modified` to
+   * readers as `asOfSource`. Returning early on a content-hash match would
+   * make that permanent: the same export re-fetched is "unchanged", so the
+   * null row would never be corrected and the figure could never be dated.
+   * Only ever fills a null; it does not overwrite a recorded value, because
+   * the bytes are identical by definition here and a differing header would
+   * be the less trustworthy of the two.
+   */
+  private provenanceBackfill(
+    existing: { lastModified: string | null; etag: string | null },
+    candidate: BulkSnapshotCandidate,
+  ): { lastModified?: string; etag?: string } {
+    return {
+      ...(existing.lastModified === null &&
+        candidate.lastModified && { lastModified: candidate.lastModified }),
+      ...(existing.etag === null && candidate.etag && { etag: candidate.etag }),
+    };
+  }
+
+  /**
+   * The bytes, for a row recorded without them (#1447).
+   *
+   * A failed upload still writes the row, with `storageKey` null. Without
+   * this, every later fetch of the same export matched that row on content
+   * hash and returned early, so a failure was permanent: raising storage's
+   * size limit could never recover an export already seen while it was too
+   * low. A row whose bytes are stored is never re-uploaded.
+   */
+  private async bytesBackfill(
+    existing: { storageKey: string | null },
+    candidate: BulkSnapshotCandidate,
+  ): Promise<{ storageBucket?: string; storageKey?: string }> {
+    if (existing.storageKey !== null) return {};
+    const storageKey = this.keyFor(candidate);
+    if (!(await this.upload(candidate, storageKey))) return {};
+    return { storageBucket: this.bucket, storageKey };
   }
 
   /**
