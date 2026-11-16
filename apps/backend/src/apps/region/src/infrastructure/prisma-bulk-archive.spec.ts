@@ -88,6 +88,7 @@ describe('PrismaBulkArchive', () => {
       id: 'snap-old',
       lastModified: 'Tue, 13 Oct 2026 08:59:20 GMT',
       etag: '"x"',
+      storageKey: `bulk/aa/${'a'.repeat(64)}`,
     });
 
     await expect(archive.archive(candidate())).resolves.toBe('snap-old');
@@ -218,6 +219,7 @@ describe('PrismaBulkArchive', () => {
       id: 'existing',
       lastModified: null,
       etag: null,
+      storageKey: `bulk/aa/${'a'.repeat(64)}`,
     });
 
     await archive.archive(candidate());
@@ -237,6 +239,7 @@ describe('PrismaBulkArchive', () => {
       id: 'existing',
       lastModified: 'Mon, 12 Oct 2026 08:52:56 GMT',
       etag: '"older"',
+      storageKey: `bulk/aa/${'a'.repeat(64)}`,
     });
 
     await archive.archive(candidate());
@@ -252,6 +255,7 @@ describe('PrismaBulkArchive', () => {
       id: 'existing',
       lastModified: 'Tue, 13 Oct 2026 08:59:20 GMT',
       etag: '"x"',
+      storageKey: `bulk/aa/${'a'.repeat(64)}`,
     });
 
     await archive.archive(candidate());
@@ -260,6 +264,51 @@ describe('PrismaBulkArchive', () => {
     // often it is downloaded. Re-uploading a gigabyte would defeat that.
     expect(storage.putStream).not.toHaveBeenCalled();
     expect(db.bulkSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it('uploads the bytes for a row recorded without them (#1447)', async () => {
+    // A failed upload still writes the row, with storageKey null. Every later
+    // fetch of the same export matched it on content hash and returned early,
+    // so the failure was permanent: on UAT, raising storage's 50 MB limit
+    // still left the 1.6 GB CAL-ACCESS export unkept on the next sync.
+    db.bulkSnapshot.findUnique.mockResolvedValue({
+      id: 'existing',
+      lastModified: 'Tue, 13 Oct 2026 08:59:20 GMT',
+      etag: '"x"',
+      storageKey: null,
+    });
+
+    await expect(archive.archive(candidate())).resolves.toBe('existing');
+
+    expect(storage.putStream).toHaveBeenCalledWith(
+      DEFAULT_ARCHIVE_BUCKET,
+      `bulk/aa/${'a'.repeat(64)}`,
+      expect.any(Function),
+      expect.objectContaining({ contentLength: 1_073_741_824 }),
+    );
+    expect(db.bulkSnapshot.update).toHaveBeenCalledWith({
+      where: { id: 'existing' },
+      data: {
+        storageBucket: DEFAULT_ARCHIVE_BUCKET,
+        storageKey: `bulk/aa/${'a'.repeat(64)}`,
+      },
+    });
+    expect(db.bulkSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it('leaves a row without bytes as it was when the retry fails too', async () => {
+    db.bulkSnapshot.findUnique.mockResolvedValue({
+      id: 'existing',
+      lastModified: 'Tue, 13 Oct 2026 08:59:20 GMT',
+      etag: '"x"',
+      storageKey: null,
+    });
+    storage.putStream.mockRejectedValue(new Error('Payload too large'));
+
+    await expect(archive.archive(candidate())).resolves.toBe('existing');
+
+    // Never records a key for bytes that did not land.
+    expect(db.bulkSnapshot.update).not.toHaveBeenCalled();
   });
 
   it('shards the storage key on the hash prefix', async () => {

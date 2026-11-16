@@ -269,7 +269,10 @@ services:
       POSTGREST_URL: http://supabase-rest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
       DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@opuspopuli-db:5432/postgres
-      FILE_SIZE_LIMIT: 52428800
+      # Server-wide cap; the lower of this and a bucket's file_size_limit wins.
+      # 3 GiB matches bulk-archives (98_storage_buckets.sql) so a 1.6 GB bulk
+      # export can be kept (#1447). Every other bucket keeps its own limit.
+      FILE_SIZE_LIMIT: 3221225472
       STORAGE_BACKEND: file
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
       TENANT_ID: stub
