@@ -1,5 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
+import { buildAiProvenance } from './ai-provenance';
+import type { AiProvenanceModel } from './models/ai-provenance.model';
 
 /** Output shape for the list query. */
 export interface LegislativeCommitteeListItem {
@@ -46,6 +48,14 @@ export interface LegislativeCommitteeDetail {
   activitySummary: string | null;
   activitySummaryGeneratedAt: Date | null;
   activitySummaryWindowDays: number | null;
+  /**
+   * Receipts (#1450). Neither names a source URL: the description is written
+   * from the committee's chamber and name alone
+   * (`legislative-committee-description-generator.service.ts`
+   * `formatCommitteeData`), and the activity summary from our own records.
+   */
+  descriptionProvenance?: AiProvenanceModel;
+  activitySummaryProvenance?: AiProvenanceModel;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -196,6 +206,16 @@ export class LegislativeCommitteeService {
       activitySummary: committee.activitySummary,
       activitySummaryGeneratedAt: committee.activitySummaryGeneratedAt,
       activitySummaryWindowDays: committee.activitySummaryWindowDays,
+      descriptionProvenance: buildAiProvenance(
+        committee,
+        'description',
+        committee.description,
+      ),
+      activitySummaryProvenance: buildAiProvenance(
+        committee,
+        'activitySummary',
+        committee.activitySummary,
+      ),
       createdAt: committee.createdAt,
       updatedAt: committee.updatedAt,
     };

@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
+import { AiProvenanceModel } from './ai-provenance.model';
 
 /**
  * Bills-list filter selector for the Active / Inactive segmented toggle
@@ -196,6 +197,10 @@ export class BillModel {
    *  `{ skip: true }` (input was garbled / not-a-bill). See #741. */
   @Field(() => BillAiSummaryModel, { nullable: true })
   aiSummary?: BillAiSummaryModel;
+
+  /** How `aiSummary` was produced (#1450). */
+  @Field(() => AiProvenanceModel, { nullable: true })
+  aiSummaryProvenance?: AiProvenanceModel;
 
   /** Procedurally dead — vetoed without override, withdrawn, failed
    *  deadline, inactive file, failed passage, or from a closed session

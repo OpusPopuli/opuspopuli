@@ -469,6 +469,66 @@ describe('RegionResolver', () => {
       expect(regionService.getRepresentative).toHaveBeenCalledWith('1');
     });
 
+    it('carries a receipt for each generated text on the page (#1450)', async () => {
+      const fetchedAt = new Date('2026-10-30T00:00:00Z');
+      regionService.getRepresentative.mockResolvedValue({
+        ...mockRepresentative,
+        bio: 'Official biography.',
+        bioSource: 'scraped',
+        // Left over from an earlier AI run: must not reach the receipt.
+        bioLlmModel: 'stale-model',
+        bioGeneratedAt: new Date('2026-01-01T00:00:00Z'),
+        sourceVersion: { sourceUrl: 'https://example.gov/member', fetchedAt },
+        committeesSummary: 'Serves on Health.',
+        committeesSummaryPromptHash: null,
+        committeesSummarySourceHash: 'ab'.repeat(32),
+        committeesSummaryGeneratedAt: new Date('2026-11-02T00:00:00Z'),
+        activitySummary: 'Voted on 12 bills.',
+        activitySummaryPromptHash: '36'.repeat(32),
+        activitySummaryLlmModel: 'nemotron-3.5-lightning:30b-a3b',
+      });
+
+      const result = await resolver.representative('1');
+
+      // The page, word for word — but no fetch date: the sync re-points
+      // sourceVersion at every fetch.
+      expect(result?.bioProvenance).toEqual({
+        kind: 'scraped',
+        sourceUrl: 'https://example.gov/member',
+      });
+      expect(result?.committeesSummaryProvenance).toMatchObject({
+        kind: 'deterministic',
+        generatedAt: new Date('2026-11-02T00:00:00Z'),
+      });
+      expect(result?.activitySummaryProvenance).toMatchObject({
+        kind: 'ai',
+        promptHash: '36'.repeat(32),
+        llmModel: 'nemotron-3.5-lightning:30b-a3b',
+        sourceUrl: undefined,
+      });
+    });
+
+    it('names no source for a generated bio: the model read our record, not the page', async () => {
+      regionService.getRepresentative.mockResolvedValue({
+        ...mockRepresentative,
+        bio: 'Generated biography.',
+        bioSource: 'ai-generated',
+        bioPromptHash: 'c4'.repeat(32),
+        sourceVersion: {
+          sourceUrl: 'https://example.gov/member',
+          fetchedAt: new Date('2026-10-30T00:00:00Z'),
+        },
+      });
+
+      const result = await resolver.representative('1');
+
+      expect(result?.bioProvenance).toMatchObject({
+        kind: 'ai',
+        promptHash: 'c4'.repeat(32),
+      });
+      expect(result?.bioProvenance?.sourceUrl).toBeUndefined();
+    });
+
     it('should return null if representative not found', async () => {
       regionService.getRepresentative.mockResolvedValue(null);
 

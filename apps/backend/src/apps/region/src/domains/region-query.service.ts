@@ -72,7 +72,34 @@ import {
 } from './models/bill.model';
 
 import {
+  buildAiProvenance,
+  SOURCE_VERSION_REF_SELECT,
+  type SourceRef,
+} from './ai-provenance';
+
+/**
+ * What a bill's summary was written from (`region-sync.service.ts`
+ * `billTextFor`). Text from the legislature's bulk export is recorded by
+ * version (`aiSummarySourceVersion`) — never a page — so the receipt names
+ * that version and no URL. Keyed on the recorded version, not on today's
+ * `statusSource`, which can change after the summary was written. A
+ * page-sourced bill's text is fetched from `fullTextUrl`; an official bill
+ * with no recorded version names nothing rather than guess.
+ */
+function billSummarySource(b: {
+  statusSource: string | null;
+  aiSummarySourceVersion: string | null;
+  fullTextUrl: string | null;
+}): SourceRef {
+  if (b.aiSummarySourceVersion) {
+    return { sourceRef: b.aiSummarySourceVersion };
+  }
+  if (b.statusSource === 'official') return {};
+  return { sourceUrl: b.fullTextUrl };
+}
+import {
   mapPropositionRecord,
+  type PropositionRecord,
   type RepresentativeRecord,
 } from './region.service';
 
@@ -122,6 +149,11 @@ const MINUTES_SELECT = {
   sourceUrl: true,
   pageCount: true,
   parsedAt: true,
+  // The receipt (#1450).
+  summaryPromptHash: true,
+  summaryPromptVersion: true,
+  summaryLlmModel: true,
+  summaryLlmDigest: true,
 } as const;
 
 type MinutesRecord = {
@@ -134,6 +166,10 @@ type MinutesRecord = {
   sourceUrl: string;
   pageCount: number | null;
   parsedAt: Date | null;
+  summaryPromptHash: string | null;
+  summaryPromptVersion: string | null;
+  summaryLlmModel: string | null;
+  summaryLlmDigest: string | null;
 };
 
 /** Map a minutes row (summaryClaims is untyped JSON) to the GraphQL model. */
@@ -159,36 +195,16 @@ function toMinutesModel(m: MinutesRecord): MinutesModel {
     summary: m.summary ?? undefined,
     claims,
     sourceUrl: m.sourceUrl,
+    // The row IS that document, so its URL is the summary's source. No fetch
+    // date: a summary is kept when a later fetch fails to re-summarise, so
+    // the latest fetch is not necessarily the one it read.
+    summaryProvenance: buildAiProvenance(m, 'summary', m.summary, {
+      sourceUrl: m.sourceUrl,
+    }),
     pageCount: m.pageCount ?? undefined,
     parsedAt: m.parsedAt ?? undefined,
   };
 }
-
-type PropositionRecord = {
-  id: string;
-  externalId: string;
-  title: string;
-  summary: string;
-  fullText: string | null;
-  status: string;
-  electionDate: Date | null;
-  regionPluginName: string | null;
-  sourceUrl: string | null;
-  analysisSummary: string | null;
-  keyProvisions: unknown;
-  fiscalImpact: string | null;
-  yesOutcome: string | null;
-  noOutcome: string | null;
-  existingVsProposed: unknown;
-  analysisSections: unknown;
-  analysisClaims: unknown;
-  analysisSource: string | null;
-  analysisPromptHash: string | null;
-  analysisGeneratedAt: Date | null;
-  lifecycleStageId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
 
 type CommitteeRecord = {
   id: string;
@@ -700,6 +716,8 @@ export class RegionQueryService {
             orderBy: [{ electionDate: 'desc' }, { createdAt: 'desc' }],
             skip,
             take: take + 1,
+            // Same receipt source as the detail query (#1450).
+            include: { sourceVersion: { select: SOURCE_VERSION_REF_SELECT } },
           }),
           this.db.proposition.count({ where }),
         ]);
@@ -742,6 +760,7 @@ export class RegionQueryService {
     if (ids.length === 0) return [];
     const records = await this.db.proposition.findMany({
       where: { id: { in: ids } },
+      include: { sourceVersion: { select: SOURCE_VERSION_REF_SELECT } },
     });
     const byId = new Map(records.map((r) => [r.id, r]));
     return ids
@@ -754,7 +773,12 @@ export class RegionQueryService {
     // deletedAt filter added with #1153 for consistency with the list and
     // search paths — a soft-deleted proposition must not stay publicly
     // reachable by direct link.
-    return this.db.proposition.findFirst({ where: { id, deletedAt: null } });
+    return this.db.proposition.findFirst({
+      where: { id, deletedAt: null },
+      // The receipt's source (#1450): the archived bytes the analysis read.
+      // Never the whole SourceVersion row — it holds the document itself.
+      include: { sourceVersion: { select: SOURCE_VERSION_REF_SELECT } },
+    });
   }
 
   async getPropositionFunding(
@@ -903,7 +927,12 @@ export class RegionQueryService {
   }
 
   async getRepresentative(id: string) {
-    return this.db.representative.findUnique({ where: { id } });
+    return this.db.representative.findUnique({
+      where: { id },
+      // The bio receipt's source (#1450). Never the whole SourceVersion row —
+      // it holds the document itself.
+      include: { sourceVersion: { select: SOURCE_VERSION_REF_SELECT } },
+    });
   }
 
   async getRepresentativesByDistricts(
@@ -1775,6 +1804,13 @@ export class RegionQueryService {
     createdAt: Date;
     updatedAt: Date;
     aiSummary: Prisma.JsonValue | null;
+    aiSummaryPromptHash: string | null;
+    aiSummaryPromptVersion: string | null;
+    aiSummaryLlmModel: string | null;
+    aiSummaryLlmDigest: string | null;
+    aiSummaryGeneratedAt: Date | null;
+    aiSummarySourceVersion: string | null;
+    statusSource: string | null;
     isDead: boolean;
     isActive: boolean;
     votes: {
@@ -1793,6 +1829,7 @@ export class RegionQueryService {
       representative: { id: string; name: string };
     }[];
   }): BillModel {
+    const aiSummary = this.coerceBillAiSummary(b.aiSummary);
     return {
       id: b.id,
       externalId: b.externalId,
@@ -1813,7 +1850,13 @@ export class RegionQueryService {
       extractedAt: b.extractedAt,
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
-      aiSummary: this.coerceBillAiSummary(b.aiSummary),
+      aiSummary,
+      aiSummaryProvenance: buildAiProvenance(
+        b,
+        'aiSummary',
+        aiSummary,
+        billSummarySource(b),
+      ),
       isDead: b.isDead,
       isActive: b.isActive,
       votes: b.votes.map(

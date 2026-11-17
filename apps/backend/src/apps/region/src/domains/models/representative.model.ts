@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
+import { AiProvenanceModel } from './ai-provenance.model';
 
 /**
  * A physical office location (Capitol or district)
@@ -132,6 +133,30 @@ export class RepresentativeModel {
 
   @Field({ nullable: true })
   activitySummaryWindowDays?: number;
+
+  // Receipts (#1450). Filled by `representative(id)` only — the list and
+  // district queries read narrowed rows, and a receipt computed from columns
+  // that were never loaded would claim "not recorded" falsely.
+
+  @Field(() => AiProvenanceModel, {
+    nullable: true,
+    description: 'How `bio` was produced. Set on `representative(id)` only.',
+  })
+  bioProvenance?: AiProvenanceModel;
+
+  @Field(() => AiProvenanceModel, {
+    nullable: true,
+    description:
+      'How `committeesSummary` was produced. Set on `representative(id)` only.',
+  })
+  committeesSummaryProvenance?: AiProvenanceModel;
+
+  @Field(() => AiProvenanceModel, {
+    nullable: true,
+    description:
+      'How `activitySummary` was produced. Set on `representative(id)` only.',
+  })
+  activitySummaryProvenance?: AiProvenanceModel;
 
   @Field()
   createdAt!: Date;
