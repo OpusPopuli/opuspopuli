@@ -141,7 +141,7 @@ function Source({
           rel="noopener noreferrer"
           className="text-info hover:text-info-strong underline break-all"
         >
-          {web.hostname.replace(/^www\./, "")}
+          {displayUrl(web)}
           <span className="sr-only"> {t("aiReceipt.newTab")}</span>
         </a>
         {when}
@@ -196,6 +196,33 @@ function Prompt({ provenance }: { readonly provenance: AiProvenance }) {
         : short}
     </Link>
   );
+}
+
+/**
+ * The link text: site and path, shortened. The site alone is not enough —
+ * a civics page lists several sources on the same site, and five links all
+ * reading "sos.ca.gov" cannot be told apart.
+ */
+/** A path a reader can read; left encoded if it cannot be decoded. */
+function readablePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+function displayUrl(url: URL): string {
+  const host = url.hostname.replace(/^www\./, "");
+  const path = url.pathname === "/" ? "" : readablePath(url.pathname);
+  const full = host + path;
+  if (full.length <= 60) return full;
+  // Keep the end: pages on one site differ in their last segment, so
+  // "sos.ca.gov/…/referendum" tells two sources apart where a cut-off
+  // "sos.ca.gov/elections/ballot-measures/initiative-and-ref…" does not.
+  const last = path.split("/").filter(Boolean).pop() ?? "";
+  const tail = last.length > 40 ? `${last.slice(0, 39)}…` : last;
+  return `${host}/…/${tail}`;
 }
 
 /**

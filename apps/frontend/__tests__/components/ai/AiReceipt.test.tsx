@@ -152,7 +152,7 @@ describe("AiReceipt", () => {
   it("tells screen-reader users the source opens a new tab", () => {
     render(<AiReceipt provenance={full} />);
     expect(within(valueOf("Source")).getByRole("link")).toHaveAccessibleName(
-      "oag.ca.gov (opens in a new tab)",
+      "oag.ca.gov/system/files/initiatives/pdfs/25-0040A1.pdf (opens in a new tab)",
     );
   });
 
@@ -189,5 +189,64 @@ describe("AiGeneratedBadge", () => {
     render(<AiGeneratedBadge kind={kind} />);
     expect(screen.getByText(label)).toBeInTheDocument();
     expect(screen.queryByText("AI-generated")).toBeNull();
+  });
+});
+
+describe("AiReceipt source link text", () => {
+  it("names the page, not just the site, so sources on one site differ", () => {
+    render(
+      <AiReceipt
+        provenance={{
+          kind: "AI",
+          sourceUrl: "https://www.sos.ca.gov/elections/ballot-measures",
+        }}
+      />,
+    );
+    expect(screen.getByRole("link")).toHaveTextContent(
+      "sos.ca.gov/elections/ballot-measures",
+    );
+  });
+
+  it("shortens a long address", () => {
+    render(
+      <AiReceipt
+        provenance={{
+          kind: "AI",
+          sourceUrl: `https://example.gov/${"a".repeat(80)}`,
+        }}
+      />,
+    );
+    expect(screen.getByRole("link").textContent).toMatch(
+      /^example\.gov\/…\/a{39}…/,
+    );
+  });
+
+  it("keeps a path it cannot decode rather than crashing", () => {
+    render(
+      <AiReceipt
+        provenance={{
+          kind: "AI",
+          sourceUrl: "https://example.gov/bad%E0%A4%A",
+        }}
+      />,
+    );
+    expect(screen.getByRole("link")).toHaveTextContent(
+      "example.gov/bad%E0%A4%A",
+    );
+  });
+
+  it("keeps the last segment, where pages on one site differ", () => {
+    render(
+      <AiReceipt
+        provenance={{
+          kind: "AI",
+          sourceUrl:
+            "https://www.sos.ca.gov/elections/ballot-measures/initiative-and-referendum-faqs",
+        }}
+      />,
+    );
+    expect(screen.getByRole("link")).toHaveTextContent(
+      "sos.ca.gov/…/initiative-and-referendum-faqs",
+    );
   });
 });
