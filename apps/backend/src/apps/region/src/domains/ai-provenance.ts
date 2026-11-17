@@ -203,3 +203,37 @@ export function buildAiProvenance(
     ...source(options),
   };
 }
+
+/** The provenance columns of one `civics_blocks` row — one source page. */
+export interface CivicsBlockProvenanceRow {
+  sourceUrl: string;
+  promptHash: string | null;
+  promptVersion: string | null;
+  llmModel: string | null;
+  llmDigest: string | null;
+  extractedAt: Date;
+}
+
+/**
+ * The receipt for one civics source page (#1450).
+ *
+ * Civics data is merged across pages, so there is no single receipt for it:
+ * the page shows one per source, and each merged item (a term, a stage, a
+ * chamber) finds its own through the `sourceUrl` its `CivicText` already
+ * carries. One extraction call writes a block's content, prompt, model and
+ * `extractedAt` in a single update (`civics-sync.service.ts`), so the
+ * receipt always describes the content beside it and the page is its source.
+ */
+export function civicsSourceProvenance(
+  row: CivicsBlockProvenanceRow,
+): AiProvenanceModel {
+  return {
+    kind: AiProvenanceKind.AI,
+    promptHash: row.promptHash ?? undefined,
+    promptVersion: row.promptVersion ?? undefined,
+    llmModel: row.llmModel ?? undefined,
+    llmDigest: row.llmDigest ?? undefined,
+    generatedAt: row.extractedAt,
+    sourceUrl: row.sourceUrl,
+  };
+}

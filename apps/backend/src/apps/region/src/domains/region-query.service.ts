@@ -73,6 +73,7 @@ import {
 
 import {
   buildAiProvenance,
+  civicsSourceProvenance,
   SOURCE_VERSION_REF_SELECT,
   type SourceRef,
 } from './ai-provenance';
@@ -459,6 +460,8 @@ export class RegionQueryService {
       lifecycleStages,
       sessionScheme: sessionScheme ?? undefined,
       glossary: Array.from(glossary.values()),
+      // One receipt per source page (#1450); items find theirs by sourceUrl.
+      sources: rows.map(civicsSourceProvenance),
     };
   }
 

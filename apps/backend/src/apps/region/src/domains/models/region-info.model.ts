@@ -1,4 +1,5 @@
 import { ObjectType, Field, Int, registerEnumType } from '@nestjs/graphql';
+import { AiProvenanceModel } from './ai-provenance.model';
 
 // ── Civics GQL types ─────────────────────────────────────────────────────────
 
@@ -141,6 +142,14 @@ export class CivicsBlockModel {
 
   @Field(() => [GlossaryEntryModel])
   glossary!: GlossaryEntryModel[];
+
+  /**
+   * One receipt per official page this data was extracted from (#1450).
+   * Each item above names its page in `sourceUrl`; its receipt is the entry
+   * here with the same `sourceUrl`.
+   */
+  @Field(() => [AiProvenanceModel])
+  sources!: AiProvenanceModel[];
 }
 
 // ── DataType enum ─────────────────────────────────────────────────────────────
