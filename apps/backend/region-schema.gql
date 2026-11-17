@@ -2,6 +2,53 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type AiProvenanceModel {
+  kind: AiProvenanceKind!
+
+  """sha256 of the prompt template"""
+  promptHash: String
+  promptVersion: String
+
+  """Model name, e.g. as served"""
+  llmModel: String
+
+  """Exact model build (digest)"""
+  llmDigest: String
+  generatedAt: DateTime
+
+  """
+  The document the output was made from. Absent when it was made from our own records, or when which fetch it read cannot be shown.
+  """
+  sourceUrl: String
+
+  """
+  The exact source version read, where it has no URL. Today only bills use it: the legislature's bill_version_id in its public data export (pubinfo).
+  """
+  sourceRef: String
+
+  """
+  When the source was fetched — set only when this output can be shown to have read that fetch's text. If later fetches left the text unchanged, the latest of them.
+  """
+  sourceFetchedAt: DateTime
+
+  """The publisher's date for that document, where it gives one"""
+  sourcePublishedAt: DateTime
+}
+
+"""How a piece of text was produced"""
+enum AiProvenanceKind {
+  AI
+  DETERMINISTIC
+  MANUAL
+  SCRAPED
+  UNKNOWN
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
 type BillVote {
   id: ID!
   representativeName: String!
@@ -12,11 +59,6 @@ type BillVote {
   motionText: String
   sourceUrl: String!
 }
-
-"""
-A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
-"""
-scalar DateTime
 
 type BillCoAuthor {
   representativeId: ID
@@ -60,6 +102,7 @@ type Bill {
   votes: [BillVote!]!
   coAuthors: [BillCoAuthor!]!
   aiSummary: BillAiSummary
+  aiSummaryProvenance: AiProvenanceModel
   isDead: Boolean!
   isActive: Boolean!
 }
@@ -68,161 +111,6 @@ type PaginatedBills {
   items: [Bill!]!
   total: Int!
   hasMore: Boolean!
-}
-
-type PropositionAnalysisSectionModel {
-  heading: String!
-  startOffset: Int!
-  endOffset: Int!
-}
-
-type PropositionAnalysisClaimModel {
-  claim: String!
-  field: String!
-  sourceStart: Int!
-  sourceEnd: Int!
-  sourceQuote: String
-  verified: Boolean
-  confidence: String
-}
-
-type ExistingVsProposedModel {
-  current: String!
-  proposed: String!
-}
-
-type PropositionModel {
-  id: ID!
-  externalId: String!
-  title: String!
-  summary: String!
-  fullText: String
-  status: PropositionStatus!
-  electionDate: DateTime
-  regionPluginName: String
-  sourceUrl: String
-  analysisSummary: String
-  keyProvisions: [String!]
-  fiscalImpact: String
-  yesOutcome: String
-  noOutcome: String
-  existingVsProposed: ExistingVsProposedModel
-  analysisSections: [PropositionAnalysisSectionModel!]
-  analysisClaims: [PropositionAnalysisClaimModel!]
-  analysisSource: String
-  analysisGeneratedAt: DateTime
-  lifecycleStageId: String
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-"""The status of a proposition"""
-enum PropositionStatus {
-  PENDING
-  PASSED
-  FAILED
-  WITHDRAWN
-}
-
-type PaginatedPropositions {
-  items: [PropositionModel!]!
-  total: Int!
-  hasMore: Boolean!
-}
-
-type JurisdictionModel {
-  id: ID!
-  fipsCode: String
-  ocdId: String
-  name: String!
-  type: JurisdictionType!
-  level: JurisdictionLevel!
-  stateCode: String!
-  parent: JurisdictionModel
-}
-
-enum JurisdictionType {
-  STATE
-  CONGRESSIONAL_DISTRICT
-  STATE_SENATE_DISTRICT
-  STATE_ASSEMBLY_DISTRICT
-  COUNTY
-  CITY
-  SCHOOL_DISTRICT_UNIFIED
-  SCHOOL_DISTRICT_ELEMENTARY
-  SCHOOL_DISTRICT_HIGH
-  COMMUNITY_COLLEGE_DISTRICT
-  WATER_DISTRICT
-  FIRE_DISTRICT
-  TRANSIT_DISTRICT
-  SPECIAL_DISTRICT
-  COUNTY_SUPERVISOR_DISTRICT
-}
-
-enum JurisdictionLevel {
-  FEDERAL
-  STATE
-  COUNTY
-  MUNICIPAL
-  DISTRICT
-}
-
-type UserJurisdictionModel {
-  resolvedBy: String!
-  resolvedAt: DateTime!
-  jurisdiction: JurisdictionModel!
-}
-
-type ResultJurisdiction {
-  level: JurisdictionLevel!
-  name: String!
-  id: ID
-}
-
-type SearchTypeCount {
-  type: SearchResultType!
-  count: Int!
-}
-
-"""Restrict unified search to one entity type"""
-enum SearchResultType {
-  BILL
-  PROPOSITION
-}
-
-type RegionSearchItem {
-  result: RegionSearchEntity!
-  snippet: String
-  rank: Float!
-  jurisdiction: ResultJurisdiction!
-}
-
-"""A bill or proposition returned by unified search"""
-union RegionSearchEntity = Bill | PropositionModel
-
-type PaginatedRegionSearch {
-  items: [RegionSearchItem!]!
-  total: Int!
-  hasMore: Boolean!
-  billCount: Int!
-  propositionCount: Int!
-  searchedTypes: [SearchResultType!]!
-  counts: [SearchTypeCount!]!
-}
-
-type SearchSuggestion {
-  id: ID!
-  kind: SearchSuggestionKind!
-  label: String!
-  sublabel: String
-  jurisdiction: ResultJurisdiction!
-}
-
-"""Typeahead suggestion row kind"""
-enum SearchSuggestionKind {
-  DIRECT
-  BILL
-  PROPOSITION
 }
 
 type CivicText {
@@ -369,6 +257,192 @@ enum SyncTriggerSource {
   MANIFEST_READY
 }
 
+type PropositionAnalysisSectionModel {
+  heading: String!
+  startOffset: Int!
+  endOffset: Int!
+}
+
+type PropositionAnalysisClaimModel {
+  claim: String!
+  field: String!
+  sourceStart: Int!
+  sourceEnd: Int!
+  sourceQuote: String
+  verified: Boolean
+  confidence: String
+}
+
+type ExistingVsProposedModel {
+  current: String!
+  proposed: String!
+}
+
+type PropositionModel {
+  id: ID!
+  externalId: String!
+  title: String!
+  summary: String!
+  fullText: String
+  status: PropositionStatus!
+  electionDate: DateTime
+  regionPluginName: String
+  sourceUrl: String
+  analysisSummary: String
+  keyProvisions: [String!]
+  fiscalImpact: String
+  yesOutcome: String
+  noOutcome: String
+  existingVsProposed: ExistingVsProposedModel
+  analysisSections: [PropositionAnalysisSectionModel!]
+  analysisClaims: [PropositionAnalysisClaimModel!]
+  analysisSource: String
+  analysisGeneratedAt: DateTime
+  analysisProvenance: AiProvenanceModel
+  lifecycleStageId: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""The status of a proposition"""
+enum PropositionStatus {
+  PENDING
+  PASSED
+  FAILED
+  WITHDRAWN
+}
+
+type PaginatedPropositions {
+  items: [PropositionModel!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type JurisdictionModel {
+  id: ID!
+  fipsCode: String
+  ocdId: String
+  name: String!
+  type: JurisdictionType!
+  level: JurisdictionLevel!
+  stateCode: String!
+  parent: JurisdictionModel
+}
+
+enum JurisdictionType {
+  STATE
+  CONGRESSIONAL_DISTRICT
+  STATE_SENATE_DISTRICT
+  STATE_ASSEMBLY_DISTRICT
+  COUNTY
+  CITY
+  SCHOOL_DISTRICT_UNIFIED
+  SCHOOL_DISTRICT_ELEMENTARY
+  SCHOOL_DISTRICT_HIGH
+  COMMUNITY_COLLEGE_DISTRICT
+  WATER_DISTRICT
+  FIRE_DISTRICT
+  TRANSIT_DISTRICT
+  SPECIAL_DISTRICT
+  COUNTY_SUPERVISOR_DISTRICT
+}
+
+enum JurisdictionLevel {
+  FEDERAL
+  STATE
+  COUNTY
+  MUNICIPAL
+  DISTRICT
+}
+
+type UserJurisdictionModel {
+  resolvedBy: String!
+  resolvedAt: DateTime!
+  jurisdiction: JurisdictionModel!
+}
+
+type ResultJurisdiction {
+  level: JurisdictionLevel!
+  name: String!
+  id: ID
+}
+
+type SearchTypeCount {
+  type: SearchResultType!
+  count: Int!
+}
+
+"""Restrict unified search to one entity type"""
+enum SearchResultType {
+  BILL
+  PROPOSITION
+}
+
+type RegionSearchItem {
+  result: RegionSearchEntity!
+  snippet: String
+  rank: Float!
+  jurisdiction: ResultJurisdiction!
+}
+
+"""A bill or proposition returned by unified search"""
+union RegionSearchEntity = Bill | PropositionModel
+
+type PaginatedRegionSearch {
+  items: [RegionSearchItem!]!
+  total: Int!
+  hasMore: Boolean!
+  billCount: Int!
+  propositionCount: Int!
+  searchedTypes: [SearchResultType!]!
+  counts: [SearchTypeCount!]!
+}
+
+type SearchSuggestion {
+  id: ID!
+  kind: SearchSuggestionKind!
+  label: String!
+  sublabel: String
+  jurisdiction: ResultJurisdiction!
+}
+
+"""Typeahead suggestion row kind"""
+enum SearchSuggestionKind {
+  DIRECT
+  BILL
+  PROPOSITION
+}
+
+type FundingBasisModel {
+  """Amount inside totalSpent whose spend date is unreported."""
+  undatedAmount: Float!
+  undatedCount: Int!
+
+  """Amount inside totalSpent whose payee is unreported."""
+  unattributedAmount: Float!
+  unattributedCount: Int!
+
+  """
+  Contributions reported in aggregate with no detail rows, and therefore ABSENT from totalRaised.
+  """
+  unitemizedAmount: Float!
+
+  """
+  How many filings here were reconciled against their summary totals. Zero makes unitemizedAmount ambiguous: it then means "never checked", not "nothing hidden".
+  """
+  reconciledFilings: Int!
+
+  """
+  last-modified of the bulk export behind these figures. Null when unrecorded — our own sync time is a different fact and is not substituted.
+  """
+  asOfSource: DateTime
+
+  """
+  False when these numbers were not computed at all. The zeros then mean "nobody looked", not "nothing is missing", and the surface must not present the total as fully described.
+  """
+  measured: Boolean!
+}
+
 type TopDonorModel {
   donorName: String!
   totalAmount: Float!
@@ -388,6 +462,7 @@ type SidedFundingModel {
   committeeCount: Int!
   topDonors: [TopDonorModel!]!
   primaryCommittees: [CommitteeSummaryModel!]!
+  basis: FundingBasisModel!
 }
 
 type PropositionFundingModel {
@@ -425,6 +500,7 @@ type RepresentativeFundingModel {
   topDonors: [FinanceTopDonorModel!]!
   topEmployers: [FinanceTopEmployerModel!]!
   committees: [RepFundingCommitteeModel!]!
+  basis: FundingBasisModel!
 }
 
 type MeetingModel {
@@ -460,6 +536,33 @@ type ClaimBackfillResultModel {
   claimsWritten: Int!
   failed: Int!
   distribution: EvidenceDistributionModel!
+}
+
+type SupersessionTableResultModel {
+  superseded: Int!
+  filingsAffected: Int!
+}
+
+type SupersessionResultModel {
+  contributions: SupersessionTableResultModel!
+  expenditures: SupersessionTableResultModel!
+  independentExpenditures: SupersessionTableResultModel!
+  committeeMeasureFilings: SupersessionTableResultModel!
+}
+
+type ReconciliationSummaryModel {
+  reconciled: Int!
+  overItemizedContributions: Int!
+  overItemizedExpenditures: Int!
+  withUnitemized: Int!
+  unitemizedTotal: Float!
+  unknownSchedule: Int!
+  versionMismatch: Int!
+}
+
+type SupersedeAmendmentsResultModel {
+  supersession: SupersessionResultModel!
+  reconciliation: ReconciliationSummaryModel!
 }
 
 type MinutesSummaryCitationModel {
@@ -500,6 +603,7 @@ type MinutesModel {
   summary: String
   claims: [MinutesSummaryClaimModel!]!
   sourceUrl: String!
+  summaryProvenance: AiProvenanceModel
   pageCount: Int
   parsedAt: DateTime
 }
@@ -555,6 +659,17 @@ type RepresentativeModel {
   activitySummary: String
   activitySummaryGeneratedAt: DateTime
   activitySummaryWindowDays: Float
+
+  """How `bio` was produced. Set on `representative(id)` only."""
+  bioProvenance: AiProvenanceModel
+
+  """
+  How `committeesSummary` was produced. Set on `representative(id)` only.
+  """
+  committeesSummaryProvenance: AiProvenanceModel
+
+  """How `activitySummary` was produced. Set on `representative(id)` only."""
+  activitySummaryProvenance: AiProvenanceModel
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -614,9 +729,9 @@ type ExpenditureModel {
   id: ID!
   externalId: String!
   committeeId: String!
-  payeeName: String!
+  payeeName: String
   amount: Float!
-  date: DateTime!
+  date: DateTime
   purposeDescription: String
   expenditureCode: String
   candidateName: String
@@ -695,6 +810,14 @@ type LegislativeCommitteeDetailModel {
   activitySummary: String
   activitySummaryGeneratedAt: DateTime
   activitySummaryWindowDays: Float
+
+  """
+  How `description` was produced (#1450). Written from the committee's chamber and name only, so it names no source.
+  """
+  descriptionProvenance: AiProvenanceModel
+
+  """How `activitySummary` was produced (#1450)."""
+  activitySummaryProvenance: AiProvenanceModel
   createdAt: DateTime!
   updatedAt: DateTime!
   relevanceExplanation: String
@@ -873,6 +996,7 @@ type Query {
   regionSyncJob(jobId: ID!): RegionSyncJob
   recentRegionSyncJobs(limit: Int = 20): [RegionSyncJob!]!
   scheduledSyncJobs: [ScheduledSyncJob!]!
+  billSummaryStatus(billId: ID!): BillSummaryStatus!
 }
 
 """
@@ -884,17 +1008,35 @@ enum BillLifecycle {
   ALL
 }
 
+"""
+Where a bill summary stands: CURRENT, STALE (shown, refresh possible), MISSING, PENDING, UNAVAILABLE (capped or recently failed).
+"""
+enum BillSummaryStatus {
+  CURRENT
+  STALE
+  MISSING
+  PENDING
+  UNAVAILABLE
+}
+
 type Mutation {
   regeneratePropositionAnalysis(id: ID!): PropositionModel
   regenerateMinutesSummaries(body: String, limit: Int): Int!
   backfillClaims(limit: Int): ClaimBackfillResultModel!
   backfillPropositionSummaries(limit: Int): Int!
+  reconcileFilings: ReconciliationSummaryModel!
+  supersedeAmendments: SupersedeAmendmentsResultModel!
   invalidateManifest(regionId: String!, sourceUrl: String!): Int!
   updateRegionPlugin(name: String!, enabled: Boolean!, cascade: Boolean! = false): RegionPluginModel!
   refreshActiveRegion: Boolean!
   refreshBoundaries(force: Boolean): RegionSyncJob!
   syncRegionData(dataTypes: [DataType!], depth: SyncDepth, regionId: String, maxReps: Int, maxBills: Int, maxDocuments: Int, resetWatermark: Boolean): RegionSyncJob!
   cancelRegionSync(jobId: ID!, reason: String): Boolean!
+
+  """
+  Ask for a bill summary when it is missing or stale. Capped per day overall and per reader.
+  """
+  requestBillSummary(billId: ID!): BillSummaryStatus!
 }
 
 """

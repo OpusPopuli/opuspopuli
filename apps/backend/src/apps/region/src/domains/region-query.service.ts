@@ -154,6 +154,7 @@ const MINUTES_SELECT = {
   summaryPromptVersion: true,
   summaryLlmModel: true,
   summaryLlmDigest: true,
+  summaryGeneratedAt: true,
 } as const;
 
 type MinutesRecord = {
@@ -170,6 +171,7 @@ type MinutesRecord = {
   summaryPromptVersion: string | null;
   summaryLlmModel: string | null;
   summaryLlmDigest: string | null;
+  summaryGeneratedAt: Date | null;
 };
 
 /** Map a minutes row (summaryClaims is untyped JSON) to the GraphQL model. */

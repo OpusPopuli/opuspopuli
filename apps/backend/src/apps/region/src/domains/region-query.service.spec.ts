@@ -1458,6 +1458,7 @@ describe('RegionQueryService — query methods', () => {
       summaryPromptVersion: 'v1',
       summaryLlmModel: 'nemotron-3.5-lightning:30b-a3b',
       summaryLlmDigest: 'e7a64ff15fb1',
+      summaryGeneratedAt: new Date('2026-11-17T12:00:00Z'),
     };
 
     it('selects the receipt columns, and never the archived bytes', async () => {
@@ -1469,6 +1470,7 @@ describe('RegionQueryService — query methods', () => {
       expect(select).toMatchObject({
         summaryPromptHash: true,
         summaryLlmModel: true,
+        summaryGeneratedAt: true,
       });
       expect(select).not.toHaveProperty('sourceVersion');
     });
@@ -1480,7 +1482,7 @@ describe('RegionQueryService — query methods', () => {
         kind: 'ai',
         promptHash: '0f'.repeat(32),
         promptVersion: 'v1',
-        generatedAt: undefined,
+        generatedAt: new Date('2026-11-17T12:00:00Z'),
         sourceUrl: 'https://example.gov/minutes.pdf',
       });
       expect(result?.summaryProvenance?.sourceFetchedAt).toBeUndefined();

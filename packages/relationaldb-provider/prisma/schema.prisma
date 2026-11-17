@@ -1401,6 +1401,8 @@ model Minutes {
   /// representatives pattern): what the prompt was given, and the settings.
   summarySourceHash     String?   @map("summary_source_hash") @db.VarChar(64)
   summaryConfigHash     String?   @map("summary_config_hash") @db.VarChar(64)
+  /// When `summary` was generated (#1450). NULL for summaries that predate it.
+  summaryGeneratedAt    DateTime? @map("summary_generated_at") @db.Timestamptz
   /// The skip key the last summary attempt FAILED under (D5, §4c): not
   /// retried once it has failed 3 times under it. Cleared on a successful write.
   summaryFailedKey      String?   @map("summary_failed_key") @db.VarChar(80)

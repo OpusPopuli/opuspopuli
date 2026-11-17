@@ -200,6 +200,8 @@ describe('MinutesSummaryService', () => {
     // The skip key's input and config axes ride the same write.
     expect(data.summarySourceHash).toMatch(/^[0-9a-f]{64}$/);
     expect(data.summaryConfigHash).toEqual(expect.any(String));
+    // The receipt's "generated" date (#1450) rides the same write.
+    expect(data.summaryGeneratedAt).toBeInstanceOf(Date);
     expect(data.summary).toBe(
       'The Assembly advanced AB 1234 out of committee.',
     );

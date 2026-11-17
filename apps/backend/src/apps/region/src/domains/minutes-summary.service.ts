@@ -451,6 +451,8 @@ export class MinutesSummaryService
           summaryLlmDigest: generated.provenance.llmModelDigest,
           summarySourceHash: live.sourceHash,
           summaryConfigHash: live.configHash,
+          // What the receipt shows as "generated" (#1450).
+          summaryGeneratedAt: new Date(),
           summaryFailedKey: null,
           summaryFailedAttempts: 0,
         },
