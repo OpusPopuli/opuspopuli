@@ -28,6 +28,8 @@ import { PartyBadge } from "@/components/region/PartyBadge";
 import { CommitteeActivityStats } from "@/components/region/CommitteeActivityStats";
 import { CommitteeActivityFeed } from "@/components/region/CommitteeActivityFeed";
 import { ActivitySummary } from "@/components/region/ActivitySummary";
+import { AiGeneratedBadge } from "@/components/ai/AiGeneratedBadge";
+import { AiReceipt } from "@/components/ai/AiReceipt";
 import { CivicTerm } from "@/components/civics/CivicTerm";
 import { BillsList } from "@/components/region/BillListItem";
 import { ChamberBadge } from "@/components/region/ChamberBadge";
@@ -93,6 +95,7 @@ function Snapshot({
   readonly committee: LegislativeCommitteeDetail;
   readonly onNext: () => void;
 }) {
+  const { t } = useTranslation("common");
   const chair = committee.members.find((m) => m.role === "Chair");
 
   return (
@@ -130,9 +133,22 @@ function Snapshot({
 
       <SectionTitle>What this committee does</SectionTitle>
       {committee.description ? (
-        <p className="text-content-dim leading-relaxed mb-6">
-          {committee.description}
-        </p>
+        <div className="mb-6">
+          <div className="mb-2">
+            <AiGeneratedBadge
+              kind={committee.descriptionProvenance?.kind ?? "AI"}
+            />
+          </div>
+          <p className="text-content-dim leading-relaxed">
+            {committee.description}
+          </p>
+          {/* Written from the committee's name and chamber alone (#1451):
+              the receipt says so rather than implying a source. */}
+          <AiReceipt
+            provenance={committee.descriptionProvenance}
+            madeFrom={t("aiReceipt.madeFrom.committeeName")}
+          />
+        </div>
       ) : (
         <ComingSoon
           title="Description coming soon"
@@ -278,6 +294,7 @@ function Hearings({
         summary={committee.activitySummary}
         generatedAt={committee.activitySummaryGeneratedAt}
         windowDays={committee.activitySummaryWindowDays}
+        provenance={committee.activitySummaryProvenance}
       />
 
       <CommitteeActivityStats committeeId={committee.id} />

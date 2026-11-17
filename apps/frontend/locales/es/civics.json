@@ -51,7 +51,6 @@
       "empty": "Aún no se ha generado una síntesis con IA para esta sesión."
     },
     "aiPanel": {
-      "badge": "Generado por IA",
       "heading": "Síntesis de la sesión",
       "disclaimer": "Puede contener imprecisiones — verifique con el acta original antes de citar."
     },
@@ -117,5 +116,9 @@
   },
   "propFinance": {
     "spent": "{{amount}} gastados"
+  },
+  "sources": {
+    "title": "De dónde viene esto",
+    "intro": "Las explicaciones en lenguaje sencillo de esta página las escribió un modelo de IA a partir de estas páginas oficiales. Cada término y etapa indica la página de la que proviene."
   }
 }

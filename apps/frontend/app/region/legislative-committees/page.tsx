@@ -12,6 +12,7 @@ import {
 } from "@/lib/graphql/region";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { ChamberBadge } from "@/components/region/ChamberBadge";
+import { AiGeneratedBadge } from "@/components/ai/AiGeneratedBadge";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -57,9 +58,15 @@ function CommitteeCard({
             {committee.name}
           </h3>
           {committee.description ? (
-            <p className="mt-2 text-sm text-content-dim line-clamp-2">
-              {committee.description}
-            </p>
+            <>
+              {/* Every description is model-written (#1450, #1451). */}
+              <div className="mt-2">
+                <AiGeneratedBadge />
+              </div>
+              <p className="mt-1 text-sm text-content-dim line-clamp-2">
+                {committee.description}
+              </p>
+            </>
           ) : null}
         </div>
         <ChamberBadge chamber={committee.chamber} />

@@ -65,6 +65,13 @@ currently false. This plan closes the last mile: API exposure plus a shared rece
 - **Representative receipts are set on `representative(id)` only.** The list and district queries read narrowed rows.
 - **Minutes `summaryGeneratedAt`** was added by migration `20261117120000_minutes_summary_generated_at`, approved by the owner on 2026-11-17. The writer sets it from now on; existing summaries keep NULL ("not recorded") until they are next regenerated.
 - **AI bios with no generated date are not a writer bug.** `bioGeneratedAt` and its writer arrived together on 2026-10-27 (reps Phase B, `7cb45517`), and the 107 UAT bios were generated before that, then judged current and never rewritten. They show "not recorded" until regenerated; back-filling a guessed date would be worse.
+- **Civics and glossary (subtask 6) use one receipt per source page, not a per-term receipt and not the `glossary_entries` table.**
+  - `CivicsBlock.sources` lists a receipt for each `civics_blocks` row. Every merged item already names its page in `sourceUrl`, which is how a reader matches a term to its receipt.
+  - Switching the glossary to `glossary_entries` would change what readers see, while the receipts could not differ: the same extraction call writes both, and UAT shows the same prompt hashes in each.
+  - The how-it-works page shows the list under "Where this comes from". Per-term receipts were not built; 224 collapsed receipts on one page would not help a reader.
+- **The committee list badge is fixed to AI.** The list query loads no provenance, and every description is model-written today (#1451). If a description could ever be hand-written, add `descriptionProvenance { kind }` to the list query.
+- **Bill summaries are polled** (`GET_BILL_SUMMARY_STATUS`) and normalised onto the same `Bill`. That query carries the receipt too, so new text never shows under the previous run's receipt (found in frontend review).
+- **Source links are offered only for http(s) URLs.** Anything else reads "Not recorded".
 - **Not changed, pre-existing:** proposition analysis runs do not invalidate the cached `propositions:` list, so a list can show an older receipt until the cache expires.
 
 ## Subtasks

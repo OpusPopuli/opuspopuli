@@ -5,6 +5,8 @@ import { useCivics } from "@/components/civics/CivicsContext";
 import { MeasureTypeTable } from "@/components/civics/MeasureTypeTable";
 import { GlossaryList } from "@/components/civics/GlossaryList";
 import { HowABillBecomesLaw } from "@/components/civics/HowABillBecomesLaw";
+import { AiGeneratedBadge } from "@/components/ai/AiGeneratedBadge";
+import { AiReceipt } from "@/components/ai/AiReceipt";
 
 export default function HowItWorksPage() {
   const { t } = useTranslation("civics");
@@ -96,6 +98,33 @@ export default function HowItWorksPage() {
             {civics.glossary.length} terms
           </p>
           <GlossaryList entries={civics.glossary} />
+        </section>
+      )}
+
+      {/* Receipts (#1450): the plain-language text above was written by a
+          model from these official pages, one receipt each. Every term,
+          stage and type names its page, which is how a reader matches it
+          to the receipt here. */}
+      {civics.sources && civics.sources.length > 0 && (
+        <section aria-labelledby="sources-heading" className="mt-12">
+          <h2
+            id="sources-heading"
+            className="mb-1 text-xl font-semibold text-content"
+          >
+            {t("sources.title")}
+          </h2>
+          <p className="mb-4 text-sm text-content-dim">{t("sources.intro")}</p>
+          <ul className="space-y-3">
+            {civics.sources.map((source) => (
+              <li
+                key={source.sourceUrl ?? source.promptHash ?? ""}
+                className="rounded-lg border border-line p-3"
+              >
+                <AiGeneratedBadge kind={source.kind} />
+                <AiReceipt provenance={source} />
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </main>

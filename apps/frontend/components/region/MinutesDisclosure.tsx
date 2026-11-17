@@ -38,7 +38,10 @@ function MinutesPanelBody({ minutes }: { readonly minutes: Minutes }) {
   return (
     <>
       <ConcernsBadge claims={minutes.claims} />
-      <MinutesSynopsis summary={minutes.summary} />
+      <MinutesSynopsis
+        summary={minutes.summary}
+        provenance={minutes.summaryProvenance}
+      />
       <MinutesClaims claims={minutes.claims} />
     </>
   );

@@ -122,5 +122,43 @@
       "add": "Choose “Add to Home Screen”.",
       "confirm": "Tap “Add” to confirm."
     }
+  },
+  "aiReceipt": {
+    "badge": {
+      "AI": "AI-generated",
+      "DETERMINISTIC": "Generated from records",
+      "MANUAL": "Written by a person",
+      "SCRAPED": "Official text",
+      "UNKNOWN": "Origin not recorded"
+    },
+    "summary": "How this was made",
+    "labels": {
+      "origin": "Made by",
+      "source": "Source",
+      "model": "Model",
+      "prompt": "Instructions (prompt)",
+      "generated": "Generated"
+    },
+    "origin": {
+      "AI": "An AI model",
+      "DETERMINISTIC": "Our records, with no AI model",
+      "MANUAL": "A person",
+      "SCRAPED": "Copied word for word from the official source",
+      "UNKNOWN": "Not recorded"
+    },
+    "notRecorded": "Not recorded",
+    "sourceRef": "Version {{ref}}",
+    "retrieved": "retrieved {{date}}",
+    "promptLink": "Version {{version}} · {{hash}}",
+    "promptLinkLabel": "Read the exact prompt:",
+    "exactBuild": "Exact build: {{digest}}",
+    "madeFrom": {
+      "memberRecord": "Our record of this member (name, district, party, committees) — not a document",
+      "committeeAssignments": "This member's committee assignments, as listed below",
+      "legislativeActions": "Our records of recent legislative actions",
+      "committeeName": "Only the committee's name and chamber — no document about it"
+    },
+    "billTextVersion": "Bill text version {{ref}}, from the Legislature's public data export",
+    "newTab": "(opens in a new tab)"
   }
 }
