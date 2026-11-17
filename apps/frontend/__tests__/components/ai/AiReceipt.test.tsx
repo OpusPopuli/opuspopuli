@@ -249,4 +249,18 @@ describe("AiReceipt source link text", () => {
       "sos.ca.gov/…/initiative-and-referendum-faqs",
     );
   });
+
+  it("strips invisible bidi controls that could disguise a link", () => {
+    render(
+      <AiReceipt
+        provenance={{
+          kind: "AI",
+          sourceUrl: "https://example.gov/doc%E2%80%AEfdp.exe",
+        }}
+      />,
+    );
+    expect(screen.getByRole("link").textContent).toMatch(
+      /^example\.gov\/docfdp\.exe/,
+    );
+  });
 });

@@ -16,6 +16,7 @@ const published: PromptRecord = {
   ],
   text: "Analyse {{FULL_TEXT}} plainly.",
   fileUrl: `https://github.com/OpusPopuli/prompt-service/blob/main/attestation/templates/${HASH}.txt`,
+  rawUrl: `https://raw.githubusercontent.com/OpusPopuli/prompt-service/main/attestation/templates/${HASH}.txt`,
 };
 
 describe("PromptRecordView", () => {
@@ -36,7 +37,7 @@ describe("PromptRecordView", () => {
       screen.getByRole("link", { name: `templates/${HASH}.txt` }),
     ).toHaveAttribute(
       "href",
-      published.status === "published" ? published.fileUrl : "",
+      published.status === "published" ? published.rawUrl : "",
     );
     expect(screen.getByText(`shasum -a 256 ${HASH}.txt`)).toBeInTheDocument();
   });

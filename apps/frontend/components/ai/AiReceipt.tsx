@@ -199,19 +199,26 @@ function Prompt({ provenance }: { readonly provenance: AiProvenance }) {
 }
 
 /**
- * The link text: site and path, shortened. The site alone is not enough —
- * a civics page lists several sources on the same site, and five links all
- * reading "sos.ca.gov" cannot be told apart.
+ * A path a reader can read; left encoded if it cannot be decoded. Invisible
+ * format characters (bidi overrides and the like) are removed, so decoded
+ * text cannot disguise where a link goes.
  */
-/** A path a reader can read; left encoded if it cannot be decoded. */
+const INVISIBLE_FORMAT =
+  /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
+
 function readablePath(path: string): string {
   try {
-    return decodeURIComponent(path);
+    return decodeURIComponent(path).replace(INVISIBLE_FORMAT, "");
   } catch {
     return path;
   }
 }
 
+/**
+ * The link text: site and path, shortened. The site alone is not enough —
+ * a civics page lists several sources on the same site, and five links all
+ * reading "sos.ca.gov" cannot be told apart.
+ */
 function displayUrl(url: URL): string {
   const host = url.hostname.replace(/^www\./, "");
   const path = url.pathname === "/" ? "" : readablePath(url.pathname);

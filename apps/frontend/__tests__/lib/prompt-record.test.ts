@@ -49,6 +49,7 @@ describe("loadPromptRecord", () => {
       labels: [{ name: "document-analysis-proposition-analysis", version: 4 }],
       text: TEXT,
       fileUrl: `https://github.com/OpusPopuli/prompt-service/blob/main/attestation/templates/${HASH}.txt`,
+      rawUrl: `https://raw.githubusercontent.com/OpusPopuli/prompt-service/main/attestation/templates/${HASH}.txt`,
     });
   });
 
@@ -63,6 +64,25 @@ describe("loadPromptRecord", () => {
         /^https:\/\/raw\.githubusercontent\.com\/OpusPopuli\/prompt-service\/main\/attestation\//,
       );
     }
+  });
+
+  it("bounds every read with a timeout and asks the edge cache to keep it", async () => {
+    const fetchImpl = serve({
+      "manifest.json": manifest([HASH]),
+      [`${HASH}.txt`]: TEXT,
+    });
+    await loadPromptRecord(HASH, fetchImpl);
+    const inits = fetchImpl.mock.calls.map(
+      (call) =>
+        (call as unknown[])[1] as RequestInit & { cf?: { cacheTtl?: number } },
+    );
+    expect(inits).toHaveLength(2);
+    for (const init of inits) {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.cf?.cacheTtl).toBeGreaterThan(0);
+    }
+    // The manifest goes stale in an hour so a new prompt is not denied long.
+    expect(inits[0].cf?.cacheTtl).toBe(3600);
   });
 
   it("accepts an upper-case fingerprint", async () => {

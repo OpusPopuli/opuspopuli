@@ -75,8 +75,11 @@ currently false. This plan closes the last mile: API exposure plus a shared rece
 - **The prompt page (subtask 7) reads the public repository, not the service.**
   - It loads `attestation/manifest.json` and the template file from `raw.githubusercontent.com`, then recomputes the sha256 before showing the text.
   - A file that doesn't match its name, or any failed read, shows "could not check right now", never "not published".
-  - The manifest is cached for a day; template files for a year, since they are immutable by name.
+  - Caching, as built: on the Cloudflare Worker, Next's fetch cache does nothing, because open-next's default incremental cache is "dummy". The reads also ask Cloudflare's edge cache with `cf.cacheTtl`: an hour for the manifest, so a new prompt isn't reported missing for long, and a year for template files, which never change once published. This is unverified until deployed. Each read has a 5-second timeout that reads "could not check".
+  - The download link is the raw file, so the `shasum` instructions work on what is downloaded.
   - The server page only loads the data; a client view renders it, so the page's text goes through i18n.
+- **Open question from branch review:** `normalizeCivicText` keeps an item's own stored `sourceUrl` over its block's. If the two ever differ, the item names a page with no receipt under "Where this comes from". Not confirmed whether extraction can produce that; check before relying on the page-to-receipt match.
+- **The system card names the surfaces that carry receipts.** Personalised briefing explanations (the nightly rerank "why this" text) do not carry them yet: #1452.
 - **Not changed, pre-existing:** proposition analysis runs do not invalidate the cached `propositions:` list, so a list can show an older receipt until the cache expires.
 
 ## Subtasks

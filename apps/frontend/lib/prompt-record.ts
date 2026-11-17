@@ -30,7 +30,10 @@ export type PromptRecord =
       hash: string;
       labels: PromptLabel[];
       text: string;
+      /** The file on GitHub, to view. */
       fileUrl: string;
+      /** The file's exact bytes, to download and hash. */
+      rawUrl: string;
     }
   /** The record was read, and does not hold this hash. */
   | { status: "unpublished"; hash: string }
@@ -50,10 +53,28 @@ interface ManifestEntry {
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-/** One day: a newly published prompt appears within a day of merging. */
-const MANIFEST_REVALIDATE_SECONDS = 86_400;
-/** A template file never changes once published; its name is its hash. */
-const TEMPLATE_REVALIDATE_SECONDS = 31_536_000;
+/**
+ * How long a copy may be reused. On the Cloudflare Worker, Next's own fetch
+ * cache is a no-op (open-next's default incremental cache is "dummy"), so
+ * the reads also ask Cloudflare's edge cache via `cf.cacheTtl`; elsewhere
+ * that option is ignored.
+ *
+ * The manifest is held for an hour, so a newly published prompt is not
+ * reported missing for long. A template file never changes once published —
+ * its name is its hash — so it is held for a year.
+ */
+const MANIFEST_TTL_SECONDS = 3_600;
+const TEMPLATE_TTL_SECONDS = 31_536_000;
+/** GitHub being slow must not hang the page; a timeout reads "could not check". */
+const FETCH_TIMEOUT_MS = 5_000;
+
+function cachedRead(ttl: number): RequestInit {
+  return {
+    next: { revalidate: ttl },
+    cf: { cacheTtl: ttl, cacheEverything: true },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  } as RequestInit;
+}
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -66,9 +87,10 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 async function readManifest(fetchImpl: Fetch): Promise<ManifestEntry[]> {
-  const response = await fetchImpl(`${RAW_BASE}/manifest.json`, {
-    next: { revalidate: MANIFEST_REVALIDATE_SECONDS },
-  } as RequestInit);
+  const response = await fetchImpl(
+    `${RAW_BASE}/manifest.json`,
+    cachedRead(MANIFEST_TTL_SECONDS),
+  );
   if (!response.ok) throw new Error(`manifest ${response.status}`);
   const manifest = (await response.json()) as { entries?: ManifestEntry[] };
   if (!Array.isArray(manifest.entries)) throw new Error("manifest shape");
@@ -76,9 +98,10 @@ async function readManifest(fetchImpl: Fetch): Promise<ManifestEntry[]> {
 }
 
 async function readTemplate(fetchImpl: Fetch, hash: string): Promise<string> {
-  const response = await fetchImpl(`${RAW_BASE}/templates/${hash}.txt`, {
-    next: { revalidate: TEMPLATE_REVALIDATE_SECONDS },
-  } as RequestInit);
+  const response = await fetchImpl(
+    `${RAW_BASE}/templates/${hash}.txt`,
+    cachedRead(TEMPLATE_TTL_SECONDS),
+  );
   if (!response.ok) throw new Error(`template ${response.status}`);
   return response.text();
 }
@@ -106,6 +129,7 @@ export async function loadPromptRecord(
       labels: entry.labels ?? [],
       text,
       fileUrl: `${PROMPT_SERVICE_REPO_URL}/blob/main/attestation/templates/${hash}.txt`,
+      rawUrl: `${RAW_BASE}/templates/${hash}.txt`,
     };
   } catch {
     return { status: "unavailable", hash };

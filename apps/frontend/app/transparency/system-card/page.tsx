@@ -107,11 +107,18 @@ export default function SystemCardPage() {
                 Opus Populi content.
               </li>
               <li>
-                Every AI-written passage carries a &quot;How this was made&quot;
-                receipt: the model and its exact build, the published prompt it
-                was given (linked by its fingerprint), what it read, and when.
-                Where any of these was not recorded, the receipt says &quot;Not
-                recorded&quot; rather than leaving it out.
+                Every AI-written passage on the civic record pages
+                (propositions, bills, representatives, legislative committees,
+                meeting minutes, and the how-it-works guide) carries a &quot;How
+                this was made&quot; receipt: the model and its exact build, the
+                published prompt it was given (linked by its fingerprint), what
+                it read, and when. Where any of these was not recorded, the
+                receipt says &quot;Not recorded&quot; rather than leaving it
+                out.
+              </li>
+              <li>
+                Personalised briefing explanations — why an item is shown to you
+                — do not carry a receipt yet.
               </li>
               <li>
                 Models are selected for their ability to follow structured

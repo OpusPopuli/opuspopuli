@@ -119,7 +119,7 @@ function Body({ record }: { readonly record: PromptRecord }) {
           <li>
             {t("promptRecord.verifyDownload")}{" "}
             <a
-              href={record.fileUrl}
+              href={record.rawUrl}
               className="text-info hover:underline break-all"
             >
               {`templates/${record.hash}.txt`}

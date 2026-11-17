@@ -167,7 +167,7 @@
     "fingerprint": "Huella (sha256):",
     "invalid": "Eso no es una huella de prompt. Las huellas tienen 64 caracteres de 0–9 y a–f, como aparecen en el recibo “Cómo se hizo esto” de un pasaje.",
     "unavailable": "No pudimos leer el registro público de prompts en este momento, así que esta huella no se ha verificado. Eso no significa que el prompt no esté publicado; puede buscarlo usted mismo en",
-    "unpublished": "Esta huella no está en el registro público de prompts. El texto que identifica nunca se publicó desde el repositorio de prompts, así que no se puede verificar aquí. Puede confirmarlo en",
+    "unpublished": "Esta huella no está en el registro público de prompts según la verificación de ahora mismo, así que el texto que identifica no se puede verificar aquí. Un prompt publicado en la última hora puede no aparecer todavía. Puede buscarlo usted mismo en",
     "recordLink": "el registro de atestación de prompt-service.",
     "whichPrompt": "Qué prompt es",
     "version": "versión {{version}}",

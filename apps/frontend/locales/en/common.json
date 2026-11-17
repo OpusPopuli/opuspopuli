@@ -167,7 +167,7 @@
     "fingerprint": "Fingerprint (sha256):",
     "invalid": "That is not a prompt fingerprint. Fingerprints are 64 characters of 0–9 and a–f, as shown in a passage's “How this was made” receipt.",
     "unavailable": "We could not read the public prompt record just now, so this fingerprint has not been checked. That does not mean the prompt is unpublished — you can look it up yourself in",
-    "unpublished": "This fingerprint is not in the public prompt record. The text it identifies was never published from the prompt repository, so it cannot be checked here. You can confirm this in",
+    "unpublished": "This fingerprint is not in the public prompt record as checked just now, so the text it identifies cannot be checked here. A prompt published in the last hour may not appear yet. You can look it up yourself in",
     "recordLink": "the prompt-service attestation record.",
     "whichPrompt": "Which prompt this is",
     "version": "version {{version}}",
