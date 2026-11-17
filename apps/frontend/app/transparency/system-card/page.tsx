@@ -98,16 +98,20 @@ export default function SystemCardPage() {
             </h2>
             <ul className="list-disc pl-6 space-y-2">
               <li>
-                We use pre-trained, open-source large language models served
-                through Ollama (e.g., Llama, Mistral).
+                We use pre-trained, openly available large language models, run
+                on our own hardware through Ollama. Which model wrote a given
+                passage is named in that passage&apos;s receipt.
               </li>
               <li>
                 <strong>No fine-tuning</strong> is performed on user data or
                 Opus Populi content.
               </li>
               <li>
-                Model provider and version are disclosed with every analysis
-                result (e.g., &quot;Analyzed by Ollama (llama3.2)&quot;).
+                Every AI-written passage carries a &quot;How this was made&quot;
+                receipt: the model and its exact build, the published prompt it
+                was given (linked by its fingerprint), what it read, and when.
+                Where any of these was not recorded, the receipt says &quot;Not
+                recorded&quot; rather than leaving it out.
               </li>
               <li>
                 Models are selected for their ability to follow structured

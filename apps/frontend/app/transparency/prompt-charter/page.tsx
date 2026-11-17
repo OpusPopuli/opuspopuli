@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { PROMPT_SERVICE_REPO_URL } from "@/lib/prompt-record";
 
 export const metadata: Metadata = {
   title: "Prompt Service Charter | Opus Populi",
@@ -121,7 +122,7 @@ export default function PromptCharterPage() {
                 Prompt template text is <strong>published</strong>, in the
                 separate open-source{" "}
                 <a
-                  href="https://github.com/OpusPopuli/prompt-service"
+                  href={PROMPT_SERVICE_REPO_URL}
                   className="text-info hover:underline"
                   target="_blank"
                   rel="noopener noreferrer"

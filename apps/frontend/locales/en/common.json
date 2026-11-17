@@ -160,5 +160,23 @@
     },
     "billTextVersion": "Bill text version {{ref}}, from the Legislature's public data export",
     "newTab": "(opens in a new tab)"
+  },
+  "promptRecord": {
+    "back": "Back to Transparency",
+    "title": "Published prompt",
+    "fingerprint": "Fingerprint (sha256):",
+    "invalid": "That is not a prompt fingerprint. Fingerprints are 64 characters of 0–9 and a–f, as shown in a passage's “How this was made” receipt.",
+    "unavailable": "We could not read the public prompt record just now, so this fingerprint has not been checked. That does not mean the prompt is unpublished — you can look it up yourself in",
+    "unpublished": "This fingerprint is not in the public prompt record. The text it identifies was never published from the prompt repository, so it cannot be checked here. You can confirm this in",
+    "recordLink": "the prompt-service attestation record.",
+    "whichPrompt": "Which prompt this is",
+    "version": "version {{version}}",
+    "textHeading": "The exact text the model was given",
+    "placeholders": "The document being analysed is inserted where markers like {{marker}} appear.",
+    "verifyHeading": "Check it yourself",
+    "verifyIntro": "You don’t have to take our word for any of this. The file is named by the fingerprint of its own contents, so anyone can confirm it is unaltered:",
+    "verifyDownload": "Download",
+    "verifyRun": "Run (on Linux use sha256sum):",
+    "verifyMatch": "The fingerprint printed must equal the one above. If even one character of the file had changed, it would not."
   }
 }

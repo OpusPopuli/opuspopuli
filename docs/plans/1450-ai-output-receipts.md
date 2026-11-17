@@ -72,6 +72,11 @@ currently false. This plan closes the last mile: API exposure plus a shared rece
 - **The committee list badge is fixed to AI.** The list query loads no provenance, and every description is model-written today (#1451). If a description could ever be hand-written, add `descriptionProvenance { kind }` to the list query.
 - **Bill summaries are polled** (`GET_BILL_SUMMARY_STATUS`) and normalised onto the same `Bill`. That query carries the receipt too, so new text never shows under the previous run's receipt (found in frontend review).
 - **Source links are offered only for http(s) URLs.** Anything else reads "Not recorded".
+- **The prompt page (subtask 7) reads the public repository, not the service.**
+  - It loads `attestation/manifest.json` and the template file from `raw.githubusercontent.com`, then recomputes the sha256 before showing the text.
+  - A file that doesn't match its name, or any failed read, shows "could not check right now", never "not published".
+  - The manifest is cached for a day; template files for a year, since they are immutable by name.
+  - The server page only loads the data; a client view renders it, so the page's text goes through i18n.
 - **Not changed, pre-existing:** proposition analysis runs do not invalidate the cached `propositions:` list, so a list can show an older receipt until the cache expires.
 
 ## Subtasks

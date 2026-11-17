@@ -160,5 +160,23 @@
     },
     "billTextVersion": "Versión del texto del proyecto {{ref}}, de la exportación de datos públicos de la Legislatura",
     "newTab": "(se abre en una pestaña nueva)"
+  },
+  "promptRecord": {
+    "back": "Volver a Transparencia",
+    "title": "Prompt publicado",
+    "fingerprint": "Huella (sha256):",
+    "invalid": "Eso no es una huella de prompt. Las huellas tienen 64 caracteres de 0–9 y a–f, como aparecen en el recibo “Cómo se hizo esto” de un pasaje.",
+    "unavailable": "No pudimos leer el registro público de prompts en este momento, así que esta huella no se ha verificado. Eso no significa que el prompt no esté publicado; puede buscarlo usted mismo en",
+    "unpublished": "Esta huella no está en el registro público de prompts. El texto que identifica nunca se publicó desde el repositorio de prompts, así que no se puede verificar aquí. Puede confirmarlo en",
+    "recordLink": "el registro de atestación de prompt-service.",
+    "whichPrompt": "Qué prompt es",
+    "version": "versión {{version}}",
+    "textHeading": "El texto exacto que recibió el modelo",
+    "placeholders": "El documento analizado se inserta donde aparecen marcadores como {{marker}}.",
+    "verifyHeading": "Verifíquelo usted mismo",
+    "verifyIntro": "No tiene que confiar en nuestra palabra. El archivo se nombra con la huella de su propio contenido, así que cualquiera puede confirmar que no ha sido alterado:",
+    "verifyDownload": "Descargue",
+    "verifyRun": "Ejecute (en Linux use sha256sum):",
+    "verifyMatch": "La huella que se imprima debe ser igual a la de arriba. Si hubiera cambiado aunque sea un carácter del archivo, no lo sería."
   }
 }
