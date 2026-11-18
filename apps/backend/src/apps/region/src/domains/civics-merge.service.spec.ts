@@ -637,3 +637,56 @@ describe('getCivicsData — measure-type identity', () => {
     expect(await svc.getCivicsData('california')).toBeNull();
   });
 });
+
+// ── receipts (#1450) ──────────────────────────────────────────────────────────
+
+describe('getCivicsData — one receipt per source page', () => {
+  const extractedAt = new Date('2026-10-20T00:00:00Z');
+  const block = (sourceUrl: string, promptHash: string | null) => ({
+    sourceUrl,
+    chambers: null,
+    measureTypes: null,
+    lifecycleStages: null,
+    sessionScheme: null,
+    glossary: [
+      {
+        term: `Term from ${sourceUrl}`,
+        slug: sourceUrl.replace(/\W+/g, '-'),
+        definition: { verbatim: 'Defined.', plainLanguage: 'Defined.' },
+      },
+    ],
+    promptHash,
+    promptVersion: promptHash ? 'v6' : null,
+    llmModel: promptHash ? 'nemotron-3.5-lightning:30b-a3b' : null,
+    llmDigest: null,
+    extractedAt,
+  });
+
+  it('lists each page with what extracted it, keyed by the sourceUrl items carry', async () => {
+    const svc = buildSvc([
+      block('https://example.gov/how-a-bill', 'f5'.repeat(32)),
+      block('https://example.gov/glossary', null),
+    ]);
+    const result = await svc.getCivicsData('ca');
+    expect(result.sources).toEqual([
+      {
+        kind: 'ai',
+        promptHash: 'f5'.repeat(32),
+        promptVersion: 'v6',
+        llmModel: 'nemotron-3.5-lightning:30b-a3b',
+        llmDigest: undefined,
+        generatedAt: extractedAt,
+        sourceUrl: 'https://example.gov/how-a-bill',
+      },
+      {
+        kind: 'ai',
+        promptHash: undefined,
+        promptVersion: undefined,
+        llmModel: undefined,
+        llmDigest: undefined,
+        generatedAt: extractedAt,
+        sourceUrl: 'https://example.gov/glossary',
+      },
+    ]);
+  });
+});

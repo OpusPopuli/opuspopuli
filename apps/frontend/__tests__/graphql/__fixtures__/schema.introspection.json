@@ -599,6 +599,165 @@
         "possibleTypes": null
       },
       {
+        "enumValues": [
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "AI"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "DETERMINISTIC"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "MANUAL"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "SCRAPED"
+          },
+          {
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "UNKNOWN"
+          }
+        ],
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "kind": "ENUM",
+        "name": "AiProvenanceKind",
+        "possibleTypes": null
+      },
+      {
+        "enumValues": null,
+        "fields": [
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "generatedAt",
+            "type": {
+              "kind": "SCALAR",
+              "name": "DateTime",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "kind",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "ENUM",
+                "name": "AiProvenanceKind",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "llmDigest",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "llmModel",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "promptHash",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "promptVersion",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "sourceFetchedAt",
+            "type": {
+              "kind": "SCALAR",
+              "name": "DateTime",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "sourcePublishedAt",
+            "type": {
+              "kind": "SCALAR",
+              "name": "DateTime",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "sourceRef",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "sourceUrl",
+            "type": {
+              "kind": "SCALAR",
+              "name": "String",
+              "ofType": null
+            }
+          }
+        ],
+        "inputFields": null,
+        "interfaces": [],
+        "kind": "OBJECT",
+        "name": "AiProvenanceModel",
+        "possibleTypes": null
+      },
+      {
         "enumValues": null,
         "fields": [
           {
@@ -1157,6 +1316,17 @@
             "type": {
               "kind": "OBJECT",
               "name": "BillAiSummary",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "aiSummaryProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
               "ofType": null
             }
           },
@@ -2422,6 +2592,29 @@
               "kind": "OBJECT",
               "name": "CivicsSessionScheme",
               "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "sources",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "OBJECT",
+                    "name": "AiProvenanceModel",
+                    "ofType": null
+                  }
+                }
+              }
             }
           }
         ],
@@ -7169,6 +7362,17 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "activitySummaryProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "activitySummaryWindowDays",
             "type": {
               "kind": "SCALAR",
@@ -7214,6 +7418,17 @@
             "type": {
               "kind": "SCALAR",
               "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "descriptionProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
               "ofType": null
             }
           },
@@ -8857,6 +9072,17 @@
             "type": {
               "kind": "SCALAR",
               "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "summaryProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
               "ofType": null
             }
           }
@@ -14331,6 +14557,17 @@
             "type": {
               "kind": "SCALAR",
               "name": "DateTime",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "analysisProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
               "ofType": null
             }
           },
@@ -19854,6 +20091,17 @@
             "args": [],
             "deprecationReason": null,
             "isDeprecated": false,
+            "name": "activitySummaryProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
             "name": "activitySummaryWindowDays",
             "type": {
               "kind": "SCALAR",
@@ -19889,6 +20137,17 @@
                   "ofType": null
                 }
               }
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "bioProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
+              "ofType": null
             }
           },
           {
@@ -19944,6 +20203,17 @@
             "type": {
               "kind": "SCALAR",
               "name": "String",
+              "ofType": null
+            }
+          },
+          {
+            "args": [],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "committeesSummaryProvenance",
+            "type": {
+              "kind": "OBJECT",
+              "name": "AiProvenanceModel",
               "ofType": null
             }
           },

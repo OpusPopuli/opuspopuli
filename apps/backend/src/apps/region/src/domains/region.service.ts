@@ -65,6 +65,12 @@ import {
 } from './claim-backfill.service';
 import { RegionSyncService } from './region-sync.service';
 import {
+  buildAiProvenance,
+  declaredOrigin,
+  type SourceRef,
+  type SourceVersionRef,
+} from './ai-provenance';
+import {
   type LegislativeActionFeedPage,
   RegionQueryService,
 } from './region-query.service';
@@ -279,7 +285,7 @@ export type RepresentativeRecord = {
   updatedAt: Date;
 };
 
-type InternalPropositionRecord = {
+export type PropositionRecord = {
   id: string;
   externalId: string;
   title: string;
@@ -299,17 +305,49 @@ type InternalPropositionRecord = {
   analysisClaims: unknown;
   analysisSource: string | null;
   analysisPromptHash: string | null;
+  analysisPromptVersion: string | null;
+  analysisLlmModel: string | null;
+  analysisLlmDigest: string | null;
   analysisGeneratedAt: Date | null;
+  /** sha256 of the `fullText` the analysis read; compared with the next. */
+  analysisSourceTextHash?: string | null;
+  /** sha256 of the current `fullText` (a generated column). */
+  fullTextHash?: string | null;
   lifecycleStageId: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /** The archived bytes `fullText` was derived from (#1306). */
+  sourceVersion?: SourceVersionRef | null;
 };
+
+const ANALYSIS_ORIGINS = { 'ai-generated': 'ai', manual: 'manual' } as const;
+
+/**
+ * The analysis's source, only if it can be shown to be the one it read.
+ *
+ * `sourceVersion` follows `fullText` (#1306), but the analysis does not
+ * follow either: after new text arrives, the old analysis stays until a
+ * re-run succeeds. Its text hash says which text it read; when that is not
+ * today's text, today's archived source is not its source, and naming it
+ * would be a false receipt. Then no source is named at all — the row's own
+ * `sourceUrl` is a listing page, which the analysis never read either.
+ */
+function analysisSource(item: PropositionRecord): SourceRef {
+  const readCurrentText =
+    !!item.analysisSourceTextHash &&
+    item.analysisSourceTextHash === item.fullTextHash;
+  if (!readCurrentText || !item.sourceVersion) return {};
+  return {
+    sourceUrl: item.sourceVersion.sourceUrl,
+    sourceFetchedAt: item.sourceVersion.fetchedAt,
+  };
+}
 
 /**
  * Cast a Prisma proposition row into the GraphQL-shaped object.
  */
 export function mapPropositionRecord(
-  item: InternalPropositionRecord,
+  item: PropositionRecord,
 ): PropositionModel {
   return {
     id: item.id,
@@ -343,6 +381,15 @@ export function mapPropositionRecord(
       : undefined,
     analysisSource: item.analysisSource ?? undefined,
     analysisGeneratedAt: item.analysisGeneratedAt ?? undefined,
+    analysisProvenance: buildAiProvenance(
+      item,
+      'analysis',
+      item.analysisSummary,
+      {
+        declared: declaredOrigin(item.analysisSource, ANALYSIS_ORIGINS),
+        ...analysisSource(item),
+      },
+    ),
     lifecycleStageId: item.lifecycleStageId ?? undefined,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,

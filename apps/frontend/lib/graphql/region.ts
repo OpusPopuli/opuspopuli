@@ -13,6 +13,49 @@ export type DataType =
   | "CIVICS"
   | "BILLS";
 
+// ── AI output receipts (#1450) ────────────────────────────────────────────────
+
+/** How a piece of text was produced. Decided by the backend from the row. */
+export type AiProvenanceKind =
+  | "AI"
+  | "DETERMINISTIC"
+  | "MANUAL"
+  | "SCRAPED"
+  | "UNKNOWN";
+
+/**
+ * The receipt for one AI-written output. Every field but `kind` may be
+ * absent: rows predating provenance recording exist, and the receipt shows
+ * "not recorded" rather than hiding the gap. `promptHash` resolves to the
+ * exact published prompt text (prompt-service `attestation/`).
+ */
+export interface AiProvenance {
+  kind: AiProvenanceKind;
+  promptHash?: string | null;
+  promptVersion?: string | null;
+  llmModel?: string | null;
+  llmDigest?: string | null;
+  generatedAt?: string | null;
+  sourceUrl?: string | null;
+  sourceRef?: string | null;
+  sourceFetchedAt?: string | null;
+  sourcePublishedAt?: string | null;
+}
+
+/** Selection set for an `AiProvenanceModel` field; spread into each query. */
+export const AI_PROVENANCE_FIELDS = `
+  kind
+  promptHash
+  promptVersion
+  llmModel
+  llmDigest
+  generatedAt
+  sourceUrl
+  sourceRef
+  sourceFetchedAt
+  sourcePublishedAt
+`;
+
 // ── Civics types ──────────────────────────────────────────────────────────────
 
 export interface CivicText {
@@ -76,6 +119,11 @@ export interface CivicsBlock {
   lifecycleStages: CivicsLifecycleStage[];
   sessionScheme?: CivicsSessionScheme;
   glossary: CivicsGlossaryEntry[];
+  /**
+   * One receipt per official page the data was extracted from (#1450).
+   * Each item's `sourceUrl` names its page.
+   */
+  sources?: AiProvenance[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +197,8 @@ export interface Proposition {
   analysisClaims?: PropositionAnalysisClaim[];
   analysisSource?: string;
   analysisGeneratedAt?: string;
+  /** How the analysis was produced (#1450). */
+  analysisProvenance?: AiProvenance | null;
   /**
    * Resolved lifecycle stage id from civics.lifecycleStages — powers the
    * lifecycle progress bar in the proposition detail header. Null when the
@@ -210,6 +260,10 @@ export interface Representative {
   activitySummary?: string;
   activitySummaryGeneratedAt?: string;
   activitySummaryWindowDays?: number;
+  /** Receipts (#1450); loaded by the detail query only. */
+  bioProvenance?: AiProvenance | null;
+  committeesSummaryProvenance?: AiProvenance | null;
+  activitySummaryProvenance?: AiProvenance | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -313,6 +367,9 @@ export interface LegislativeCommitteeDetail {
   activitySummary?: string;
   activitySummaryGeneratedAt?: string;
   activitySummaryWindowDays?: number;
+  /** Receipts (#1450). The description is written from the name alone. */
+  descriptionProvenance?: AiProvenance | null;
+  activitySummaryProvenance?: AiProvenance | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -412,6 +469,8 @@ export interface Minutes {
   sourceUrl: string;
   pageCount?: number;
   parsedAt?: string;
+  /** How `summary` and its claims were produced (#1450). */
+  summaryProvenance?: AiProvenance | null;
 }
 
 /** Result shape for GET_MINUTES (nullable — id may not resolve). */
@@ -748,6 +807,7 @@ export const GET_REGION_INFO = gql`
           }
           relatedTerms
         }
+        sources { ${AI_PROVENANCE_FIELDS} }
       }
     }
   }
@@ -831,6 +891,7 @@ export const GET_PROPOSITION = gql`
       }
       analysisSource
       analysisGeneratedAt
+      analysisProvenance { ${AI_PROVENANCE_FIELDS} }
       lifecycleStageId
       createdAt
       updatedAt
@@ -1071,6 +1132,7 @@ export const REGENERATE_PROPOSITION_ANALYSIS = gql`
       }
       analysisSource
       analysisGeneratedAt
+      analysisProvenance { ${AI_PROVENANCE_FIELDS} }
     }
   }
 `;
@@ -1182,6 +1244,9 @@ export const GET_REPRESENTATIVE = gql`
       activitySummary
       activitySummaryGeneratedAt
       activitySummaryWindowDays
+      bioProvenance { ${AI_PROVENANCE_FIELDS} }
+      committeesSummaryProvenance { ${AI_PROVENANCE_FIELDS} }
+      activitySummaryProvenance { ${AI_PROVENANCE_FIELDS} }
       createdAt
       updatedAt
     }
@@ -1351,6 +1416,8 @@ export const GET_LEGISLATIVE_COMMITTEE = gql`
       activitySummary
       activitySummaryGeneratedAt
       activitySummaryWindowDays
+      descriptionProvenance { ${AI_PROVENANCE_FIELDS} }
+      activitySummaryProvenance { ${AI_PROVENANCE_FIELDS} }
       createdAt
       updatedAt
     }
@@ -1611,6 +1678,7 @@ export const GET_MINUTES = gql`
     minutes(id: $id) {
       id
       summary
+      summaryProvenance { ${AI_PROVENANCE_FIELDS} }
       claims {
         kind
         title
@@ -1777,6 +1845,8 @@ export interface Bill {
   votes: BillVote[];
   coAuthors: BillCoAuthor[];
   aiSummary?: BillAiSummary | null;
+  /** How `aiSummary` was produced (#1450). */
+  aiSummaryProvenance?: AiProvenance | null;
 }
 
 /**
@@ -1940,6 +2010,7 @@ export const GET_BILL = gql`
           summary
         }
       }
+      aiSummaryProvenance { ${AI_PROVENANCE_FIELDS} }
     }
   }
 `;
@@ -1965,6 +2036,9 @@ export const GET_BILL_SUMMARY_STATUS = gql`
           summary
         }
       }
+      # Polled while a summary is written, and normalised onto the same
+      # Bill: the receipt must arrive with the text it describes (#1450).
+      aiSummaryProvenance { ${AI_PROVENANCE_FIELDS} }
     }
   }
 `;
@@ -1978,7 +2052,7 @@ export const REQUEST_BILL_SUMMARY = gql`
 
 export interface BillSummaryStatusData {
   billSummaryStatus: BillSummaryStatus;
-  bill: Pick<Bill, "id" | "aiSummary"> | null;
+  bill: Pick<Bill, "id" | "aiSummary" | "aiSummaryProvenance"> | null;
 }
 
 export interface RequestBillSummaryData {

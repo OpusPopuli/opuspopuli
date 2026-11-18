@@ -328,6 +328,19 @@ describe('RegionQueryService — query methods', () => {
   });
 
   describe('getProposition', () => {
+    it('loads the same receipt source on the list path as on detail (#1450)', async () => {
+      mockDb.proposition.findMany.mockResolvedValue([] as never);
+      mockDb.proposition.count.mockResolvedValue(0 as never);
+      await service.getPropositions(0, 10);
+      expect(mockDb.proposition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            sourceVersion: { select: { sourceUrl: true, fetchedAt: true } },
+          },
+        }),
+      );
+    });
+
     it('should return a single non-deleted proposition by ID', async () => {
       const mockProp = { id: '1', title: 'Test Prop' };
       mockDb.proposition.findFirst.mockResolvedValue(mockProp as never);
@@ -339,6 +352,10 @@ describe('RegionQueryService — query methods', () => {
       // not stay reachable by direct link.
       expect(mockDb.proposition.findFirst).toHaveBeenCalledWith({
         where: { id: '1', deletedAt: null },
+        // The receipt's source (#1450) — its URL and date, never the bytes.
+        include: {
+          sourceVersion: { select: { sourceUrl: true, fetchedAt: true } },
+        },
       });
     });
 
@@ -1426,6 +1443,61 @@ describe('RegionQueryService — query methods', () => {
     });
   });
 
+  describe('getMinutesById — summary receipt (#1450)', () => {
+    const minutesRow = {
+      id: 'm1',
+      externalId: 'meet-1',
+      body: 'Board of Supervisors',
+      date: new Date('2026-10-01T00:00:00Z'),
+      summary: 'The board adopted the budget.',
+      summaryClaims: [],
+      sourceUrl: 'https://example.gov/minutes.pdf',
+      pageCount: 4,
+      parsedAt: null,
+      summaryPromptHash: '0f'.repeat(32),
+      summaryPromptVersion: 'v1',
+      summaryLlmModel: 'nemotron-3.5-lightning:30b-a3b',
+      summaryLlmDigest: 'e7a64ff15fb1',
+      summaryGeneratedAt: new Date('2026-11-17T12:00:00Z'),
+    };
+
+    it('selects the receipt columns, and never the archived bytes', async () => {
+      mockDb.minutes.findUnique.mockResolvedValue(minutesRow as never);
+      await service.getMinutesById('m1');
+      const { select } = mockDb.minutes.findUnique.mock.calls[0][0] as {
+        select: Record<string, unknown>;
+      };
+      expect(select).toMatchObject({
+        summaryPromptHash: true,
+        summaryLlmModel: true,
+        summaryGeneratedAt: true,
+      });
+      expect(select).not.toHaveProperty('sourceVersion');
+    });
+
+    it('names the minutes document, with no fetch date it cannot show', async () => {
+      mockDb.minutes.findUnique.mockResolvedValue(minutesRow as never);
+      const result = await service.getMinutesById('m1');
+      expect(result?.summaryProvenance).toMatchObject({
+        kind: 'ai',
+        promptHash: '0f'.repeat(32),
+        promptVersion: 'v1',
+        generatedAt: new Date('2026-11-17T12:00:00Z'),
+        sourceUrl: 'https://example.gov/minutes.pdf',
+      });
+      expect(result?.summaryProvenance?.sourceFetchedAt).toBeUndefined();
+    });
+
+    it('has no receipt without a summary', async () => {
+      mockDb.minutes.findUnique.mockResolvedValue({
+        ...minutesRow,
+        summary: null,
+      } as never);
+      const result = await service.getMinutesById('m1');
+      expect(result?.summaryProvenance).toBeUndefined();
+    });
+  });
+
   describe('getBill — aiSummary coercion (#741)', () => {
     // Shared base row that getBill expects from Prisma. Tests vary only
     // the aiSummary field to exercise the boundary between the JSONB
@@ -1475,6 +1547,83 @@ describe('RegionQueryService — query methods', () => {
       expect(result?.aiSummary).toEqual(validAiSummary);
       expect(result?.aiSummary?.fiscalImpact.level).toBe('low');
       expect(result?.aiSummary?.topics).toEqual(['housing']);
+    });
+
+    it('names the export version an official bill was summarised from, and no page (#1450)', async () => {
+      // billTextFor reads pubinfo_bill_versions.bill_xml; no page is fetched.
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        statusSource: 'official',
+        aiSummarySourceVersion: '20250AB100199INT',
+        aiSummary: validAiSummary,
+        aiSummaryPromptHash: 'd1'.repeat(32),
+      } as never);
+
+      const result = await service.getBill('bill-1');
+
+      expect(result?.aiSummaryProvenance).toMatchObject({
+        kind: 'ai',
+        sourceRef: '20250AB100199INT',
+      });
+      expect(result?.aiSummaryProvenance?.sourceUrl).toBeUndefined();
+    });
+
+    it('names nothing for an official bill with no recorded version', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        statusSource: 'official',
+        aiSummarySourceVersion: null,
+        aiSummary: validAiSummary,
+      } as never);
+
+      const result = await service.getBill('bill-1');
+
+      expect(result?.aiSummaryProvenance?.sourceUrl).toBeUndefined();
+      expect(result?.aiSummaryProvenance?.sourceRef).toBeUndefined();
+    });
+
+    it('names the text page a page-sourced bill was summarised from (#1450)', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        statusSource: 'page',
+        aiSummary: validAiSummary,
+        aiSummaryPromptHash: 'd1'.repeat(32),
+        aiSummaryPromptVersion: 'v1',
+        aiSummaryLlmModel: 'nemotron-3.5-lightning:30b-a3b',
+        aiSummaryLlmDigest: 'e7a64ff15fb1',
+        aiSummaryGeneratedAt: new Date('2026-11-03T00:00:00Z'),
+      } as never);
+
+      const result = await service.getBill('bill-1');
+
+      expect(result?.aiSummaryProvenance).toMatchObject({
+        kind: 'ai',
+        promptHash: 'd1'.repeat(32),
+        promptVersion: 'v1',
+        sourceUrl: 'https://example.gov/bill.pdf',
+      });
+    });
+
+    it('marks a summary that predates recording as AI with nothing recorded', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: validAiSummary,
+      } as never);
+
+      const result = await service.getBill('bill-1');
+
+      expect(result?.aiSummaryProvenance?.kind).toBe('ai');
+      expect(result?.aiSummaryProvenance?.promptHash).toBeUndefined();
+    });
+
+    it('has no receipt for the { skip: true } sentinel', async () => {
+      mockDb.bill.findUnique.mockResolvedValue({
+        ...baseBillRow,
+        aiSummary: { skip: true },
+      } as never);
+
+      const result = await service.getBill('bill-1');
+      expect(result?.aiSummaryProvenance).toBeUndefined();
     });
 
     it('returns undefined aiSummary when the JSONB column is SQL NULL', async () => {

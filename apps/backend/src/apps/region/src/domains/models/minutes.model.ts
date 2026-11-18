@@ -1,4 +1,5 @@
 import { Field, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
+import { AiProvenanceModel } from './ai-provenance.model';
 
 /**
  * Kind of claim surfaced from a minutes AI synopsis. Values map to the
@@ -102,6 +103,10 @@ export class MinutesModel {
 
   @Field()
   sourceUrl!: string;
+
+  /** How `summary` and its claims were produced (#1450). */
+  @Field(() => AiProvenanceModel, { nullable: true })
+  summaryProvenance?: AiProvenanceModel;
 
   @Field(() => Int, { nullable: true })
   pageCount?: number;

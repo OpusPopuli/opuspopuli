@@ -135,11 +135,18 @@ export function clearedAiAttribution(
     // `Prisma.DbNull` also matches this repo's existing precedent —
     // `toJsonField` in civics-sync.service.ts exists for exactly this.
     bioClaims: Prisma.DbNull,
-    // These four are `String?`, where a literal null is correct.
+    // These are nullable scalars, where a literal null is correct.
     bioPromptHash: null,
     bioPromptVersion: null,
     bioLlmModel: null,
     bioLlmDigest: null,
+    // The AI run's key and timestamp too (#1450). Left behind, the receipt
+    // read model provenance off official text — it no longer does, but the
+    // row should not carry a generation time for text no model generated —
+    // and an old key could later read as "current" for a bio that is not.
+    bioSourceHash: null,
+    bioConfigHash: null,
+    bioGeneratedAt: null,
   };
 }
 

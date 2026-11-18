@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID, Int, registerEnumType } from '@nestjs/graphql';
+import { AiProvenanceModel } from './ai-provenance.model';
 import {
   ExistingVsProposedModel,
   PropositionAnalysisClaimModel,
@@ -92,6 +93,10 @@ export class PropositionModel {
 
   @Field({ nullable: true })
   analysisGeneratedAt?: Date;
+
+  /** How `analysisSummary` and its sections were produced (#1450). */
+  @Field(() => AiProvenanceModel, { nullable: true })
+  analysisProvenance?: AiProvenanceModel;
 
   @Field({ nullable: true })
   lifecycleStageId?: string;

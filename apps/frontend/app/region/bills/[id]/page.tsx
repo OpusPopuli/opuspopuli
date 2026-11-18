@@ -5,7 +5,9 @@ import { useTranslation } from "react-i18next";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@apollo/client/react";
-import type { CivicsLifecycleStage } from "@/lib/graphql/region";
+import type { AiProvenance, CivicsLifecycleStage } from "@/lib/graphql/region";
+import { AiGeneratedBadge } from "@/components/ai/AiGeneratedBadge";
+import { AiReceipt } from "@/components/ai/AiReceipt";
 import {
   GET_BILL,
   type BillAiFiscalImpact,
@@ -203,12 +205,23 @@ function FiscalImpactBadge({
   );
 }
 
-function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
+function AiSummaryBlock({
+  summary,
+  provenance,
+}: {
+  readonly summary: BillAiSummary;
+  readonly provenance?: AiProvenance | null;
+}) {
+  const { t } = useTranslation("common");
   return (
     <section
       aria-label="Plain-English summary"
       className="mb-6 rounded-lg border-l-4 border-accent bg-surface-alt p-5"
     >
+      {/* Bill summaries carried no AI label at all before #1450. */}
+      <div className="mb-2">
+        <AiGeneratedBadge kind={provenance?.kind ?? "AI"} />
+      </div>
       <p className="text-base leading-relaxed text-content">
         {summary.plainEnglishSummary}
       </p>
@@ -223,6 +236,14 @@ function AiSummaryBlock({ summary }: { readonly summary: BillAiSummary }) {
         <ChipRow label="Topics" tags={summary.topics} />
         <ChipRow label="Audience" tags={summary.whoItAffects} />
       </div>
+      <AiReceipt
+        provenance={provenance}
+        sourceRefLabel={
+          provenance?.sourceRef
+            ? t("aiReceipt.billTextVersion", { ref: provenance.sourceRef })
+            : undefined
+        }
+      />
     </section>
   );
 }
@@ -242,7 +263,12 @@ function Snapshot({
     <div className="animate-layer-enter">
       {/* Plain-English AI summary, and getting one when missing or stale (D7) */}
       <BillSummarySection billId={bill.id} hasSummary={Boolean(bill.aiSummary)}>
-        {bill.aiSummary && <AiSummaryBlock summary={bill.aiSummary} />}
+        {bill.aiSummary && (
+          <AiSummaryBlock
+            summary={bill.aiSummary}
+            provenance={bill.aiSummaryProvenance}
+          />
+        )}
       </BillSummarySection>
 
       {/* Status + last action */}

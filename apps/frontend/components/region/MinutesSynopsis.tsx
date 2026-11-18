@@ -1,6 +1,9 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { AiGeneratedBadge } from "@/components/ai/AiGeneratedBadge";
+import { AiReceipt } from "@/components/ai/AiReceipt";
+import type { AiProvenance } from "@/lib/graphql/region";
 
 /**
  * AI-generated plain-English synopsis of a minutes / journal session (#932,
@@ -11,8 +14,11 @@ import { useTranslation } from "react-i18next";
  */
 export function MinutesSynopsis({
   summary,
+  provenance,
 }: {
   readonly summary?: string | null;
+  /** The synopsis's receipt (#1450). */
+  readonly provenance?: AiProvenance | null;
 }) {
   const { t } = useTranslation("civics");
   if (!summary || summary.trim().length === 0) return null;
@@ -23,23 +29,7 @@ export function MinutesSynopsis({
       className="bg-warning-surface/40 border border-warning-line rounded-lg p-4"
     >
       <div className="flex items-center gap-2 mb-2">
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-warning-surface text-warning border border-warning-line">
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            />
-          </svg>
-          {t("minutes.aiPanel.badge")}
-        </span>
+        <AiGeneratedBadge kind={provenance?.kind ?? "AI"} />
         <span className="text-[11px] uppercase tracking-wider font-bold text-content-dim">
           {t("minutes.aiPanel.heading")}
         </span>
@@ -50,6 +40,7 @@ export function MinutesSynopsis({
       <p className="mt-3 text-[11px] text-content-dim italic">
         {t("minutes.aiPanel.disclaimer")}
       </p>
+      <AiReceipt provenance={provenance} />
     </section>
   );
 }

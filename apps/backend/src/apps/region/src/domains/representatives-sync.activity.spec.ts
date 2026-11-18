@@ -327,6 +327,11 @@ describe('representatives sync — AI attribution on a scraped bio (#1391)', () 
     'bioPromptVersion',
     'bioLlmModel',
     'bioLlmDigest',
+    // The AI run's key and time (#1450): official text has no generation
+    // time, and an old key must not later read as "current".
+    'bioSourceHash',
+    'bioConfigHash',
+    'bioGeneratedAt',
   ] as const;
 
   /**

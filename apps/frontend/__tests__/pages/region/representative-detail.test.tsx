@@ -243,6 +243,30 @@ describe("RepresentativeDetailPage", () => {
   });
 
   describe("layer content", () => {
+    it("labels an official bio as official text, never AI (#1450)", () => {
+      mockQueryResult = {
+        data: {
+          representative: {
+            ...mockRepresentative,
+            bioSource: "scraped",
+            bioProvenance: {
+              kind: "SCRAPED",
+              sourceUrl: "https://ad22.asmdc.org/biography",
+            },
+          } as unknown as typeof mockRepresentative,
+        },
+        loading: false,
+        error: undefined,
+      };
+
+      render(<RepresentativeDetailPage />);
+
+      expect(screen.getByText("Official text")).toBeInTheDocument();
+      expect(screen.queryByText("AI-generated")).toBeNull();
+      // No "our record" wording on official text.
+      expect(screen.queryByText(/Our record of this member/)).toBeNull();
+    });
+
     it("Who They Are shows AI-generated badge when bio is AI", () => {
       mockQueryResult = {
         data: {

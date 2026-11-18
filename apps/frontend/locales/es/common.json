@@ -122,5 +122,61 @@
       "add": "Elige “Agregar a pantalla de inicio”.",
       "confirm": "Toca “Agregar” para confirmar."
     }
+  },
+  "aiReceipt": {
+    "badge": {
+      "AI": "Generado por IA",
+      "DETERMINISTIC": "Generado a partir de registros",
+      "MANUAL": "Redactado por una persona",
+      "SCRAPED": "Texto oficial",
+      "UNKNOWN": "Origen no registrado"
+    },
+    "summary": "Cómo se hizo esto",
+    "labels": {
+      "origin": "Elaborado por",
+      "source": "Fuente",
+      "model": "Modelo",
+      "prompt": "Instrucciones (prompt)",
+      "generated": "Fecha de generación"
+    },
+    "origin": {
+      "AI": "Un modelo de IA",
+      "DETERMINISTIC": "Nuestros registros, sin modelo de IA",
+      "MANUAL": "Una persona",
+      "SCRAPED": "Copiado textualmente de la fuente oficial",
+      "UNKNOWN": "No registrado"
+    },
+    "notRecorded": "No registrado",
+    "sourceRef": "Versión {{ref}}",
+    "retrieved": "consultado el {{date}}",
+    "promptLink": "Versión {{version}} · {{hash}}",
+    "promptLinkLabel": "Leer el prompt exacto:",
+    "exactBuild": "Compilación exacta: {{digest}}",
+    "madeFrom": {
+      "memberRecord": "Nuestro registro de este miembro (nombre, distrito, partido, comités), no un documento",
+      "committeeAssignments": "Las asignaciones a comités de este miembro, tal como se enumeran abajo",
+      "legislativeActions": "Nuestros registros de acciones legislativas recientes",
+      "committeeName": "Solo el nombre y la cámara del comité, sin ningún documento sobre él"
+    },
+    "billTextVersion": "Versión del texto del proyecto {{ref}}, de la exportación de datos públicos de la Legislatura",
+    "newTab": "(se abre en una pestaña nueva)"
+  },
+  "promptRecord": {
+    "back": "Volver a Transparencia",
+    "title": "Prompt publicado",
+    "fingerprint": "Huella (sha256):",
+    "invalid": "Eso no es una huella de prompt. Las huellas tienen 64 caracteres de 0–9 y a–f, como aparecen en el recibo “Cómo se hizo esto” de un pasaje.",
+    "unavailable": "No pudimos leer el registro público de prompts en este momento, así que esta huella no se ha verificado. Eso no significa que el prompt no esté publicado; puede buscarlo usted mismo en",
+    "unpublished": "Esta huella no está en el registro público de prompts según la verificación de ahora mismo, así que el texto que identifica no se puede verificar aquí. Un prompt publicado en la última hora puede no aparecer todavía. Puede buscarlo usted mismo en",
+    "recordLink": "el registro de atestación de prompt-service.",
+    "whichPrompt": "Qué prompt es",
+    "version": "versión {{version}}",
+    "textHeading": "El texto exacto que recibió el modelo",
+    "placeholders": "El documento analizado se inserta donde aparecen marcadores como {{marker}}.",
+    "verifyHeading": "Verifíquelo usted mismo",
+    "verifyIntro": "No tiene que confiar en nuestra palabra. El archivo se nombra con la huella de su propio contenido, así que cualquiera puede confirmar que no ha sido alterado:",
+    "verifyDownload": "Descargue",
+    "verifyRun": "Ejecute (en Linux use sha256sum):",
+    "verifyMatch": "La huella que se imprima debe ser igual a la de arriba. Si hubiera cambiado aunque sea un carácter del archivo, no lo sería."
   }
 }

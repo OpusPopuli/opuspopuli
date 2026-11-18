@@ -214,6 +214,33 @@ describe("PropositionDetailPage", () => {
       ).toBeInTheDocument();
     });
 
+    it("labels and receipts the analysis, and not the scraped fallback (#1450)", () => {
+      mockQueryResult = {
+        data: {
+          proposition: {
+            ...mockProposition,
+            analysisProvenance: { kind: "AI", promptHash: "d8".repeat(32) },
+          } as typeof mockProposition,
+        },
+        loading: false,
+        error: null,
+      };
+      const { unmount } = render(<PropositionDetailPage />);
+      expect(screen.getByText("AI-generated")).toBeInTheDocument();
+      expect(screen.getByText("How this was made")).toBeInTheDocument();
+      unmount();
+
+      // The fallback is the listing page's own text: no AI label, no receipt.
+      mockQueryResult = {
+        data: { proposition: mockPropositionNoExtras },
+        loading: false,
+        error: null,
+      };
+      render(<PropositionDetailPage />);
+      expect(screen.queryByText("AI-generated")).toBeNull();
+      expect(screen.queryByText("How this was made")).toBeNull();
+    });
+
     it("should show Learn More button", () => {
       render(<PropositionDetailPage />);
 

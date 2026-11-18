@@ -51,7 +51,6 @@
       "empty": "No AI synopsis has been generated for this session yet."
     },
     "aiPanel": {
-      "badge": "AI-generated",
       "heading": "Session synopsis",
       "disclaimer": "May contain inaccuracies — verify against the source journal before citing."
     },
@@ -117,5 +116,9 @@
   },
   "propFinance": {
     "spent": "{{amount}} spent"
+  },
+  "sources": {
+    "title": "Where this comes from",
+    "intro": "The plain-language explanations on this page were written by an AI model from these official pages. Each term and stage above names the page it came from."
   }
 }

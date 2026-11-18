@@ -226,6 +226,94 @@ describe('mapPropositionRecord', () => {
     } as Parameters<typeof mapPropositionRecord>[0];
   }
 
+  describe('analysisProvenance (#1450)', () => {
+    const recorded = {
+      analysisSummary: 'What it does.',
+      analysisSource: 'ai-generated',
+      analysisSourceTextHash: 'aa'.repeat(32),
+      fullTextHash: 'aa'.repeat(32),
+      analysisPromptHash: 'd8'.repeat(32),
+      analysisPromptVersion: 'v4',
+      analysisLlmModel: 'nemotron-3.5-lightning:30b-a3b',
+      analysisLlmDigest: 'e7a64ff15fb1',
+      analysisGeneratedAt: new Date('2026-11-01T00:00:00Z'),
+      sourceUrl: 'https://example.gov/listing',
+    };
+
+    it('has no receipt without an analysis', () => {
+      expect(mapPropositionRecord(row()).analysisProvenance).toBeUndefined();
+    });
+
+    it('names the archived bytes the analysis read, not the listing page', () => {
+      const fetchedAt = new Date('2026-10-30T00:00:00Z');
+      const out = mapPropositionRecord(
+        row({
+          ...recorded,
+          sourceVersion: {
+            sourceUrl: 'https://example.gov/text.pdf',
+            fetchedAt,
+          },
+        }),
+      );
+      expect(out.analysisProvenance).toEqual({
+        kind: 'ai',
+        promptHash: 'd8'.repeat(32),
+        promptVersion: 'v4',
+        llmModel: 'nemotron-3.5-lightning:30b-a3b',
+        llmDigest: 'e7a64ff15fb1',
+        generatedAt: recorded.analysisGeneratedAt,
+        sourceUrl: 'https://example.gov/text.pdf',
+        sourceFetchedAt: fetchedAt,
+      });
+    });
+
+    it('names no source when the analysis read older text than today’s', () => {
+      // New text arrived; the old analysis stays until a re-run succeeds.
+      // Today's archived source is not the one it read.
+      const out = mapPropositionRecord(
+        row({
+          ...recorded,
+          fullTextHash: 'bb'.repeat(32),
+          sourceVersion: {
+            sourceUrl: 'https://example.gov/text-v2.pdf',
+            fetchedAt: new Date('2026-11-10T00:00:00Z'),
+          },
+        }),
+      );
+      expect(out.analysisProvenance?.kind).toBe('ai');
+      expect(out.analysisProvenance?.sourceUrl).toBeUndefined();
+      expect(out.analysisProvenance?.sourceFetchedAt).toBeUndefined();
+    });
+
+    it('never names the listing page, which the analysis did not read', () => {
+      expect(
+        mapPropositionRecord(row(recorded)).analysisProvenance?.sourceUrl,
+      ).toBeUndefined();
+    });
+
+    it('calls an unrecognised origin with no prompt hash UNKNOWN, not AI', () => {
+      const out = mapPropositionRecord(
+        row({ ...recorded, analysisSource: null, analysisPromptHash: null }),
+      );
+      expect(out.analysisProvenance?.kind).toBe('unknown');
+    });
+
+    it('takes a recorded prompt hash as evidence of a model', () => {
+      const out = mapPropositionRecord(
+        row({ ...recorded, analysisSource: 'legacy-import' }),
+      );
+      expect(out.analysisProvenance?.kind).toBe('ai');
+    });
+
+    it('never attributes a hand-written analysis to a model', () => {
+      const out = mapPropositionRecord(
+        row({ ...recorded, analysisSource: 'manual' }),
+      );
+      expect(out.analysisProvenance?.kind).toBe('manual');
+      expect(out.analysisProvenance?.llmModel).toBeUndefined();
+    });
+  });
+
   it('converts every db null to GraphQL undefined', () => {
     const out = mapPropositionRecord(row());
     expect(out.fullText).toBeUndefined();

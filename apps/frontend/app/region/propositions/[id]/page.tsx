@@ -30,6 +30,8 @@ import { ClaimAttribution } from "@/components/region/ClaimAttribution";
 import { SegmentedFullText } from "@/components/region/SegmentedFullText";
 import { PropositionFundingSection } from "@/components/region/PropositionFundingSection";
 import { CivicTerm } from "@/components/civics/CivicTerm";
+import { AiGeneratedBadge } from "@/components/ai/AiGeneratedBadge";
+import { AiReceipt } from "@/components/ai/AiReceipt";
 import { CitizenActionCallout } from "@/components/civics/CitizenActionCallout";
 import { LifecycleProgressBar } from "@/components/civics/LifecycleProgressBar";
 import { useCivics } from "@/components/civics/CivicsContext";
@@ -69,8 +71,9 @@ function QuickView({
   // scrape `summary` only when it differs from the title — the SOS
   // listing-page scrape often puts identical text in both, and rendering
   // a paragraph that's just the title repeated is worse than nothing.
+  const analysis = proposition.analysisSummary?.trim();
   const summary =
-    proposition.analysisSummary?.trim() ||
+    analysis ||
     (proposition.summary?.trim() &&
     proposition.summary.trim() !== proposition.title.trim()
       ? proposition.summary
@@ -84,9 +87,20 @@ function QuickView({
   return (
     <div className="animate-layer-enter">
       {summary ? (
-        <p className="text-lg text-content-dim leading-relaxed mb-6">
-          {summary}
-        </p>
+        <>
+          {/* Only the analysis is generated; the fallback is the listing
+              page's own text (#1450). */}
+          {analysis && (
+            <div className="mb-2">
+              <AiGeneratedBadge
+                kind={proposition.analysisProvenance?.kind ?? "AI"}
+              />
+            </div>
+          )}
+          <p className="text-lg text-content-dim leading-relaxed mb-6">
+            {summary}
+          </p>
+        </>
       ) : (
         <p className="text-base italic text-content-dim mb-6">
           AI analysis pending — a plain-language summary will appear here once
@@ -124,6 +138,15 @@ function QuickView({
             Fiscal impact
           </span>
           <span className="leading-relaxed">{proposition.fiscalImpact}</span>
+        </div>
+      )}
+
+      {/* Directly under the analysis it describes — summary, provisions,
+          fiscal impact — and before the civics callout, which has its own
+          provenance (#1450). */}
+      {analysis && (
+        <div className="mb-6">
+          <AiReceipt provenance={proposition.analysisProvenance} />
         </div>
       )}
 

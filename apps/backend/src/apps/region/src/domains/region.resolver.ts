@@ -24,6 +24,7 @@ import {
   RepresentativeRecord,
   mapPropositionRecord,
 } from './region.service';
+import { representativeProvenance } from './ai-provenance';
 import {
   RegionInfoModel,
   RegionPluginModel,
@@ -558,6 +559,7 @@ export class RegionResolver {
       activitySummaryGeneratedAt:
         result.activitySummaryGeneratedAt ?? undefined,
       activitySummaryWindowDays: result.activitySummaryWindowDays ?? undefined,
+      ...representativeProvenance(result),
     };
   }
 
@@ -884,6 +886,8 @@ export class RegionResolver {
       activitySummaryGeneratedAt:
         result.activitySummaryGeneratedAt ?? undefined,
       activitySummaryWindowDays: result.activitySummaryWindowDays ?? undefined,
+      descriptionProvenance: result.descriptionProvenance,
+      activitySummaryProvenance: result.activitySummaryProvenance,
       createdAt: result.createdAt,
       updatedAt: result.updatedAt,
     };

@@ -163,6 +163,32 @@ describe('LegislativeCommitteeService', () => {
   });
 
   describe('getDetail', () => {
+    it('carries receipts that name no source: the description is written from the name alone (#1450)', async () => {
+      const built = await buildService({
+        detail: {
+          id: 'c1',
+          externalId: 'assembly:health',
+          name: 'Health',
+          chamber: 'Assembly',
+          url: 'https://example.gov/health',
+          description: 'Oversees health policy.',
+          descriptionPromptHash: '4a'.repeat(32),
+          descriptionLlmModel: 'nemotron-3.5-lightning:30b-a3b',
+          activitySummary: null,
+          createdAt: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+          assignments: [],
+        },
+      });
+      const out = await built.service.getDetail('c1');
+      expect(out?.descriptionProvenance).toMatchObject({
+        kind: 'ai',
+        promptHash: '4a'.repeat(32),
+        sourceUrl: undefined,
+      });
+      expect(out?.activitySummaryProvenance).toBeUndefined();
+    });
+
     it('returns null when db is unavailable', async () => {
       const built = await buildService({ withDb: false });
       const out = await built.service.getDetail('any');

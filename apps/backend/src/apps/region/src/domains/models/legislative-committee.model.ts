@@ -1,4 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+import { AiProvenanceModel } from './ai-provenance.model';
 
 /**
  * Compact summary used by the list page + by the detail page's header.
@@ -115,6 +116,19 @@ export class LegislativeCommitteeDetailModel {
 
   @Field({ nullable: true })
   activitySummaryWindowDays?: number;
+
+  @Field(() => AiProvenanceModel, {
+    nullable: true,
+    description:
+      "How `description` was produced (#1450). Written from the committee's chamber and name only, so it names no source.",
+  })
+  descriptionProvenance?: AiProvenanceModel;
+
+  @Field(() => AiProvenanceModel, {
+    nullable: true,
+    description: 'How `activitySummary` was produced (#1450).',
+  })
+  activitySummaryProvenance?: AiProvenanceModel;
 
   @Field()
   createdAt!: Date;
