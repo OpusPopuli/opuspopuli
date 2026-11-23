@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { GqlArgumentsHost } from '@nestjs/graphql';
+import { redactUrl } from '../tracing-redaction';
 import { Request, Response } from 'express';
 import {
   createSanitizedResponse,
@@ -49,11 +50,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
           : HttpStatus.INTERNAL_SERVER_ERROR;
 
       logErrorDetails('AllExceptionsFilter', exception, {
-        path: request?.url ?? gqlHost.getInfo()?.fieldName ?? 'graphql',
+        path: request?.url
+          ? redactUrl(request.url)
+          : (gqlHost.getInfo()?.fieldName ?? 'graphql'),
         method: request?.method ?? 'POST',
         statusCode: status,
         ip: request?.ip,
-        userAgent: request?.headers?.['user-agent'],
       });
 
       // Re-throw so the GraphQL error formatter handles the response
@@ -72,13 +74,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const originalMessage = this.extractMessage(exception);
 
-    // Log full error details server-side
+    // Log full error details server-side. No user agent, and a path without
+    // query values (#1460): both are the visitor's, and this logger has no
+    // redaction of its own. `ip` is the socket peer (the tunnel or the
+    // gateway), not the visitor.
     logErrorDetails('AllExceptionsFilter', exception, {
-      path: request?.url,
+      path: request?.url ? redactUrl(request.url) : undefined,
       method: request?.method,
       statusCode: status,
       ip: request?.ip,
-      userAgent: request?.get?.('user-agent'),
     });
 
     // Create sanitized response for client

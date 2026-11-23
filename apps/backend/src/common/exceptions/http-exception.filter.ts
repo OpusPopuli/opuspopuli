@@ -5,6 +5,7 @@ import {
   ExceptionFilter,
   Logger,
 } from '@nestjs/common';
+import { redactUrl } from '../tracing-redaction';
 import { Request, Response } from 'express';
 import { sanitizeErrorMessage, logErrorDetails } from './error-sanitizer';
 // Import for Express Request augmentation (auditContext)
@@ -38,8 +39,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
           exception.message;
 
     // Log full error details server-side
+    // The logged path keeps parameter names only: a query string can carry
+    // an address or coordinates (#1460). The response echoes the caller's own
+    // URL back to them, unchanged.
     logErrorDetails('HttpExceptionFilter', exception, {
-      path: request.url,
+      path: request.url ? redactUrl(request.url) : request.url,
       method: request.method,
       statusCode: status,
     });
