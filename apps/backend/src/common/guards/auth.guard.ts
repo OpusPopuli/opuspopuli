@@ -14,6 +14,7 @@ import { isLoggedIn } from 'src/common/auth/jwt.strategy';
 import { IS_PUBLIC_KEY } from 'src/common/decorators/public.decorator';
 import { AuditLogService } from 'src/common/services/audit-log.service';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
+import { resolveClientIp } from 'src/common/utils/client-ip';
 
 /**
  * Apollo Federation and GraphQL introspection field names.
@@ -116,9 +117,7 @@ export class AuthGuard implements CanActivate {
           | 'query'
           | 'mutation'
           | 'subscription',
-        ipAddress:
-          (request?.headers as Record<string, string>)?.['x-forwarded-for'] ||
-          request?.ip,
+        ipAddress: resolveClientIp(request?.headers, request?.ip),
         userAgent:
           request?.headers?.['x-original-user-agent'] ||
           request?.headers?.['user-agent'],

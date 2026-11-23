@@ -14,7 +14,10 @@ import { IncomingMessage } from 'node:http';
 import { Request, Response } from 'express';
 import { LoggingModule, LogLevel } from '@opuspopuli/logging-provider';
 
-import { GATEWAY_THROTTLER_CONFIG } from 'src/common/config/shared-app.config';
+import {
+  GATEWAY_THROTTLER_CONFIG,
+  throttlerModuleOptions,
+} from 'src/common/config/shared-app.config';
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
 import { authConfig, supabaseConfig } from '@opuspopuli/config-provider';
@@ -46,6 +49,8 @@ import { WebSocketConnectionException } from 'src/common/exceptions/app.exceptio
 import { AuthRefreshController } from './auth-refresh.controller';
 import { AuthLogoutController } from './auth-logout.controller';
 import { clientSessionId } from 'src/common/utils/client-session';
+import { resolveClientIp } from 'src/common/utils/client-ip';
+import { GraphqlRateLimitMiddleware } from 'src/common/middleware/graphql-rate-limit.middleware';
 
 /**
  * Extract authenticated user from request context for GraphQL operations.
@@ -75,8 +80,9 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
   }
 
   // Capture original client metadata for forwarding to subgraphs
-  context.clientIp =
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+  // The real client IP, never the client-chosen first x-forwarded-for hop
+  // (#1456). Subgraphs key per-IP caps and audit records on it.
+  context.clientIp = resolveClientIp(req.headers, req.ip);
   context.clientUserAgent = req.headers['user-agent'];
   // Per-reader caps on anonymous requests (bills-phase-b.md, D18).
   context.clientSession = clientSessionId(req);
@@ -123,7 +129,7 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
     // raising the gateway's limits left the subgraphs at 10/s, so the briefing
     // kept failing from the region service while the gateway looked healthy.
     // Same file now, so the next person changing one sees the other.
-    ThrottlerModule.forRoot(GATEWAY_THROTTLER_CONFIG),
+    ThrottlerModule.forRoot(throttlerModuleOptions(GATEWAY_THROTTLER_CONFIG)),
     GraphQLModule.forRootAsync<ApolloGatewayDriverConfig>({
       driver: ApolloGatewayDriver,
       imports: [
@@ -245,6 +251,9 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
     // @see https://github.com/OpusPopuli/opuspopuli/issues/190
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    // REST routes only: Nest guards never run on gateway GraphQL operations,
+    // which GraphqlRateLimitMiddleware limits instead. Keyed on the real
+    // client by throttlerModuleOptions (#1456).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     // SECURITY: Global auth guard implements "deny by default"
     // All GraphQL operations require authentication unless marked with @Public()
@@ -264,6 +273,18 @@ const handleAuth = ({ req, res }: { req: Request; res: Response }) => {
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // Per-client GraphQL limit, first: a refused request should cost as
+    // little as possible, and must not get past CSRF or auth work (#1456).
+    consumer
+      .apply(GraphqlRateLimitMiddleware)
+      // Both: Apollo is mounted on `/api` as a prefix, so it also answers
+      // `/api/anything`. Binding `api` alone matched only the exact path,
+      // and a POST to `/api/x` reached Apollo with no limit at all.
+      .forRoutes(
+        { path: 'api', method: RequestMethod.ALL },
+        { path: 'api/*splat', method: RequestMethod.ALL },
+      );
+
     consumer
       .apply(CsrfMiddleware, AuthMiddleware)
       // Exclude health check endpoints from auth middleware

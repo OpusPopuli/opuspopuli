@@ -230,7 +230,7 @@ describe('LoggerMiddleware', () => {
       expect(mockRequest.auditContext?.ipAddress).toBe('203.0.113.195');
     });
 
-    it('should extract first IP from x-forwarded-for header (multiple IPs)', () => {
+    it('should take the last x-forwarded-for hop, never the client-chosen first (#1456)', () => {
       mockRequest.headers = {
         'x-forwarded-for': '203.0.113.195, 70.41.3.18, 150.172.238.178',
       };
@@ -241,10 +241,10 @@ describe('LoggerMiddleware', () => {
         mockNext,
       );
 
-      expect(mockRequest.auditContext?.ipAddress).toBe('203.0.113.195');
+      expect(mockRequest.auditContext?.ipAddress).toBe('150.172.238.178');
     });
 
-    it('should extract IP from x-forwarded-for array', () => {
+    it('should take the last hop of an x-forwarded-for array', () => {
       mockRequest.headers = {
         'x-forwarded-for': ['203.0.113.195', '70.41.3.18'],
       };
@@ -255,13 +255,29 @@ describe('LoggerMiddleware', () => {
         mockNext,
       );
 
-      expect(mockRequest.auditContext?.ipAddress).toBe('203.0.113.195');
+      expect(mockRequest.auditContext?.ipAddress).toBe('70.41.3.18');
     });
 
-    it('should extract IP from x-real-ip header', () => {
+    it("should prefer Cloudflare's cf-connecting-ip (#1456)", () => {
+      mockRequest.headers = {
+        'cf-connecting-ip': '198.51.100.20',
+        'x-forwarded-for': '203.0.113.195',
+      };
+
+      middleware.use(
+        mockRequest as Request,
+        mockResponse as Response,
+        mockNext,
+      );
+
+      expect(mockRequest.auditContext?.ipAddress).toBe('198.51.100.20');
+    });
+
+    it('should ignore x-real-ip, which a client can set (#1456)', () => {
       mockRequest.headers = {
         'x-real-ip': '192.168.1.100',
       };
+      Object.defineProperty(mockRequest, 'ip', { value: '10.0.0.1' });
 
       middleware.use(
         mockRequest as Request,
@@ -269,13 +285,14 @@ describe('LoggerMiddleware', () => {
         mockNext,
       );
 
-      expect(mockRequest.auditContext?.ipAddress).toBe('192.168.1.100');
+      expect(mockRequest.auditContext?.ipAddress).toBe('10.0.0.1');
     });
 
-    it('should extract IP from x-real-ip array', () => {
+    it('should ignore an x-real-ip array too', () => {
       mockRequest.headers = {
         'x-real-ip': ['192.168.1.100'],
       };
+      Object.defineProperty(mockRequest, 'ip', { value: '10.0.0.1' });
 
       middleware.use(
         mockRequest as Request,
@@ -283,7 +300,7 @@ describe('LoggerMiddleware', () => {
         mockNext,
       );
 
-      expect(mockRequest.auditContext?.ipAddress).toBe('192.168.1.100');
+      expect(mockRequest.auditContext?.ipAddress).toBe('10.0.0.1');
     });
 
     it('should fallback to req.ip', () => {

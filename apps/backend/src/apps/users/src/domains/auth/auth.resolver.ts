@@ -1,3 +1,6 @@
+import type { IncomingHttpHeaders } from 'node:http';
+import { resolveClientIp } from 'src/common/utils/client-ip';
+import { maskEmail, maskIpAddress } from 'src/common/utils/pii-masker';
 import { Args, Mutation, Resolver, Context, Directive } from '@nestjs/graphql';
 import { ConfigService } from '@nestjs/config';
 import { ForbiddenException, Optional } from '@nestjs/common';
@@ -21,7 +24,7 @@ import {
 import { setAuthCookies } from 'src/common/utils/cookie.utils';
 import { deviceNameFromUserAgent } from 'src/common/utils/user-agent.utils';
 import { DbService } from '@opuspopuli/relationaldb-provider';
-import { AUTH_THROTTLE } from 'src/config/auth-throttle.config';
+import { AUTH_THROTTLE, authThrottle } from 'src/config/auth-throttle.config';
 import { AccountLockoutService } from './services/account-lockout.service';
 import { AuditLogService } from 'src/common/services/audit-log.service';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
@@ -158,7 +161,10 @@ export class AuthResolver {
     const headers = context.req?.headers as Record<string, string> | undefined;
     const userAgent =
       headers?.['x-original-user-agent'] || headers?.['user-agent'] || '';
-    const ipAddress = headers?.['x-forwarded-for'] || context.req?.ip;
+    const ipAddress = resolveClientIp(
+      context.req?.headers as IncomingHttpHeaders | undefined,
+      context.req?.ip,
+    );
 
     // Parse user agent for device info (simple extraction)
     const isMobile = /mobile|android|iphone/i.test(userAgent);
@@ -221,7 +227,7 @@ export class AuthResolver {
    * @see https://github.com/OpusPopuli/opuspopuli/issues/187
    */
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.register })
+  @Throttle(authThrottle(AUTH_THROTTLE.register))
   @Mutation(() => Boolean)
   async registerUser(
     @Args('registerUserDto') registerUserDto: RegisterUserDto,
@@ -271,7 +277,7 @@ export class AuthResolver {
    * @see https://github.com/OpusPopuli/opuspopuli/issues/187
    */
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.login })
+  @Throttle(authThrottle(AUTH_THROTTLE.login))
   @Mutation(() => Auth)
   async loginUser(
     @Args('loginUserDto') loginUserDto: LoginUserDto,
@@ -286,7 +292,9 @@ export class AuthResolver {
       const remainingMs = this.lockoutService.getRemainingLockoutTime(email);
       const remainingMin = Math.ceil(remainingMs / 60000);
       this.logger.warn(
-        `Blocked login attempt for locked account: ${email} (IP: ${clientIp})`,
+        // Masked: this service's logger applies no PII redaction (#1456).
+        `Blocked login attempt for locked account: ${maskEmail(email)} ` +
+          `(IP: ${clientIp ? maskIpAddress(clientIp) : 'unknown'})`,
       );
 
       // Audit: Blocked login attempt on locked account
@@ -365,7 +373,7 @@ export class AuthResolver {
    * @see https://github.com/OpusPopuli/opuspopuli/issues/187
    */
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.passwordReset })
+  @Throttle(authThrottle(AUTH_THROTTLE.passwordReset))
   @Mutation(() => Boolean)
   async forgotPassword(
     @Args('email') email: string,
@@ -434,7 +442,7 @@ export class AuthResolver {
   // ============================================
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.passkey })
+  @Throttle(authThrottle(AUTH_THROTTLE.passkey))
   @Mutation(() => PasskeyRegistrationOptions)
   async generatePasskeyRegistrationOptions(
     @Args('input') input: GeneratePasskeyRegistrationOptionsDto,
@@ -458,7 +466,7 @@ export class AuthResolver {
   }
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.passkey })
+  @Throttle(authThrottle(AUTH_THROTTLE.passkey))
   @Mutation(() => Boolean)
   async verifyPasskeyRegistration(
     @Args('input') input: VerifyPasskeyRegistrationDto,
@@ -534,7 +542,7 @@ export class AuthResolver {
   }
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.passkey })
+  @Throttle(authThrottle(AUTH_THROTTLE.passkey))
   @Mutation(() => PasskeyAuthenticationOptions)
   async generatePasskeyAuthenticationOptions(
     @Args('input', { nullable: true })
@@ -550,7 +558,7 @@ export class AuthResolver {
   }
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.passkey })
+  @Throttle(authThrottle(AUTH_THROTTLE.passkey))
   @Mutation(() => Auth)
   async verifyPasskeyAuthentication(
     @Args('input') input: VerifyPasskeyAuthenticationDto,
@@ -616,7 +624,7 @@ export class AuthResolver {
   // ============================================
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.magicLink })
+  @Throttle(authThrottle(AUTH_THROTTLE.magicLink))
   @Mutation(() => Boolean)
   async sendMagicLink(
     @Args('input') input: SendMagicLinkDto,
@@ -650,7 +658,7 @@ export class AuthResolver {
   }
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.magicLink })
+  @Throttle(authThrottle(AUTH_THROTTLE.magicLink))
   @Mutation(() => Auth)
   async verifyMagicLink(
     @Args('input') input: VerifyMagicLinkDto,
@@ -695,7 +703,7 @@ export class AuthResolver {
   }
 
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.magicLink })
+  @Throttle(authThrottle(AUTH_THROTTLE.magicLink))
   @Mutation(() => Boolean)
   async registerWithMagicLink(
     @Args('input') input: RegisterWithMagicLinkDto,
@@ -734,7 +742,7 @@ export class AuthResolver {
    * Rate limited: 3 attempts per minute
    */
   @Public()
-  @Throttle({ default: AUTH_THROTTLE.magicLink })
+  @Throttle(authThrottle(AUTH_THROTTLE.magicLink))
   @Mutation(() => Auth)
   async exchangeSupabaseSession(
     @Args('input') input: ExchangeSupabaseSessionDto,
@@ -790,7 +798,7 @@ export class AuthResolver {
    */
   @Public()
   @Directive('@inaccessible')
-  @Throttle({ default: AUTH_THROTTLE.refresh })
+  @Throttle(authThrottle(AUTH_THROTTLE.refresh))
   @Mutation(() => Auth)
   async refreshSession(
     @Args('refreshToken') refreshToken: string,
@@ -872,7 +880,7 @@ export class AuthResolver {
    */
   @Public()
   @Directive('@inaccessible')
-  @Throttle({ default: AUTH_THROTTLE.logout })
+  @Throttle(authThrottle(AUTH_THROTTLE.logout))
   @Mutation(() => Boolean)
   async revokeSession(
     @Args('accessToken') accessToken: string,

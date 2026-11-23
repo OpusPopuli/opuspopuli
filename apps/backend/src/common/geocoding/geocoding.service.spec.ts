@@ -305,9 +305,10 @@ describe('GeocodingService', () => {
       ).rejects.toThrow(GeocoderUnavailableError);
 
       expectNoAddressLogged();
-      // Locality is kept: it distinguishes a systemic outage from one bad
-      // address, and a city is not directly identifying.
-      expect(logged.join('\n')).toContain('San Francisco');
+      // The state is kept, to tell a systemic outage from one bad address.
+      // Not the city: anonymous visitors type it as free text (#1456).
+      expect(logged.join('\n')).toContain('CA');
+      expect(logged.join('\n')).not.toContain('San Francisco');
     });
 
     it('keeps it out of the logs when the geocoder finds no match', async () => {

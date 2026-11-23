@@ -81,6 +81,21 @@ describe('AuthLogoutController', () => {
     expect((init as RequestInit).body).toContain('RevokeSession');
   });
 
+  it("forwards the visitor's IP, so sign-out limits are per visitor (#1456)", async () => {
+    const req = {
+      cookies: { 'access-token': 'tok' },
+      headers: { 'cf-connecting-ip': '198.51.100.20' },
+      ip: '172.18.0.5',
+    } as unknown as Request;
+
+    await controller.logout(req, res);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      'x-forwarded-for': '198.51.100.20',
+    });
+  });
+
   it('still clears cookies when the subgraph is unreachable', async () => {
     fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
 

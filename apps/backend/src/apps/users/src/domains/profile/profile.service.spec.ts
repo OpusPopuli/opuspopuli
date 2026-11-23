@@ -27,7 +27,7 @@ import { CreateAddressDto } from './dto/address.dto';
 import {
   GeocodingService,
   GeocoderUnavailableError,
-} from './geocoding.service';
+} from 'src/common/geocoding/geocoding.service';
 import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 describe('ProfileService', () => {

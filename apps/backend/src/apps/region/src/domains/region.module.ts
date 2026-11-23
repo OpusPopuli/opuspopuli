@@ -38,6 +38,9 @@ import { RegionCacheService } from './region-cache.service';
 import { RegionSyncService } from './region-sync.service';
 import { BillSummaryService } from './bill-summary.service';
 import { BillSummaryResolver } from './bill-summary.resolver';
+import { PublicJurisdictionService } from './public-jurisdiction.service';
+import { PublicJurisdictionResolver } from './public-jurisdiction.resolver';
+import { GeocodingService } from 'src/common/geocoding/geocoding.service';
 import { PropositionsSyncService } from './propositions-sync.service';
 import { MeetingsSyncService } from './meetings-sync.service';
 import { RepresentativesSyncService } from './representatives-sync.service';
@@ -308,6 +311,10 @@ const promptClientAsyncConfig = {
     RegionResolver,
     BillSummaryService,
     BillSummaryResolver,
+    // Anonymous district lookup (#1456).
+    GeocodingService,
+    PublicJurisdictionService,
+    PublicJurisdictionResolver,
     CommitteeRelevanceCacheLookup,
     LegislativeCommitteeRelevanceFieldResolver,
     LegislativeCommitteeDetailRelevanceFieldResolver,

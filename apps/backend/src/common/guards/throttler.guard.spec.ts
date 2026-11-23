@@ -159,12 +159,16 @@ describe('GqlThrottlerGuard', () => {
       expect(loggerSpy).toHaveBeenCalledWith(
         expect.stringContaining('loginUser'),
       );
+      // Masked (#1456): the real client IP, and this logger does not redact.
       expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('192.x.x.x'),
+      );
+      expect(loggerSpy).not.toHaveBeenCalledWith(
         expect.stringContaining('192.168.1.100'),
       );
     });
 
-    it('should use x-forwarded-for header when ip is not available', async () => {
+    it('should log the forwarded client, masked, when ip is not available', async () => {
       const mockReq = {
         headers: { 'x-forwarded-for': '10.0.0.1' },
       };
@@ -209,6 +213,9 @@ describe('GqlThrottlerGuard', () => {
       ).rejects.toThrow(ThrottlerException);
 
       expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('10.x.x.x'),
+      );
+      expect(loggerSpy).not.toHaveBeenCalledWith(
         expect.stringContaining('10.0.0.1'),
       );
     });

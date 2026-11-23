@@ -1,5 +1,7 @@
 import { ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
+import { resolveClientIp } from '../utils/client-ip';
+import { maskIpAddress } from '../utils/pii-masker';
 import {
   ThrottlerGuard,
   ThrottlerException,
@@ -51,10 +53,9 @@ export class GqlThrottlerGuard extends ThrottlerGuard {
     const ctx = gqlCtx.getContext();
     const info = gqlCtx.getInfo();
 
-    const ip =
-      ctx.req?.ip ||
-      (ctx.req?.headers as Record<string, string>)?.['x-forwarded-for'] ||
-      'unknown';
+    // Masked: the real client IP since #1456, and this logger does not redact.
+    const clientIp = resolveClientIp(ctx.req?.headers, ctx.req?.ip);
+    const ip = clientIp ? maskIpAddress(clientIp) : 'unknown';
     const operationName = info?.fieldName || 'unknown';
 
     this.logger.warn(

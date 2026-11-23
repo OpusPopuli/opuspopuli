@@ -26,6 +26,7 @@ import { regionValidationSchema } from 'src/config/env.validation';
 import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import {
   THROTTLER_CONFIG,
+  throttlerModuleOptions,
   SHARED_PROVIDERS,
   GRAPHQL_INTROSPECTION_ENABLED,
   createLoggingConfig,
@@ -57,7 +58,7 @@ import { SecretsModule } from '@opuspopuli/secrets-provider';
       isGlobal: true,
     }),
     LoggingModule.forRootAsync(createLoggingConfig('region-service')),
-    ThrottlerModule.forRoot(THROTTLER_CONFIG),
+    ThrottlerModule.forRoot(throttlerModuleOptions(THROTTLER_CONFIG)),
     ScheduleModule.forRoot(),
     DbModule.forRoot(),
     AuditModule.forRoot(),

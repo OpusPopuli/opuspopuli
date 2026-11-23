@@ -26,18 +26,18 @@ describe('BillSummaryResolver (bills-phase-b.md D7)', () => {
     });
   });
 
-  it('passes the first forwarded IP for the per-IP cap', async () => {
+  it('keys the per-IP cap on the resolved IP, never a client-chosen first hop (#1456)', async () => {
     await resolver.requestBillSummary(
       'b1',
       context({
         'x-client-session': session,
-        'x-forwarded-for': '203.0.113.9, 10.0.0.1',
+        'x-forwarded-for': '203.0.113.9, 198.51.100.20',
       }),
     );
     expect(summaries.request).toHaveBeenCalledWith('b1', {
       userId: undefined,
       session,
-      ip: '203.0.113.9',
+      ip: '198.51.100.20',
     });
   });
 

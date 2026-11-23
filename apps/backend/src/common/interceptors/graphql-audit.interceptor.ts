@@ -16,6 +16,7 @@ import {
 import { AuditAction } from '../enums/audit-action.enum';
 import { IAuditLogCreate } from '../interfaces/audit.interface';
 import { Request } from 'express';
+import { resolveClientIp } from '../utils/client-ip';
 
 interface GraphQLInfo {
   fieldName: string;
@@ -156,21 +157,12 @@ export class GraphQLAuditInterceptor implements NestInterceptor {
   private extractIpAddress(request: Request | undefined): string | undefined {
     if (!request?.headers) return undefined;
 
-    // Check various headers for real IP (behind proxy/load balancer)
-    const forwardedFor = request.headers['x-forwarded-for'];
-    if (forwardedFor) {
-      const ips = Array.isArray(forwardedFor)
-        ? forwardedFor[0]
-        : forwardedFor.split(',')[0];
-      return ips?.trim();
-    }
-
-    const realIp = request.headers['x-real-ip'];
-    if (realIp) {
-      return Array.isArray(realIp) ? realIp[0] : realIp;
-    }
-
-    return request.ip || request.socket?.remoteAddress || undefined;
+    // Never the client-chosen first x-forwarded-for hop, nor x-real-ip,
+    // which a client can also set (#1456).
+    return resolveClientIp(
+      request.headers,
+      request.ip || request.socket?.remoteAddress,
+    );
   }
 
   private extractUserAgent(request: Request | undefined): string | undefined {

@@ -25,6 +25,10 @@ import {
   ATTR_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
 import { isTest } from 'src/config/environment.config';
+import {
+  httpStartOutgoingSpanHook,
+  undiciStartSpanHook,
+} from './tracing-redaction';
 
 const isDisabled =
   process.env.OTEL_TRACING_ENABLED === 'false' ||
@@ -48,6 +52,15 @@ if (!isDisabled) {
         '@opentelemetry/instrumentation-fs': { enabled: false },
         // Disable DNS instrumentation — adds noise without value
         '@opentelemetry/instrumentation-dns': { enabled: false },
+        // Outgoing URLs carry personal data in their query strings: the
+        // geocoder sends a street address there. Every query value is
+        // redacted before the span starts (#1456).
+        '@opentelemetry/instrumentation-undici': {
+          startSpanHook: undiciStartSpanHook,
+        },
+        '@opentelemetry/instrumentation-http': {
+          startOutgoingSpanHook: httpStartOutgoingSpanHook,
+        },
       }),
     ],
   });

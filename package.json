@@ -109,7 +109,8 @@
       "source-map-js": ">=1.2.2",
       "http-cache-semantics": ">=4.3.0",
       "follow-redirects": ">=1.16.2",
-      "@node-minify/core>glob": ">=10.5.0 <11.0.0"
+      "@node-minify/core>glob": ">=10.5.0 <11.0.0",
+      "effect": ">=3.22.1 <4.0.0"
     },
     "auditConfig": {
       "ignoreGhsas": [

@@ -5,7 +5,7 @@ import { StorageModule } from '@opuspopuli/storage-provider';
 
 import { ProfileService } from './profile.service';
 import { ProfileResolver } from './profile.resolver';
-import { GeocodingService } from './geocoding.service';
+import { GeocodingService } from 'src/common/geocoding/geocoding.service';
 import { JurisdictionResolutionService } from './jurisdiction-resolution.service';
 
 @Module({

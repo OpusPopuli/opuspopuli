@@ -1,5 +1,6 @@
 import { Inject, Injectable, NestMiddleware, Optional } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { resolveClientIp } from '../utils/client-ip';
 import {
   ILogger,
   LOGGER,
@@ -70,22 +71,8 @@ export class LoggerMiddleware implements NestMiddleware {
   }
 
   private extractIpAddress(req: Request): string | undefined {
-    // Check X-Forwarded-For header (load balancer/proxy)
-    const forwardedFor = req.headers['x-forwarded-for'];
-    if (forwardedFor) {
-      const ips = Array.isArray(forwardedFor)
-        ? forwardedFor[0]
-        : forwardedFor.split(',')[0];
-      return ips?.trim();
-    }
-
-    // Check other common headers
-    const realIp = req.headers['x-real-ip'];
-    if (realIp) {
-      return Array.isArray(realIp) ? realIp[0] : realIp;
-    }
-
-    // Fall back to socket remote address
-    return req.ip || req.socket?.remoteAddress || undefined;
+    // Never the client-chosen first x-forwarded-for hop, nor x-real-ip,
+    // which a client can also set (#1456).
+    return resolveClientIp(req.headers, req.ip || req.socket?.remoteAddress);
   }
 }

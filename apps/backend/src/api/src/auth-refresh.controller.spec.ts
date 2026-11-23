@@ -135,6 +135,23 @@ describe('AuthRefreshController', () => {
       const [, init] = fetchMock.mock.calls[0];
       expect(init.headers['X-HMAC-Auth']).toBe('signed-hmac-header');
     });
+
+    it("forwards the visitor's IP, so refresh limits are per visitor (#1456)", async () => {
+      // Without it the users service keys its refresh throttle on this
+      // gateway, every visitor shares one budget, and a busy minute signs
+      // people out at random.
+      fetchMock.mockResolvedValue(okResponse());
+      const req = {
+        cookies: { 'refresh-token': 'old-token' },
+        headers: { 'cf-connecting-ip': '198.51.100.20' },
+        ip: '172.18.0.5',
+      } as unknown as Request;
+
+      await controller.refresh(req, createResponse());
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init.headers['x-forwarded-for']).toBe('198.51.100.20');
+    });
   });
 
   describe('terminal failures — sign in again', () => {

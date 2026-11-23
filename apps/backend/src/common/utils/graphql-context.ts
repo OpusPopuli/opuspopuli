@@ -4,6 +4,7 @@ import { IncomingHttpHeaders } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { ILogin } from 'src/interfaces/login.interface';
 import { IAuditContext } from '../interfaces/audit.interface';
+import { resolveClientIp } from './client-ip';
 
 /**
  * User information extracted from the authenticated context
@@ -146,9 +147,10 @@ export function createAuditContext(
     requestId: randomUUID(),
     userId: user?.id,
     userEmail: userEmail || user?.email,
-    ipAddress:
-      (context.req?.headers as Record<string, string>)?.['x-forwarded-for'] ||
+    ipAddress: resolveClientIp(
+      context.req?.headers as IncomingHttpHeaders | undefined,
       context.req?.ip,
+    ),
     userAgent:
       (context.req?.headers as Record<string, string>)?.[
         'x-original-user-agent'

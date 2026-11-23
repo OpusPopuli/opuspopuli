@@ -380,7 +380,7 @@ describe('GraphQLAuditInterceptor', () => {
       });
     });
 
-    it('should extract IP address from x-forwarded-for header', (done) => {
+    it('should take the last x-forwarded-for hop, never the client-chosen first (#1456)', (done) => {
       reflector.get.mockReturnValue(undefined);
 
       const context = createMockGqlContext({
@@ -393,7 +393,7 @@ describe('GraphQLAuditInterceptor', () => {
         complete: () => {
           expect(auditLogService.log).toHaveBeenCalledWith(
             expect.objectContaining({
-              ipAddress: '192.168.1.1',
+              ipAddress: '10.0.0.1',
             }),
           );
           done();
@@ -401,7 +401,7 @@ describe('GraphQLAuditInterceptor', () => {
       });
     });
 
-    it('should extract IP address from x-real-ip header when x-forwarded-for is not present', (done) => {
+    it('should ignore x-real-ip, which a client can set, and use the socket (#1456)', (done) => {
       reflector.get.mockReturnValue(undefined);
 
       const mockRequest = {
@@ -435,7 +435,7 @@ describe('GraphQLAuditInterceptor', () => {
         complete: () => {
           expect(auditLogService.log).toHaveBeenCalledWith(
             expect.objectContaining({
-              ipAddress: '10.20.30.40',
+              ipAddress: '127.0.0.1',
             }),
           );
           done();
