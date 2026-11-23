@@ -998,6 +998,7 @@ type Query {
   recentRegionSyncJobs(limit: Int = 20): [RegionSyncJob!]!
   scheduledSyncJobs: [ScheduledSyncJob!]!
   billSummaryStatus(billId: ID!): BillSummaryStatus!
+  jurisdictionsByIds(ids: [ID!]!): [JurisdictionModel!]!
 }
 
 """
@@ -1038,6 +1039,11 @@ type Mutation {
   Ask for a bill summary when it is missing or stale. Capped per day overall and per reader.
   """
   requestBillSummary(billId: ID!): BillSummaryStatus!
+
+  """
+  The districts at an address or a location. Nothing is stored or logged.
+  """
+  locateJurisdictions(input: LocateJurisdictionsInput!): [JurisdictionModel!]!
 }
 
 """
@@ -1047,4 +1053,21 @@ enum SyncDepth {
   STATE
   COUNTY
   ALL
+}
+
+input LocateJurisdictionsInput {
+  point: GeoPointInput
+  address: AddressLookupInput
+}
+
+input GeoPointInput {
+  lat: Float!
+  lng: Float!
+}
+
+input AddressLookupInput {
+  line1: String!
+  city: String!
+  state: String!
+  postalCode: String!
 }

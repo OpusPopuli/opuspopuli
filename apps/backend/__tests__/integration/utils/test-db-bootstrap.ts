@@ -14,6 +14,8 @@
  * connection to the default `postgres` database to issue the CREATE.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { Client } from 'pg';
 
 const ADMIN_DB_NAME = 'postgres';
@@ -104,6 +106,39 @@ async function installExtensions(testDbUrl: string): Promise<void> {
         console.warn(`  (skipped extension "${ext}": ${msg})`);
       }
     }
+  } finally {
+    await client.end();
+  }
+}
+
+/** The raw-SQL spatial setup db-migrate.sh applies on every deploy. */
+const SPATIAL_INDEXES_SQL = resolve(
+  __dirname,
+  '../../../../../packages/relationaldb-provider/prisma/spatial-indexes.sql',
+);
+
+/**
+ * Create the spatial indexes production has (#1456).
+ *
+ * Runs only the file's `CREATE INDEX IF NOT EXISTS` statements, read from
+ * the file itself so there is one definition of each index. The rest of the
+ * file needs privileges the test role lacks (it writes `spatial_ref_sys`,
+ * owned by `supabase_admin`) and is setup the migrations already cover.
+ */
+export async function applySpatialIndexes(testDbUrl: string): Promise<void> {
+  const statements =
+    readFileSync(SPATIAL_INDEXES_SQL, 'utf8').match(
+      /CREATE INDEX IF NOT EXISTS[\s\S]*?;/g,
+    ) ?? [];
+  if (statements.length === 0) {
+    throw new Error(
+      `No CREATE INDEX statements found in ${SPATIAL_INDEXES_SQL}`,
+    );
+  }
+  const client = new Client({ connectionString: testDbUrl });
+  try {
+    await client.connect();
+    for (const statement of statements) await client.query(statement);
   } finally {
     await client.end();
   }

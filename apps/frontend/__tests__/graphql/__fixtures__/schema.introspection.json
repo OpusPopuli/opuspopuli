@@ -569,6 +569,68 @@
         "possibleTypes": null
       },
       {
+        "enumValues": null,
+        "fields": null,
+        "inputFields": [
+          {
+            "defaultValue": null,
+            "name": "city",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "line1",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "postalCode",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "state",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          }
+        ],
+        "interfaces": null,
+        "kind": "INPUT_OBJECT",
+        "name": "AddressLookupInput",
+        "possibleTypes": null
+      },
+      {
         "enumValues": [
           {
             "deprecationReason": null,
@@ -6617,6 +6679,42 @@
       {
         "enumValues": null,
         "fields": null,
+        "inputFields": [
+          {
+            "defaultValue": null,
+            "name": "lat",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "lng",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "SCALAR",
+                "name": "Float",
+                "ofType": null
+              }
+            }
+          }
+        ],
+        "interfaces": null,
+        "kind": "INPUT_OBJECT",
+        "name": "GeoPointInput",
+        "possibleTypes": null
+      },
+      {
+        "enumValues": null,
+        "fields": null,
         "inputFields": null,
         "interfaces": null,
         "kind": "SCALAR",
@@ -8611,6 +8709,34 @@
         "inputFields": [
           {
             "defaultValue": null,
+            "name": "address",
+            "type": {
+              "kind": "INPUT_OBJECT",
+              "name": "AddressLookupInput",
+              "ofType": null
+            }
+          },
+          {
+            "defaultValue": null,
+            "name": "point",
+            "type": {
+              "kind": "INPUT_OBJECT",
+              "name": "GeoPointInput",
+              "ofType": null
+            }
+          }
+        ],
+        "interfaces": null,
+        "kind": "INPUT_OBJECT",
+        "name": "LocateJurisdictionsInput",
+        "possibleTypes": null
+      },
+      {
+        "enumValues": null,
+        "fields": null,
+        "inputFields": [
+          {
+            "defaultValue": null,
             "name": "email",
             "type": {
               "kind": "NON_NULL",
@@ -10253,6 +10379,43 @@
                 "kind": "OBJECT",
                 "name": "LinkDocumentResult",
                 "ofType": null
+              }
+            }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
+                "name": "input",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "INPUT_OBJECT",
+                    "name": "LocateJurisdictionsInput",
+                    "ofType": null
+                  }
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "locateJurisdictions",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "OBJECT",
+                    "name": "JurisdictionModel",
+                    "ofType": null
+                  }
+                }
               }
             }
           },
@@ -15958,6 +16121,51 @@
                 "kind": "OBJECT",
                 "name": "PaginatedIndependentExpenditures",
                 "ofType": null
+              }
+            }
+          },
+          {
+            "args": [
+              {
+                "defaultValue": null,
+                "name": "ids",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "LIST",
+                    "name": null,
+                    "ofType": {
+                      "kind": "NON_NULL",
+                      "name": null,
+                      "ofType": {
+                        "kind": "SCALAR",
+                        "name": "ID",
+                        "ofType": null
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "deprecationReason": null,
+            "isDeprecated": false,
+            "name": "jurisdictionsByIds",
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": {
+                    "kind": "OBJECT",
+                    "name": "JurisdictionModel",
+                    "ofType": null
+                  }
+                }
               }
             }
           },

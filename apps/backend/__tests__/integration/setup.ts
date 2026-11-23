@@ -1,7 +1,10 @@
 import { execSync } from 'node:child_process';
 import { config } from 'dotenv';
 import { resolve } from 'node:path';
-import { ensureTestDatabase } from './utils/test-db-bootstrap';
+import {
+  applySpatialIndexes,
+  ensureTestDatabase,
+} from './utils/test-db-bootstrap';
 
 // Load environment variables from .env file (only needed when running from host)
 config({ path: resolve(__dirname, '../../.env') });
@@ -85,7 +88,14 @@ async function bootstrapTestDatabase(): Promise<void> {
     `pnpm --filter ${RELATIONALDB_PROVIDER_PACKAGE} exec prisma migrate deploy`,
     { stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  console.log('✓ postgres_test bootstrapped + migrations applied');
+  // The spatial indexes are raw SQL outside the migration history, applied
+  // by db-migrate.sh on every deploy. Without them here, the test database
+  // differs from production exactly where a spatial query's plan depends on
+  // them (#1456: `jurisdictions_boundary_gist_idx`).
+  await applySpatialIndexes(integrationUrl);
+  console.log(
+    '✓ postgres_test bootstrapped + migrations + spatial indexes applied',
+  );
 }
 
 interface ServiceConfig {

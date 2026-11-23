@@ -1,18 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import { MAX_CIVIC_ERROR_LENGTH } from './models/user-address.model';
+import { jurisdictionIdsAtPoint } from 'src/common/geocoding/jurisdictions-at-point';
 
 // Either the top-level Prisma client or a $transaction's interactive tx.
 // Both expose the same `userAddress.update` / `$executeRaw` surface, so
 // our helpers compose either way.
 type Tx = Prisma.TransactionClient | DbService;
-
-interface SpatialJurisdictionRow {
-  id: string;
-  name: string;
-  type: string;
-  level: string;
-}
 
 type ResolutionSource = 'census_geocoder' | 'postgis';
 
@@ -170,15 +164,7 @@ export class JurisdictionResolutionService {
     lng: number,
   ): Promise<string[]> {
     try {
-      const rows = await this.db.$queryRaw<SpatialJurisdictionRow[]>`
-        SELECT id, name, type, level
-        FROM jurisdictions
-        WHERE ST_Contains(
-          boundary::geometry,
-          ST_SetSRID(ST_Point(${lng}, ${lat}), 4326)
-        )
-      `;
-      return rows.map((r) => r.id);
+      return await jurisdictionIdsAtPoint(this.db, lat, lng);
     } catch (err) {
       // Boundary table may be empty before the ETL script is run
       this.logger.debug(

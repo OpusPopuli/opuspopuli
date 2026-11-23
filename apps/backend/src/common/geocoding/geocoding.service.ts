@@ -85,12 +85,15 @@ export class GeocodingService {
       });
 
       if (!response.ok) {
-        // City and state only — never addressLine1. A street address is
-        // directly identifying CCPA personal information, and this line runs
-        // at `warn`, which production emits. Locality is enough to tell a
-        // systemic geocoder outage from one bad address (#1094 audit).
+        // State only — never addressLine1, and no longer the city (#1456).
+        // A street address is directly identifying CCPA personal
+        // information, and this line runs at `warn`, which production emits
+        // (#1094 audit). The city was kept as locality until anonymous
+        // visitors could type it: it is free text, so an autofilled street
+        // in the city box would land here. The state still tells a systemic
+        // outage from one bad address.
         this.logger.warn(
-          `Census Geocoder returned ${response.status} for an address in ${city}, ${state}`,
+          `Census Geocoder returned ${response.status} for an address in ${state}`,
         );
         // Not a verdict on the address -- the service failed to give one.
         throw new GeocoderUnavailableError(`HTTP ${response.status}`);
@@ -104,9 +107,7 @@ export class GeocodingService {
         // could not emit until LOG_LEVEL became configurable (#1094) — so
         // making the level configurable is exactly what would have started
         // writing street addresses to the log pipeline.
-        this.logger.debug(
-          `No geocoding match for an address in ${city}, ${state}`,
-        );
+        this.logger.debug(`No geocoding match for an address in ${state}`);
         return null;
       }
 
@@ -168,7 +169,7 @@ export class GeocodingService {
         postalCode,
       );
       this.logger.warn(
-        `Geocoding failed for an address in ${city}, ${state}: ${safeMessage}`,
+        `Geocoding failed for an address in ${state}: ${safeMessage}`,
       );
       // Scrubbed here too, because callers log this error's message: see
       // profile.service, which reports it on both the create and edit paths.
