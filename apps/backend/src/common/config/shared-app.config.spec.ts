@@ -9,7 +9,8 @@
  * shipping code to move one log call.
  */
 import { LogLevel } from '@opuspopuli/logging-provider';
-import { resolveLogLevel } from './shared-app.config';
+import { FixedWindowThrottlerStorage } from '../rate-limit/fixed-window-storage';
+import { resolveLogLevel, throttlerModuleOptions } from './shared-app.config';
 
 describe('resolveLogLevel (#1094)', () => {
   const silent = () => undefined;
@@ -81,5 +82,39 @@ describe('resolveLogLevel (#1094)', () => {
       expect(warnings[0]).toContain('verbse');
       expect(warnings[0]).toContain('info');
     });
+  });
+});
+
+describe('throttlerModuleOptions (#1456)', () => {
+  const options = throttlerModuleOptions([
+    { name: 'short', ttl: 1000, limit: 5 },
+  ]) as unknown as {
+    getTracker: (req: Record<string, unknown>) => string;
+    storage: unknown;
+  };
+
+  it('keys a subgraph request on the client the gateway forwarded, not the gateway', () => {
+    expect(
+      options.getTracker({
+        ip: '172.18.0.9',
+        headers: { 'x-forwarded-for': '198.51.100.20' },
+      }),
+    ).toBe('198.51.100.20');
+  });
+
+  it('keys a gateway request on the visitor behind Cloudflare, not the tunnel', () => {
+    expect(
+      options.getTracker({
+        ip: '172.18.0.5',
+        headers: {
+          'cf-connecting-ip': '198.51.100.21',
+          'x-forwarded-for': '203.0.113.1, 198.51.100.21',
+        },
+      }),
+    ).toBe('198.51.100.21');
+  });
+
+  it('uses the bounded fixed-window store, not the stock one', () => {
+    expect(options.storage).toBeInstanceOf(FixedWindowThrottlerStorage);
   });
 });

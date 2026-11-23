@@ -26,6 +26,7 @@ import { LoggerMiddleware } from 'src/common/middleware/logger.middleware';
 import { HMACMiddleware } from 'src/common/middleware/hmac.middleware';
 import {
   THROTTLER_CONFIG,
+  throttlerModuleOptions,
   SHARED_PROVIDERS,
   GRAPHQL_INTROSPECTION_ENABLED,
   createLoggingConfig,
@@ -55,7 +56,7 @@ import { MetricsModule } from 'src/common/metrics';
       isGlobal: true,
     }),
     LoggingModule.forRootAsync(createLoggingConfig('documents-service')),
-    ThrottlerModule.forRoot(THROTTLER_CONFIG),
+    ThrottlerModule.forRoot(throttlerModuleOptions(THROTTLER_CONFIG)),
     DbModule.forRoot(),
     AuditModule.forRoot(),
     GraphQLModule.forRoot<ApolloFederationDriverConfig>({

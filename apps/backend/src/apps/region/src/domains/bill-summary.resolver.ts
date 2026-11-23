@@ -2,6 +2,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { Args, Context, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Public } from 'src/common/decorators/public.decorator';
 import { readClientSession } from 'src/common/utils/client-session';
+import { resolveClientIp } from 'src/common/utils/client-ip';
 import {
   type GqlContext,
   tryReadFederatedUserId,
@@ -51,19 +52,11 @@ export class BillSummaryResolver {
     return this.summaries.request(billId, {
       userId: tryReadFederatedUserId(context),
       session: readClientSession(headers),
-      ip: firstForwardedIp(headers),
+      // The IP the gateway resolved, never a client-chosen hop (#1456).
+      ip: resolveClientIp(headers, context.req?.ip),
     });
   }
 }
 
 /** Bill ids are UUIDs; anything longer is not one of ours. */
 const MAX_BILL_ID_LENGTH = 64;
-
-/** The client IP the gateway forwarded: the first `x-forwarded-for` hop. */
-function firstForwardedIp(
-  headers: IncomingHttpHeaders | undefined,
-): string | undefined {
-  const value = headers?.['x-forwarded-for'];
-  const first = (Array.isArray(value) ? value[0] : value)?.split(',')[0];
-  return first?.trim() || undefined;
-}

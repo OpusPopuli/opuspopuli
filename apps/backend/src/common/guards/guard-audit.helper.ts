@@ -4,6 +4,7 @@ import { GraphQLResolveInfo } from 'graphql';
 import { Request } from 'express';
 import { AuditLogService } from 'src/common/services/audit-log.service';
 import { AuditAction } from 'src/common/enums/audit-action.enum';
+import { resolveClientIp } from 'src/common/utils/client-ip';
 import { ILogin } from 'src/interfaces/login.interface';
 
 /**
@@ -44,9 +45,11 @@ export function auditAuthorizationDenied(
       | 'query'
       | 'mutation'
       | 'subscription',
-    ipAddress:
-      (request as { ip?: string })?.ip ||
-      (request?.headers as Record<string, string>)?.['x-forwarded-for'],
+    // In a subgraph `req.ip` is the gateway; the client is in the header.
+    ipAddress: resolveClientIp(
+      request?.headers,
+      (request as { ip?: string } | undefined)?.ip,
+    ),
     userAgent: request?.headers?.['user-agent'],
     errorMessage,
     inputVariables,

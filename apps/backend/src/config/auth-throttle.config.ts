@@ -96,3 +96,25 @@ export const AUTH_THROTTLE = {
   // authenticated, which is the outcome this endpoint exists to prevent.
   logout: { name: 'auth-logout', ttl: 60000, limit: 30 },
 } as const;
+
+/** The registered throttler tier an auth route's own limit replaces. */
+export const AUTH_THROTTLE_TIER = 'long';
+
+/**
+ * `@Throttle()` metadata applying one of {@link AUTH_THROTTLE}'s limits to a
+ * route (#1456).
+ *
+ * `@nestjs/throttler` v6 reads an override only under the name of a
+ * throttler the module registered, and every service registers `short`,
+ * `medium` and `long` (THROTTLER_CONFIG). The decorators here used to say
+ * `{ default: … }`, a name nothing registers, so the guard ignored them and
+ * no auth route had its own limit at all. Each limit now replaces the `long`
+ * tier for its route; the guard keys per route, so each gets its own bucket,
+ * and per client (throttlerModuleOptions).
+ */
+export function authThrottle(limit: {
+  readonly ttl: number;
+  readonly limit: number;
+}): Record<string, { ttl: number; limit: number }> {
+  return { [AUTH_THROTTLE_TIER]: { ttl: limit.ttl, limit: limit.limit } };
+}

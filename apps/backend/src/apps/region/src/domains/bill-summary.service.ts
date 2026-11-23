@@ -1,3 +1,4 @@
+import { rateLimitKey } from 'src/common/utils/client-ip';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
 import IORedis from 'ioredis';
@@ -321,7 +322,10 @@ export class BillSummaryService {
     const day = new Date().toISOString().slice(0, 10);
     const keyed = (value: string) =>
       createHmac('sha256', secret).update(value).digest('hex');
-    const ipKey = reader.ip ? keyed('ip:' + reader.ip) : undefined;
+    // Per /64 for IPv6, or one line could rotate addresses past the cap (#1456).
+    const ipKey = reader.ip
+      ? keyed('ip:' + rateLimitKey(reader.ip))
+      : undefined;
     return {
       global: `${this.keyPrefix}:global:${day}`,
       reader: `${this.keyPrefix}:reader:${keyed(id)}:${day}`,

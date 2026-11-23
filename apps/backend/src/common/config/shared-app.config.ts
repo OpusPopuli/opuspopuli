@@ -9,6 +9,13 @@ import { RolesGuard } from '../guards/roles.guard';
 import { GqlThrottlerGuard } from '../guards/throttler.guard';
 import { PoliciesGuard } from '../guards/policies.guard';
 import { GracefulShutdownService } from '../services/graceful-shutdown.service';
+import type {
+  ThrottlerModuleOptions,
+  ThrottlerOptions,
+} from '@nestjs/throttler';
+import type { Request } from 'express';
+import { FixedWindowThrottlerStorage } from '../rate-limit/fixed-window-storage';
+import { rateLimitKey, resolveClientIp } from '../utils/client-ip';
 
 /**
  * Whether introspection should be enabled for GraphQL services.
@@ -120,10 +127,14 @@ export const GATEWAY_THROTTLER_CONFIG = [
 /**
  * Rate limits for the SUBGRAPHS — internal services behind the gateway.
  *
- * These are deliberately far higher than the gateway's, because the throttler
- * keys on IP and **every subgraph request arrives from the gateway's single
- * IP**. There is no per-user dimension here at all: the limit is a global cap
- * on total system throughput, shared by every user at once.
+ * Until #1456 the throttler keyed on the socket address, and **every subgraph
+ * request arrives from the gateway's single IP**, so these were a global cap
+ * shared by every user at once. That also made per-operation limits such as
+ * the login throttle site-wide. They now key on the client IP the gateway
+ * forwards (see {@link throttlerModuleOptions}), so they are per client.
+ * At these numbers, behind the gateway's 50/s per client, they are in effect
+ * no limit; there is no longer any global throughput cap. The gateway's
+ * per-client tiers are the real control.
  *
  * At the previous 10/s that meant the whole platform could serve ten subgraph
  * requests per second across all users combined — while ONE briefing load
@@ -143,7 +154,7 @@ export const THROTTLER_CONFIG = [
   {
     name: 'short',
     ttl: 1000, // 1 second
-    limit: 2000, // global across all users, not per user
+    limit: 2000, // per client since #1456; unreachable behind the gateway's 50/s
   },
   {
     name: 'medium',
@@ -236,5 +247,30 @@ export function createLoggingConfig(serviceName: string) {
           : ('pretty' as const),
     }),
     inject: [ConfigService],
+  };
+}
+
+/**
+ * `ThrottlerModule` options for every service (#1456): the given tiers, the
+ * real client as the key, and a bounded store.
+ *
+ * - **Key:** {@link resolveClientIp}, then {@link rateLimitKey}. In the
+ *   gateway that is the visitor behind Cloudflare, where `req.ip` would be
+ *   the tunnel container shared by everyone. In a subgraph it is the IP the
+ *   gateway forwarded, where `req.ip` would be the gateway.
+ * - **Store:** {@link FixedWindowThrottlerStorage}, not the stock in-memory
+ *   store, which leaks keys and lets one client's expiring block stop
+ *   everyone else's counters decaying.
+ */
+export function throttlerModuleOptions(
+  throttlers: ThrottlerOptions[],
+): ThrottlerModuleOptions {
+  return {
+    throttlers,
+    storage: new FixedWindowThrottlerStorage(),
+    getTracker: (req: Record<string, unknown>) => {
+      const request = req as unknown as Request;
+      return rateLimitKey(resolveClientIp(request.headers, request.ip));
+    },
   };
 }
