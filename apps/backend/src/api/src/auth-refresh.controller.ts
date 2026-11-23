@@ -21,6 +21,7 @@ import {
   clearAuthCookies,
 } from 'src/common/utils/cookie.utils';
 import { callUsersSubgraph } from './users-subgraph.client';
+import { resolveClientIp } from 'src/common/utils/client-ip';
 
 /**
  * The renewal mutation lives on the users subgraph and is `@inaccessible`, so
@@ -106,6 +107,7 @@ export class AuthRefreshController {
         this.hmacSigner,
         REFRESH_MUTATION,
         { refreshToken },
+        resolveClientIp(req.headers, req.ip),
       );
     } catch (error) {
       // The users service was unreachable, or answered with something that is

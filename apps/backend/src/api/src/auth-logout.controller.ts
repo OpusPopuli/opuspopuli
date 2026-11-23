@@ -10,6 +10,7 @@ import { HmacSignerService } from 'src/common/services/hmac-signer.service';
 import { SecureLogger } from 'src/common/services/secure-logger.service';
 import { clearAuthCookies } from 'src/common/utils/cookie.utils';
 import { callUsersSubgraph } from './users-subgraph.client';
+import { resolveClientIp } from 'src/common/utils/client-ip';
 
 /**
  * `@inaccessible` on the users subgraph, so it is absent from the composed
@@ -82,7 +83,10 @@ export class AuthLogoutController {
     // Wrapped rather than awaited bare so that a throw cannot skip the clear
     // below — that skip is the entire bug being fixed here.
     if (accessToken) {
-      await this.revokeUpstream(accessToken);
+      await this.revokeUpstream(
+        accessToken,
+        resolveClientIp(req.headers, req.ip),
+      );
     }
 
     clearAuthCookies(res, this.configService);
@@ -99,13 +103,17 @@ export class AuthLogoutController {
    * about from a sign-out button, and blocking on it would keep them signed
    * in on the device in front of them.
    */
-  private async revokeUpstream(accessToken: string): Promise<void> {
+  private async revokeUpstream(
+    accessToken: string,
+    clientIp: string | undefined,
+  ): Promise<void> {
     try {
       const payload = await callUsersSubgraph<{ revokeSession?: boolean }>(
         this.configService,
         this.hmacSigner,
         REVOKE_MUTATION,
         { accessToken },
+        clientIp,
       );
 
       const error = payload.errors?.[0];

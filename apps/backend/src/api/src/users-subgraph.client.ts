@@ -49,6 +49,8 @@ export function getUsersSubgraphUrl(configService: ConfigService): string {
 /**
  * POST an HMAC-signed operation to the users subgraph.
  *
+ * Pass the caller's resolved client IP: the subgraph's throttles key on it.
+ *
  * Rejects on transport failure and on non-JSON responses; a GraphQL-level
  * error comes back in `errors` for the caller to interpret. That split matters
  * to both callers and they read it in opposite directions — refresh must tell
@@ -60,11 +62,19 @@ export async function callUsersSubgraph<T>(
   hmacSigner: HmacSignerService,
   query: string,
   variables: Record<string, unknown>,
+  clientIp?: string,
 ): Promise<SubgraphResponse<T>> {
   const url = getUsersSubgraphUrl(configService);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  // The visitor's IP, as the federated path forwards it (#1456). The users
+  // service keys its auth throttles on it; without it, every visitor's
+  // refresh and sign-out would share one budget keyed on this gateway, and
+  // a busy minute would sign people out at random.
+  if (clientIp) {
+    headers['x-forwarded-for'] = clientIp;
+  }
   if (hmacSigner.isEnabled()) {
     headers['X-HMAC-Auth'] = hmacSigner.signGraphQLRequest(url);
   }
