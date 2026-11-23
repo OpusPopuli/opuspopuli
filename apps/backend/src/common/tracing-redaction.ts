@@ -76,15 +76,16 @@ interface HttpRequestOptionsLike {
 /**
  * `startOutgoingSpanHook` for `@opentelemetry/instrumentation-http`. Its
  * attributes are merged last, over the instrumentation's own, so both the
- * stable (`url.full`) and the older (`http.url`) names are overwritten.
+ * stable (`url.full`) and the older (`http.url`, `http.target`) names are
+ * overwritten.
  */
 export function httpStartOutgoingSpanHook(
   options: HttpRequestOptionsLike,
 ): Record<string, string> {
   const host = options.hostname ?? options.host ?? 'localhost';
   const port = options.port ? `:${options.port}` : '';
-  const url = redactUrl(
-    `${options.protocol ?? 'http:'}//${host}${port}${options.path ?? '/'}`,
-  );
-  return { 'url.full': url, 'http.url': url };
+  const path = redactUrl(options.path ?? '/');
+  const url = `${options.protocol ?? 'http:'}//${host}${port}${path}`;
+  // `http.target` is the older conventions' path plus query string.
+  return { 'url.full': url, 'http.url': url, 'http.target': path };
 }

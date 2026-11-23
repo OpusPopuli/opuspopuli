@@ -43,6 +43,13 @@ describe('tracing redaction (#1456)', () => {
     });
     const text = JSON.stringify(attributes);
     for (const secret of SECRETS) expect(text).not.toContain(secret);
-    expect(Object.keys(attributes).sort()).toEqual(['http.url', 'url.full']);
+    expect(Object.keys(attributes).sort()).toEqual([
+      'http.target',
+      'http.url',
+      'url.full',
+    ]);
+    expect(attributes['http.target']).toBe(
+      '/geocoder/geographies/address?street=REDACTED&city=REDACTED&state=REDACTED&zip=REDACTED&format=REDACTED',
+    );
   });
 });
