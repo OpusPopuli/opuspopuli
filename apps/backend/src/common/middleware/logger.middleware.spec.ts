@@ -79,6 +79,77 @@ describe('LoggerMiddleware', () => {
       );
     });
 
+    describe('personal data in the log lines (#1460)', () => {
+      const logged = () =>
+        (mockLogger.info as jest.Mock).mock.calls.map(
+          ([, , meta]) => meta as Record<string, unknown>,
+        );
+
+      it('masks the IP in both lines and keeps it whole in the audit context', () => {
+        mockRequest.headers = { 'cf-connecting-ip': '198.51.100.7' };
+
+        middleware.use(
+          mockRequest as Request,
+          mockResponse as Response,
+          mockNext,
+        );
+        finishCallback();
+
+        expect(logged().map((meta) => meta.ipAddress)).toEqual([
+          '198.x.x.x',
+          '198.x.x.x',
+        ]);
+        expect(mockRequest.auditContext?.ipAddress).toBe('198.51.100.7');
+      });
+
+      it('masks a compressed IPv6 address, which the provider regex misses', () => {
+        mockRequest.headers = { 'cf-connecting-ip': '2601:646:8f00::1' };
+
+        middleware.use(
+          mockRequest as Request,
+          mockResponse as Response,
+          mockNext,
+        );
+        finishCallback();
+
+        const lines = JSON.stringify(logged());
+        expect(lines).not.toContain('2601:646');
+        expect(logged()[0].ipAddress).toBe('[REDACTED_IP]');
+      });
+
+      it('logs no user agent, which stays in the audit context', () => {
+        mockRequest.headers = { 'user-agent': 'Mozilla/5.0 (visitor)' };
+
+        middleware.use(
+          mockRequest as Request,
+          mockResponse as Response,
+          mockNext,
+        );
+        finishCallback();
+
+        expect(JSON.stringify(logged())).not.toContain('Mozilla');
+        expect(mockRequest.auditContext?.userAgent).toBe(
+          'Mozilla/5.0 (visitor)',
+        );
+      });
+
+      it('keeps query parameter names and drops their values', () => {
+        mockRequest.url = '/graphql?lat=38.5767&lng=-121.4934';
+
+        middleware.use(
+          mockRequest as Request,
+          mockResponse as Response,
+          mockNext,
+        );
+        finishCallback();
+
+        expect(logged().map((meta) => meta.url)).toEqual([
+          '/graphql?lat=REDACTED&lng=REDACTED',
+          '/graphql?lat=REDACTED&lng=REDACTED',
+        ]);
+      });
+    });
+
     it('should log request completion on response finish', () => {
       middleware.use(
         mockRequest as Request,

@@ -26,6 +26,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 import { isTest } from 'src/config/environment.config';
 import {
+  httpStartIncomingSpanHook,
   httpStartOutgoingSpanHook,
   undiciStartSpanHook,
 } from './tracing-redaction';
@@ -58,8 +59,11 @@ if (!isDisabled) {
         '@opentelemetry/instrumentation-undici': {
           startSpanHook: undiciStartSpanHook,
         },
+        // Incoming URLs can carry it too, and incoming spans record the
+        // visitor's IP: query values redacted, IP masked (#1460).
         '@opentelemetry/instrumentation-http': {
           startOutgoingSpanHook: httpStartOutgoingSpanHook,
+          startIncomingSpanHook: httpStartIncomingSpanHook,
         },
       }),
     ],
