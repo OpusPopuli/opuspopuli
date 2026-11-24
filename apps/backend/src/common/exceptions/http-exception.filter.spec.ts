@@ -1,3 +1,4 @@
+import * as sanitizer from './error-sanitizer';
 import {
   ArgumentsHost,
   HttpException,
@@ -309,6 +310,28 @@ describe('HttpExceptionFilter', () => {
 
       const response = mockJson.mock.calls[0][0];
       expect(response.requestId).toBeUndefined();
+    });
+  });
+
+  describe('logged path (#1460)', () => {
+    it('logs the path with query values redacted, and answers with it whole', () => {
+      const logSpy = jest
+        .spyOn(sanitizer, 'logErrorDetails')
+        .mockImplementation(() => undefined);
+      mockRequest.url = '/api?lat=38.5767&lng=-121.4934';
+
+      filter.catch(
+        new HttpException('Forbidden', 403),
+        mockArgumentsHost as ArgumentsHost,
+      );
+
+      expect(logSpy.mock.calls[0][2]).toEqual(
+        expect.objectContaining({ path: '/api?lat=REDACTED&lng=REDACTED' }),
+      );
+      expect(mockJson).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '/api?lat=38.5767&lng=-121.4934' }),
+      );
+      logSpy.mockRestore();
     });
   });
 

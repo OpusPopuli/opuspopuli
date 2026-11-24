@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthMiddleware } from './auth.middleware';
 import { Request, Response, NextFunction } from 'express';
@@ -12,7 +13,6 @@ describe('AuthMiddleware', () => {
   let mockRequest: Partial<Request>;
   let mockResponse: Partial<Response>;
   let mockNext: NextFunction;
-  let loggerSpy: jest.SpyInstance;
 
   beforeEach(async () => {
     // Default passport mock - returns a no-op function
@@ -36,11 +36,6 @@ describe('AuthMiddleware', () => {
 
     middleware = module.get<AuthMiddleware>(AuthMiddleware);
 
-    loggerSpy = jest.spyOn(
-      (middleware as unknown as { logger: { log: () => void } }).logger,
-      'log',
-    );
-
     mockRequest = {
       headers: {},
     };
@@ -55,13 +50,22 @@ describe('AuthMiddleware', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
-  describe('sensitive header masking', () => {
-    it('should mask authorization header in logs', () => {
+  describe('request logging (#1460)', () => {
+    // It used to log every request's headers at info level, redacting only
+    // credentials. The visitor's IP (cf-connecting-ip, x-forwarded-for), user
+    // agent and CSRF token went to production logs and on to Loki unmasked.
+    it('logs nothing about the request, headers included', () => {
+      const spies = (['log', 'debug', 'verbose', 'warn', 'error'] as const).map(
+        (level) => jest.spyOn(Logger.prototype, level).mockImplementation(),
+      );
       mockRequest.headers = {
-        authorization: 'Bearer secret-jwt-token',
-        'content-type': 'application/json',
+        'cf-connecting-ip': '198.51.100.7',
+        'x-forwarded-for': '198.51.100.7, 172.18.0.5',
+        'user-agent': 'Mozilla/5.0 (visitor)',
+        'x-csrf-token': 'csrf-value',
       };
 
       middleware.use(
@@ -70,67 +74,8 @@ describe('AuthMiddleware', () => {
         mockNext,
       );
 
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[REDACTED]'),
-      );
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.not.stringContaining('secret-jwt-token'),
-      );
-    });
-
-    it('should mask cookie header in logs', () => {
-      mockRequest.headers = {
-        cookie: 'session=abc123; token=xyz789',
-      };
-
-      middleware.use(
-        mockRequest as Request,
-        mockResponse as Response,
-        mockNext,
-      );
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[REDACTED]'),
-      );
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.not.stringContaining('abc123'),
-      );
-    });
-
-    it('should mask x-api-key header in logs', () => {
-      mockRequest.headers = {
-        'x-api-key': 'my-secret-api-key',
-      };
-
-      middleware.use(
-        mockRequest as Request,
-        mockResponse as Response,
-        mockNext,
-      );
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[REDACTED]'),
-      );
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.not.stringContaining('my-secret-api-key'),
-      );
-    });
-
-    it('should not mask non-sensitive headers', () => {
-      mockRequest.headers = {
-        'content-type': 'application/json',
-        accept: 'application/json',
-      };
-
-      middleware.use(
-        mockRequest as Request,
-        mockResponse as Response,
-        mockNext,
-      );
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('application/json'),
-      );
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+      expect(mockNext).toHaveBeenCalled();
     });
   });
 

@@ -1,12 +1,9 @@
-import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { Request, Response, NextFunction } from 'express';
 
 import passport from 'passport';
-
-// Headers that should be masked in logs to prevent credential exposure
-const SENSITIVE_HEADERS = ['authorization', 'cookie', 'x-api-key'];
 
 /**
  * Routes that must run even when the presented access token does not validate.
@@ -37,27 +34,9 @@ function isSessionLifecyclePath(req: Request): boolean {
   return SESSION_LIFECYCLE_PATHS.includes(path);
 }
 
-/**
- * Mask sensitive headers for safe logging
- */
-function maskSensitiveHeaders(
-  headers: Record<string, unknown>,
-): Record<string, unknown> {
-  const masked = { ...headers };
-  for (const header of SENSITIVE_HEADERS) {
-    if (masked[header]) {
-      masked[header] = '[REDACTED]';
-    }
-  }
-  return masked;
-}
-
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   private readonly apiKeys: Map<string, string>;
-  private readonly logger = new Logger(AuthMiddleware.name, {
-    timestamp: true,
-  });
 
   constructor(private readonly configService: ConfigService) {
     this.apiKeys =
@@ -124,11 +103,11 @@ export class AuthMiddleware implements NestMiddleware {
   }
 
   use(req: Request, res: Response, next: NextFunction) {
-    // Mask sensitive headers to prevent credential exposure in logs
-    this.logger.log(
-      `Request: ${JSON.stringify(maskSensitiveHeaders(req.headers as Record<string, unknown>))}`,
-    );
-
+    // No request logging here (#1460). This used to log every request's
+    // headers at info level, redacting only credentials, so the visitor's IP,
+    // user agent and CSRF token reached production logs and Loki unmasked.
+    // The gateway's request spans carry what's needed to follow a request,
+    // with the IP masked (`httpStartIncomingSpanHook`).
     return this.validateRequest(req, res, next);
   }
 }
