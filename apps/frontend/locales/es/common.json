@@ -57,6 +57,8 @@
     "closeNotification": "Cerrar notificacion"
   },
   "footer": {
+    "notice": "Opus Populi es una herramienta de educación cívica con fines ilustrativos. Sus datos provienen de registros públicos oficiales (como la base de datos CAL-ACCESS de la Secretaría de Estado de California y la Comisión Federal Electoral de EE. UU.), siempre con su atribución. Esos registros son la fuente autorizada; los resúmenes que genera este sitio los produce la IA, y los vínculos que establece (incluidas las atribuciones de financiamiento de campaña) son automáticos, de mejor esfuerzo, y pueden estar incompletos o ser inexactos; no constituyen una acusación de conducta indebida. Verifica las fuentes oficiales antes de basarte en algo de este sitio o republicarlo.",
+    "rights": "Todos los derechos reservados.",
     "privacyPolicy": "Política de Privacidad",
     "termsOfService": "Términos de Servicio",
     "transparency": "Transparencia",
@@ -129,7 +131,7 @@
   },
   "aiReceipt": {
     "badge": {
-      "AI": "Generado por IA",
+      "AI": "Generado por IA · puede contener errores",
       "DETERMINISTIC": "Generado a partir de registros",
       "MANUAL": "Redactado por una persona",
       "SCRAPED": "Texto oficial",
@@ -182,5 +184,13 @@
     "verifyDownload": "Descargue",
     "verifyRun": "Ejecute (en Linux use sha256sum):",
     "verifyMatch": "La huella que se imprima debe ser igual a la de arriba. Si hubiera cambiado aunque sea un carácter del archivo, no lo sería."
+  },
+  "readingNotice": {
+    "title": "Cómo leer este sitio",
+    "sources": "Todo lo que hay aquí proviene de registros públicos oficiales, y cada página nombra su fuente. Esos registros son la autoridad; verifícalos antes de basarte en algo o repetirlo.",
+    "ai": "Los resúmenes marcados como «Generado por IA» los escribió un modelo y pueden contener errores.",
+    "links": "Los vínculos entre personas, dinero y medidas se establecen automáticamente. Pueden ser incorrectos y no constituyen una acusación de conducta indebida.",
+    "more": "Cómo funciona este sitio",
+    "dismiss": "Entendido"
   }
 }

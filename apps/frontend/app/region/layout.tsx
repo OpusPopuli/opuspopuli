@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { ReadingNotice } from "@/components/ReadingNotice";
 import { CivicsProvider } from "@/components/civics/CivicsContext";
 import { JurisdictionsProvider } from "@/components/region/JurisdictionsContext";
 
@@ -23,6 +24,9 @@ export default function RegionLayout({
   return (
     <>
       <Header />
+      {/* Before anything else on a first visit, what kind of record this is
+          (#962). Dismissed once, per device. */}
+      <ReadingNotice />
       <JurisdictionsProvider>
         <CivicsProvider>{children}</CivicsProvider>
       </JurisdictionsProvider>

@@ -232,7 +232,9 @@ describe("PropositionDetailPage", () => {
         error: null,
       };
       const { unmount } = render(<PropositionDetailPage />);
-      expect(screen.getByText("AI-generated")).toBeInTheDocument();
+      expect(
+        screen.getByText("AI-generated · may contain errors"),
+      ).toBeInTheDocument();
       expect(screen.getByText("How this was made")).toBeInTheDocument();
       unmount();
 
@@ -243,7 +245,9 @@ describe("PropositionDetailPage", () => {
         error: null,
       };
       render(<PropositionDetailPage />);
-      expect(screen.queryByText("AI-generated")).toBeNull();
+      expect(
+        screen.queryByText("AI-generated · may contain errors"),
+      ).toBeNull();
       expect(screen.queryByText("How this was made")).toBeNull();
     });
 

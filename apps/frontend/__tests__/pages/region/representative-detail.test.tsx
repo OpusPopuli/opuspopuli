@@ -268,7 +268,9 @@ describe("RepresentativeDetailPage", () => {
       render(<RepresentativeDetailPage />);
 
       expect(screen.getByText("Official text")).toBeInTheDocument();
-      expect(screen.queryByText("AI-generated")).toBeNull();
+      expect(
+        screen.queryByText("AI-generated · may contain errors"),
+      ).toBeNull();
       // No "our record" wording on official text.
       expect(screen.queryByText(/Our record of this member/)).toBeNull();
     });
@@ -287,7 +289,9 @@ describe("RepresentativeDetailPage", () => {
 
       render(<RepresentativeDetailPage />);
 
-      expect(screen.getByText("AI-generated")).toBeInTheDocument();
+      expect(
+        screen.getByText("AI-generated · may contain errors"),
+      ).toBeInTheDocument();
       expect(
         screen.getByText(/Generated from public record data/),
       ).toBeInTheDocument();

@@ -10,6 +10,7 @@ import {
   Committee,
 } from "@/lib/graphql/region";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 import { Pagination } from "@/components/region/Pagination";
 import {
   LoadingSkeleton,
@@ -137,6 +138,9 @@ export default function CommitteesPage() {
         meta={t("pages.committees.meta")}
       />
       {renderContent()}
+      {/* Every finance surface names its sources and says its links are
+          automated, not allegations (#962). */}
+      <FinanceDisclaimer className="mt-8" />
     </div>
   );
 }

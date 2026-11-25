@@ -34,12 +34,14 @@ describe("ActivitySummary", () => {
       />,
     );
     expect(screen.getByText("Generated from records")).toBeInTheDocument();
-    expect(screen.queryByText("AI-generated")).toBeNull();
+    expect(screen.queryByText("AI-generated · may contain errors")).toBeNull();
   });
 
   it("keeps the AI label when no receipt was loaded", () => {
     render(<ActivitySummary summary="Voted on 12 bills." />);
-    expect(screen.getByText("AI-generated")).toBeInTheDocument();
+    expect(
+      screen.getByText("AI-generated · may contain errors"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("How this was made")).toBeNull();
   });
 });
@@ -55,7 +57,9 @@ describe("MinutesSynopsis", () => {
         }}
       />,
     );
-    expect(screen.getByText("AI-generated")).toBeInTheDocument();
+    expect(
+      screen.getByText("AI-generated · may contain errors"),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /^clerk\.assembly\.ca\.gov/ }),
     ).toHaveAttribute(

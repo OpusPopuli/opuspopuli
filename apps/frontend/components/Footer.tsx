@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useTranslation } from "react-i18next";
 
 /**
  * The release this bundle was built from.
@@ -17,6 +20,7 @@ import Link from "next/link";
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION;
 
 export function Footer() {
+  const { t } = useTranslation("common");
   return (
     <footer className="border-t border-line bg-surface">
       {/* Illustrative-purpose notice (#962): the platform is a civic-education
@@ -26,20 +30,12 @@ export function Footer() {
           authoritative or as allegations. */}
       <div className="max-w-6xl mx-auto px-8 pt-6">
         <p className="text-sm leading-relaxed text-content-dim">
-          Opus Populi is a civic-education tool for illustrative purposes. Its
-          data comes from official public records (such as the California
-          Secretary of State&apos;s CAL-ACCESS database and the U.S. Federal
-          Election Commission), always with attribution. Those records are
-          authoritative; the summaries this site generates are AI-produced, and
-          the links it draws (including campaign-finance attributions) are
-          automated best-effort and may be incomplete or inaccurate — not an
-          allegation of wrongdoing. Verify against the official sources before
-          relying on or republishing anything here.
+          {t("footer.notice")}
         </p>
       </div>
       <div className="max-w-6xl mx-auto px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
         <p className="text-sm text-content-dim">
-          &copy; {new Date().getFullYear()} Opus Populi. All rights reserved.
+          &copy; {new Date().getFullYear()} Opus Populi. {t("footer.rights")}
           {APP_VERSION && (
             <>
               {" "}
@@ -54,25 +50,25 @@ export function Footer() {
             href="/privacy"
             className="text-sm text-content-dim hover:text-content"
           >
-            Privacy Policy
+            {t("footer.privacyPolicy")}
           </Link>
           <Link
             href="/terms"
             className="text-sm text-content-dim hover:text-content"
           >
-            Terms of Service
+            {t("footer.termsOfService")}
           </Link>
           <Link
             href="/our-commitments"
             className="text-sm text-content-dim hover:text-content"
           >
-            Our Commitments
+            {t("footer.ourCommitments")}
           </Link>
           <Link
             href="/transparency"
             className="text-sm text-content-dim hover:text-content"
           >
-            Transparency
+            {t("footer.transparency")}
           </Link>
         </nav>
       </div>

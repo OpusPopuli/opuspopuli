@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, useSyncExternalStore, type FormEvent } from "react";
+import Link from "next/link";
 import { useMutation } from "@apollo/client/react";
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useTranslation } from "react-i18next";
@@ -321,6 +322,16 @@ export function LocateForm({
 
       <p id={`${formId}-promise`} className="mt-4 text-xs text-content-dim">
         {t("locate.promise")}
+      </p>
+      {/* Outside the promise, which describes the buttons: a description
+          should say what happens, not carry a link. */}
+      <p className="mt-1 text-xs">
+        <Link
+          href="/privacy#without-an-account"
+          className="text-content-dim underline decoration-line underline-offset-2 hover:decoration-accent"
+        >
+          {t("locate.privacyLink")}
+        </Link>
       </p>
 
       <p role="status" aria-live="polite" className="mt-3 text-sm text-danger">

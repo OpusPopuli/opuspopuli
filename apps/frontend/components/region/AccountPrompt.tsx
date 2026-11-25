@@ -6,40 +6,16 @@ import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
 import { buttonVariants } from "@/components/ui/Button";
+import {
+  dismissedServerSnapshot,
+  dismissedSnapshot,
+  isDismissed,
+  noDismissalSubscription,
+  rememberDismissed,
+} from "@/lib/device-dismissals";
 
 /** Where the prompt sits; each says what an account adds on that page. */
 export type AccountPromptKind = "proposition" | "representative" | "bill";
-
-const DISMISSED_KEY = "op-account-prompt-dismissed-v1";
-
-function readDismissed(): string {
-  try {
-    return globalThis.localStorage?.getItem(DISMISSED_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function isDismissed(raw: string, kind: AccountPromptKind): boolean {
-  return raw.split(",").includes(kind);
-}
-
-function rememberDismissed(kind: AccountPromptKind): void {
-  try {
-    const kinds = new Set(readDismissed().split(",").filter(Boolean));
-    kinds.add(kind);
-    globalThis.localStorage?.setItem(
-      DISMISSED_KEY,
-      Array.from(kinds).join(","),
-    );
-  } catch {
-    // Storage refused: the prompt stays dismissed for this page view only.
-  }
-}
-
-const noSubscription = () => () => {};
-/** Hidden on the server and while hydrating: nothing to mismatch. */
-const serverSnapshot = () => null;
 
 /**
  * An invitation, never a wall (#1456).
@@ -56,14 +32,15 @@ export function AccountPrompt({ kind }: { readonly kind: AccountPromptKind }) {
   const { isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
   const stored = useSyncExternalStore(
-    noSubscription,
-    readDismissed,
-    serverSnapshot,
+    noDismissalSubscription,
+    dismissedSnapshot,
+    dismissedServerSnapshot,
   );
+  const name = `account-prompt:${kind}`;
   const [dismissedNow, setDismissedNow] = useState(false);
 
   if (isLoading || isAuthenticated) return null;
-  if (stored === null || isDismissed(stored, kind) || dismissedNow) {
+  if (stored === null || isDismissed(stored, name) || dismissedNow) {
     return null;
   }
 
@@ -89,7 +66,7 @@ export function AccountPrompt({ kind }: { readonly kind: AccountPromptKind }) {
         <button
           type="button"
           onClick={() => {
-            rememberDismissed(kind);
+            rememberDismissed(name);
             setDismissedNow(true);
           }}
           aria-label={t("accountPrompt.dismiss")}
