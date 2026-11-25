@@ -237,6 +237,28 @@ Recorded as they were made, with the reason.
 - **The header's "Get started" became "Create account",** and the signed-out header items are translated. The signed-in header's hard-coded English is untouched (out of scope).
 - **The landing page's unused `counties.cta.start` key was removed** in both languages.
 
+**Subtask 5 (2026-11-24):**
+- **The Worker's reads are signed, and fail safe.** `x-op-edge-read: <seconds>.<HMAC-SHA256 of "<seconds>\n<path and query>">`, keyed by `EDGE_READ_SIGNING_SECRET`, valid for 5 minutes and for that one read only. A signed `GET` draws on its own budget (`EDGE_READ_THROTTLER_CONFIG`: 100/s, 600/10 s, 3,000/min); a `POST` never does.
+  - Why a signature: every Cloudflare Worker reaches us from one shared address, so an address allowlist would admit anyone's Worker.
+  - Unset on either side, nothing is signed or exempted, which is the behaviour before this change. So the code can ship before the secret exists.
+  - The Worker signs with WebCrypto and the gateway checks with `node:crypto`; both test suites check one shared vector.
+  - **Proof on UAT, rebuilt with a test secret:** 150 Worker-shaped `GET`s let through 50 unsigned and 100 signed. A signed `POST` and a wrong secret were each held to 50.
+- **Reads are GET queries** with `apollo-require-preflight` (Apollo refuses a bare GET as possible CSRF), so Cloudflare's edge can cache them: a day for sitemaps, six hours for metadata.
+- **Sitemaps are one per kind, with bills in ten fixed chunks of 1,000.** That keeps each render to ten reads at most, within the Worker's subrequest budget. `robots.txt` lists all fourteen. They're rendered per request, since a build-time sitemap would freeze whatever CI could read, which is nothing.
+  - **On UAT:** 12 sections, 72 propositions, 125 representatives, 109 committees, and 5,065 bills (chunk 5 holds 65; chunk 9 is empty and valid).
+  - **Left out:** `/region/county`, `/region/state` and `/region/search`, which show a crawler only a form, and `/region/federal`, which the map baseline no longer links.
+- **`noindex` is a response header, not page metadata.** Most private segments render through client layouts, which can't export metadata. One list (`config/indexing.config.mjs`) feeds both the header and `robots.txt`.
+  - **Changed from the plan:** the single auth pages (`/login`, `/register`, `/forgot-password`, `/reset-password`) stay crawlable but `noindex`. A disallowed page's `noindex` is never seen, and its bare URL can still be listed. `/login` and `/register` came out of the site sitemap.
+- **Detail-page metadata:**
+  - A bill is named by number and subject; its legal title ("An act to add …") becomes the description.
+  - A failed read falls back to a generic title and stays indexable.
+  - A record the server says doesn't exist is `noindex`, since the client page renders "not found" with a 200.
+- **Owner actions before the budget takes effect:**
+  - Generate one secret of at least 32 characters.
+  - Set it on the Worker (`wrangler secret put EDGE_READ_SIGNING_SECRET`, or a step in `deploy-frontend.yml`).
+  - Set it on the node's `api` service (`opuspopuli-node`'s `docker-compose-prod.yml` passthrough and `op-compose` secrets, and `create-op-node` for new nodes).
+  - Never put it in a `.env` file: OpenNext would embed it in the Worker bundle (`check-worker-env.mjs`).
+
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
 - The address path through the real Census geocoder resolved the same 8 types.
