@@ -10,6 +10,7 @@ import {
   LocateForm,
   VisitorLocationControl,
   classifyLocateError,
+  geolocationSupport,
 } from "@/components/region/LocateForm";
 import { LOCATE_JURISDICTIONS } from "@/lib/graphql/region";
 
@@ -74,6 +75,9 @@ describe("LocateForm (#1456)", () => {
     mockState = { source: "device", jurisdictions: [] };
     mockUseMutation.mockReturnValue([locate]);
     locate.mockResolvedValue({ data: { locateJurisdictions: ROWS } });
+    // jsdom has no geolocation; give every test a browser that does, so none
+    // depends on a stub an earlier test happened to leave behind.
+    stubGeolocation(() => {});
   });
 
   it("sends nothing to the cache: the lookup is uncached", () => {
@@ -144,16 +148,54 @@ describe("LocateForm (#1456)", () => {
     ).toBeInTheDocument();
   });
 
-  it("says so when the browser has no geolocation", () => {
-    const original = Object.getOwnPropertyDescriptor(navigator, "geolocation");
-    // @ts-expect-error -- removing the API to simulate an old browser
-    delete navigator.geolocation;
-    render(<LocateForm />);
-    fireEvent.click(screen.getByRole("button", { name: "locate.useLocation" }));
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "locate.problems.noGeolocation",
-    );
-    if (original) Object.defineProperty(navigator, "geolocation", original);
+  describe("when the page can't ask for a location", () => {
+    let original: PropertyDescriptor | undefined;
+    beforeEach(() => {
+      original = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+    });
+    afterEach(() => {
+      if (original) Object.defineProperty(navigator, "geolocation", original);
+      // @ts-expect-error -- restore jsdom's default (undefined)
+      delete globalThis.isSecureContext;
+    });
+
+    it("offers no button that can't work when the browser has no geolocation (Firefox with it off)", () => {
+      // @ts-expect-error -- removing the API to simulate the browser
+      delete navigator.geolocation;
+      render(<LocateForm />);
+      expect(
+        screen.queryByRole("button", { name: "locate.useLocation" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("locate.problems.noGeolocation"),
+      ).toBeInTheDocument();
+      // The address path is still there.
+      expect(
+        screen.getByRole("button", { name: "locate.findDistricts" }),
+      ).toBeInTheDocument();
+    });
+
+    it("says why on a page that isn't secure (http on a network address)", () => {
+      Object.defineProperty(globalThis, "isSecureContext", {
+        configurable: true,
+        value: false,
+      });
+      render(<LocateForm />);
+      expect(
+        screen.queryByRole("button", { name: "locate.useLocation" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("locate.problems.insecure")).toBeInTheDocument();
+    });
+
+    it("classifies support from the page and the browser", () => {
+      stubGeolocation(() => {});
+      expect(geolocationSupport()).toBe("ok");
+      Object.defineProperty(globalThis, "isSecureContext", {
+        configurable: true,
+        value: false,
+      });
+      expect(geolocationSupport()).toBe("insecure");
+    });
   });
 
   it("says when an address matched no districts, and keeps nothing", async () => {

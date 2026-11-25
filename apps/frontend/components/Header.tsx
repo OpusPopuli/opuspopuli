@@ -71,16 +71,22 @@ export function Header() {
         </>
       );
     }
+    // Signed out (#1456): the civic record is open, so the way in is to
+    // explore it. An account is offered, not required.
     return (
       <>
+        <HeaderSearch />
+        <Link href="/region" className={navLinkClass}>
+          {t("navigation.explore")}
+        </Link>
         <Link href="/login" className={navLinkClass}>
-          Sign in
+          {t("navigation.signIn")}
         </Link>
         <Link
           href="/register"
           className={buttonVariants({ variant: "gold", size: "sm" })}
         >
-          Get started
+          {t("navigation.createAccount")}
         </Link>
       </>
     );
@@ -136,15 +142,25 @@ export function Header() {
     }
     return (
       <>
+        <Link href="/region" className={navLinkClass} onClick={closeMenu}>
+          {t("navigation.explore")}
+        </Link>
+        <Link
+          href="/region/search"
+          className={navLinkClass}
+          onClick={closeMenu}
+        >
+          {t("navigation.search")}
+        </Link>
         <Link href="/login" className={navLinkClass} onClick={closeMenu}>
-          Sign in
+          {t("navigation.signIn")}
         </Link>
         <Link
           href="/register"
           className={buttonVariants({ variant: "gold", size: "sm" })}
           onClick={closeMenu}
         >
-          Get started
+          {t("navigation.createAccount")}
         </Link>
       </>
     );

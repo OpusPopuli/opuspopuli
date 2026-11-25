@@ -239,6 +239,7 @@
     "clear": "Clear location",
     "problems": {
       "denied": "Location access is turned off for this site. You can enter an address instead.",
+      "insecure": "Your location can only be shared on a secure (https) page. You can enter an address instead.",
       "noGeolocation": "This browser can't share a location. You can enter an address instead.",
       "positionUnavailable": "We couldn't get your location just now. Try again, or enter an address.",
       "serviceUnavailable": "We couldn't look up addresses just now. Try again later, or use your location.",
@@ -246,5 +247,22 @@
       "notFound": "We couldn't find districts for that location. Check the address, or try your location.",
       "failed": "Something went wrong finding your districts. Try again."
     }
+  },
+  "accountPrompt": {
+    "proposition": {
+      "title": "What does this mean for you?",
+      "body": "With an account, your briefing tells you which measures touch the things you care about, and keeps track of the ones you follow."
+    },
+    "representative": {
+      "title": "Follow this representative",
+      "body": "With an account, what they do shows up in your briefing: votes, meetings and bills, as they happen."
+    },
+    "bill": {
+      "title": "Follow this bill",
+      "body": "With an account, your briefing tells you when this bill moves: votes, amendments and its next hearing."
+    },
+    "create": "Create an account",
+    "signIn": "Sign in",
+    "dismiss": "Not now"
   }
 }

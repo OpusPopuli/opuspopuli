@@ -42,7 +42,11 @@
   "navigation": {
     "backToApp": "Back to App",
     "scanPetition": "Scan a petition",
-    "whereYouLive": "Where you live"
+    "whereYouLive": "Where you live",
+    "explore": "Explore",
+    "search": "Search",
+    "signIn": "Sign in",
+    "createAccount": "Create account"
   },
   "accessibility": {
     "languageChanged": "Language changed to English",

@@ -32,6 +32,12 @@ jest.mock("next/navigation", () => ({
   usePathname: jest.fn(() => "/region"),
   useParams: () => ({ id: "rep-1" }),
 }));
+// Signed in unless a test says otherwise; the #1456 account prompt and the
+// in-app contact form both depend on it.
+let mockSignedIn = true;
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: mockSignedIn, isLoading: false }),
+}));
 
 let mockQueryResult: {
   data: { representative: typeof mockRepresentative | null } | undefined;
@@ -387,5 +393,40 @@ describe("RepresentativeDetailPage", () => {
         screen.getByRole("link", { name: "Representatives" }),
       ).toHaveAttribute("href", "/region/representatives");
     });
+  });
+
+  describe("signed out (#1456)", () => {
+    beforeEach(() => {
+      mockSignedIn = false;
+      localStorage.clear();
+    });
+    afterEach(() => {
+      mockSignedIn = true;
+    });
+
+    it("keeps the public email but drops the in-app contact form, which needs an account", () => {
+      render(<RepresentativeDetailPage />);
+      expect(screen.getByText("jane@example.gov")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Contact Jane/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("offers to follow the representative in a briefing", () => {
+      render(<RepresentativeDetailPage />);
+      expect(
+        screen.getByRole("heading", { name: "Follow this representative" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Create an account" }),
+      ).toHaveAttribute("href", "/register");
+    });
+  });
+
+  it("shows no account prompt to a signed-in reader", () => {
+    render(<RepresentativeDetailPage />);
+    expect(
+      screen.queryByRole("heading", { name: "Follow this representative" }),
+    ).not.toBeInTheDocument();
   });
 });

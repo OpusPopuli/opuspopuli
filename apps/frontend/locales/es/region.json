@@ -239,6 +239,7 @@
     "clear": "Borrar ubicación",
     "problems": {
       "denied": "El acceso a la ubicación está desactivado para este sitio. Puedes escribir una dirección.",
+      "insecure": "Tu ubicación solo se puede compartir en una página segura (https). Puedes escribir una dirección.",
       "noGeolocation": "Este navegador no puede compartir una ubicación. Puedes escribir una dirección.",
       "positionUnavailable": "No pudimos obtener tu ubicación en este momento. Inténtalo de nuevo o escribe una dirección.",
       "serviceUnavailable": "No pudimos buscar direcciones en este momento. Inténtalo más tarde o usa tu ubicación.",
@@ -246,5 +247,22 @@
       "notFound": "No encontramos distritos para esa ubicación. Revisa la dirección o usa tu ubicación.",
       "failed": "Algo salió mal al buscar tus distritos. Inténtalo de nuevo."
     }
+  },
+  "accountPrompt": {
+    "proposition": {
+      "title": "¿Qué significa esto para ti?",
+      "body": "Con una cuenta, tu resumen te dice qué medidas tocan lo que te importa y sigue las que eliges."
+    },
+    "representative": {
+      "title": "Sigue a este representante",
+      "body": "Con una cuenta, lo que hace aparece en tu resumen: votos, reuniones y proyectos de ley, a medida que ocurren."
+    },
+    "bill": {
+      "title": "Sigue este proyecto de ley",
+      "body": "Con una cuenta, tu resumen te avisa cuando este proyecto avanza: votos, enmiendas y su próxima audiencia."
+    },
+    "create": "Crear una cuenta",
+    "signIn": "Iniciar sesión",
+    "dismiss": "Ahora no"
   }
 }

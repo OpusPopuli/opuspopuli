@@ -22,6 +22,8 @@ import {
   type BillsVars,
 } from "@/lib/graphql/region";
 import { ContactRepresentativeForm } from "@/components/email/ContactRepresentativeForm";
+import { AccountPrompt } from "@/components/region/AccountPrompt";
+import { useAuth } from "@/lib/auth-context";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { PartyBadge } from "@/components/region/PartyBadge";
@@ -736,7 +738,12 @@ function PersistentHeader({
   onContactClick,
 }: {
   readonly rep: Representative;
-  readonly onContactClick: () => void;
+  /**
+   * Opens the in-app contact form, which sends through our servers and
+   * needs an account. Absent for a visitor (#1456), who still has the
+   * representative's public email above.
+   */
+  readonly onContactClick?: () => void;
 }) {
   const firstName = rep.name.split(" ")[0];
   const contact = rep.contactInfo;
@@ -845,7 +852,7 @@ function PersistentHeader({
             </div>
           )}
 
-          {contact?.email && (
+          {contact?.email && onContactClick && (
             <button
               onClick={onContactClick}
               className="px-4 py-2 text-sm font-medium text-on-inverse bg-inverse-surface rounded-lg hover:opacity-90 transition-colors"
@@ -863,6 +870,7 @@ export default function RepresentativeDetailPage() {
   const { t } = useTranslation("region");
   const { id } = useParams<{ id: string }>();
   const [showContactForm, setShowContactForm] = useState(false);
+  const { isAuthenticated } = useAuth();
   const [layer, setLayer] = useState(1);
 
   const { data, loading, error } = useQuery<RepresentativeData, IdVars>(
@@ -918,7 +926,9 @@ export default function RepresentativeDetailPage() {
 
       <PersistentHeader
         rep={rep}
-        onContactClick={() => setShowContactForm(true)}
+        onContactClick={
+          isAuthenticated ? () => setShowContactForm(true) : undefined
+        }
       />
 
       <LayerNav layers={LAYERS} current={layer} onChange={setLayer} />
@@ -943,6 +953,8 @@ export default function RepresentativeDetailPage() {
           <HowTheyAreSupported rep={rep} onBack={() => setLayer(1)} />
         )}
       </div>
+
+      <AccountPrompt kind="representative" />
 
       {showContactForm && rep.contactInfo?.email && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">

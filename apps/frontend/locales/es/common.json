@@ -42,7 +42,11 @@
   "navigation": {
     "backToApp": "Volver a la App",
     "scanPetition": "Escanear una petición",
-    "whereYouLive": "Dónde vives"
+    "whereYouLive": "Dónde vives",
+    "explore": "Explorar",
+    "search": "Buscar",
+    "signIn": "Iniciar sesión",
+    "createAccount": "Crear cuenta"
   },
   "accessibility": {
     "languageChanged": "Idioma cambiado a Espanol",

@@ -35,6 +35,11 @@ const defaultContext = {
 };
 let mockContext = { ...defaultContext };
 
+// Signed in. I18nProvider reads the account's language only then (#1456).
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: true, isLoading: false }),
+}));
+
 jest.mock("@/lib/onboarding-context", () => ({
   useOnboarding: () => mockContext,
 }));

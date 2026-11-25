@@ -324,4 +324,13 @@ describe("BillDetailPage", () => {
       expect(screen.getByTestId("bill-activity-feed")).toBeInTheDocument();
     });
   });
+
+  it("invites a signed-out reader to follow the bill (#1456)", () => {
+    localStorage.clear();
+    mockQueryResult = { data: { bill: mockBill }, loading: false, error: null };
+    render(<BillDetailPage />);
+    expect(
+      screen.getByRole("heading", { name: "Follow this bill" }),
+    ).toBeInTheDocument();
+  });
 });

@@ -90,6 +90,12 @@ jest.mock("next/navigation", () => ({
   usePathname: jest.fn(() => "/region"),
   useParams: jest.fn(() => ({ id: "1" })),
 }));
+// Signed in unless a test says otherwise; the #1456 account prompt and the
+// in-app contact form both depend on it.
+let mockSignedIn = true;
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: mockSignedIn, isLoading: false }),
+}));
 
 jest.mock("next/link", () => {
   return function MockLink({
@@ -491,6 +497,28 @@ describe("PropositionDetailPage", () => {
         name: "Propositions",
       });
       expect(propositionsLink).toHaveAttribute("href", "/region/propositions");
+    });
+  });
+
+  describe("account prompt (#1456)", () => {
+    afterEach(() => {
+      mockSignedIn = true;
+    });
+
+    it("invites a signed-out reader to see what the measure means for them", () => {
+      mockSignedIn = false;
+      localStorage.clear();
+      render(<PropositionDetailPage />);
+      expect(
+        screen.getByRole("heading", { name: "What does this mean for you?" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows nothing to a signed-in reader", () => {
+      render(<PropositionDetailPage />);
+      expect(
+        screen.queryByRole("heading", { name: "What does this mean for you?" }),
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -17,6 +17,7 @@ import {
   type BillVote,
 } from "@/lib/graphql/region";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
+import { AccountPrompt } from "@/components/region/AccountPrompt";
 import { LoadingSkeleton, ErrorState } from "@/components/region/ListStates";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { LayerButton } from "@/components/region/LayerButton";
@@ -689,6 +690,8 @@ export default function BillDetailPage() {
         )}
         {layer === 4 && <Sources bill={bill} onBack={() => setLayer(3)} />}
       </div>
+
+      <AccountPrompt kind="bill" />
     </div>
   );
 }

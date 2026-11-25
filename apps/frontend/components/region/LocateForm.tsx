@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useMutation } from "@apollo/client/react";
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import { US_STATES } from "@/lib/us-states";
 /** What went wrong, as the reader needs to hear it. Each has its own copy. */
 export type LocateProblem =
   | "denied"
+  | "insecure"
   | "noGeolocation"
   | "positionUnavailable"
   | "serviceUnavailable"
@@ -68,6 +69,26 @@ function isPositionError(error: unknown): error is { code: number } {
 function classifyPositionError(error: { code: number }): LocateProblem {
   return error.code === PERMISSION_DENIED ? "denied" : "positionUnavailable";
 }
+
+/**
+ * Whether this page can ask for the browser's location at all.
+ *
+ * Browsers expose geolocation only on a secure page: https, or localhost.
+ * Firefox goes further and removes the API entirely elsewhere, and a
+ * privacy setting (`geo.enabled`) or policy can remove it anywhere. A
+ * button that can't work shouldn't be offered, so the form checks first.
+ * jsdom leaves `isSecureContext` undefined; only an explicit false counts.
+ */
+export function geolocationSupport(): "ok" | "insecure" | "unsupported" {
+  if (globalThis.isSecureContext === false) return "insecure";
+  return typeof navigator !== "undefined" && "geolocation" in navigator
+    ? "ok"
+    : "unsupported";
+}
+
+const noSubscription = () => () => {};
+/** On the server, assume support: the button renders, then corrects. */
+const assumeSupported = () => "ok" as const;
 
 function currentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -123,6 +144,11 @@ export function LocateForm({
   const [address, setAddress] = useState<AddressFields>(EMPTY_ADDRESS);
   const [problem, setProblem] = useState<LocateProblem | null>(null);
   const [busy, setBusy] = useState<"position" | "address" | null>(null);
+  const support = useSyncExternalStore(
+    noSubscription,
+    geolocationSupport,
+    assumeSupported,
+  );
 
   const [locate] = useMutation<
     LocateJurisdictionsData,
@@ -157,8 +183,9 @@ export function LocateForm({
   }
 
   function locateByPosition() {
-    if (!("geolocation" in navigator)) {
-      setProblem("noGeolocation");
+    const now = geolocationSupport();
+    if (now !== "ok") {
+      setProblem(now === "insecure" ? "insecure" : "noGeolocation");
       return;
     }
     void run("position", async () => {
@@ -194,15 +221,25 @@ export function LocateForm({
       </h2>
       <p className="mt-1 text-sm text-content-dim">{t("locate.body")}</p>
 
-      <Button
-        variant="secondary"
-        className="mt-4"
-        onClick={locateByPosition}
-        disabled={busy !== null}
-        aria-describedby={`${formId}-promise`}
-      >
-        {busy === "position" ? t("locate.locating") : t("locate.useLocation")}
-      </Button>
+      {support === "ok" ? (
+        <Button
+          variant="secondary"
+          className="mt-4"
+          onClick={locateByPosition}
+          disabled={busy !== null}
+          aria-describedby={`${formId}-promise`}
+        >
+          {busy === "position" ? t("locate.locating") : t("locate.useLocation")}
+        </Button>
+      ) : (
+        <p className="mt-4 text-sm text-content-dim">
+          {t(
+            support === "insecure"
+              ? "locate.problems.insecure"
+              : "locate.problems.noGeolocation",
+          )}
+        </p>
+      )}
 
       <form
         onSubmit={submitAddress}
