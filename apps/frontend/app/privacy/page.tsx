@@ -31,8 +31,7 @@ export default function PrivacyPolicyPage() {
             </p>
           </section>
 
-          {/* Notice at collection for the visitor location lookup (#1456).
-              Placeholder wording pending counsel review. */}
+          {/* Notice at collection for the visitor location lookup (#1456). */}
           <section id="without-an-account" className="scroll-mt-24">
             <h2 className="text-xl font-semibold text-content mb-3">
               Reading without an account

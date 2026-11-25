@@ -132,7 +132,7 @@
   - The address path calls the US Census geocoder.
   - Nothing is kept, sold or shared.
   - The device keeps the district IDs only, and the reader can clear them.
-- **Owner action:** counsel review of the wording. The copy is swappable through the translation files.
+- **No counsel review (owner, 2026-11-25).** The copy is in the translation files if it needs changing later.
 
 ### 7. Load, UAT and release
 
@@ -253,7 +253,11 @@ Recorded as they were made, with the reason.
   - A bill is named by number and subject; its legal title ("An act to add …") becomes the description.
   - A failed read falls back to a generic title and stays indexable.
   - A record the server says doesn't exist is `noindex`, since the client page renders "not found" with a 200.
-- **Owner actions before the budget takes effect:**
+- **Not needed for launch (owner, 2026-11-25).** The code ships, inert: with no secret, the Worker's reads share one visitor's budget, as before this change.
+  - **Why that's enough:** the edge cache absorbs repeat reads, a full crawl is well under one origin read a second against a limit of ten, and visitors' own reads come from their own addresses.
+  - **The cost if crawling outruns it:** some pages are indexed with a generic title ("Bill | Opus Populi") until re-crawled. Nothing breaks.
+  - **When to set it up:** if `GatewayRateLimitingReaders` fires during a crawl. It needs no code change.
+- **Setting it up, when needed:**
   - Generate one secret of at least 32 characters.
   - Set it on the Worker (`wrangler secret put EDGE_READ_SIGNING_SECRET`, or a step in `deploy-frontend.yml`).
   - Set it on the node's `api` service (`opuspopuli-node`'s `docker-compose-prod.yml` passthrough and `op-compose` secrets, and `create-op-node` for new nodes).
@@ -269,7 +273,23 @@ Recorded as they were made, with the reason.
 - **The privacy page has a notice at collection for the location lookup** (`#without-an-account`), linked from the form's promise. It covers what's asked for, why, how it's sent, the Census geocoder, what's kept (nothing), and what stays on the device.
   - It also says plainly that requests pass through Cloudflare, rather than implying "not kept" covers Cloudflare's own handling.
   - The page itself is English-only, as it was before; translating it is out of scope.
-- **Owner action:** counsel review of the footer notice, the reading notice, the AI label and the privacy section. The wording lives in the translation files, except the privacy page, which is in `app/privacy/page.tsx`.
+- **No counsel review (owner, 2026-11-25).** The wording ships as written. It lives in the translation files, except the privacy page, which is in `app/privacy/page.tsx`.
+
+**Subtask 7 (2026-11-25):**
+- **The gateway had no request metrics for GraphQL at all (predates #1456).** HTTP metrics come from a Nest interceptor, which Apollo Gateway's operations never pass through, nor do the limiter's 429s.
+  - **Change:** `GatewayRequestMetricsMiddleware` records `/api` requests, and any 429, into the existing `http_requests_total` and `http_request_duration_seconds`. It doesn't double-count the REST routes the interceptor already records.
+  - **Proof on UAT:** 54 × 200 and 30 × 429 appeared under `route="/api"`.
+- **Alerts** (`observability/prometheus-alerts.yml`, validated with `promtool`):
+  - `GatewayRateLimitingReaders`: more than 5% of `/api` requests refused for 10 minutes.
+  - `GatewaySlow`: p95 above 1 s for 10 minutes, excluding 429s.
+  - **Production's copy lives in `opuspopuli-node`:** sync it there.
+- **Load, measured on a production build against UAT.** A signed-out page costs 3–4 gateway requests on the first page of a visit, which includes one CSRF-seeding GET, and 2–3 after that. A located visitor's home page costs 8. Against 600/min per client, that's roughly 150–200 page loads a minute before a reader is refused.
+  - **Crawl estimate:** a full crawl of about 5,400 pages is a few client requests per page from the crawler's own addresses, plus one edge-cached read per page from the Worker. That averages well under one origin request a second.
+- **The release needs one more fix the dev server couldn't show.** With `ProtectedRoute` gone, region pages render at build time, and `/region/bills` failed the production build: `useSearchParams` outside a Suspense boundary.
+  - **Change:** one boundary around the page content in `app/region/layout.tsx`. The header, notice and footer stay server-rendered.
+- **Walked on a production build:** the full Chromium suite passes (355 tests, 12 skipped). Against UAT data: sitemaps, metadata, `noindex` headers and "Use my location" all work.
+- **Not checkable before release:** the throttle keying on the real client IP *through Cloudflare*. Subtask 1 proved the keying on UAT, but the tunnel path exists only in production. Check it after the backend release: requests from two networks should get separate budgets.
+- **The Docker frontend build (`docker-compose-frontend.yml`) fails its lint step on files #1456 didn't touch** (union formatting, React hook rules), apparently from different lint versions inside the image. It's a separate issue, not a release gate: CI builds with the lockfile's versions.
 
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
@@ -285,7 +305,7 @@ Recorded as they were made, with the reason.
 | An address or location reaches logs, the audit log or traces | High × Possible | `@SkipAudit`; no input in any log line; logger and interceptor spy tests; span check; the #1094 rule |
 | Crawler and signed-out load overwhelms the single Studio | Medium × Likely | Edge-cached sitemap and metadata; a real per-IP throttle; 429 and latency alerts; measured before release |
 | The Census geocoder throttles or blocks our IP | Medium × Possible | Tight per-IP limit on the address path, plus a global cap. Browser location never calls the geocoder |
-| Indexing spreads inaccuracies or misattribution further | High × Possible | Subtask 6 before release; counsel review; receipts on every AI passage (#1450) |
+| Indexing spreads inaccuracies or misattribution further | High × Possible | Subtask 6 before release (no counsel review, owner decision 2026-11-25); receipts on every AI passage (#1450) |
 | Signed-in users regress | Medium × Rare | Both modes tested in the provider and end to end |
 | More bill-summary requests cost model time | Medium × Possible | Existing global daily cap; the per-IP cap now uses the real IP |
 | The frontend ships before the backend | Medium × Possible | Release order, stated in the PR |
