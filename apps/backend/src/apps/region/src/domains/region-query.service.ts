@@ -1536,6 +1536,62 @@ export class RegionQueryService {
     const fipsCode = countyJurisdiction?.jurisdiction?.fipsCode;
     if (!fipsCode) return [];
 
+    return this.supervisorsFor(fipsCode, async () => {
+      const supDistrict = await this.db.userJurisdiction.findFirst({
+        where: {
+          userId,
+          userAddress: { isPrimary: true },
+          jurisdiction: { type: 'COUNTY_SUPERVISOR_DISTRICT' },
+        },
+        include: { jurisdiction: { select: { name: true } } },
+      });
+      return supDistrict?.jurisdiction?.name;
+    });
+  }
+
+  /**
+   * The same answer as {@link getMyCountySupervisors}, for a visitor without
+   * an account (#1456): their districts arrive as the jurisdiction ids their
+   * device kept, not as a saved address.
+   *
+   * Unknown ids drop out, as in `jurisdictionsByIds`. If the ids name more
+   * than one county, which no real location does, the first by FIPS wins,
+   * so the answer is at least stable.
+   */
+  async getCountySupervisorsAt(
+    jurisdictionIds: readonly string[],
+  ): Promise<RepresentativeRecord[]> {
+    if (jurisdictionIds.length === 0) return [];
+    const rows = await this.db.jurisdiction.findMany({
+      where: {
+        id: { in: [...new Set(jurisdictionIds)] },
+        type: { in: ['COUNTY', 'COUNTY_SUPERVISOR_DISTRICT'] },
+      },
+      select: { type: true, fipsCode: true, name: true },
+      orderBy: [{ fipsCode: 'asc' }, { name: 'asc' }],
+    });
+
+    const fipsCode = rows.find((r) => r.type === 'COUNTY')?.fipsCode;
+    if (!fipsCode) return [];
+
+    const supDistrictName = rows.find(
+      (r) => r.type === 'COUNTY_SUPERVISOR_DISTRICT',
+    )?.name;
+    return this.supervisorsFor(fipsCode, async () => supDistrictName);
+  }
+
+  /**
+   * A county's Board of Supervisors, narrowed to one seat when the reader's
+   * supervisorial district is known. Shared by the signed-in and visitor
+   * paths so the #1136 matching lives in one place.
+   *
+   * `supDistrictName` is a thunk so the signed-in path still skips that
+   * lookup when the county plugin is off.
+   */
+  private async supervisorsFor(
+    fipsCode: string,
+    supDistrictName: () => Promise<string | undefined>,
+  ): Promise<RepresentativeRecord[]> {
     const plugin = await this.db.regionPlugin.findUnique({
       where: { fipsCode },
       select: { name: true, enabled: true },
@@ -1545,28 +1601,19 @@ export class RegionQueryService {
 
     const supervisors = await this.getRepresentativesByCounty(plugin.name);
 
-    // Filter to the user's own supervisorial district when their address has
-    // resolved one (#1136). Boundaries are county-published and ingested
+    // Filter to the reader's own supervisorial district when one has
+    // resolved (#1136). Boundaries are county-published and ingested
     // county by county, so most counties have none yet — and for them the
     // whole board comes back, exactly as before. Degrading to ALL supervisors
     // is honest ("your Board of Supervisors"); showing one arbitrary
     // supervisor as "yours" is not, which is the bug this closes.
-    const supDistrict = await this.db.userJurisdiction.findFirst({
-      where: {
-        userId,
-        userAddress: { isPrimary: true },
-        jurisdiction: { type: 'COUNTY_SUPERVISOR_DISTRICT' },
-      },
-      include: { jurisdiction: { select: { name: true } } },
-    });
-    if (!supDistrict?.jurisdiction?.name) return supervisors;
+    const districtName = await supDistrictName();
+    if (!districtName) return supervisors;
 
     // Digit-extraction on BOTH sides: the jurisdiction says "Sonoma County
     // Supervisorial District 5", the roster row says district "5" (some
     // sources zero-pad). extractDistrictNumber normalizes to two digits.
-    const userDistrict = this.extractDistrictNumber(
-      supDistrict.jurisdiction.name,
-    );
+    const userDistrict = this.extractDistrictNumber(districtName);
     if (!userDistrict) return supervisors;
 
     const own = supervisors.filter(

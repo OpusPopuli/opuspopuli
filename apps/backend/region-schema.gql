@@ -994,10 +994,17 @@ type Query {
   bill(id: ID!): Bill
   myJurisdictions: [UserJurisdictionModel!]!
   myCountySupervisors: [RepresentativeModel!]!
+
+  """
+  The Board of Supervisors for the county among these districts, narrowed to one seat when the supervisorial district is among them.
+  """
+  countySupervisorsAt(ids: [ID!]!): [RepresentativeModel!]!
   regionSyncJob(jobId: ID!): RegionSyncJob
   recentRegionSyncJobs(limit: Int = 20): [RegionSyncJob!]!
   scheduledSyncJobs: [ScheduledSyncJob!]!
   billSummaryStatus(billId: ID!): BillSummaryStatus!
+
+  """Districts by id, to restore a location saved on the visitor’s device."""
   jurisdictionsByIds(ids: [ID!]!): [JurisdictionModel!]!
 }
 

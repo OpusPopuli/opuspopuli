@@ -857,6 +857,12 @@ export class RegionDomainService {
     return this.queryService.getMyCountySupervisors(userId);
   }
 
+  getCountySupervisorsAt(
+    jurisdictionIds: readonly string[],
+  ): Promise<RepresentativeRecord[]> {
+    return this.queryService.getCountySupervisorsAt(jurisdictionIds);
+  }
+
   getBills(
     skip: number,
     take: number,
