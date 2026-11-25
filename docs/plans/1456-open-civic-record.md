@@ -291,6 +291,28 @@ Recorded as they were made, with the reason.
 - **Not checkable before release:** the throttle keying on the real client IP *through Cloudflare*. Subtask 1 proved the keying on UAT, but the tunnel path exists only in production. Check it after the backend release: requests from two networks should get separate budgets.
 - **The Docker frontend build (`docker-compose-frontend.yml`) fails its lint step on files #1456 didn't touch** (union formatting, React hook rules), apparently from different lint versions inside the image. It's a separate issue, not a release gate: CI builds with the lockfile's versions.
 
+**Behavioural verification, `/op-verify` (2026-11-25).** Driven on a production build of the frontend against UAT, with services rebuilt from this branch, the real Census geocoder and PostGIS, and no signing secret.
+- **Signed-out journeys: 23/23.**
+  - The region opens without a redirect, with the reading notice and the lookup form.
+  - Address lookup through the live geocoder: only the 8 district ids are stored; the address travels once, in a POST body. A reload restores the districts and Clear forgets them.
+  - Browser location resolves Santa Rosa to supervisor Chris Coursey, with coordinates rounded to 4 decimals.
+  - An address with no match and a refused permission each give their message and store nothing.
+  - Proposition, bill and representative pages invite an account without blocking.
+  - `/petition` and `/me/briefing` still require sign-in.
+  - No account-only query is sent on any of these pages.
+- **Gateway edge cases: 10/10.** More than 50 ids and non-UUID ids are refused. Unknown ids drop out. Point and address together are refused, as are an out-of-range latitude and a malformed state or ZIP. A point outside every district returns nothing, and the lookup refuses to travel as a GET (405). The new 429 counter rose by exactly the 70 refusals.
+- **Signed-in regression: 6/6,** with a real account made through the sign-up page and its emailed link.
+  - `/region` reads `myJurisdictions` and `myCountySupervisors` and runs no visitor lookups.
+  - The account header shows, and the briefing opens.
+- **Personal data:**
+  - No address, coordinates or unmasked IP appear in the gateway or region logs. The one "hit" was `1315` inside a request id, and the IP there reads `192.x.x.x`.
+  - No audit rows exist for the location lookups.
+  - Tempo held 4 geocoder spans, all `street=REDACTED`, and none with the address.
+- **Found and fixed during verification:** `representativesByDistricts` wrote an audit row pairing a located visitor's Assembly and Senate districts with their IP. That's the record `jurisdictionsByIds` and `countySupervisorsAt` skip the audit to avoid. Subtask 3 made signed-out pages call it with located districts.
+  - **Change:** it is now `@SkipAudit`.
+  - **Proof:** the rerun wrote 18 audit rows and none for a location lookup. The 3 test rows were deleted from the UAT audit log.
+- **Couldn't be driven live:** hiding the in-app contact form from visitors. No representative on UAT has an email on file, so the button never renders for anyone. A unit test covers it.
+
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
 - The address path through the real Census geocoder resolved the same 8 types.
