@@ -238,15 +238,19 @@ describe('RegionResolver', () => {
       ]);
     });
 
-    it('is open to visitors and kept out of the audit log', () => {
-      // An audit row would pair the visitor's districts with their IP: the
-      // location record the public lookup promises not to keep.
-      const handler = RegionResolver.prototype.countySupervisorsAt;
-      expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBe(true);
-      expect(Reflect.getMetadata(AUDIT_METADATA_KEY, handler)).toEqual({
-        skipAudit: true,
-      });
-    });
+    it.each(['countySupervisorsAt', 'representativesByDistricts'] as const)(
+      '%s is open to visitors and kept out of the audit log',
+      (name) => {
+        // An audit row would pair the visitor's districts with their IP: the
+        // location record the public lookup promises not to keep. Found for
+        // representativesByDistricts by /op-verify, on UAT.
+        const handler = RegionResolver.prototype[name];
+        expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBe(true);
+        expect(Reflect.getMetadata(AUDIT_METADATA_KEY, handler)).toEqual({
+          skipAudit: true,
+        });
+      },
+    );
   });
 
   describe('regionInfo', () => {

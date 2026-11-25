@@ -568,8 +568,15 @@ export class RegionResolver {
   /**
    * Find representatives matching a user's civic districts.
    * Districts come from the user's geocoded address (Census API format).
+   *
+   * `@SkipAudit` (#1456): a signed-out visitor's page calls this with the
+   * districts of the location they just looked up, and an audit row would
+   * keep those districts beside their IP, the location record the public
+   * lookup promises not to keep. `jurisdictionsByIds` and
+   * `countySupervisorsAt` skip the audit for the same reason.
    */
   @Public()
+  @SkipAudit()
   @Query(() => [RepresentativeModel])
   async representativesByDistricts(
     @Args({ name: 'congressionalDistrict', nullable: true })
