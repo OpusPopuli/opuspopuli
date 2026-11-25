@@ -1,10 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ReadingNotice } from "@/components/ReadingNotice";
 import { CivicsProvider } from "@/components/civics/CivicsContext";
 import { JurisdictionsProvider } from "@/components/region/JurisdictionsContext";
+import { LoadingSkeleton } from "@/components/region/ListStates";
 
 /**
  * The civic record, open to everyone (#1456).
@@ -28,7 +30,22 @@ export default function RegionLayout({
           (#962). Dismissed once, per device. */}
       <ReadingNotice />
       <JurisdictionsProvider>
-        <CivicsProvider>{children}</CivicsProvider>
+        <CivicsProvider>
+          {/* Pages here now render at build time: with the wall gone,
+              nothing stops them. A page that reads the query string
+              (useSearchParams) needs a Suspense boundary to do that, or the
+              build fails; one here covers them all, and keeps the header,
+              notice and footer server-rendered. */}
+          <Suspense
+            fallback={
+              <div className="mx-auto max-w-3xl px-8 py-12">
+                <LoadingSkeleton count={3} height="h-20" />
+              </div>
+            }
+          >
+            {children}
+          </Suspense>
+        </CivicsProvider>
       </JurisdictionsProvider>
       <Footer />
     </>
