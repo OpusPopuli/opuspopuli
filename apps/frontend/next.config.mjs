@@ -1,5 +1,6 @@
 import withSerwistInit from "@serwist/next";
 import { getSecurityHeaders } from "./config/security-headers.config.mjs";
+import { getNoIndexHeaderRules } from "./config/indexing.config.mjs";
 
 const withSerwist = withSerwistInit({
   swSrc: "src/sw.ts",
@@ -33,6 +34,8 @@ const nextConfig = {
         source: "/:path*",
         headers: getSecurityHeaders(),
       },
+      // A reader's own areas and the auth pages are never indexed (#1456).
+      ...getNoIndexHeaderRules(),
     ];
   },
 
