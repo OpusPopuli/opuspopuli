@@ -259,6 +259,18 @@ Recorded as they were made, with the reason.
   - Set it on the node's `api` service (`opuspopuli-node`'s `docker-compose-prod.yml` passthrough and `op-compose` secrets, and `create-op-node` for new nodes).
   - Never put it in a `.env` file: OpenNext would embed it in the Worker bundle (`check-worker-env.mjs`).
 
+**Subtask 6 (2026-11-24):**
+- **The footer is translated.** Its #962 notice and its links render in English and Spanish. It's a client component now, since translation is a hook.
+- **`FinanceDisclaimer` is on all four campaign-finance subpages.** The hub already had it.
+- **"How to read this site"** sits under the header on every region page, inline and never a modal, until it's dismissed once on the device.
+  - It says: every page names its public source; "AI-generated" text may contain errors; links between people, money and measures are automated, not allegations.
+  - It shares a small dismissals module (`lib/device-dismissals.ts`) with `AccountPrompt`.
+- **The AI label now carries #962's warning:** "AI-generated · may contain errors" / "Generado por IA · puede contener errores". The other provenance labels ("Official text", "Generated from records" and the rest) are unchanged; they make no claim a model made.
+- **The privacy page has a notice at collection for the location lookup** (`#without-an-account`), linked from the form's promise. It covers what's asked for, why, how it's sent, the Census geocoder, what's kept (nothing), and what stays on the device.
+  - It also says plainly that requests pass through Cloudflare, rather than implying "not kept" covers Cloudflare's own handling.
+  - The page itself is English-only, as it was before; translating it is out of scope.
+- **Owner action:** counsel review of the footer notice, the reading notice, the AI label and the privacy section. The wording lives in the translation files, except the privacy page, which is in `app/privacy/page.tsx`.
+
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
 - The address path through the real Census geocoder resolved the same 8 types.
