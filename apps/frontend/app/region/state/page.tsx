@@ -20,6 +20,8 @@ import {
 } from "@/components/region/LayerPageShell";
 import { LoadingSkeleton } from "@/components/region/ListStates";
 import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import { NoLocationState } from "@/components/region/NoLocationState";
+import { VisitorLocationControl } from "@/components/region/LocateForm";
 import { findState } from "@/lib/region-stack";
 import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
 import { formatDate } from "@/lib/format";
@@ -59,12 +61,7 @@ export default function StateLayerPage() {
   if (!state) {
     return (
       <div className="mx-auto max-w-3xl px-8 py-12">
-        <p className="font-semibold text-content">
-          {t("stack.noAddress.title")}
-        </p>
-        <p className="mt-1 text-sm text-content-dim">
-          {t("stack.noAddress.body")}
-        </p>
+        <NoLocationState />
       </div>
     );
   }
@@ -213,6 +210,7 @@ export default function StateLayerPage() {
           count={t("layer.seeAll")}
         />
       </LayerSection>
+      <VisitorLocationControl />
     </LayerPageShell>
   );
 }

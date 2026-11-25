@@ -18,13 +18,17 @@
  * legacy purge below self-heals every returning client on next load.
  * The lesson is procedural, not mechanical — a release that changes the
  * GraphQL document set must bump this key in the same PR.
+ *
+ * v4 (#1456): signed-out region pages, with three new documents
+ * (locateJurisdictions, jurisdictionsByIds, countySupervisorsAt).
  */
-export const APOLLO_CACHE_KEY = "apollo-cache-persist-v3";
+export const APOLLO_CACHE_KEY = "apollo-cache-persist-v4";
 
 /** Superseded keys, removed on boot so they cannot accumulate. */
 export const LEGACY_APOLLO_CACHE_KEYS = [
   "apollo-cache-persist",
   "apollo-cache-persist-v2",
+  "apollo-cache-persist-v3",
 ];
 
 /**

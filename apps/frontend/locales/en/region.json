@@ -106,6 +106,7 @@
       "statewide": "Statewide the same initiative right costs {{statewide}} signatures.",
       "yourSeatSection": "Your seat on this board",
       "resolvedFrom": "Resolved from your address ·",
+      "resolvedFromDevice": "Resolved from the location saved on this device",
       "ledger": "What the county did",
       "whatDid": "What the county did",
       "seats_one": "{{count}} seat",
@@ -216,6 +217,34 @@
       "none": "No plain-language summary is available for this bill.",
       "requestButton": "Summarize this bill",
       "updateButton": "Update the summary"
+    }
+  },
+  "locate": {
+    "title": "Find your districts",
+    "body": "Use your location or an address to see the governments that represent where you live. No account needed.",
+    "useLocation": "Use my location",
+    "locating": "Finding your location…",
+    "orAddress": "Or enter an address",
+    "fields": {
+      "line1": "Street address",
+      "city": "City",
+      "state": "State",
+      "postalCode": "ZIP code"
+    },
+    "findDistricts": "Find my districts",
+    "finding": "Looking up…",
+    "promise": "We use this once to find your districts and don't keep it. Only the list of your districts is saved, on this device.",
+    "saved": "Showing the districts for a location saved on this device.",
+    "change": "Change location",
+    "clear": "Clear location",
+    "problems": {
+      "denied": "Location access is turned off for this site. You can enter an address instead.",
+      "noGeolocation": "This browser can't share a location. You can enter an address instead.",
+      "positionUnavailable": "We couldn't get your location just now. Try again, or enter an address.",
+      "serviceUnavailable": "We couldn't look up addresses just now. Try again later, or use your location.",
+      "rateLimited": "Too many lookups in a short time. Wait a minute and try again.",
+      "notFound": "We couldn't find districts for that location. Check the address, or try your location.",
+      "failed": "Something went wrong finding your districts. Try again."
     }
   }
 }

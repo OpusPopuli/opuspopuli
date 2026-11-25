@@ -3,20 +3,18 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
-import {
-  GET_BILLS,
-  MY_COUNTY_SUPERVISORS,
-  type BillsData,
-  type MyCountySupervisorsData,
-} from "@/lib/graphql/region";
+import { GET_BILLS, type BillsData } from "@/lib/graphql/region";
 import { JurisdictionStack } from "@/components/region/JurisdictionStack";
 import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import { NoLocationState } from "@/components/region/NoLocationState";
 import {
   COUNT_PROBE_SIZE,
   WINDOW_DAYS,
   countInWindow,
 } from "@/lib/region-stack";
 import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
+import { useCountySupervisors } from "@/lib/hooks/useCountySupervisors";
+import { VisitorLocationControl } from "@/components/region/LocateForm";
 import { ErrorState, LoadingSkeleton } from "@/components/region/ListStates";
 
 /**
@@ -39,11 +37,10 @@ export default function RegionPage() {
     jurisdictions,
     loading: jurisdictionsLoading,
     error: jurisdictionsError,
+    source,
   } = useJurisdictions();
 
-  const { data: supervisorData } = useQuery<MyCountySupervisorsData>(
-    MY_COUNTY_SUPERVISORS,
-  );
+  const supervisors = useCountySupervisors();
 
   const { data: billData, error: billError } = useQuery<BillsData>(GET_BILLS, {
     variables: { take: COUNT_PROBE_SIZE },
@@ -99,24 +96,18 @@ export default function RegionPage() {
       <p className="mt-2 max-w-xl text-content-dim">{t("stack.subtitle")}</p>
 
       <div className="mt-8">
-        {jurisdictions.length === 0 ? (
-          <div className="rounded-lg border border-line bg-surface p-6">
-            <p className="font-semibold text-content">
-              {t("stack.noAddress.title")}
-            </p>
-            <p className="mt-1 text-sm text-content-dim">
-              {t("stack.noAddress.body")}
-            </p>
-          </div>
-        ) : (
+        {jurisdictions.length === 0 && <NoLocationState framed />}
+        {jurisdictions.length > 0 && (
           <JurisdictionStack
             jurisdictions={jurisdictions}
-            supervisors={supervisorData?.myCountySupervisors ?? []}
+            supervisors={supervisors}
             legislators={legislators}
             stateCount={stateCount}
             stateCountCapped={stateCountCapped}
+            showWrongSeat={source === "account"}
           />
         )}
+        <VisitorLocationControl />
       </div>
     </div>
   );

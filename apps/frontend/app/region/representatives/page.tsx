@@ -9,11 +9,10 @@ import { useQuery } from "@apollo/client/react";
 import {
   GET_REPRESENTATIVES,
   GET_REPRESENTATIVES_BY_DISTRICTS,
-  MY_COUNTY_SUPERVISORS,
   RepresentativesData,
   RepresentativesByDistrictsData,
-  MyCountySupervisorsData,
   Representative,
+  UserJurisdictionData,
 } from "@/lib/graphql/region";
 import { GET_MY_ADDRESSES, type MyAddressesData } from "@/lib/graphql/profile";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
@@ -24,6 +23,15 @@ import {
   EmptyState,
 } from "@/components/region/ListStates";
 import { PartyBadge } from "@/components/region/PartyBadge";
+import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import {
+  LocateForm,
+  VisitorLocationControl,
+} from "@/components/region/LocateForm";
+import { useCountySupervisors } from "@/lib/hooks/useCountySupervisors";
+import { useStateLegislators } from "@/lib/hooks/useStateLegislators";
+
+const NO_JURISDICTIONS: readonly UserJurisdictionData[] = [];
 
 const PAGE_SIZE = 12;
 
@@ -103,7 +111,7 @@ function RepresentativeCard({
 function RepGroup({
   title,
   reps,
-}: Readonly<{ title: string; reps: Representative[] }>) {
+}: Readonly<{ title: string; reps: readonly Representative[] }>) {
   if (reps.length === 0) return null;
   return (
     <div>
@@ -124,13 +132,24 @@ function MyRepresentativesSection({
   countyReps,
   addressLoaded,
   hasAddress,
+  visitor,
 }: Readonly<{
-  stateReps: Representative[];
-  countyReps: Representative[];
+  stateReps: readonly Representative[];
+  countyReps: readonly Representative[];
   addressLoaded: boolean;
   hasAddress: boolean;
+  /** Signed out (#1456): offer the lookup, not a settings link. */
+  visitor: boolean;
 }>) {
   if (!addressLoaded) return null;
+
+  if (!hasAddress && visitor) {
+    return (
+      <div className="mb-10">
+        <LocateForm />
+      </div>
+    );
+  }
 
   if (!hasAddress) {
     return (
@@ -172,7 +191,20 @@ export default function RepresentativesPage() {
   const [page, setPage] = useState(0);
   const [chamber, setChamber] = useState<string | undefined>(undefined);
 
-  const { data: addressData } = useQuery<MyAddressesData>(GET_MY_ADDRESSES);
+  const {
+    source,
+    jurisdictions,
+    loading: jurisdictionsLoading,
+  } = useJurisdictions();
+  const visitor = source === "device";
+
+  // Signed in, "my representatives" come from the account's primary
+  // address, as before. A visitor without an account has no address
+  // (#1456): their legislators come from the districts their device kept,
+  // and the guarded myAddresses never runs for them.
+  const { data: addressData } = useQuery<MyAddressesData>(GET_MY_ADDRESSES, {
+    skip: source !== "account",
+  });
   const primaryAddress = addressData?.myAddresses?.find((a) => a.isPrimary);
   const hasDistricts =
     primaryAddress?.congressionalDistrict ||
@@ -187,23 +219,29 @@ export default function RepresentativesPage() {
         stateSenatorialDistrict: primaryAddress?.stateSenatorialDistrict,
         stateAssemblyDistrict: primaryAddress?.stateAssemblyDistrict,
       },
-      skip: !hasDistricts,
+      skip: source !== "account" || !hasDistricts,
     },
   );
 
-  const { data: supervisorsData } = useQuery<MyCountySupervisorsData>(
-    MY_COUNTY_SUPERVISORS,
+  const visitorLegislators = useStateLegislators(
+    visitor ? jurisdictions : NO_JURISDICTIONS,
+  );
+  const countyReps = useCountySupervisors();
+
+  const stateReps = useMemo(
+    () =>
+      visitor
+        ? visitorLegislators
+        : (stateRepData?.representativesByDistricts ?? []),
+    [visitor, visitorLegislators, stateRepData],
   );
 
   const myRepIds = useMemo(() => {
     const ids = new Set<string>();
-    stateRepData?.representativesByDistricts?.forEach((r) => ids.add(r.id));
-    supervisorsData?.myCountySupervisors?.forEach((r) => ids.add(r.id));
+    stateReps.forEach((r) => ids.add(r.id));
+    countyReps.forEach((r) => ids.add(r.id));
     return ids;
-  }, [stateRepData, supervisorsData]);
-
-  const stateReps = stateRepData?.representativesByDistricts ?? [];
-  const countyReps = supervisorsData?.myCountySupervisors ?? [];
+  }, [stateReps, countyReps]);
 
   const { data, loading, error } = useQuery<RepresentativesData>(
     GET_REPRESENTATIVES,
@@ -266,9 +304,13 @@ export default function RepresentativesPage() {
       <MyRepresentativesSection
         stateReps={stateReps}
         countyReps={countyReps}
-        addressLoaded={addressData !== undefined}
-        hasAddress={!!primaryAddress}
+        addressLoaded={
+          visitor ? !jurisdictionsLoading : addressData !== undefined
+        }
+        hasAddress={visitor ? jurisdictions.length > 0 : !!primaryAddress}
+        visitor={visitor}
       />
+      <VisitorLocationControl />
 
       <div>
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

@@ -9,9 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   GET_MEETINGS,
   GET_REPRESENTATIVES,
-  MY_COUNTY_SUPERVISORS,
   type MeetingsData,
-  type MyCountySupervisorsData,
   type RepresentativesData,
 } from "@/lib/graphql/region";
 import {
@@ -34,6 +32,9 @@ import {
   VisitingNotice,
 } from "@/components/region/CountySwitcher";
 import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import { NoLocationState } from "@/components/region/NoLocationState";
+import { useCountySupervisors } from "@/lib/hooks/useCountySupervisors";
+import { VisitorLocationControl } from "@/components/region/LocateForm";
 import {
   COUNTY_BOARD_CHAMBER,
   COUNTY_MEETING_BODY,
@@ -69,7 +70,7 @@ function lastName(name: string): string {
 function CountyLayerPageInner() {
   const { t, i18n } = useTranslation("region");
 
-  const { jurisdictions, loading } = useJurisdictions();
+  const { jurisdictions, loading, source } = useJurisdictions();
   const searchParams = useSearchParams();
 
   // ?fips= chooses which county is being READ. It never moves home: that
@@ -85,10 +86,7 @@ function CountyLayerPageInner() {
   const visiting = Boolean(requestedFips && requestedFips !== homeFips);
   const viewedFips = visiting ? requestedFips : homeFips;
 
-  const { data: sup } = useQuery<MyCountySupervisorsData>(
-    MY_COUNTY_SUPERVISORS,
-    { skip: visiting },
-  );
+  const supervisors = useCountySupervisors({ skip: visiting });
   const { data: thresholds } = useQuery<CountyThresholdsData>(
     GET_COUNTY_THRESHOLDS,
   );
@@ -132,17 +130,11 @@ function CountyLayerPageInner() {
   if (!county) {
     return (
       <div className="mx-auto max-w-3xl px-8 py-12">
-        <p className="font-semibold text-content">
-          {t("stack.noAddress.title")}
-        </p>
-        <p className="mt-1 text-sm text-content-dim">
-          {t("stack.noAddress.body")}
-        </p>
+        <NoLocationState />
       </div>
     );
   }
 
-  const supervisors = sup?.myCountySupervisors ?? [];
   const seat = supervisors.length === 1 ? supervisors[0] : null;
 
   // Matched on FIPS, never on name: two answers to "what is 06097 called"
@@ -296,12 +288,16 @@ function CountyLayerPageInner() {
                   </Link>
                 }
                 detail={
-                  <>
-                    {t("layer.county.resolvedFrom")}{" "}
-                    <Link href="/settings" className="underline">
-                      {t("stack.county.wrongSeat")}
-                    </Link>
-                  </>
+                  source === "account" ? (
+                    <>
+                      {t("layer.county.resolvedFrom")}{" "}
+                      <Link href="/settings" className="underline">
+                        {t("stack.county.wrongSeat")}
+                      </Link>
+                    </>
+                  ) : (
+                    t("layer.county.resolvedFromDevice")
+                  )
                 }
               />
               {otherSeats.length > 0 && (
@@ -379,6 +375,7 @@ function CountyLayerPageInner() {
           </LayerSection>
         </>
       )}
+      <VisitorLocationControl />
     </LayerPageShell>
   );
 }

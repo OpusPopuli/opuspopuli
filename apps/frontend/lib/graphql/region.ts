@@ -1314,6 +1314,28 @@ export interface MyCountySupervisorsData {
   myCountySupervisors: Representative[];
 }
 
+/**
+ * `myCountySupervisors` for a visitor without an account (#1456), from the
+ * district ids their device kept. Run with `fetchPolicy: "no-cache"`: the
+ * persisted Apollo cache must not become a second copy of their location.
+ */
+export const COUNTY_SUPERVISORS_AT = gql`
+  query CountySupervisorsAt($ids: [ID!]!) {
+    countySupervisorsAt(ids: $ids) {
+      id
+      name
+      chamber
+      district
+      party
+      photoUrl
+    }
+  }
+`;
+
+export interface CountySupervisorsAtData {
+  countySupervisorsAt: Representative[];
+}
+
 // ============================================
 // Campaign Finance Queries
 // ============================================
@@ -2114,6 +2136,66 @@ export interface UserJurisdictionData {
 
 export interface MyJurisdictionsData {
   myJurisdictions: UserJurisdictionData[];
+}
+
+/** The jurisdiction fields every region page reads, signed in or not. */
+const JURISDICTION_FIELDS = `
+  id
+  fipsCode
+  ocdId
+  name
+  type
+  level
+  stateCode
+  parent {
+    id
+    name
+    type
+    level
+  }
+`;
+
+/**
+ * A visitor's districts, without an account (#1456). A mutation on the
+ * server so it can only travel as a POST: an address never sits in a URL.
+ * Nothing is stored server-side; the caller keeps the ids on the device.
+ */
+export const LOCATE_JURISDICTIONS = gql`
+  mutation LocateJurisdictions($input: LocateJurisdictionsInput!) {
+    locateJurisdictions(input: $input) {
+      ${JURISDICTION_FIELDS}
+    }
+  }
+`;
+
+export interface LocateJurisdictionsData {
+  locateJurisdictions: JurisdictionData[];
+}
+
+export interface LocateJurisdictionsVars {
+  input:
+    | { point: { lat: number; lng: number } }
+    | {
+        address: {
+          line1: string;
+          city: string;
+          state: string;
+          postalCode: string;
+        };
+      };
+}
+
+/** Rebuilds a returning visitor's districts from the ids their device kept. */
+export const JURISDICTIONS_BY_IDS = gql`
+  query JurisdictionsByIds($ids: [ID!]!) {
+    jurisdictionsByIds(ids: $ids) {
+      ${JURISDICTION_FIELDS}
+    }
+  }
+`;
+
+export interface JurisdictionsByIdsData {
+  jurisdictionsByIds: JurisdictionData[];
 }
 
 export const MY_JURISDICTIONS = gql`

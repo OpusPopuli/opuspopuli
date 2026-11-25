@@ -10,6 +10,8 @@ import {
 import { LoadingSkeleton } from "@/components/region/ListStates";
 import { findByType } from "@/lib/region-stack";
 import { useJurisdictions } from "@/components/region/JurisdictionsContext";
+import { NoLocationState } from "@/components/region/NoLocationState";
+import { VisitorLocationControl } from "@/components/region/LocateForm";
 
 /**
  * The federal layer page (#1197).
@@ -34,12 +36,7 @@ export default function FederalLayerPage() {
   if (!federal) {
     return (
       <div className="mx-auto max-w-3xl px-8 py-12">
-        <p className="font-semibold text-content">
-          {t("stack.noAddress.title")}
-        </p>
-        <p className="mt-1 text-sm text-content-dim">
-          {t("stack.noAddress.body")}
-        </p>
+        <NoLocationState />
       </div>
     );
   }
@@ -82,6 +79,7 @@ export default function FederalLayerPage() {
           count={<BuildingTag label={t("layer.building")} />}
         />
       </LayerSection>
+      <VisitorLocationControl />
     </LayerPageShell>
   );
 }
