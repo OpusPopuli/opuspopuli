@@ -680,6 +680,9 @@ services:
       APPLICATION: api
       DESCRIPTION: API Gateway
       PORT: 8080
+      # The frontend Worker's signed reads get their own budget (#1456).
+      # Unset, they're limited like any client.
+      EDGE_READ_SIGNING_SECRET: ${EDGE_READ_SIGNING_SECRET:-}
       MICROSERVICES: '[{"name":"users","url":"http://users:8080/graphql"},{"name":"documents","url":"http://documents:8080/graphql"},{"name":"knowledge","url":"http://knowledge:8080/graphql"},{"name":"region","url":"http://region:8080/graphql"}]'
     ports:
       - "3000:8080"

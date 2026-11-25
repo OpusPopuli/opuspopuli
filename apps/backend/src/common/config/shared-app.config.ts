@@ -125,6 +125,21 @@ export const GATEWAY_THROTTLER_CONFIG = [
 ];
 
 /**
+ * The budget for reads the frontend's Worker signs (#1456): the sitemap and
+ * each page's metadata, rendered server-side for crawlers and link previews.
+ *
+ * One budget for all of them, since they all come from Cloudflare's shared
+ * Worker address. Edge-cached for a day per URL, so this is spent by cache
+ * misses only; sized for a crawl of every detail page within the hour, and
+ * still capped, so a leaked secret can't open the gateway.
+ */
+export const EDGE_READ_THROTTLER_CONFIG = [
+  { name: 'edge-short', ttl: 1000, limit: 100 },
+  { name: 'edge-medium', ttl: 10000, limit: 600 },
+  { name: 'edge-long', ttl: 60000, limit: 3000 },
+];
+
+/**
  * Rate limits for the SUBGRAPHS — internal services behind the gateway.
  *
  * Until #1456 the throttler keyed on the socket address, and **every subgraph

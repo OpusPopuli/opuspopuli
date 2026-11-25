@@ -42,6 +42,10 @@ const baseSchema = {
 
   // --- Security ---
   GATEWAY_HMAC_SECRET: Joi.string().required(),
+  // Optional (#1456): unset, the Worker's signed reads get no budget of
+  // their own and are limited like any client.
+  // '' is allowed so a compose `${VAR:-}` passthrough can leave it unset.
+  EDGE_READ_SIGNING_SECRET: Joi.string().min(32).allow('').optional(),
 
   // --- CORS (production-only) ---
   ALLOWED_ORIGINS: Joi.string().when('NODE_ENV', {

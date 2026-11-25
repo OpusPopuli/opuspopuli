@@ -1,6 +1,14 @@
 import { FixedWindowThrottlerStorage } from '../rate-limit/fixed-window-storage';
 import type { NextFunction, Request, Response } from 'express';
-import { GATEWAY_THROTTLER_CONFIG } from '../config/shared-app.config';
+import type { ConfigService } from '@nestjs/config';
+import {
+  EDGE_READ_THROTTLER_CONFIG,
+  GATEWAY_THROTTLER_CONFIG,
+} from '../config/shared-app.config';
+import {
+  EDGE_READ_HEADER,
+  signEdgeRead,
+} from '../rate-limit/edge-read-signature';
 import { GraphqlRateLimitMiddleware } from './graphql-rate-limit.middleware';
 
 const SHORT_LIMIT = GATEWAY_THROTTLER_CONFIG.find(
@@ -123,5 +131,125 @@ describe('GraphqlRateLimitMiddleware logging (#1456)', () => {
     }
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).not.toContain('198.51.100.30');
+  });
+});
+
+describe('GraphqlRateLimitMiddleware: reads the frontend Worker signs (#1456)', () => {
+  const SECRET = 'opuspopuli-edge-read-test-secret-0001';
+  // Every Cloudflare Worker reaches us from this one address, through the
+  // tunnel container (a private peer), so it arrives as cf-connecting-ip.
+  const WORKER_IP = '2a06:98c0:3600::103';
+  const PATH = '/api?query=%7B+regionInfo+%7B+name+%7D+%7D';
+  const EDGE_SHORT = EDGE_READ_THROTTLER_CONFIG.find(
+    (tier) => tier.name === 'edge-short',
+  )!.limit;
+
+  function config(secret: string | undefined) {
+    return { get: () => secret } as unknown as ConfigService;
+  }
+
+  function workerRead(method: string, signature?: string, url = PATH) {
+    return {
+      method,
+      originalUrl: url,
+      url,
+      ip: '172.18.0.5',
+      headers: {
+        'cf-connecting-ip': WORKER_IP,
+        ...(signature ? { [EDGE_READ_HEADER]: signature } : {}),
+      },
+    } as unknown as Request;
+  }
+
+  async function passes(
+    middleware: GraphqlRateLimitMiddleware,
+    count: number,
+    req: () => Request,
+  ) {
+    let passed = 0;
+    for (let i = 0; i < count; i++) {
+      const next = jest.fn() as NextFunction;
+      await middleware.use(req(), response() as unknown as Response, next);
+      if ((next as jest.Mock).mock.calls.length === 1) passed++;
+    }
+    return passed;
+  }
+
+  it('gives signed reads their own budget, beyond one visitor’s', async () => {
+    const middleware = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(SECRET),
+    );
+    const passed = await passes(middleware, SHORT_LIMIT + 10, () =>
+      workerRead('GET', signEdgeRead(SECRET, PATH)),
+    );
+    expect(passed).toBe(SHORT_LIMIT + 10);
+  });
+
+  it('still caps signed reads', async () => {
+    const middleware = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(SECRET),
+    );
+    const passed = await passes(middleware, EDGE_SHORT + 5, () =>
+      workerRead('GET', signEdgeRead(SECRET, PATH)),
+    );
+    expect(passed).toBe(EDGE_SHORT);
+  });
+
+  it('never extends the budget to a mutation, signed or not', async () => {
+    const middleware = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(SECRET),
+    );
+    const passed = await passes(middleware, SHORT_LIMIT + 5, () =>
+      workerRead('POST', signEdgeRead(SECRET, PATH)),
+    );
+    expect(passed).toBe(SHORT_LIMIT);
+  });
+
+  it('treats a signature for another read, or a forged one, as an ordinary client', async () => {
+    const middleware = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(SECRET),
+    );
+    const other = signEdgeRead(SECRET, '/api?query=%7B+bills+%7D');
+    expect(
+      await passes(middleware, SHORT_LIMIT + 5, () => workerRead('GET', other)),
+    ).toBe(SHORT_LIMIT);
+
+    const forged = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(SECRET),
+    );
+    expect(
+      await passes(forged, SHORT_LIMIT + 5, () =>
+        workerRead(
+          'GET',
+          signEdgeRead('someone-elses-secret-of-32-chars!!', PATH),
+        ),
+      ),
+    ).toBe(SHORT_LIMIT);
+  });
+
+  it('exempts nothing when no secret is configured', async () => {
+    const middleware = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(undefined),
+    );
+    const passed = await passes(middleware, SHORT_LIMIT + 5, () =>
+      workerRead('GET', signEdgeRead(SECRET, PATH)),
+    );
+    expect(passed).toBe(SHORT_LIMIT);
+  });
+
+  it('keeps unsigned Worker reads on the shared address budget', async () => {
+    const middleware = new GraphqlRateLimitMiddleware(
+      new FixedWindowThrottlerStorage(),
+      config(SECRET),
+    );
+    expect(
+      await passes(middleware, SHORT_LIMIT + 5, () => workerRead('GET')),
+    ).toBe(SHORT_LIMIT);
   });
 });
