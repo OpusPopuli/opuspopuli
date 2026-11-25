@@ -213,6 +213,29 @@ Recorded as they were made, with the reason.
 - **Map-first navigation is being explored separately (owner, 2026-11-24).** The idea: the map is the main navigation, the county shape is the centrepiece of the county page, and a visitor can set a location by tapping a county (a public FIPS code, nothing personal) or a point.
   - A clickable mockup comes first, in its own context.
   - Subtask 3 is unaffected. Its data layer is needed either way, and `LocateForm` remains the accessible, non-map path. It is kept self-contained so a map picker can sit beside it.
+- **The mockup is the agreed direction, to build after #1456 (owner, 2026-11-24).** [Prototype](https://claude.ai/artifact/1YrJrzVCWgtJCtRG4hy3yk), version 5, "Locked baseline: State ‹ County › City". `project/Notes.dc.html` holds its open questions, the backend work and the pages affected. Decisions:
+  - The county is the premise. The level nav is State ‹ County › City & town, with County always in the centre.
+  - Federal isn't linked from the map nav for now. `/region/federal` stays as it is.
+  - City & town gets an honest "Coming later" page. This departs from #1194, which leaves the city out.
+  - "Where do you live?": tap your county (a public FIPS code only), then optionally `LocateForm`, then your districts. Change and Clear sit in a location chip.
+  - The map is `aria-hidden`; a county search and list is the keyboard equivalent, on every screen.
+  - Every figure is tagged "Sample value · we have a source" or "Illustrative · no source yet".
+  - **Implied backend work:**
+    - The board by FIPS for browsing any county signed out, sharing `countySupervisorsAt`'s core.
+    - Simplified, edge-cached boundary shapes.
+    - Public upcoming meetings by FIPS.
+    - An ACS demographics source.
+    - Supervisor district lines for the other 57 counties.
+  - **Open questions for subtasks 5 and 7:** whether a visitor's FIPS lives in `localStorage` or a cookie, and whether "we don't keep it" also covers edge and CDN logs.
+
+**Subtask 4 (2026-11-24):**
+- **Every page sent an account-only query for visitors (predates #1456).** The site-wide `I18nProvider` asked for `myProfile` on every page load to read the saved language, signed in or not; the landing page has always done it.
+  - Found by the new signed-out Playwright journey, which fails on any account-only field a page sends.
+  - **Change:** the read is skipped when signed out. A visitor has no saved language; the toggle still works for the session.
+- **The in-app "Contact" form is hidden from visitors.** It sends through our servers (`contactRepresentative`), which needs an account. The representative's public email, phone and website stay on the page, so a visitor can still write to them directly.
+- **Sign-up doesn't take a return path;** sign-in does (`?redirect=`). The account prompts send sign-in back to the page they were on, and sign-up through onboarding as before.
+- **The header's "Get started" became "Create account",** and the signed-out header items are translated. The signed-in header's hard-coded English is untouched (out of scope).
+- **The landing page's unused `counties.cta.start` key was removed** in both languages.
 
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
