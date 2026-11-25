@@ -287,18 +287,7 @@ function CountyLayerPageInner() {
                       : seat.name}
                   </Link>
                 }
-                detail={
-                  source === "account" ? (
-                    <>
-                      {t("layer.county.resolvedFrom")}{" "}
-                      <Link href="/settings" className="underline">
-                        {t("stack.county.wrongSeat")}
-                      </Link>
-                    </>
-                  ) : (
-                    t("layer.county.resolvedFromDevice")
-                  )
-                }
+                detail={<SeatSource fromAccount={source === "account"} />}
               />
               {otherSeats.length > 0 && (
                 <DetailRow
@@ -377,6 +366,24 @@ function CountyLayerPageInner() {
       )}
       <VisitorLocationControl />
     </LayerPageShell>
+  );
+}
+
+/**
+ * Where the reader's seat came from (#1456): their account's address, with a
+ * way to fix it in settings, or a location saved on this device, which the
+ * location control below the page changes.
+ */
+function SeatSource({ fromAccount }: { readonly fromAccount: boolean }) {
+  const { t } = useTranslation("region");
+  if (!fromAccount) return <>{t("layer.county.resolvedFromDevice")}</>;
+  return (
+    <>
+      {t("layer.county.resolvedFrom")}{" "}
+      <Link href="/settings" className="underline">
+        {t("stack.county.wrongSeat")}
+      </Link>
+    </>
   );
 }
 

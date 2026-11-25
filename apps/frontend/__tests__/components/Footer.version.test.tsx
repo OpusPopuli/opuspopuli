@@ -26,8 +26,14 @@ jest.mock("next/link", () => {
 // fail outside the renderer's.
 jest.mock("react-i18next", () => {
   const common = jest.requireActual("@/locales/en/common.json");
+  type Tree = { [key: string]: Tree | string | undefined };
   const lookup = (key: string) =>
-    key.split(".").reduce((node: any, part) => node?.[part], common) ?? key;
+    key
+      .split(".")
+      .reduce<
+        Tree | string | undefined
+      >((node, part) => (typeof node === "object" ? node[part] : undefined), common) ??
+    key;
   return { useTranslation: () => ({ t: lookup }) };
 });
 

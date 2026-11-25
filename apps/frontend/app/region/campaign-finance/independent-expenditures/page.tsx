@@ -11,7 +11,6 @@ import {
 } from "@/lib/graphql/region";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
-import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 import { Pagination } from "@/components/region/Pagination";
 import { SupportOpposeBadge } from "@/components/region/SupportOpposeBadge";
 import {
@@ -19,6 +18,7 @@ import {
   ErrorState,
   EmptyState,
 } from "@/components/region/ListStates";
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 
 const PAGE_SIZE = 10;
 
