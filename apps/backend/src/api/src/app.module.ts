@@ -51,6 +51,7 @@ import { AuthLogoutController } from './auth-logout.controller';
 import { clientSessionId } from 'src/common/utils/client-session';
 import { resolveClientIp } from 'src/common/utils/client-ip';
 import { GraphqlRateLimitMiddleware } from 'src/common/middleware/graphql-rate-limit.middleware';
+import { GatewayRequestMetricsMiddleware } from 'src/common/middleware/gateway-request-metrics.middleware';
 
 /**
  * Extract authenticated user from request context for GraphQL operations.
@@ -276,7 +277,8 @@ export class AppModule implements NestModule {
     // Per-client GraphQL limit, first: a refused request should cost as
     // little as possible, and must not get past CSRF or auth work (#1456).
     consumer
-      .apply(GraphqlRateLimitMiddleware)
+      // Ahead of the limiter, so a refused request is counted too (#1456).
+      .apply(GatewayRequestMetricsMiddleware, GraphqlRateLimitMiddleware)
       // Both: Apollo is mounted on `/api` as a prefix, so it also answers
       // `/api/anything`. Binding `api` alone matched only the exact path,
       // and a POST to `/api/x` reached Apollo with no limit at all.
