@@ -203,6 +203,17 @@ Recorded as they were made, with the reason.
 - **Carried to subtask 5:** server-side reads from the Worker (sitemap, `generateMetadata`) all arrive with the Worker's egress IP and would share one budget. They need an exemption, for example an HMAC-signed Worker header, before subtask 5 ships.
 - **Release gate, not a follow-up:** Docker Desktop presents every peer on a published port as `192.168.65.1`, a trusted private address. So on the Studio, anyone who can reach `0.0.0.0:8080` can still choose their own key. Binding the host ports to `127.0.0.1` (opuspopuli-node) must land before subtask 7.
 
+**Subtask 3, found before starting (2026-11-24):**
+- **`countyRepresentatives` can't serve signed-out readers.** Its argument is a region plugin *name* (`sonoma-county`), which the server derives from the county's FIPS code through `region_plugins`. A signed-out page holds only jurisdiction ids.
+  - It also returns the whole board. `myCountySupervisors` narrows it to the reader's seat when a supervisorial district resolves (#1136), and the region home, county page and `JurisdictionStack` depend on that.
+- **The representatives page doesn't need `myAddresses` for legislators.** `useStateLegislators(jurisdictions)` already derives them from jurisdictions through the public `representativesByDistricts`.
+- **Decision (owner, 2026-11-24):** a public `countySupervisorsAt(jurisdictionIds)` in region, `@Public` and `@SkipAudit`, sharing one core with `myCountySupervisors` so the #1136 seat matching stays in one place.
+  - It's a federation change, so it ships in the backend release ahead of the frontend.
+  - Rejected: a frontend-only filter of the whole board, which duplicates #1136's matching and isn't scoped to one county.
+- **Map-first navigation is being explored separately (owner, 2026-11-24).** The idea: the map is the main navigation, the county shape is the centrepiece of the county page, and a visitor can set a location by tapping a county (a public FIPS code, nothing personal) or a point.
+  - A clickable mockup comes first, in its own context.
+  - Subtask 3 is unaffected. Its data layer is needed either way, and `LocateForm` remains the accessible, non-map path. It is kept self-contained so a map picker can sit beside it.
+
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
 - The address path through the real Census geocoder resolved the same 8 types.
