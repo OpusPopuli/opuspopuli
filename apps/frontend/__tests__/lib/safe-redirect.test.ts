@@ -24,10 +24,23 @@ describe("safeRedirect", () => {
     "///evil.com",
     "https://evil.com",
     "javascript:alert(1)",
+    // Dot segments: each resolves on this origin, but normalises to
+    // `//evil.com`, another host (found by the pre-push security review).
+    "/..//evil.com",
+    "/.//evil.com",
+    "/a/..//evil.com",
+    "/%2e%2e//evil.com",
+    "/./\\evil.com",
     "evil.com",
     "",
   ])("refuses anything that leaves this site: %p", (raw) => {
     expect(safeRedirect(raw, FALLBACK)).toBe(FALLBACK);
+  });
+
+  it("still normalises a harmless dot path on this site", () => {
+    expect(safeRedirect("/region/../me/briefing", FALLBACK)).toBe(
+      "/me/briefing",
+    );
   });
 
   it("falls back when there's no redirect at all", () => {

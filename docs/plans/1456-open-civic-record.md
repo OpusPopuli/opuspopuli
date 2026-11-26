@@ -320,6 +320,7 @@ Recorded as they were made, with the reason.
   - **A detail page with a malformed id stayed indexable**, since its failed read looked transient. Non-UUID ids are now `noindex` without a gateway read.
   - **Open redirect after sign-in (predates #1456):** `/\evil.com` passed the shape check in both `/login` and the auth callback, and a browser resolves it to `evil.com`. One shared `lib/safe-redirect.ts` now resolves the target as the browser will and keeps it only if it stays on this site. Fixed now because the account prompts send many more visitors through `/login?redirect=`.
   - **The sitemap chunk pattern matched one digit only.**
+  - **The first `safe-redirect` fix could still be bypassed (found by the pre-push AI security review).** It returned the URL parser's normalised path, and dot segments normalise `/..//evil.com` to `//evil.com`, which a browser reads as another host. The returned path must now stay on this origin too; five bypass forms are tested, and the old helper fails all five.
 - **Checked and not acted on:**
   - **A suspected race,** where a fresh lookup would refetch its own districts and flash a skeleton. Measured on production builds with and without a `flushSync` fix: 0 extra requests across 5 lookups either way. React batches the two updates, so no change was made.
 - **Follow-ups, not launch blockers:**
@@ -327,6 +328,9 @@ Recorded as they were made, with the reason.
   - Bill sitemap pages are cut from an order (`lastActionDate`) that shifts between their day-long cache windows, so a bill can be missed or repeated for a day.
   - A per-IP Cloudflare rule on `/region/*/<id>`: random UUIDs each cost the Worker's shared read budget.
   - Hard-coded English on the representatives page (predates #1456).
+  - From the pre-push AI code review (low):
+    - The gateway checks the edge-read signature against the raw request path, and the Worker signs the WHATWG-serialised one. If a proxy ever re-encodes the query, the read is treated as unsigned (still limited), never as wrongly trusted.
+    - `countySupervisorsAt` doesn't check that a supervisorial district belongs to the county it picked. No real location produces ids from two counties.
 
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
