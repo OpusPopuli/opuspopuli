@@ -313,6 +313,21 @@ Recorded as they were made, with the reason.
   - **Proof:** the rerun wrote 18 audit rows and none for a location lookup. The 3 test rows were deleted from the UAT audit log.
 - **Couldn't be driven live:** hiding the in-app contact form from visitors. No representative on UAT has an email on file, so the button never renders for anyone. A unit test covers it.
 
+**Pre-PR review, `/op-review` (2026-11-26).** Three independent lenses (correctness and consistency; security and personal data; performance, types and tests). Every finding was checked against the code before acting. It's a self-review: the author and the reviewer act for the same person.
+- **Fixed:**
+  - **A visitor's state districts were saved in the persisted Apollo cache and survived Clear (blocker, two lenses).** `useStateLegislators` used the default policy, and subtask 3 began calling it with a visitor's districts. It now uses `no-cache` for a visitor, the page test asserts it, and the e2e spec checks that no location-derived field survives Clear.
+  - **On the region home, a visitor whose saved location failed to load was stuck on an error with no way to change it.** It now falls through to the lookup form, as the other region pages do.
+  - **A detail page with a malformed id stayed indexable**, since its failed read looked transient. Non-UUID ids are now `noindex` without a gateway read.
+  - **Open redirect after sign-in (predates #1456):** `/\evil.com` passed the shape check in both `/login` and the auth callback, and a browser resolves it to `evil.com`. One shared `lib/safe-redirect.ts` now resolves the target as the browser will and keeps it only if it stays on this site. Fixed now because the account prompts send many more visitors through `/login?redirect=`.
+  - **The sitemap chunk pattern matched one digit only.**
+- **Checked and not acted on:**
+  - **A suspected race,** where a fresh lookup would refetch its own districts and flash a skeleton. Measured on production builds with and without a `flushSync` fix: 0 extra requests across 5 lookups either way. React batches the two updates, so no change was made.
+- **Follow-ups, not launch blockers:**
+  - The sitemap's bill reads load every vote and co-author (`getBills` always includes them); a slim id-only read would cut that.
+  - Bill sitemap pages are cut from an order (`lastActionDate`) that shifts between their day-long cache windows, so a bill can be missed or repeated for a day.
+  - A per-IP Cloudflare rule on `/region/*/<id>`: random UUIDs each cost the Worker's shared read budget.
+  - Hard-coded English on the representatives page (predates #1456).
+
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
 - The address path through the real Census geocoder resolved the same 8 types.
