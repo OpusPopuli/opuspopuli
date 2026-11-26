@@ -106,6 +106,10 @@ export function snippet(
   return `${atWord}…`;
 }
 
+/** Every civic record's id is a UUID; nothing else names a real page. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function civicMetadata(
   kind: CivicKind,
   id: string,
@@ -113,6 +117,18 @@ export async function civicMetadata(
 ): Promise<Metadata> {
   const spec = SPECS[kind];
   const canonical = `${spec.path}/${encodeURIComponent(id)}`;
+
+  // Not an id any record has: the client page renders "not found", so keep
+  // it out of the index, and don't spend a gateway read finding that out.
+  // The read would fail as a GraphQL error, which looks like a transient
+  // failure and would otherwise leave the page indexable.
+  if (!UUID_RE.test(id)) {
+    return {
+      title: spec.fallbackTitle,
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
   const data = await query<
     Record<string, Record<string, string | null> | null>
   >(spec.query, { id }, { ttl: METADATA_TTL_SECONDS });

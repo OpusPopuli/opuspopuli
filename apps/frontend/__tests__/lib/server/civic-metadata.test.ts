@@ -16,22 +16,32 @@ describe("civic metadata (#1456)", () => {
         analysisSummary: "What the measure does.",
       },
     });
-    const meta = await civicMetadata("proposition", "abc", query);
+    const meta = await civicMetadata(
+      "proposition",
+      "c21f9436-30e1-4931-a5bb-1f140bb91bff",
+      query,
+    );
     expect(meta).toMatchObject({
       title: "Proposition 1: Test Measure",
       description: "What the measure does.",
-      alternates: { canonical: "/region/propositions/abc" },
-      openGraph: { url: "/region/propositions/abc" },
+      alternates: {
+        canonical: "/region/propositions/c21f9436-30e1-4931-a5bb-1f140bb91bff",
+      },
+      openGraph: {
+        url: "/region/propositions/c21f9436-30e1-4931-a5bb-1f140bb91bff",
+      },
     });
     expect(meta.robots).toBeUndefined();
-    expect(query.mock.calls[0][1]).toEqual({ id: "abc" });
+    expect(query.mock.calls[0][1]).toEqual({
+      id: "c21f9436-30e1-4931-a5bb-1f140bb91bff",
+    });
     expect(query.mock.calls[0][2]).toEqual({ ttl: 21_600 });
   });
 
   it("names a bill by number and subject, and describes it by its legal text", async () => {
     const meta = await civicMetadata(
       "bill",
-      "b1",
+      "1bb31961-ce0e-40ff-a190-cf53be428ff1",
       answer({
         bill: {
           billNumber: "AB 1129",
@@ -49,7 +59,7 @@ describe("civic metadata (#1456)", () => {
   it("falls back to a shortened legal title for a bill with no subject", async () => {
     const meta = await civicMetadata(
       "bill",
-      "b2",
+      "2bb31961-ce0e-40ff-a190-cf53be428ff1",
       answer({
         bill: { billNumber: "SB 2", title: "word ".repeat(40), subject: null },
       }),
@@ -61,7 +71,7 @@ describe("civic metadata (#1456)", () => {
   it("describes a representative by seat", async () => {
     const meta = await civicMetadata(
       "representative",
-      "r1",
+      "223d64d6-04e5-470d-8740-fcb8f3c88dbf",
       answer({
         representative: {
           name: "Jane Smith",
@@ -78,21 +88,35 @@ describe("civic metadata (#1456)", () => {
   });
 
   it("falls back to a generic, still-indexable title when the read fails", async () => {
-    const meta = await civicMetadata("committee", "c1", answer(null));
+    const meta = await civicMetadata(
+      "committee",
+      "8cc8fa26-7e97-42fa-b5eb-894a8801fff6",
+      answer(null),
+    );
     expect(meta).toEqual({
       title: "Committee",
-      alternates: { canonical: "/region/legislative-committees/c1" },
+      alternates: {
+        canonical:
+          "/region/legislative-committees/8cc8fa26-7e97-42fa-b5eb-894a8801fff6",
+      },
     });
   });
 
   it("keeps a record the server says doesn't exist out of the index", async () => {
-    const meta = await civicMetadata("bill", "missing", answer({ bill: null }));
+    const meta = await civicMetadata(
+      "bill",
+      "00000000-0000-4000-8000-000000000000",
+      answer({ bill: null }),
+    );
     expect(meta.robots).toEqual({ index: false, follow: true });
   });
 
-  it("encodes the id in the canonical URL", async () => {
-    const meta = await civicMetadata("bill", "a/b?c", answer(null));
+  it("keeps a malformed id out of the index, without a gateway read", async () => {
+    const query = answer({ bill: { billNumber: "AB 1", title: "x" } });
+    const meta = await civicMetadata("bill", "a/b?c", query);
+    expect(meta.robots).toEqual({ index: false, follow: true });
     expect(meta.alternates?.canonical).toBe("/region/bills/a%2Fb%3Fc");
+    expect(query).not.toHaveBeenCalled();
   });
 
   describe("snippet", () => {

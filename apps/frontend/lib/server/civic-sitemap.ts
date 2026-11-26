@@ -125,8 +125,8 @@ async function collect(
 }
 
 function rowsFor(id: string, query: Query): Promise<Row[]> | null {
-  const chunk = /^bills-(\d)$/.exec(id);
-  if (chunk) {
+  const chunk = /^bills-(\d+)$/.exec(id);
+  if (chunk && Number(chunk[1]) < BILL_CHUNKS) {
     const start = Number(chunk[1]) * ROWS_PER_SITEMAP;
     return collect(KINDS.bills, start, start + ROWS_PER_SITEMAP, query);
   }
