@@ -334,6 +334,32 @@ export default function RootLayout({ children }) {
 
 Auth state is managed via `AuthContext` within individual pages/components that need it, rather than wrapping the entire app.
 
+## Public and Account Surfaces (#1456)
+
+The civic record is open; a reader's own areas need an account.
+
+| Area | Account | Indexed | Notes |
+|---|---|---|---|
+| `/` (landing), `/privacy`, `/terms`, `/transparency`, `/our-commitments` | No | Yes | |
+| `/region/**` | No | Yes | `JurisdictionsProvider` serves both modes. The sitemaps leave out county, state, search and federal, which show a crawler only a form |
+| `/petition/**` | Yes | No | `ProtectedRoute`; the petition map shows where people scanned |
+| `/me/**` (briefing) | Yes | No | `ProtectedRoute` |
+| `/settings/**`, `/onboarding` | Yes | No | |
+| `/login`, `/register`, `/forgot-password`, `/reset-password`, `/auth/**` | — | No (crawlable, `noindex`) | |
+
+**Location without an account.**
+- **Signed in:** `JurisdictionsProvider` reads `myJurisdictions` from the account's saved address.
+- **Signed out:** it reads the district ids the device kept (`lib/visitor-location.ts`), restored with `jurisdictionsByIds`. `LocateForm` sets them, from an address or the browser's location.
+- **What's kept:** only the ids. The visitor queries run with `fetchPolicy: "no-cache"`, so the persisted Apollo cache never becomes a second copy, and "Clear location" clears it.
+- **No account-only queries for visitors.** Signed out, no page sends one (`e2e/region-signed-out.spec.ts` fails if one does), because the 401 would start a session refresh.
+
+**Inviting an account, never requiring one.** `AccountPrompt` sits inline on proposition, representative and bill pages. `ReadingNotice` ("how to read this site", #962) sits under the header on region pages. Both are dismissible and remembered on the device (`lib/device-dismissals.ts`).
+
+**Indexing.**
+- **One list of private paths:** `config/indexing.config.mjs` feeds both `robots.txt` and the `X-Robots-Tag: noindex` header.
+- **Sitemaps:** `app/region/sitemap.ts` serves one sitemap per kind of page, bills in chunks of 1,000, rendered per request.
+- **Page metadata:** each `[id]` route has a small server `layout.tsx` whose `generateMetadata` makes one edge-cached, signed GET (`lib/server/`).
+
 ## Authentication
 
 ### Auth Context

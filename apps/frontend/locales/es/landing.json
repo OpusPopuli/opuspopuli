@@ -6,10 +6,12 @@
     "prompt": "Señala un condado.",
     "citeMosca": "Mosca, 1896: una minoría gobierna no por ser más sabia ni de mejor cuna, sino por estar organizada frente a una mayoría que no lo está.",
     "cta": {
-      "start": "Empieza por tu condado",
       "haveAccount": "¿Ya tienes una cuenta?",
       "signIn": "Inicia sesión",
-      "briefing": "Ve a tu resumen"
+      "briefing": "Ve a tu resumen",
+      "explore": "Explora tu condado",
+      "getBriefing": "Recibe tu resumen",
+      "briefingNote": "El resumen necesita una cuenta."
     },
     "modes": {
       "legend": "Sombrear condados por",

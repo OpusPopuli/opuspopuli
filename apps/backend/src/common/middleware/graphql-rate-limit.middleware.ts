@@ -1,10 +1,18 @@
-import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
+import { Injectable, Logger, NestMiddleware, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   InjectThrottlerStorage,
   type ThrottlerStorage,
 } from '@nestjs/throttler';
 import type { NextFunction, Request, Response } from 'express';
-import { GATEWAY_THROTTLER_CONFIG } from '../config/shared-app.config';
+import {
+  EDGE_READ_THROTTLER_CONFIG,
+  GATEWAY_THROTTLER_CONFIG,
+} from '../config/shared-app.config';
+import {
+  EDGE_READ_HEADER,
+  verifyEdgeRead,
+} from '../rate-limit/edge-read-signature';
 import { rateLimitKey, resolveClientIp } from '../utils/client-ip';
 import { maskIpAddress } from '../utils/pii-masker';
 
@@ -33,23 +41,53 @@ export interface RateLimitTier {
  * module's throttler storage, the bounded `FixedWindowThrottlerStorage`, and
  * applies the same tiers the guard was meant to apply. It runs before CSRF and auth, so
  * a refused request costs as little as possible.
+ *
+ * A GET signed by the frontend's Worker ({@link verifyEdgeRead}) is counted
+ * against one shared edge-read budget instead of its address, which every
+ * Cloudflare Worker shares. Only a GET: a signature never buys a mutation.
+ * With no `EDGE_READ_SIGNING_SECRET` configured, nothing is signed-for and
+ * every request is keyed on its client, as before.
  */
 @Injectable()
 export class GraphqlRateLimitMiddleware implements NestMiddleware {
   private readonly logger = new Logger(GraphqlRateLimitMiddleware.name);
   private readonly tiers: readonly RateLimitTier[] = GATEWAY_THROTTLER_CONFIG;
+  private readonly edgeTiers: readonly RateLimitTier[] =
+    EDGE_READ_THROTTLER_CONFIG;
+  private readonly edgeSecret: string | undefined;
   /** When each client was last warned about, per tier: one line per window. */
   private readonly lastWarned = new Map<string, number>();
 
   constructor(
     @InjectThrottlerStorage() private readonly storage: ThrottlerStorage,
-  ) {}
+    @Optional() config?: ConfigService,
+  ) {
+    this.edgeSecret = config?.get<string>('EDGE_READ_SIGNING_SECRET');
+  }
+
+  /** The budget this request draws on: its client's, or the edge reads'. */
+  private budgetFor(req: Request): {
+    key: string;
+    tiers: readonly RateLimitTier[];
+  } {
+    const signed =
+      req.method === 'GET' &&
+      verifyEdgeRead(
+        req.headers[EDGE_READ_HEADER],
+        this.edgeSecret,
+        req.originalUrl ?? req.url,
+      );
+    if (signed) return { key: 'edge-read', tiers: this.edgeTiers };
+    return {
+      key: rateLimitKey(resolveClientIp(req.headers, req.ip)),
+      tiers: this.tiers,
+    };
+  }
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const ip = resolveClientIp(req.headers, req.ip);
-    const key = rateLimitKey(ip);
+    const { key, tiers } = this.budgetFor(req);
 
-    for (const tier of this.tiers) {
+    for (const tier of tiers) {
       // One key per tier: the storage keeps one "blocked" flag per key, so a
       // shared key would let the 1 s tier's block outlive its own window.
       const record = await this.storage.increment(

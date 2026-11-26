@@ -87,6 +87,18 @@ jest.mock("@apollo/client/react", () => ({
   }),
 }));
 
+// Signed in: the account path. Visitors (#1456) are in region-visitor.test.tsx.
+jest.mock("@/components/region/JurisdictionsContext", () => ({
+  useJurisdictions: () => ({
+    jurisdictions: [],
+    loading: false,
+    error: null,
+    source: "account",
+    setLocation: jest.fn(),
+    clearLocation: jest.fn(),
+  }),
+}));
+
 // Mock next/link
 jest.mock("next/link", () => {
   return function MockLink({

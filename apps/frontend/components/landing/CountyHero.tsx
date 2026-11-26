@@ -193,14 +193,22 @@ function HeroCta({
     );
   }
 
+  // Explore is open to everyone (#1456). One gold action per reader: the
+  // briefing for someone who has one, the civic record for everyone else.
   if (signedIn) {
     return (
-      <div>
+      <div className="flex flex-wrap gap-3">
         <Link
           href="/me/briefing"
           className={buttonVariants({ variant: "gold", size: "lg" })}
         >
           {t("counties.cta.briefing")}
+        </Link>
+        <Link
+          href="/region"
+          className={buttonVariants({ variant: "ghost", size: "lg" })}
+        >
+          {t("counties.cta.explore")}
         </Link>
       </div>
     );
@@ -209,13 +217,19 @@ function HeroCta({
   return (
     <div>
       <Link
-        href="/register"
+        href="/region"
         className={`${buttonVariants({ variant: "gold", size: "lg" })} w-full`}
       >
-        {t("counties.cta.start")}
+        {t("counties.cta.explore")}
+      </Link>
+      <Link
+        href="/register"
+        className={`${buttonVariants({ variant: "ghost", size: "lg" })} mt-3 w-full`}
+      >
+        {t("counties.cta.getBriefing")}
       </Link>
       <p className="mt-3 text-sm text-content-dim">
-        {t("counties.cta.haveAccount")}{" "}
+        {t("counties.cta.briefingNote")} {t("counties.cta.haveAccount")}{" "}
         <Link href="/login">{t("counties.cta.signIn")}</Link>
       </p>
     </div>

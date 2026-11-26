@@ -12,11 +12,14 @@ jest.mock("@apollo/client/react", () => ({ useQuery: jest.fn() }));
 
 // The page reads jurisdictions from the region-level provider now, so the
 // four pages share one watched query instead of opening their own.
+// Signed in: these tests cover the account path. Visitors (#1456) are
+// covered in region-visitor.test.tsx.
 let mockJurisdictionsState: {
   jurisdictions: unknown[];
   loading: boolean;
   error: unknown;
-} = { jurisdictions: [], loading: false, error: null };
+  source: "account" | "device" | null;
+} = { jurisdictions: [], loading: false, error: null, source: "account" };
 jest.mock("@/components/region/JurisdictionsContext", () => ({
   useJurisdictions: () => mockJurisdictionsState,
 }));
@@ -132,6 +135,7 @@ function setup(options: Options = {}) {
     jurisdictions: jurisdictionsLoading ? [] : jurisdictions,
     loading: jurisdictionsLoading,
     error: jurisdictionsError ? new Error("boom") : null,
+    source: "account",
   };
 
   mockUseQuery.mockImplementation((document: unknown) => {

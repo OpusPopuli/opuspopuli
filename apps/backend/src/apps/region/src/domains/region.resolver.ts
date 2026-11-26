@@ -16,6 +16,8 @@ import {
 } from 'src/common/utils/graphql-context';
 import { AuthGuard } from 'src/common/guards/auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
+import { SkipAudit } from 'src/common/decorators/audit.decorator';
+import { JurisdictionsByIdsArgs } from './dto/locate-jurisdictions.input';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { PaginationArgs } from 'src/common/dto/pagination.args';
@@ -566,8 +568,15 @@ export class RegionResolver {
   /**
    * Find representatives matching a user's civic districts.
    * Districts come from the user's geocoded address (Census API format).
+   *
+   * `@SkipAudit` (#1456): a signed-out visitor's page calls this with the
+   * districts of the location they just looked up, and an audit row would
+   * keep those districts beside their IP, the location record the public
+   * lookup promises not to keep. `jurisdictionsByIds` and
+   * `countySupervisorsAt` skip the audit for the same reason.
    */
   @Public()
+  @SkipAudit()
   @Query(() => [RepresentativeModel])
   async representativesByDistricts(
     @Args({ name: 'congressionalDistrict', nullable: true })
@@ -1172,6 +1181,28 @@ export class RegionResolver {
   ): Promise<RepresentativeModel[]> {
     const user = getUserFromContext(context);
     const results = await this.regionService.getMyCountySupervisors(user.id);
+    return results.map((r) => this.toRepresentativeModel(r));
+  }
+
+  /**
+   * `myCountySupervisors` for a visitor without an account (#1456), from
+   * the jurisdiction ids their device kept.
+   *
+   * `@SkipAudit` for the reason `jurisdictionsByIds` has it: the ids are the
+   * visitor's location at district resolution, and an audit row would keep
+   * them next to the visitor's IP.
+   */
+  @Public()
+  @SkipAudit()
+  @Query(() => [RepresentativeModel], {
+    description:
+      'The Board of Supervisors for the county among these districts, narrowed to one seat when the supervisorial district is among them.',
+  })
+  @Extensions({ complexity: 10 })
+  async countySupervisorsAt(
+    @Args() { ids }: JurisdictionsByIdsArgs,
+  ): Promise<RepresentativeModel[]> {
+    const results = await this.regionService.getCountySupervisorsAt(ids);
     return results.map((r) => this.toRepresentativeModel(r));
   }
 

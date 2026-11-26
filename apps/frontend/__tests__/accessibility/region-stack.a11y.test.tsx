@@ -29,6 +29,7 @@ jest.mock("@/components/region/JurisdictionsContext", () => ({
     jurisdictions: JURISDICTIONS,
     loading: false,
     error: null,
+    source: "account",
   }),
 }));
 jest.mock("react-i18next", () => ({
@@ -156,6 +157,11 @@ describe("Jurisdiction stack — WCAG 2.2 AA", () => {
   it("nests no anchor inside the card's own anchor", () => {
     // Invalid HTML, and the inner link silently leaves the tab order.
     const { container } = render(<RegionPage />);
+    // The seat line is the anchor at risk, so it must actually render;
+    // without it this assertion passes vacuously.
+    expect(
+      container.querySelector('a[href="/region/representatives/sup-5"]'),
+    ).not.toBeNull();
     expect(container.querySelector("a a")).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import { useQuery } from "@apollo/client/react";
 import { useTranslation } from "react-i18next";
 import i18n, { SupportedLanguage, supportedLanguages } from "./index";
 import { GET_MY_PROFILE, MyProfileData } from "@/lib/graphql/profile";
+import { useAuth } from "@/lib/auth-context";
 
 interface I18nContextType {
   locale: SupportedLanguage;
@@ -33,7 +34,13 @@ export function I18nProvider({ children }: Readonly<I18nProviderProps>) {
   );
   const [announcement, setAnnouncement] = useState("");
   const isInitialMount = useRef(true);
-  const { data } = useQuery<MyProfileData>(GET_MY_PROFILE);
+  // The saved language preference lives on the account. A visitor has none,
+  // and asking would send an account-only query from every page, which a
+  // signed-out reader of the open civic record (#1456) must never do.
+  const { isAuthenticated } = useAuth();
+  const { data } = useQuery<MyProfileData>(GET_MY_PROFILE, {
+    skip: !isAuthenticated,
+  });
 
   // Derive locale from profile or user override (no setState in effect)
   const profileLanguage = data?.myProfile?.preferredLanguage;

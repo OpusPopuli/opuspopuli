@@ -66,10 +66,12 @@ const COUNTY = {
   },
 };
 
+// Signed in: the account path. Visitors (#1456) are in region-visitor.test.tsx.
 let state = {
   jurisdictions: [COUNTY] as unknown[],
   loading: false,
   error: null,
+  source: "account" as "account" | "device" | null,
 };
 jest.mock("@/components/region/JurisdictionsContext", () => ({
   useJurisdictions: () => state,
@@ -126,7 +128,12 @@ function setup(
   supervisors: unknown[] = [],
   roster: unknown[] = BOARD,
 ) {
-  state = { jurisdictions: [COUNTY], loading: false, error: null };
+  state = {
+    jurisdictions: [COUNTY],
+    loading: false,
+    error: null,
+    source: "account",
+  };
   (useQuery as jest.Mock).mockImplementation((document: unknown) => {
     if (document === MY_COUNTY_SUPERVISORS)
       return {

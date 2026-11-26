@@ -18,6 +18,7 @@ import {
   ErrorState,
   EmptyState,
 } from "@/components/region/ListStates";
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 
 const PAGE_SIZE = 10;
 
@@ -102,6 +103,9 @@ export default function IndependentExpendituresPage() {
         meta={t("pages.independentExpenditures.meta")}
       />
       {renderContent()}
+      {/* Every finance surface names its sources and says its links are
+          automated, not allegations (#962). */}
+      <FinanceDisclaimer className="mt-8" />
     </div>
   );
 }

@@ -31,6 +31,45 @@ groups:
           summary: "High error rate on {{ $labels.service }}"
           description: "{{ $labels.service }} has >5% HTTP 5xx error rate (current: {{ $value | humanizePercentage }})."
 
+  # The open civic record (#1456): the gateway serves anyone, so how often it
+  # refuses visitors, and how slow it gets, are the two signals worth paging
+  # on. Both read the gateway's own /api metrics
+  # (GatewayRequestMetricsMiddleware), which include the limiter's 429s.
+  - name: opuspopuli-gateway
+    rules:
+      # More than 5% of gateway requests refused for 10 minutes: either a
+      # client is hammering us (fine, it's being refused) or the limits are
+      # too tight for real readers (not fine). Look at which before acting.
+      - alert: GatewayRateLimitingReaders
+        expr: |
+          (
+            sum(rate(http_requests_total{service="api-gateway",route="/api",status_code="429"}[5m]))
+            /
+            sum(rate(http_requests_total{service="api-gateway",route="/api"}[5m]))
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The gateway is refusing more than 5% of requests"
+          description: "{{ $value | humanizePercentage }} of /api requests got a 429 over 5 minutes. Check whether one client is the cause before raising GATEWAY_THROTTLER_CONFIG."
+
+      # p95 above 1 s for 10 minutes, refusals excluded: a 429 returns in
+      # milliseconds and would otherwise pull the percentile down exactly
+      # when the gateway is under pressure.
+      - alert: GatewaySlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{service="api-gateway",status_code!="429"}[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway p95 latency is above 1 s"
+          description: "p95 for /api is {{ $value | humanizeDuration }} over 5 minutes, excluding refused requests."
+
   - name: opuspopuli-document-pipeline
     rules:
       # Alert when OCR failure rate spikes (>10% over 10 minutes)

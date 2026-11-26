@@ -106,6 +106,7 @@
       "statewide": "A nivel estatal, el mismo derecho de iniciativa cuesta {{statewide}} firmas.",
       "yourSeatSection": "Tu escaño en esta junta",
       "resolvedFrom": "Resuelto desde tu dirección ·",
+      "resolvedFromDevice": "Resuelto desde la ubicación guardada en este dispositivo",
       "ledger": "Lo que hizo el condado",
       "whatDid": "Lo que hizo el condado",
       "seats_one": "{{count}} escaño",
@@ -217,5 +218,52 @@
       "requestButton": "Resumir este proyecto de ley",
       "updateButton": "Actualizar el resumen"
     }
+  },
+  "locate": {
+    "title": "Encuentra tus distritos",
+    "body": "Usa tu ubicación o una dirección para ver los gobiernos que representan el lugar donde vives. No necesitas una cuenta.",
+    "useLocation": "Usar mi ubicación",
+    "locating": "Buscando tu ubicación…",
+    "orAddress": "O escribe una dirección",
+    "fields": {
+      "line1": "Dirección",
+      "city": "Ciudad",
+      "state": "Estado",
+      "postalCode": "Código postal"
+    },
+    "findDistricts": "Buscar mis distritos",
+    "finding": "Buscando…",
+    "promise": "Usamos esto una sola vez para encontrar tus distritos y no lo guardamos. Solo se guarda la lista de tus distritos, en este dispositivo.",
+    "privacyLink": "Cómo tratamos tu ubicación",
+    "saved": "Mostrando los distritos de una ubicación guardada en este dispositivo.",
+    "change": "Cambiar ubicación",
+    "clear": "Borrar ubicación",
+    "problems": {
+      "denied": "El acceso a la ubicación está desactivado para este sitio. Puedes escribir una dirección.",
+      "insecure": "Tu ubicación solo se puede compartir en una página segura (https). Puedes escribir una dirección.",
+      "noGeolocation": "Este navegador no puede compartir una ubicación. Puedes escribir una dirección.",
+      "positionUnavailable": "No pudimos obtener tu ubicación en este momento. Inténtalo de nuevo o escribe una dirección.",
+      "serviceUnavailable": "No pudimos buscar direcciones en este momento. Inténtalo más tarde o usa tu ubicación.",
+      "rateLimited": "Demasiadas búsquedas en poco tiempo. Espera un minuto e inténtalo de nuevo.",
+      "notFound": "No encontramos distritos para esa ubicación. Revisa la dirección o usa tu ubicación.",
+      "failed": "Algo salió mal al buscar tus distritos. Inténtalo de nuevo."
+    }
+  },
+  "accountPrompt": {
+    "proposition": {
+      "title": "¿Qué significa esto para ti?",
+      "body": "Con una cuenta, tu resumen te dice qué medidas tocan lo que te importa y sigue las que eliges."
+    },
+    "representative": {
+      "title": "Sigue a este representante",
+      "body": "Con una cuenta, lo que hace aparece en tu resumen: votos, reuniones y proyectos de ley, a medida que ocurren."
+    },
+    "bill": {
+      "title": "Sigue este proyecto de ley",
+      "body": "Con una cuenta, tu resumen te avisa cuando este proyecto avanza: votos, enmiendas y su próxima audiencia."
+    },
+    "create": "Crear una cuenta",
+    "signIn": "Iniciar sesión",
+    "dismiss": "Ahora no"
   }
 }

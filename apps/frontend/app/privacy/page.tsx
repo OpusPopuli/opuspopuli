@@ -16,7 +16,7 @@ export default function PrivacyPolicyPage() {
       <main className="flex-1 max-w-3xl mx-auto px-8 py-12">
         <h1 className="text-3xl font-bold text-content mb-2">Privacy Policy</h1>
         <p className="text-sm text-content-dim mb-8">
-          Last updated: February 2026
+          Last updated: November 2026
         </p>
 
         <div className="space-y-8 text-content">
@@ -28,6 +28,53 @@ export default function PrivacyPolicyPage() {
               protecting your privacy and being transparent about how we handle
               your data. This policy explains what information we collect, how
               we use it, and your rights regarding your data.
+            </p>
+          </section>
+
+          {/* Notice at collection for the visitor location lookup (#1456). */}
+          <section id="without-an-account" className="scroll-mt-24">
+            <h2 className="text-xl font-semibold text-content mb-3">
+              Reading without an account
+            </h2>
+            <p className="mb-3">
+              You can read Opus Populi without an account. To show the
+              governments that represent where you live, we ask for your
+              location, and only if you choose to give it:
+            </p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>
+                <strong>What we ask for:</strong> either an address you type, or
+                your browser&apos;s location if you allow it. We round a browser
+                location to about 11 meters before sending it.
+              </li>
+              <li>
+                <strong>Why:</strong> to find the districts that contain it, and
+                for nothing else.
+              </li>
+              <li>
+                <strong>How it&apos;s used:</strong> it&apos;s sent once, over
+                an encrypted connection, in the body of the request and never in
+                a web address. An address is passed to the U.S. Census
+                Bureau&apos;s public geocoder to turn it into a point on the
+                map; a browser location is not.
+              </li>
+              <li>
+                <strong>What we keep:</strong> nothing. We don&apos;t store the
+                address or location, and it isn&apos;t written to our logs,
+                audit records or performance traces. We don&apos;t sell or share
+                it, and it&apos;s never given to an AI model.
+              </li>
+              <li>
+                <strong>What stays on your device:</strong> only the list of
+                your districts, in your browser&apos;s storage, so the site
+                remembers them next time. &ldquo;Clear location&rdquo; removes
+                it. If you dismiss a notice or an invitation to create an
+                account, that choice is remembered on your device too.
+              </li>
+            </ul>
+            <p className="mt-3">
+              Like every request to this site, these pass through Cloudflare,
+              which operates our network (see Third-Party Services below).
             </p>
           </section>
 
@@ -226,6 +273,18 @@ export default function PrivacyPolicyPage() {
                   Supabase&apos;s Privacy Policy
                 </a>
                 {"."}
+              </li>
+              <li>
+                <strong>U.S. Census Bureau Geocoder:</strong> if you look up
+                your districts by address without an account, the address is
+                sent to this public federal service to find its location (see{" "}
+                <Link
+                  href="#without-an-account"
+                  className="text-info hover:underline"
+                >
+                  Reading without an account
+                </Link>
+                ).
               </li>
               <li>
                 <strong>AI/LLM Processing:</strong> We use locally-hosted AI

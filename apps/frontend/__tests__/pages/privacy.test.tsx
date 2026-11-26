@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 // Mock the Header and Footer components
@@ -22,7 +22,7 @@ describe("PrivacyPolicyPage", () => {
   });
 
   it("should render the last updated date", () => {
-    expect(screen.getByText(/Last updated: February 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Last updated: November 2026/)).toBeInTheDocument();
   });
 
   it("should render all 9 sections", () => {
@@ -67,5 +67,32 @@ describe("PrivacyPolicyPage", () => {
   it("should render header and footer", () => {
     expect(screen.getByTestId("mock-header")).toBeInTheDocument();
     expect(screen.getByTestId("mock-footer")).toBeInTheDocument();
+  });
+
+  describe("reading without an account (#1456)", () => {
+    it("gives notice at collection for the location lookup", () => {
+      const section = document.getElementById("without-an-account");
+      expect(section).not.toBeNull();
+      expect(
+        within(section!).getByRole("heading", {
+          name: "Reading without an account",
+        }),
+      ).toBeInTheDocument();
+      // Purpose, the third party an address goes to, what's kept, and
+      // what stays on the device: the four things a notice must say.
+      const text = section!.textContent ?? "";
+      expect(text).toMatch(/to find the districts that contain it/);
+      expect(text).toMatch(/Census Bureau/);
+      expect(text).toMatch(/What we keep:\s*nothing/);
+      expect(text).toMatch(/only the list of\s+your districts/);
+    });
+
+    it("names the Census geocoder among third-party services", () => {
+      expect(
+        screen.getByText(/U\.S\. Census Bureau Geocoder:/, {
+          selector: "strong",
+        }),
+      ).toBeInTheDocument();
+    });
   });
 });

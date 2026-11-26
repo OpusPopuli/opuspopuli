@@ -1861,6 +1861,66 @@ describe('RegionQueryService — getMyCountySupervisors (#1136)', () => {
     const result = await service.getMyCountySupervisors('user-1');
     expect(result).toEqual([]);
   });
+
+  describe('getCountySupervisorsAt — a visitor without an account (#1456)', () => {
+    const COUNTY = { type: 'COUNTY', fipsCode: '06097', name: 'Sonoma County' };
+    const SUP_5 = {
+      type: 'COUNTY_SUPERVISOR_DISTRICT',
+      fipsCode: null,
+      name: 'Sonoma County Supervisorial District 5',
+    };
+
+    it("returns only the visitor's own supervisor when their district is among the ids", async () => {
+      mockDb.jurisdiction.findMany.mockResolvedValue([COUNTY, SUP_5] as never);
+      const result = await service.getCountySupervisorsAt(['c', 's']);
+      expect(result.map((r: { id: string }) => r.id)).toEqual(['r5']);
+      expect(mockDb.regionPlugin.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { fipsCode: '06097' } }),
+      );
+    });
+
+    it('returns the whole board when no supervisorial district is among the ids', async () => {
+      mockDb.jurisdiction.findMany.mockResolvedValue([COUNTY] as never);
+      const result = await service.getCountySupervisorsAt(['c']);
+      expect(result).toHaveLength(3);
+    });
+
+    it('returns nothing when no county is among the ids', async () => {
+      mockDb.jurisdiction.findMany.mockResolvedValue([SUP_5] as never);
+      const result = await service.getCountySupervisorsAt(['s']);
+      expect(result).toEqual([]);
+      expect(mockDb.regionPlugin.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('returns nothing when the county plugin is disabled', async () => {
+      mockDb.regionPlugin.findUnique.mockResolvedValue({
+        name: 'california-sonoma',
+        enabled: false,
+      } as never);
+      mockDb.jurisdiction.findMany.mockResolvedValue([COUNTY, SUP_5] as never);
+      const result = await service.getCountySupervisorsAt(['c', 's']);
+      expect(result).toEqual([]);
+    });
+
+    it('asks only for county and supervisorial rows, deduplicating ids', async () => {
+      mockDb.jurisdiction.findMany.mockResolvedValue([] as never);
+      await service.getCountySupervisorsAt(['c', 'c', 's']);
+      expect(mockDb.jurisdiction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: { in: ['c', 's'] },
+            type: { in: ['COUNTY', 'COUNTY_SUPERVISOR_DISTRICT'] },
+          },
+        }),
+      );
+    });
+
+    it('does not query at all for an empty list', async () => {
+      const result = await service.getCountySupervisorsAt([]);
+      expect(result).toEqual([]);
+      expect(mockDb.jurisdiction.findMany).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('RegionQueryService — searchRegion paging window (#1154 review)', () => {

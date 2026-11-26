@@ -6,10 +6,12 @@
     "prompt": "Point at a county.",
     "citeMosca": "Mosca, 1896: a minority governs not because it is wiser or better born, but because it is organized against a majority that is not.",
     "cta": {
-      "start": "Start with your county",
       "haveAccount": "Already have an account?",
       "signIn": "Sign in",
-      "briefing": "Go to your briefing"
+      "briefing": "Go to your briefing",
+      "explore": "Explore your county",
+      "getBriefing": "Get your briefing",
+      "briefingNote": "A briefing needs an account."
     },
     "modes": {
       "legend": "Shade counties by",

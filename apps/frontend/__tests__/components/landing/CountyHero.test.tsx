@@ -109,8 +109,8 @@ describe("CountyHero", () => {
 
   it("keeps the headline and the way in when the query fails", () => {
     // The region service being down must not cost the page its headline or its
-    // only sign-up link. An empty map would read as "no counties qualify", so
-    // that half is dropped instead.
+    // way in. An empty map would read as "no counties qualify", so that half
+    // is dropped instead.
     queryResult = { error: new Error("boom") };
     render(<CountyHero />);
 
@@ -118,7 +118,7 @@ describe("CountyHero", () => {
       screen.getByRole("heading", { level: 1, name: "counties.heading" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "counties.cta.start" }),
+      screen.getByRole("link", { name: "counties.cta.explore" }),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("highlighted")).toBeNull();
     expect(screen.queryByRole("complementary")).toBeNull();
@@ -134,10 +134,13 @@ describe("CountyHero", () => {
     expect(screen.queryByTestId("highlighted")).toBeNull();
   });
 
-  it("sends a signed-out reader to register, with sign-in alongside", () => {
+  it("sends a signed-out reader to explore, with the briefing behind sign-up (#1456)", () => {
     render(<CountyHero />);
     expect(
-      screen.getByRole("link", { name: "counties.cta.start" }),
+      screen.getByRole("link", { name: "counties.cta.explore" }),
+    ).toHaveAttribute("href", "/region");
+    expect(
+      screen.getByRole("link", { name: "counties.cta.getBriefing" }),
     ).toHaveAttribute("href", "/register");
     expect(
       screen.getByRole("link", { name: "counties.cta.signIn" }),
@@ -150,7 +153,7 @@ describe("CountyHero", () => {
     authLoading = true;
     render(<CountyHero />);
     expect(
-      screen.queryByRole("link", { name: "counties.cta.start" }),
+      screen.queryByRole("link", { name: "counties.cta.explore" }),
     ).toBeNull();
     expect(
       screen.queryByRole("link", { name: "counties.cta.briefing" }),
@@ -163,8 +166,12 @@ describe("CountyHero", () => {
     expect(
       screen.getByRole("link", { name: "counties.cta.briefing" }),
     ).toHaveAttribute("href", "/me/briefing");
+    // Explore is for everyone; only the sign-up offer goes away.
     expect(
-      screen.queryByRole("link", { name: "counties.cta.start" }),
+      screen.getByRole("link", { name: "counties.cta.explore" }),
+    ).toHaveAttribute("href", "/region");
+    expect(
+      screen.queryByRole("link", { name: "counties.cta.getBriefing" }),
     ).toBeNull();
   });
 

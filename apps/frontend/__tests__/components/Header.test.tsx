@@ -90,16 +90,30 @@ describe("Header", () => {
   });
 
   describe("when not authenticated", () => {
-    it("should show sign in and get started links", () => {
+    it("offers the civic record first, and an account alongside (#1456)", () => {
       render(<Header />);
 
-      expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
-        "href",
-        "/login",
-      );
+      // Desktop and mobile menus each carry the links, so take the first.
       expect(
-        screen.getByRole("link", { name: /get started/i }),
+        screen.getAllByRole("link", { name: "navigation.explore" })[0],
+      ).toHaveAttribute("href", "/region");
+      expect(screen.getByTestId("header-search-stub")).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("link", { name: "navigation.signIn" })[0],
+      ).toHaveAttribute("href", "/login");
+      expect(
+        screen.getAllByRole("link", { name: "navigation.createAccount" })[0],
       ).toHaveAttribute("href", "/register");
+    });
+
+    it("offers no account-only destination", () => {
+      render(<Header />);
+
+      for (const href of ["/me/briefing", "/settings"]) {
+        expect(
+          document.querySelector(`a[href="${href}"]`),
+        ).not.toBeInTheDocument();
+      }
     });
 
     it("should not show sign out button", () => {

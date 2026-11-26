@@ -90,6 +90,12 @@ jest.mock("next/navigation", () => ({
   usePathname: jest.fn(() => "/region"),
   useParams: jest.fn(() => ({ id: "1" })),
 }));
+// Signed in unless a test says otherwise; the #1456 account prompt and the
+// in-app contact form both depend on it.
+let mockSignedIn = true;
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: mockSignedIn, isLoading: false }),
+}));
 
 jest.mock("next/link", () => {
   return function MockLink({
@@ -226,7 +232,9 @@ describe("PropositionDetailPage", () => {
         error: null,
       };
       const { unmount } = render(<PropositionDetailPage />);
-      expect(screen.getByText("AI-generated")).toBeInTheDocument();
+      expect(
+        screen.getByText("AI-generated · may contain errors"),
+      ).toBeInTheDocument();
       expect(screen.getByText("How this was made")).toBeInTheDocument();
       unmount();
 
@@ -237,7 +245,9 @@ describe("PropositionDetailPage", () => {
         error: null,
       };
       render(<PropositionDetailPage />);
-      expect(screen.queryByText("AI-generated")).toBeNull();
+      expect(
+        screen.queryByText("AI-generated · may contain errors"),
+      ).toBeNull();
       expect(screen.queryByText("How this was made")).toBeNull();
     });
 
@@ -491,6 +501,28 @@ describe("PropositionDetailPage", () => {
         name: "Propositions",
       });
       expect(propositionsLink).toHaveAttribute("href", "/region/propositions");
+    });
+  });
+
+  describe("account prompt (#1456)", () => {
+    afterEach(() => {
+      mockSignedIn = true;
+    });
+
+    it("invites a signed-out reader to see what the measure means for them", () => {
+      mockSignedIn = false;
+      localStorage.clear();
+      render(<PropositionDetailPage />);
+      expect(
+        screen.getByRole("heading", { name: "What does this mean for you?" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows nothing to a signed-in reader", () => {
+      render(<PropositionDetailPage />);
+      expect(
+        screen.queryByRole("heading", { name: "What does this mean for you?" }),
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -132,7 +132,7 @@
   - The address path calls the US Census geocoder.
   - Nothing is kept, sold or shared.
   - The device keeps the district IDs only, and the reader can clear them.
-- **Owner action:** counsel review of the wording. The copy is swappable through the translation files.
+- **No counsel review (owner, 2026-11-25).** The copy is in the translation files if it needs changing later.
 
 ### 7. Load, UAT and release
 
@@ -203,6 +203,135 @@ Recorded as they were made, with the reason.
 - **Carried to subtask 5:** server-side reads from the Worker (sitemap, `generateMetadata`) all arrive with the Worker's egress IP and would share one budget. They need an exemption, for example an HMAC-signed Worker header, before subtask 5 ships.
 - **Release gate, not a follow-up:** Docker Desktop presents every peer on a published port as `192.168.65.1`, a trusted private address. So on the Studio, anyone who can reach `0.0.0.0:8080` can still choose their own key. Binding the host ports to `127.0.0.1` (opuspopuli-node) must land before subtask 7.
 
+**Subtask 3, found before starting (2026-11-24):**
+- **`countyRepresentatives` can't serve signed-out readers.** Its argument is a region plugin *name* (`sonoma-county`), which the server derives from the county's FIPS code through `region_plugins`. A signed-out page holds only jurisdiction ids.
+  - It also returns the whole board. `myCountySupervisors` narrows it to the reader's seat when a supervisorial district resolves (#1136), and the region home, county page and `JurisdictionStack` depend on that.
+- **The representatives page doesn't need `myAddresses` for legislators.** `useStateLegislators(jurisdictions)` already derives them from jurisdictions through the public `representativesByDistricts`.
+- **Decision (owner, 2026-11-24):** a public `countySupervisorsAt(jurisdictionIds)` in region, `@Public` and `@SkipAudit`, sharing one core with `myCountySupervisors` so the #1136 seat matching stays in one place.
+  - It's a federation change, so it ships in the backend release ahead of the frontend.
+  - Rejected: a frontend-only filter of the whole board, which duplicates #1136's matching and isn't scoped to one county.
+- **Map-first navigation is being explored separately (owner, 2026-11-24).** The idea: the map is the main navigation, the county shape is the centrepiece of the county page, and a visitor can set a location by tapping a county (a public FIPS code, nothing personal) or a point.
+  - A clickable mockup comes first, in its own context.
+  - Subtask 3 is unaffected. Its data layer is needed either way, and `LocateForm` remains the accessible, non-map path. It is kept self-contained so a map picker can sit beside it.
+- **The mockup is the agreed direction, to build after #1456 (owner, 2026-11-24).** [Prototype](https://claude.ai/artifact/1YrJrzVCWgtJCtRG4hy3yk), version 5, "Locked baseline: State ‹ County › City". `project/Notes.dc.html` holds its open questions, the backend work and the pages affected. Decisions:
+  - The county is the premise. The level nav is State ‹ County › City & town, with County always in the centre.
+  - Federal isn't linked from the map nav for now. `/region/federal` stays as it is.
+  - City & town gets an honest "Coming later" page. This departs from #1194, which leaves the city out.
+  - "Where do you live?": tap your county (a public FIPS code only), then optionally `LocateForm`, then your districts. Change and Clear sit in a location chip.
+  - The map is `aria-hidden`; a county search and list is the keyboard equivalent, on every screen.
+  - Every figure is tagged "Sample value · we have a source" or "Illustrative · no source yet".
+  - **Implied backend work:**
+    - The board by FIPS for browsing any county signed out, sharing `countySupervisorsAt`'s core.
+    - Simplified, edge-cached boundary shapes.
+    - Public upcoming meetings by FIPS.
+    - An ACS demographics source.
+    - Supervisor district lines for the other 57 counties.
+  - **Open questions for subtasks 5 and 7:** whether a visitor's FIPS lives in `localStorage` or a cookie, and whether "we don't keep it" also covers edge and CDN logs.
+
+**Subtask 4 (2026-11-24):**
+- **Every page sent an account-only query for visitors (predates #1456).** The site-wide `I18nProvider` asked for `myProfile` on every page load to read the saved language, signed in or not; the landing page has always done it.
+  - Found by the new signed-out Playwright journey, which fails on any account-only field a page sends.
+  - **Change:** the read is skipped when signed out. A visitor has no saved language; the toggle still works for the session.
+- **The in-app "Contact" form is hidden from visitors.** It sends through our servers (`contactRepresentative`), which needs an account. The representative's public email, phone and website stay on the page, so a visitor can still write to them directly.
+- **Sign-up doesn't take a return path;** sign-in does (`?redirect=`). The account prompts send sign-in back to the page they were on, and sign-up through onboarding as before.
+- **The header's "Get started" became "Create account",** and the signed-out header items are translated. The signed-in header's hard-coded English is untouched (out of scope).
+- **The landing page's unused `counties.cta.start` key was removed** in both languages.
+
+**Subtask 5 (2026-11-24):**
+- **The Worker's reads are signed, and fail safe.** `x-op-edge-read: <seconds>.<HMAC-SHA256 of "<seconds>\n<path and query>">`, keyed by `EDGE_READ_SIGNING_SECRET`, valid for 5 minutes and for that one read only. A signed `GET` draws on its own budget (`EDGE_READ_THROTTLER_CONFIG`: 100/s, 600/10 s, 3,000/min); a `POST` never does.
+  - Why a signature: every Cloudflare Worker reaches us from one shared address, so an address allowlist would admit anyone's Worker.
+  - Unset on either side, nothing is signed or exempted, which is the behaviour before this change. So the code can ship before the secret exists.
+  - The Worker signs with WebCrypto and the gateway checks with `node:crypto`; both test suites check one shared vector.
+  - **Proof on UAT, rebuilt with a test secret:** 150 Worker-shaped `GET`s let through 50 unsigned and 100 signed. A signed `POST` and a wrong secret were each held to 50.
+- **Reads are GET queries** with `apollo-require-preflight` (Apollo refuses a bare GET as possible CSRF), so Cloudflare's edge can cache them: a day for sitemaps, six hours for metadata.
+- **Sitemaps are one per kind, with bills in ten fixed chunks of 1,000.** That keeps each render to ten reads at most, within the Worker's subrequest budget. `robots.txt` lists all fourteen. They're rendered per request, since a build-time sitemap would freeze whatever CI could read, which is nothing.
+  - **On UAT:** 12 sections, 72 propositions, 125 representatives, 109 committees, and 5,065 bills (chunk 5 holds 65; chunk 9 is empty and valid).
+  - **Left out:** `/region/county`, `/region/state` and `/region/search`, which show a crawler only a form, and `/region/federal`, which the map baseline no longer links.
+- **`noindex` is a response header, not page metadata.** Most private segments render through client layouts, which can't export metadata. One list (`config/indexing.config.mjs`) feeds both the header and `robots.txt`.
+  - **Changed from the plan:** the single auth pages (`/login`, `/register`, `/forgot-password`, `/reset-password`) stay crawlable but `noindex`. A disallowed page's `noindex` is never seen, and its bare URL can still be listed. `/login` and `/register` came out of the site sitemap.
+- **Detail-page metadata:**
+  - A bill is named by number and subject; its legal title ("An act to add …") becomes the description.
+  - A failed read falls back to a generic title and stays indexable.
+  - A record the server says doesn't exist is `noindex`, since the client page renders "not found" with a 200.
+- **Not needed for launch (owner, 2026-11-25).** The code ships, inert: with no secret, the Worker's reads share one visitor's budget, as before this change.
+  - **Why that's enough:** the edge cache absorbs repeat reads, a full crawl is well under one origin read a second against a limit of ten, and visitors' own reads come from their own addresses.
+  - **The cost if crawling outruns it:** some pages are indexed with a generic title ("Bill | Opus Populi") until re-crawled. Nothing breaks.
+  - **When to set it up:** if `GatewayRateLimitingReaders` fires during a crawl. It needs no code change.
+- **Setting it up, when needed:**
+  - Generate one secret of at least 32 characters.
+  - Set it on the Worker (`wrangler secret put EDGE_READ_SIGNING_SECRET`, or a step in `deploy-frontend.yml`).
+  - Set it on the node's `api` service (`opuspopuli-node`'s `docker-compose-prod.yml` passthrough and `op-compose` secrets, and `create-op-node` for new nodes).
+  - Never put it in a `.env` file: OpenNext would embed it in the Worker bundle (`check-worker-env.mjs`).
+
+**Subtask 6 (2026-11-24):**
+- **The footer is translated.** Its #962 notice and its links render in English and Spanish. It's a client component now, since translation is a hook.
+- **`FinanceDisclaimer` is on all four campaign-finance subpages.** The hub already had it.
+- **"How to read this site"** sits under the header on every region page, inline and never a modal, until it's dismissed once on the device.
+  - It says: every page names its public source; "AI-generated" text may contain errors; links between people, money and measures are automated, not allegations.
+  - It shares a small dismissals module (`lib/device-dismissals.ts`) with `AccountPrompt`.
+- **The AI label now carries #962's warning:** "AI-generated · may contain errors" / "Generado por IA · puede contener errores". The other provenance labels ("Official text", "Generated from records" and the rest) are unchanged; they make no claim a model made.
+- **The privacy page has a notice at collection for the location lookup** (`#without-an-account`), linked from the form's promise. It covers what's asked for, why, how it's sent, the Census geocoder, what's kept (nothing), and what stays on the device.
+  - It also says plainly that requests pass through Cloudflare, rather than implying "not kept" covers Cloudflare's own handling.
+  - The page itself is English-only, as it was before; translating it is out of scope.
+- **No counsel review (owner, 2026-11-25).** The wording ships as written. It lives in the translation files, except the privacy page, which is in `app/privacy/page.tsx`.
+
+**Subtask 7 (2026-11-25):**
+- **The gateway had no request metrics for GraphQL at all (predates #1456).** HTTP metrics come from a Nest interceptor, which Apollo Gateway's operations never pass through, nor do the limiter's 429s.
+  - **Change:** `GatewayRequestMetricsMiddleware` records `/api` requests, and any 429, into the existing `http_requests_total` and `http_request_duration_seconds`. It doesn't double-count the REST routes the interceptor already records.
+  - **Proof on UAT:** 54 × 200 and 30 × 429 appeared under `route="/api"`.
+- **Alerts** (`observability/prometheus-alerts.yml`, validated with `promtool`):
+  - `GatewayRateLimitingReaders`: more than 5% of `/api` requests refused for 10 minutes.
+  - `GatewaySlow`: p95 above 1 s for 10 minutes, excluding 429s.
+  - **Production's copy lives in `opuspopuli-node`:** sync it there.
+- **Load, measured on a production build against UAT.** A signed-out page costs 3–4 gateway requests on the first page of a visit, which includes one CSRF-seeding GET, and 2–3 after that. A located visitor's home page costs 8. Against 600/min per client, that's roughly 150–200 page loads a minute before a reader is refused.
+  - **Crawl estimate:** a full crawl of about 5,400 pages is a few client requests per page from the crawler's own addresses, plus one edge-cached read per page from the Worker. That averages well under one origin request a second.
+- **The release needs one more fix the dev server couldn't show.** With `ProtectedRoute` gone, region pages render at build time, and `/region/bills` failed the production build: `useSearchParams` outside a Suspense boundary.
+  - **Change:** one boundary around the page content in `app/region/layout.tsx`. The header, notice and footer stay server-rendered.
+- **Walked on a production build:** the full Chromium suite passes (355 tests, 12 skipped). Against UAT data: sitemaps, metadata, `noindex` headers and "Use my location" all work.
+- **Not checkable before release:** the throttle keying on the real client IP *through Cloudflare*. Subtask 1 proved the keying on UAT, but the tunnel path exists only in production. Check it after the backend release: requests from two networks should get separate budgets.
+- **The Docker frontend build (`docker-compose-frontend.yml`) fails its lint step on files #1456 didn't touch** (union formatting, React hook rules), apparently from different lint versions inside the image. It's a separate issue, not a release gate: CI builds with the lockfile's versions.
+
+**Behavioural verification, `/op-verify` (2026-11-25).** Driven on a production build of the frontend against UAT, with services rebuilt from this branch, the real Census geocoder and PostGIS, and no signing secret.
+- **Signed-out journeys: 23/23.**
+  - The region opens without a redirect, with the reading notice and the lookup form.
+  - Address lookup through the live geocoder: only the 8 district ids are stored; the address travels once, in a POST body. A reload restores the districts and Clear forgets them.
+  - Browser location resolves Santa Rosa to supervisor Chris Coursey, with coordinates rounded to 4 decimals.
+  - An address with no match and a refused permission each give their message and store nothing.
+  - Proposition, bill and representative pages invite an account without blocking.
+  - `/petition` and `/me/briefing` still require sign-in.
+  - No account-only query is sent on any of these pages.
+- **Gateway edge cases: 10/10.** More than 50 ids and non-UUID ids are refused. Unknown ids drop out. Point and address together are refused, as are an out-of-range latitude and a malformed state or ZIP. A point outside every district returns nothing, and the lookup refuses to travel as a GET (405). The new 429 counter rose by exactly the 70 refusals.
+- **Signed-in regression: 6/6,** with a real account made through the sign-up page and its emailed link.
+  - `/region` reads `myJurisdictions` and `myCountySupervisors` and runs no visitor lookups.
+  - The account header shows, and the briefing opens.
+- **Personal data:**
+  - No address, coordinates or unmasked IP appear in the gateway or region logs. The one "hit" was `1315` inside a request id, and the IP there reads `192.x.x.x`.
+  - No audit rows exist for the location lookups.
+  - Tempo held 4 geocoder spans, all `street=REDACTED`, and none with the address.
+- **Found and fixed during verification:** `representativesByDistricts` wrote an audit row pairing a located visitor's Assembly and Senate districts with their IP. That's the record `jurisdictionsByIds` and `countySupervisorsAt` skip the audit to avoid. Subtask 3 made signed-out pages call it with located districts.
+  - **Change:** it is now `@SkipAudit`.
+  - **Proof:** the rerun wrote 18 audit rows and none for a location lookup. The 3 test rows were deleted from the UAT audit log.
+- **Couldn't be driven live:** hiding the in-app contact form from visitors. No representative on UAT has an email on file, so the button never renders for anyone. A unit test covers it.
+
+**Pre-PR review, `/op-review` (2026-11-26).** Three independent lenses (correctness and consistency; security and personal data; performance, types and tests). Every finding was checked against the code before acting. It's a self-review: the author and the reviewer act for the same person.
+- **Fixed:**
+  - **A visitor's state districts were saved in the persisted Apollo cache and survived Clear (blocker, two lenses).** `useStateLegislators` used the default policy, and subtask 3 began calling it with a visitor's districts. It now uses `no-cache` for a visitor, the page test asserts it, and the e2e spec checks that no location-derived field survives Clear.
+  - **On the region home, a visitor whose saved location failed to load was stuck on an error with no way to change it.** It now falls through to the lookup form, as the other region pages do.
+  - **A detail page with a malformed id stayed indexable**, since its failed read looked transient. Non-UUID ids are now `noindex` without a gateway read.
+  - **Open redirect after sign-in (predates #1456):** `/\evil.com` passed the shape check in both `/login` and the auth callback, and a browser resolves it to `evil.com`. One shared `lib/safe-redirect.ts` now resolves the target as the browser will and keeps it only if it stays on this site. Fixed now because the account prompts send many more visitors through `/login?redirect=`.
+  - **The sitemap chunk pattern matched one digit only.**
+  - **The first `safe-redirect` fix could still be bypassed (found by the pre-push AI security review).** It returned the URL parser's normalised path, and dot segments normalise `/..//evil.com` to `//evil.com`, which a browser reads as another host. The returned path must now stay on this origin too; five bypass forms are tested, and the old helper fails all five.
+- **Checked and not acted on:**
+  - **A suspected race,** where a fresh lookup would refetch its own districts and flash a skeleton. Measured on production builds with and without a `flushSync` fix: 0 extra requests across 5 lookups either way. React batches the two updates, so no change was made.
+- **Follow-ups, not launch blockers:**
+  - The sitemap's bill reads load every vote and co-author (`getBills` always includes them); a slim id-only read would cut that.
+  - Bill sitemap pages are cut from an order (`lastActionDate`) that shifts between their day-long cache windows, so a bill can be missed or repeated for a day.
+  - A per-IP Cloudflare rule on `/region/*/<id>`: random UUIDs each cost the Worker's shared read budget.
+  - Hard-coded English on the representatives page (predates #1456).
+  - From the pre-push AI code review (low):
+    - The gateway checks the edge-read signature against the raw request path, and the Worker signs the WHATWG-serialised one. If a proxy ever re-encodes the query, the read is treated as unsigned (still limited), never as wrongly trusted.
+    - `countySupervisorsAt` doesn't check that a supervisorial district belongs to the county it picked. No real location produces ids from two counties.
+
 **Verified on UAT, 2026-11-22 (rebuilt after the final edit):**
 - A point at the Capitol resolved to 8 districts.
 - The address path through the real Census geocoder resolved the same 8 types.
@@ -217,7 +346,7 @@ Recorded as they were made, with the reason.
 | An address or location reaches logs, the audit log or traces | High × Possible | `@SkipAudit`; no input in any log line; logger and interceptor spy tests; span check; the #1094 rule |
 | Crawler and signed-out load overwhelms the single Studio | Medium × Likely | Edge-cached sitemap and metadata; a real per-IP throttle; 429 and latency alerts; measured before release |
 | The Census geocoder throttles or blocks our IP | Medium × Possible | Tight per-IP limit on the address path, plus a global cap. Browser location never calls the geocoder |
-| Indexing spreads inaccuracies or misattribution further | High × Possible | Subtask 6 before release; counsel review; receipts on every AI passage (#1450) |
+| Indexing spreads inaccuracies or misattribution further | High × Possible | Subtask 6 before release (no counsel review, owner decision 2026-11-25); receipts on every AI passage (#1450) |
 | Signed-in users regress | Medium × Rare | Both modes tested in the provider and end to end |
 | More bill-summary requests cost model time | Medium × Possible | Existing global daily cap; the per-IP cap now uses the real IP |
 | The frontend ships before the backend | Medium × Possible | Release order, stated in the PR |

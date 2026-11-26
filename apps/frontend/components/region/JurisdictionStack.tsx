@@ -18,6 +18,12 @@ export interface JurisdictionStackProps {
   /** Bills touched in the trailing window; null when we cannot count. */
   readonly stateCount: number | null;
   readonly stateCountCapped?: boolean;
+  /**
+   * Offer "Not right?" beside the reader's seat, linking to their address
+   * settings. Off for a visitor without an account (#1456): there are no
+   * settings to go to, and the location control below the stack is the fix.
+   */
+  readonly showWrongSeat?: boolean;
 }
 
 /**
@@ -39,6 +45,7 @@ export function JurisdictionStack({
   legislators,
   stateCount,
   stateCountCapped,
+  showWrongSeat = true,
 }: JurisdictionStackProps) {
   const { t } = useTranslation("region");
 
@@ -88,12 +95,14 @@ export function JurisdictionStack({
                       })
                     : seat.name}
                 </Link>
-                <Link
-                  href="/settings"
-                  className="text-content-dim underline decoration-line underline-offset-2 hover:decoration-accent"
-                >
-                  {t("stack.county.wrongSeat")}
-                </Link>
+                {showWrongSeat && (
+                  <Link
+                    href="/settings"
+                    className="text-content-dim underline decoration-line underline-offset-2 hover:decoration-accent"
+                  >
+                    {t("stack.county.wrongSeat")}
+                  </Link>
+                )}
               </span>
             ) : null
           }

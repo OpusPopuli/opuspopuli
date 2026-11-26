@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { AuthCheckIcon } from "@/components/auth/AuthUI";
 import { AUTH_FULL_OPTIONS } from "@/lib/features";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 /** Reusable spinning indicator shared between the Suspense fallback and the verifying state. */
 function AuthSpinner() {
@@ -46,20 +47,13 @@ function CallbackLoading() {
 }
 
 /**
- * Validate a `?redirect=` query param so we only accept same-origin paths.
- * Mirrors the helper in the login page. Keeps this auth callback safe
- * from open-redirect attacks on the magic-link round-trip.
- *
- * Callers pass their own default because the two buttons on this page
- * have different natural destinations: "Skip for now" → /onboarding
- * (completes first-time setup), "Continue to App" → /region (returning
- * users). Both honor an explicit `?redirect=` first.
+ * A same-origin `?redirect=` path, or the caller's fallback (see
+ * lib/safe-redirect). Callers pass their own default because the two
+ * buttons on this page have different natural destinations: "Skip for now"
+ * → /onboarding, "Continue to App" → /me/briefing.
  */
 function resolveRedirect(raw: string | null, fallback: string): string {
-  if (!raw) return fallback;
-  if (!raw.startsWith("/")) return fallback;
-  if (raw.startsWith("//")) return fallback;
-  return raw;
+  return safeRedirect(raw, fallback);
 }
 
 // Main callback content component

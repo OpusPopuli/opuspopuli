@@ -11,6 +11,7 @@ import {
 } from "@/lib/graphql/region";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
+import { FinanceDisclaimer } from "@/components/region/FinanceDisclaimer";
 import { Pagination } from "@/components/region/Pagination";
 import { SupportOpposeBadge } from "@/components/region/SupportOpposeBadge";
 import {
@@ -110,6 +111,9 @@ export default function ExpendituresPage() {
         meta={t("pages.expenditures.meta")}
       />
       {renderContent()}
+      {/* Every finance surface names its sources and says its links are
+          automated, not allegations (#962). */}
+      <FinanceDisclaimer className="mt-8" />
     </div>
   );
 }

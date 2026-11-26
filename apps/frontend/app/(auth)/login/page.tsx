@@ -15,19 +15,13 @@ import {
   AuthDivider,
   PasswordInput,
 } from "@/components/auth/AuthUI";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 type AuthMode = "passkey" | "magic-link" | "password";
 
-/**
- * Validate a `?redirect=` query param so we only accept same-origin paths.
- * Rejects absolute URLs and protocol-relative `//host/...` forms that
- * could be used for open-redirect attacks. Defaults to `/onboarding`.
- */
+/** A same-origin `?redirect=` path, or `/onboarding` (see lib/safe-redirect). */
 function resolveRedirect(raw: string | null): string {
-  if (!raw) return "/onboarding";
-  if (!raw.startsWith("/")) return "/onboarding";
-  if (raw.startsWith("//")) return "/onboarding";
-  return raw;
+  return safeRedirect(raw, "/onboarding");
 }
 
 function LoginPageContent() {

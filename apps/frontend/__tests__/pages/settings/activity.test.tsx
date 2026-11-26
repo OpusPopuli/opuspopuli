@@ -8,6 +8,12 @@ const renderWithI18n = (ui: React.ReactElement) => {
   return render(<I18nProvider>{ui}</I18nProvider>);
 };
 
+// Settings is signed in. I18nProvider reads the account's language only then
+// (#1456), so it needs to know.
+jest.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ isAuthenticated: true, isLoading: false }),
+}));
+
 // Mock toast context
 const mockShowToast = jest.fn();
 jest.mock("@/lib/toast", () => ({

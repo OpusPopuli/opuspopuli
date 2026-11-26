@@ -400,6 +400,41 @@ Browser → Gateway → Users Service (sets cookie)
     └── Cookie stored in browser
 ```
 
+## Visitors Without an Account (#1456)
+
+The civic record (`/region`) is open to anyone, so the gateway serves strangers as well as signed-in readers. Four rules keep that safe.
+
+### The client IP comes from Cloudflare, not the client
+
+`resolveClientIp(headers, socketIp)` (`common/utils/client-ip.ts`) is the one place a request's address is decided:
+
+1. `cf-connecting-ip`, which Cloudflare sets and overwrites whatever the client sent;
+2. otherwise the **last** `X-Forwarded-For` hop (the first hop is whatever the client wrote);
+3. otherwise the socket address.
+
+Proxy headers are believed only from a private or loopback peer: the tunnel container in front of the gateway, or the gateway in front of a subgraph. They must also parse as IPs. Rate limits key on `rateLimitKey()`, which groups IPv6 per /64, so one connection can't mint budgets.
+
+This holds only while the gateway is reachable solely through the tunnel. Docker Desktop presents every peer on a published port as a private address, so the node publishes the gateway and Kong on `127.0.0.1` only (`opuspopuli-node` #70). Never widen `API_BIND_ADDR` to an address the LAN can reach.
+
+### A per-client limit on GraphQL
+
+Apollo Gateway runs operations without Nest resolvers, so the stock `ThrottlerGuard` never sees GraphQL. `GraphqlRateLimitMiddleware` applies `GATEWAY_THROTTLER_CONFIG` (50/s, 200/10 s, 600/min) per client on `/api` and `/api/*`, before CSRF and auth, and answers `429` with `Retry-After`. A signed-out page costs 2–4 requests.
+
+### The public location lookup keeps nothing
+
+`locateJurisdictions` turns an address (through the US Census geocoder) or a point into districts. `jurisdictionsByIds` and `countySupervisorsAt` rebuild a returning visitor's view from the district ids their device kept.
+
+- **Never logged, audited or traced.** `locateJurisdictions` is a mutation, so an address can only travel in a POST body, never in a URL the request logger writes. All three are `@SkipAudit`, since an audit row would pair a visitor's districts with their IP. Outgoing spans have query values redacted (`common/tracing-redaction.ts`), because the geocoder takes the address as query parameters.
+- **Budgeted.** The address path has its own per-IP and global budgets (`LOCATE_BUDGETS`), so visitors can't exhaust the shared Census geocoder.
+
+### The frontend Worker's signed reads
+
+The Worker renders the sitemap and page metadata server-side, and every Cloudflare Worker reaches us from one shared address. It signs each read with `x-op-edge-read: <seconds>.<HMAC-SHA256 of "<seconds>\n<path and query>">` (`common/rate-limit/edge-read-signature.ts`; `lib/server/edge-read.ts` in the frontend).
+
+- A fresh signature (5 minutes) on a `GET` draws on `EDGE_READ_THROTTLER_CONFIG` instead of the visitor budget. It is never extended to a `POST`.
+- With `EDGE_READ_SIGNING_SECRET` unset on either side, nothing is signed or exempted. That's the launch configuration: the edge cache keeps the Worker's reads well inside one visitor's budget. Set the secret if `GatewayRateLimitingReaders` fires during a crawl.
+- The secret is a Worker secret (`wrangler secret put`), never a `.env` entry: OpenNext embeds `.env` files in the Worker bundle (`scripts/check-worker-env.mjs`).
+
 ## Configuration
 
 ### Environment Variables
@@ -421,6 +456,9 @@ COOKIE_REFRESH_TOKEN_MAX_AGE=604800000 # 7 days
 # Gateway HMAC (microservice authentication)
 GATEWAY_HMAC_SECRET='your-secure-secret'
 GATEWAY_CLIENT_ID='api-gateway'
+
+# Frontend Worker's signed reads (optional; the same value as the Worker secret)
+EDGE_READ_SIGNING_SECRET='at-least-32-characters'
 ```
 
 ### Production Checklist
@@ -435,6 +473,8 @@ GATEWAY_CLIENT_ID='api-gateway'
 - [ ] GraphQL complexity limiting enabled (default: 1000)
 - [ ] `NODE_ENV=production` (not 'prod' or 'dev')
 - [ ] Prompt service nodes use HMAC auth (`PROMPT_SERVICE_NODE_ID` set)
+- [ ] The gateway and Kong are published on `127.0.0.1` only (`API_BIND_ADDR`, `KONG_BIND_ADDR` unset)
+- [ ] If set (optional; not needed at launch): `EDGE_READ_SIGNING_SECRET` on the gateway and as a Worker secret, the same value, never in a `.env` file
 
 ## Environment Configuration
 

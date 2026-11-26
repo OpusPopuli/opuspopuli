@@ -2,6 +2,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { createMock } from '@golevelup/ts-jest';
 
+import { AUDIT_METADATA_KEY } from 'src/common/decorators/audit.decorator';
+import { IS_PUBLIC_KEY } from 'src/common/decorators/public.decorator';
 import { RegionResolver } from './region.resolver';
 import { RegionSearchService } from './region-search.service';
 import { RegionDomainService } from './region.service';
@@ -224,6 +226,31 @@ describe('RegionResolver', () => {
       );
       expect(isPublic).toBe(true);
     });
+  });
+
+  describe('countySupervisorsAt (#1456)', () => {
+    it("forwards the visitor's jurisdiction ids", async () => {
+      regionService.getCountySupervisorsAt.mockResolvedValue([] as never);
+      await resolver.countySupervisorsAt({ ids: ['c', 's'] });
+      expect(regionService.getCountySupervisorsAt).toHaveBeenCalledWith([
+        'c',
+        's',
+      ]);
+    });
+
+    it.each(['countySupervisorsAt', 'representativesByDistricts'] as const)(
+      '%s is open to visitors and kept out of the audit log',
+      (name) => {
+        // An audit row would pair the visitor's districts with their IP: the
+        // location record the public lookup promises not to keep. Found for
+        // representativesByDistricts by /op-verify, on UAT.
+        const handler = RegionResolver.prototype[name];
+        expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBe(true);
+        expect(Reflect.getMetadata(AUDIT_METADATA_KEY, handler)).toEqual({
+          skipAudit: true,
+        });
+      },
+    );
   });
 
   describe('regionInfo', () => {

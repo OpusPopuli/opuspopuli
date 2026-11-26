@@ -21,6 +21,22 @@ jest.mock("next/link", () => {
   };
 });
 
+// A hook-free t() over the real English strings: after resetModules a real
+// react-i18next would bind to a second copy of React, and its hook would
+// fail outside the renderer's.
+jest.mock("react-i18next", () => {
+  const common = jest.requireActual("@/locales/en/common.json");
+  type Tree = { [key: string]: Tree | string | undefined };
+  const lookup = (key: string) =>
+    key
+      .split(".")
+      .reduce<
+        Tree | string | undefined
+      >((node, part) => (typeof node === "object" ? node[part] : undefined), common) ??
+    key;
+  return { useTranslation: () => ({ t: lookup }) };
+});
+
 describe("Footer version", () => {
   const original = process.env.NEXT_PUBLIC_APP_VERSION;
 

@@ -189,4 +189,11 @@ describe("ContributionsPage", () => {
       });
     });
   });
+
+  it("names its sources and says its links are automated, not allegations (#962)", () => {
+    render(<ContributionsPage />);
+    expect(
+      screen.getByRole("note", { name: "Campaign-finance data disclaimer" }),
+    ).toBeInTheDocument();
+  });
 });

@@ -42,7 +42,11 @@
   "navigation": {
     "backToApp": "Back to App",
     "scanPetition": "Scan a petition",
-    "whereYouLive": "Where you live"
+    "whereYouLive": "Where you live",
+    "explore": "Explore",
+    "search": "Search",
+    "signIn": "Sign in",
+    "createAccount": "Create account"
   },
   "accessibility": {
     "languageChanged": "Language changed to English",
@@ -53,6 +57,8 @@
     "closeNotification": "Close notification"
   },
   "footer": {
+    "notice": "Opus Populi is a civic-education tool for illustrative purposes. Its data comes from official public records (such as the California Secretary of State's CAL-ACCESS database and the U.S. Federal Election Commission), always with attribution. Those records are authoritative; the summaries this site generates are AI-produced, and the links it draws (including campaign-finance attributions) are automated best-effort and may be incomplete or inaccurate — not an allegation of wrongdoing. Verify against the official sources before relying on or republishing anything here.",
+    "rights": "All rights reserved.",
     "privacyPolicy": "Privacy Policy",
     "termsOfService": "Terms of Service",
     "transparency": "Transparency",
@@ -125,7 +131,7 @@
   },
   "aiReceipt": {
     "badge": {
-      "AI": "AI-generated",
+      "AI": "AI-generated · may contain errors",
       "DETERMINISTIC": "Generated from records",
       "MANUAL": "Written by a person",
       "SCRAPED": "Official text",
@@ -178,5 +184,13 @@
     "verifyDownload": "Download",
     "verifyRun": "Run (on Linux use sha256sum):",
     "verifyMatch": "The fingerprint printed must equal the one above. If even one character of the file had changed, it would not."
+  },
+  "readingNotice": {
+    "title": "How to read this site",
+    "sources": "Everything here comes from official public records, and each page names its source. Those records are the authority; check them before you rely on or repeat anything.",
+    "ai": "Summaries marked “AI-generated” were written by a model and may contain errors.",
+    "links": "Links between people, money and measures are matched automatically. They may be wrong, and they are not an allegation of wrongdoing.",
+    "more": "How this site works",
+    "dismiss": "Got it"
   }
 }

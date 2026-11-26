@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 import { Footer } from "@/components/Footer";
+import i18n from "@/lib/i18n";
 
 describe("Footer", () => {
   beforeEach(() => {
@@ -35,5 +36,27 @@ describe("Footer", () => {
     expect(
       screen.getByText(/not\s+an allegation of wrongdoing/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Footer in Spanish (#962)", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
+  it("carries the illustrative-purpose notice and its links in Spanish", async () => {
+    await i18n.changeLanguage("es");
+    render(<Footer />);
+    expect(
+      screen.getByText(
+        /herramienta de educación cívica con fines ilustrativos/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/no constituyen una acusación de conducta indebida/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Política de Privacidad" }),
+    ).toHaveAttribute("href", "/privacy");
   });
 });

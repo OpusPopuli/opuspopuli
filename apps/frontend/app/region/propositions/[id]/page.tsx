@@ -20,6 +20,7 @@ import {
   type PetitionDocumentsForPropositionData,
 } from "@/lib/graphql/documents";
 import { RegionPageHeader } from "@/components/region/RegionPageHeader";
+import { AccountPrompt } from "@/components/region/AccountPrompt";
 import { RegionDetailShell } from "@/components/region/RegionDetailShell";
 import { SectionTitle } from "@/components/region/SectionTitle";
 import { ComingSoon } from "@/components/region/ComingSoon";
@@ -606,6 +607,8 @@ export default function PropositionDetailPage() {
               />
             )}
           </div>
+
+          <AccountPrompt kind="proposition" />
         </div>
       )}
     </RegionDetailShell>
