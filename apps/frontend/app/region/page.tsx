@@ -79,7 +79,11 @@ export default function RegionPage() {
     );
   }
 
-  if (jurisdictionsError) {
+  // Signed in, a failed read of the account's districts is an error to
+  // show. A visitor's saved location failing to load (a 429, a gateway
+  // blip) falls through to the lookup form instead, as on the other region
+  // pages, so they're never stuck without a way to set or change it.
+  if (jurisdictionsError && source !== "device") {
     return (
       <div className="mx-auto max-w-3xl px-8 py-12">
         <ErrorState entity={t("stack.entity")} />

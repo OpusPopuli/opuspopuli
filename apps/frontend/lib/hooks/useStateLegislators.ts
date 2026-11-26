@@ -6,6 +6,7 @@ import {
   type UserJurisdictionData,
 } from "@/lib/graphql/region";
 import { districtNumber, findByType } from "@/lib/region-stack";
+import { useJurisdictions } from "@/components/region/JurisdictionsContext";
 
 /**
  * The reader's own state legislators, from their resolved districts.
@@ -28,6 +29,10 @@ export function useStateLegislators(
     findByType(jurisdictions, "STATE_SENATE_DISTRICT")?.jurisdiction.name,
   );
 
+  // A visitor's districts are their location (#1456). Kept out of the
+  // persisted Apollo cache, as every visitor lookup is, so "Clear location"
+  // leaves no copy of them on the device.
+  const { source } = useJurisdictions();
   const { data } = useQuery<RepresentativesByDistrictsData>(
     GET_REPRESENTATIVES_BY_DISTRICTS,
     {
@@ -36,6 +41,7 @@ export function useStateLegislators(
         stateSenatorialDistrict: senate,
       },
       skip: !assembly && !senate,
+      ...(source === "device" ? { fetchPolicy: "no-cache" as const } : {}),
     },
   );
 

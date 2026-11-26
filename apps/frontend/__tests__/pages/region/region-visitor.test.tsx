@@ -55,11 +55,12 @@ jest.mock("@/components/region/LocateForm", () => ({
 }));
 
 let mockJurisdictions: unknown[] = [];
+let mockError: unknown = null;
 jest.mock("@/components/region/JurisdictionsContext", () => ({
   useJurisdictions: () => ({
     jurisdictions: mockJurisdictions,
     loading: false,
-    error: null,
+    error: mockError,
     source: "device",
     setLocation: jest.fn(),
     clearLocation: jest.fn(),
@@ -121,15 +122,21 @@ function answer() {
   );
 }
 
-/** True when the document was never run unskipped. */
+/**
+ * True when the page asked for the document but never ran it. The page
+ * must have asked: a check that passed because nothing called the document
+ * at all would prove nothing.
+ */
 function neverRan(document: unknown) {
-  return mockUseQuery.mock.calls
-    .filter(([doc]) => doc === document)
-    .every(([, options]) => options?.skip === true);
+  const calls = mockUseQuery.mock.calls.filter(([doc]) => doc === document);
+  return (
+    calls.length > 0 && calls.every(([, options]) => options?.skip === true)
+  );
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockError = null;
   answer();
 });
 
@@ -147,6 +154,15 @@ describe("region home, signed out (#1456)", () => {
     expect(screen.getByText(/Chris Coursey/)).toBeInTheDocument();
     expect(container.querySelector('a[href="/settings"]')).toBeNull();
     expect(screen.getByTestId("location-control")).toBeInTheDocument();
+  });
+
+  it("offers the lookup, not a dead end, when a saved location fails to load", () => {
+    // A 429 or a gateway blip on jurisdictionsByIds: the visitor must still
+    // be able to set or change their location.
+    mockJurisdictions = [];
+    mockError = new Error("Too many requests");
+    render(<RegionPage />);
+    expect(screen.getByTestId("locate-form")).toBeInTheDocument();
   });
 
   it("never runs the account's supervisor query", () => {
@@ -195,6 +211,9 @@ describe("representatives page, signed out (#1456)", () => {
       stateAssemblyDistrict: "2",
       stateSenatorialDistrict: "2",
     });
+    // The districts are the visitor's location: kept out of the persisted
+    // Apollo cache, so Clear leaves no copy on the device.
+    expect(byDistricts?.[1].fetchPolicy).toBe("no-cache");
     expect(screen.getAllByText("Jim Wood").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Chris Coursey").length).toBeGreaterThan(0);
   });

@@ -165,6 +165,19 @@ test.describe("Region without an account (#1456)", () => {
         localStorage.getItem("op-visitor-jurisdictions-v1"),
       ),
     ).toBeNull();
+    // Nothing derived from the location survives in the persisted Apollo
+    // cache either: no districts, no legislators looked up by them.
+    const cached = await page.evaluate(() =>
+      JSON.stringify({ ...localStorage }),
+    );
+    for (const field of [
+      "representativesByDistricts(",
+      "jurisdictionsByIds(",
+      "countySupervisorsAt(",
+      "locateJurisdictions(",
+    ]) {
+      expect(cached).not.toContain(field);
+    }
   });
 
   test("invites an account on a proposition, without blocking it", async ({
