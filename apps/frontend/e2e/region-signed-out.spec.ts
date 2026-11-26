@@ -198,6 +198,10 @@ test.describe("Region without an account (#1456)", () => {
   test("offers the way in from the header", async ({ page }) => {
     await page.goto("/region");
     const header = page.locator("header").first();
+    // On a phone the links sit in a collapsed menu, as a reader would find
+    // them: open it first. On desktop the button is hidden and they show.
+    const menu = page.getByRole("button", { name: "Open menu" });
+    if (await menu.isVisible()) await menu.click();
     await expect(
       header.getByRole("link", { name: "Explore" }).first(),
     ).toHaveAttribute("href", "/region");
