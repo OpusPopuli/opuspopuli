@@ -238,12 +238,11 @@ services:
     networks:
       - opuspopuli-network
     restart: unless-stopped
+    # The postgrest image is a bare static binary — no shell, curl or wget —
+    # so no in-container probe can run (the old curl check was permanently
+    # "unhealthy"). Nothing gates on this service being healthy.
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      disable: true
     deploy:
       resources:
         limits:
@@ -286,7 +285,9 @@ services:
       - opuspopuli-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/status"]
+      # 127.0.0.1, not localhost: busybox wget resolves localhost to ::1, but
+      # storage listens on IPv4 only, so the localhost probe is always refused.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5000/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -399,7 +400,9 @@ services:
       - opuspopuli-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      # No wget in the image; use node. Next.js binds to $HOSTNAME (the
+      # container id), not localhost, so probe via the hostname.
+      test: ["CMD", "node", "-e", "fetch('http://'+require('os').hostname()+':3000/api/profile').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -432,7 +435,8 @@ services:
       - opuspopuli-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      # No wget in the image; use node.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
