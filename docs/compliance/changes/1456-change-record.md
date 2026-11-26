@@ -7,11 +7,11 @@
 | Field | Value |
 |---|---|
 | **Change ID** | `1456-open-civic-record` (subtasks 3–7; subtasks 1–2 shipped in #1457, v2.2.0) |
-| **Linked issues** | [#1456](https://github.com/OpusPopuli/opuspopuli/issues/1456); disclaimers for signed-out readers from [#962](https://github.com/OpusPopuli/opuspopuli/issues/962); follow-ups in `opuspopuli-node` (alert sync) |
+| **Linked issues** | [#1456](https://github.com/OpusPopuli/opuspopuli/issues/1456); disclaimers for signed-out readers from [#962](https://github.com/OpusPopuli/opuspopuli/issues/962); PR [#1463](https://github.com/OpusPopuli/opuspopuli/pull/1463), merged 2026-11-26 as `2e08e03e`. Follow-ups: opuspopuli #1464, #1465, #1466, #1467; opuspopuli-node #72, #73 |
 | **Date** | 2026-11-25 |
 | **Branch** | `opuspopuli @ feat/open-civic-record-location-1456`, 16 commits on `main` (`92213503` … `f1ae8013`), 102 files, +5,077 / −196 |
 | **Author** | Claude Code (Anthropic Claude), directed by Rodney Gagnon — AI-assisted; each subtask approved by the owner in-session before its commit (2026-11-24 and 2026-11-25) |
-| **Reviewer(s)** | **PENDING.** No pull request yet. Separation of duties: self-review only, until independent PR review or a countersignature |
+| **Reviewer(s)** | **None independent.** PR #1463 was merged by the owner on 2026-11-26 (`2e08e03e`) with no independent human review. Reviews before merge were AI-run on the owner's behalf (`/op-review`, `/security-review`, the pre-push gate's AI code and security reviews), so they are self-reviews. **Separation of duties is not met** until a second person reviews or countersigns; that must happen before the release approval below |
 | **Plan of record** | `docs/plans/1456-open-civic-record.md`, with every departure from it recorded under "Changes from the plan" |
 
 ## What changed and why
@@ -85,8 +85,11 @@ From the plan, updated for what this branch found.
 ## Security evidence
 
 - **Personal-data scan:** passed, 0 findings on the diff.
-- **`/op-security` (CVEs, filesystem, secrets):** **PENDING.**
-- **Pre-push AI reviews (`/op-review`, `/security-review`, hook stages 7–8) and the Trivy scan:** **PENDING** until the push.
+- **`/op-security` (CVEs, filesystem, secrets):** not run as a separate step. The pre-push gate covered the same ground on every push: dependency audit (no HIGH or CRITICAL), Trivy filesystem scan (0), gitleaks over full history (clean, after one fingerprinted false positive was suppressed in `.gitleaksignore`).
+- **`/op-review` (2026-11-26):** three lenses; one blocker (a visitor's districts persisted in the Apollo cache) and four other findings fixed. One suspected race was measured on production builds and isn't real. Details are in the plan's "Pre-PR review" section.
+- **`/security-review` (2026-11-26):** no findings.
+- **Pre-push gate, AI security review:** found a dot-segment bypass (`/..//evil.com`) in the first version of the redirect fix, closed in `32afae30`. The final push passed with no critical or high findings in either AI review.
+- **CI:** green on the PR (`93be97c6`) and on `main` after the merge (`2e08e03e`), across the full browser matrix including Firefox.
 - **Security-relevant design:**
   - the client IP is resolved from Cloudflare, not the client;
   - per-client GraphQL limits;
@@ -108,5 +111,5 @@ From the plan, updated for what this branch found.
 | | |
 |---|---|
 | **Record approved by** | Rodney Gagnon, in session, 2026-11-25: approved the record's contents as an accurate account of the change. Not a release approval |
-| **Approved for release to production by** | **PENDING** (after independent review and the pre-push gate) |
+| **Approved for release to production by** | **PENDING.** Not to be released yet: held until the map-first navigation redesign ships (owner decision, 2026-11-26). Release approval also needs the independent review above first |
 | **Meaning of release approval** | The change was planned, independently reviewed, tested and verified as recorded above, and is reversible as described |
