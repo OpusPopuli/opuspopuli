@@ -1,0 +1,9 @@
+# Individual gitleaks findings confirmed as false positives. One fingerprint
+# per line (commit:file:rule:line), so each suppresses exactly one finding.
+# Broader, recurring cases belong in .gitleaks.toml's allowlist instead.
+
+# generic-api-key on the visitor-location storage key constant in
+# visitor-location.ts: the localStorage key name under which a signed-out
+# visitor's district ids are kept (#1456), not a credential. The rule
+# matches any constant named like a key that is assigned a string.
+b90489b16788fefe35990520b33512fe5752a699:apps/frontend/lib/visitor-location.ts:generic-api-key:14
