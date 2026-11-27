@@ -61,6 +61,7 @@ export type { IPipelineService } from "./declarative/declarative-region-plugin.j
 export type {
   BoundarySourcesConfig,
   TigerLayerConfig,
+  DisplayLayerConfig,
   GeoportalLayerConfig,
   BoundaryJurisdictionType,
   BoundaryJurisdictionLevel,

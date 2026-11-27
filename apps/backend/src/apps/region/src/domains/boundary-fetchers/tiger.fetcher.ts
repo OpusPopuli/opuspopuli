@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { TigerLayerConfig } from '@opuspopuli/region-provider';
+import type {
+  DisplayLayerConfig,
+  TigerLayerConfig,
+} from '@opuspopuli/region-provider';
 import {
   DEFAULT_FIPS_FIELD,
   fetchPaginatedGeoJSON,
@@ -29,6 +32,22 @@ const TIGER_BASE =
  * TIGER layer exposes. `${fipsCode}` is substituted from RegionContext.
  */
 const DEFAULT_WHERE = "STATE='${fipsCode}'";
+
+/**
+ * One feature of a layer's display geometry, keyed exactly as the layer's
+ * own rows are, so it lands on the same `jurisdictions` row (#1475).
+ */
+export interface DisplayRow {
+  fipsCode: string;
+  geometryGeoJSON: unknown;
+}
+
+/** A layer's display geometry and where it came from. */
+export interface DisplayBatch {
+  rows: DisplayRow[];
+  /** The resolved layer URL, recorded as the shapes' source. */
+  sourceUrl: string;
+}
 
 /**
  * Generic TIGER/Line layer fetcher. Counties, places, state legislative
@@ -96,6 +115,61 @@ export class TigerFetcher {
   }
 
   /**
+   * Fetch a layer's display geometry: the same features from the layer's
+   * configured display source (typically the shoreline-clipped Census
+   * cartographic version), keyed by the layer's own fipsField and
+   * fipsPrefix. Display-only: nothing here touches `boundary`, which
+   * address-to-district resolution reads (#1475).
+   *
+   * Fails closed like the main fetch: an unresolvable name, or a feature
+   * with no key, is dropped with a log rather than guessed at. Null when the
+   * layer has no display source.
+   */
+  async fetchDisplay(
+    layer: TigerLayerConfig,
+    ctx: RegionContext,
+  ): Promise<DisplayBatch | null> {
+    const display: DisplayLayerConfig | undefined = layer.display;
+    if (!display) return null;
+
+    const id = await this.resolveLayerId(
+      display.url,
+      display.layerName,
+      'TigerFetcher (display)',
+    );
+    if (id === null) return { rows: [], sourceUrl: display.url };
+
+    const sourceUrl = `${display.url}/${id}`;
+    const fipsField = layer.fipsField ?? DEFAULT_FIPS_FIELD;
+    const where = substituteVerbatim(layer.where ?? DEFAULT_WHERE, ctx);
+    const features = await fetchPaginatedGeoJSON(sourceUrl, where, fipsField);
+
+    const rows: DisplayRow[] = [];
+    for (const feature of features) {
+      const key = feature.properties?.[fipsField];
+      if (
+        key === undefined ||
+        key === null ||
+        key === '' ||
+        !feature.geometry
+      ) {
+        continue;
+      }
+      rows.push({
+        fipsCode: `${layer.fipsPrefix ?? ''}${String(key)}`,
+        geometryGeoJSON: feature.geometry,
+      });
+    }
+    if (rows.length === 0) {
+      this.logger.warn(
+        `TigerFetcher (display): 0 usable features from '${display.layerName}' ` +
+          `(where=${where}) — this layer keeps whatever display geometry it had.`,
+      );
+    }
+    return { rows, sourceUrl };
+  }
+
+  /**
    * Resolve the config's layer reference to a concrete `service/index` path.
    *
    * With `layerName` set, `layer` is the service root and the index is
@@ -114,32 +188,47 @@ export class TigerFetcher {
   ): Promise<string | null> {
     if (!layer.layerName) return layer.layer;
 
-    const serviceUrl = `${TIGER_BASE}/${layer.layer}`;
+    const id = await this.resolveLayerId(
+      `${TIGER_BASE}/${layer.layer}`,
+      layer.layerName,
+      'TigerFetcher',
+    );
+    return id === null ? null : `${layer.layer}/${id}`;
+  }
+
+  /**
+   * A layer NAME → its current index in an ArcGIS service, or null with an
+   * error naming what the service offers. Never an index fallback: see
+   * pickLayerIdByName.
+   */
+  private async resolveLayerId(
+    serviceUrl: string,
+    layerName: string,
+    label: string,
+  ): Promise<number | null> {
     const directory = await fetchServiceDirectory(serviceUrl);
     if (!directory) {
       this.logger.error(
-        `TigerFetcher: could not read service directory ${layer.layer} — ` +
-          `layer '${layer.layerName}' skipped this load.`,
+        `${label}: could not read service directory ${serviceUrl} — ` +
+          `layer '${layerName}' skipped this load.`,
       );
       return null;
     }
 
-    const id = pickLayerIdByName(directory, layer.layerName);
+    const id = pickLayerIdByName(directory, layerName);
     if (id === null) {
       const available = (directory.layers ?? [])
         .map((l) => `${l.id}:'${l.name}'`)
         .join(', ');
       this.logger.error(
-        `TigerFetcher: no layer named '${layer.layerName}' in ${layer.layer}. ` +
+        `${label}: no layer named '${layerName}' in ${serviceUrl}. ` +
           `A retired vintage (e.g. a new Congress) needs a deliberate config ` +
           `update, never an index fallback. Available: ${available}`,
       );
       return null;
     }
 
-    this.logger.log(
-      `TigerFetcher: '${layer.layerName}' resolved to ${layer.layer}/${id}`,
-    );
-    return `${layer.layer}/${id}`;
+    this.logger.log(`${label}: '${layerName}' resolved to ${serviceUrl}/${id}`);
+    return id;
   }
 }

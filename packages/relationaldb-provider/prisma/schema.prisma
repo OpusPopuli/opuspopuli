@@ -3433,6 +3433,46 @@ model CountyThreshold {
   @@map("county_thresholds")
 }
 
+/// One drawing: the whole region (`frame_key = 'region'`), or one county with
+/// its districts (`county:<jurisdiction id>`). Built by the region sync from
+/// the region config's display sources and projection (#1475). CHECK
+/// constraints live in the migration (Prisma can't express them).
+model ShapeFrame {
+  frameKey       String              @id @map("frame_key")
+  /// The county a county frame draws; null only for the region frame.
+  jurisdictionId String?             @unique @map("jurisdiction_id")
+  jurisdiction   Jurisdiction?       @relation("ShapeFrameCounty", fields: [jurisdictionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  /// [minX, minY, width, height] in drawing units.
+  viewBox        Int[]               @map("view_box")
+  projectionSrid Int                 @map("projection_srid")
+  /// How well the county's district plan fits its outline, as shares of the
+  /// county's area. All three null when the frame has no districts.
+  gapShare       Float?              @map("gap_share")
+  overlapShare   Float?              @map("overlap_share")
+  bestEffort     Boolean?            @map("best_effort")
+  builtAt        DateTime            @default(now()) @map("built_at") @db.Timestamptz
+  shapes         JurisdictionShape[]
+
+  @@map("shape_frames")
+}
+
+/// One jurisdiction drawn in one frame, as ready-to-draw SVG path data.
+model JurisdictionShape {
+  frameKey       String       @map("frame_key")
+  frame          ShapeFrame   @relation(fields: [frameKey], references: [frameKey], onUpdate: Cascade, onDelete: Cascade)
+  jurisdictionId String       @map("jurisdiction_id")
+  jurisdiction   Jurisdiction @relation(fields: [jurisdictionId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  path           String
+  /// Shown beside the drawing: a shape that can't cite its source isn't stored.
+  sourceName     String       @map("source_name")
+  sourceUrl      String       @map("source_url")
+  retrievedAt    DateTime     @map("retrieved_at") @db.Timestamptz
+
+  @@id([frameKey, jurisdictionId])
+  @@index([jurisdictionId])
+  @@map("jurisdiction_shapes")
+}
+
 /// Materialized from `jurisdictions.boundary` via ST_Touches (#1107). Both
 /// directions are stored; county borders do not move.
 model CountyAdjacency {
@@ -3450,27 +3490,33 @@ model CountyAdjacency {
 }
 
 model Jurisdiction {
-  id        String                                        @id @default(uuid())
-  fipsCode  String?                                       @unique @map("fips_code") @db.VarChar(20)
-  ocdId     String?                                       @unique @map("ocd_id") @db.VarChar(255)
-  name      String                                        @db.VarChar(255)
-  type      JurisdictionType
-  level     JurisdictionLevel
-  stateCode String                                        @map("state_code") @db.VarChar(2)
-  parentId  String?                                       @map("parent_id")
+  id              String                                        @id @default(uuid())
+  fipsCode        String?                                       @unique @map("fips_code") @db.VarChar(20)
+  ocdId           String?                                       @unique @map("ocd_id") @db.VarChar(255)
+  name            String                                        @db.VarChar(255)
+  type            JurisdictionType
+  level           JurisdictionLevel
+  stateCode       String                                        @map("state_code") @db.VarChar(2)
+  parentId        String?                                       @map("parent_id")
   // boundary geography(MultiPolygon, 4326) added via raw SQL migration — Prisma Unsupported
-  boundary  Unsupported("geography(MultiPolygon, 4326)")?
-  metadata  Json?
+  boundary        Unsupported("geography(MultiPolygon, 4326)")?
+  /// Display-only geometry from the layer's configured display source (the
+  /// shoreline-clipped cartographic version). Drawn on maps; never used to
+  /// place an address in a district — that's `boundary` (#1475).
+  displayBoundary Unsupported("geography(MultiPolygon, 4326)")? @map("display_boundary")
+  metadata        Json?
 
   parent            Jurisdiction?      @relation("JurisdictionHierarchy", fields: [parentId], references: [id])
   children          Jurisdiction[]     @relation("JurisdictionHierarchy")
   userJurisdictions UserJurisdiction[]
 
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   countyThreshold CountyThreshold?
-  adjacencyFrom   CountyAdjacency[] @relation("CountyAdjacencyFrom")
-  adjacencyTo     CountyAdjacency[] @relation("CountyAdjacencyTo")
+  adjacencyFrom   CountyAdjacency[]   @relation("CountyAdjacencyFrom")
+  adjacencyTo     CountyAdjacency[]   @relation("CountyAdjacencyTo")
+  shapeFrame      ShapeFrame?         @relation("ShapeFrameCounty")
+  shapes          JurisdictionShape[]
 
   @@index([type])
   @@index([level])

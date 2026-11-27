@@ -1100,6 +1100,12 @@ export interface BoundarySourcesConfig {
    * doesn't cover (fire districts, water districts, etc.).
    */
   geoportalLayers?: GeoportalLayerConfig[];
+  /**
+   * EPSG code of the projected coordinate system this region's maps are
+   * drawn in, e.g. 3310 (California Albers). Without it no map shapes are
+   * built; boundaries still load (#1475).
+   */
+  displayProjection?: number;
 }
 
 /**
@@ -1162,6 +1168,21 @@ export interface TigerLayerConfig {
   ocdIdSegment?: string;
   /** Template for the persisted jurisdiction name. Defaults to `${name}`. */
   nameTemplate?: string;
+  /**
+   * Display-only geometry for the same features, typically the Census
+   * cartographic (shoreline-clipped) version. Drawn on maps, never used to
+   * place an address in a district. Matched to this layer's rows by its
+   * fipsField and fipsPrefix, and fetched with its `where` (#1475).
+   */
+  display?: DisplayLayerConfig;
+}
+
+/** Where a layer's display geometry comes from (#1475). */
+export interface DisplayLayerConfig {
+  /** ArcGIS MapServer SERVICE root. HTTPS only. */
+  url: string;
+  /** Exact layer name within that service, resolved like `layerName`. */
+  layerName: string;
 }
 
 /**

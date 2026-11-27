@@ -98,7 +98,7 @@ describe('BoundaryLoaderService', () => {
   let service: BoundaryLoaderService;
   let mockDb: MockDbClient;
   let mockRegistry: MockPluginRegistry;
-  let mockTigerFetcher: { fetch: jest.Mock };
+  let mockTigerFetcher: { fetch: jest.Mock; fetchDisplay: jest.Mock };
   let mockGeoportalFetcher: { fetch: jest.Mock };
 
   beforeEach(async () => {
@@ -106,7 +106,11 @@ describe('BoundaryLoaderService', () => {
     mockRegistry = createMockRegistry();
     // Fetcher behavior is exercised in their own specs. The loader's tests
     // verify orchestration: how it composes fetcher results into upserts.
-    mockTigerFetcher = { fetch: jest.fn().mockResolvedValue([]) };
+    // No display sources by default (#1475): fetchDisplay → null.
+    mockTigerFetcher = {
+      fetch: jest.fn().mockResolvedValue([]),
+      fetchDisplay: jest.fn().mockResolvedValue(null),
+    };
     mockGeoportalFetcher = { fetch: jest.fn().mockResolvedValue([]) };
     // County boundary-source collection (#1136) reads enabled county rows on
     // every load; no counties is the default world for these tests.
@@ -677,6 +681,138 @@ describe('BoundaryLoaderService', () => {
       expect(mockDb.jurisdiction.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'jur-1' } }),
       );
+    });
+  });
+
+  describe('display geometry (#1475)', () => {
+    const DISPLAY_SOURCES: BoundarySourcesConfig = {
+      ocdIdPrefix: 'ocd-division/country:zz',
+      displayProjection: 3310,
+      tigerLayers: [
+        {
+          ...SAMPLE_SOURCES.tigerLayers![0],
+          display: {
+            url: 'https://maps.example.gov/arcgis/rest/services/Generalized/State_County/MapServer',
+            layerName: 'Counties 500K',
+          },
+        },
+      ],
+    };
+    const displayRow = (fipsCode: string) => ({
+      fipsCode,
+      geometryGeoJSON: SAMPLE_ROW.geometryGeoJSON,
+    });
+    /** The SQL text of a tagged-template $executeRaw call. */
+    const sqlOf = (call: unknown[]) => (call[0] as string[]).join('?');
+
+    beforeEach(() => {
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(DISPLAY_SOURCES));
+    });
+
+    it('runs even when the boundary step skips, so a loaded node still gets it', async () => {
+      // Boundaries already loaded; no display geometry yet.
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001'), displayRow('99003')],
+        sourceUrl: 'https://maps.example.gov/x/5',
+      });
+      mockDb.$executeRaw.mockResolvedValueOnce(2 as never);
+
+      const result = await service.loadAll();
+
+      expect(result.skipped).toBe('already-populated');
+      expect(mockTigerFetcher.fetch).not.toHaveBeenCalled();
+      expect(result.display).toEqual({ updated: 2, unmatched: 0 });
+    });
+
+    it('writes display_boundary only — never the boundary districts are resolved from', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001')],
+        sourceUrl: 'https://maps.example.gov/x/5',
+      });
+      mockDb.$executeRaw.mockResolvedValueOnce(1 as never);
+
+      await service.loadAll();
+
+      const sql = sqlOf(mockDb.$executeRaw.mock.calls[0]);
+      expect(sql).toContain('SET display_boundary');
+      expect(sql).not.toMatch(/SET boundary/);
+      expect(sql).toContain('ST_MakeValid');
+      const payload = JSON.parse(mockDb.$executeRaw.mock.calls[0][1] as string);
+      expect(payload).toEqual([
+        { fips: '99001', geom: SAMPLE_ROW.geometryGeoJSON },
+      ]);
+    });
+
+    it('counts display features that matched no jurisdiction', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001'), displayRow('99002'), displayRow('99003')],
+        sourceUrl: 'https://maps.example.gov/x/5',
+      });
+      mockDb.$executeRaw.mockResolvedValueOnce(2 as never);
+
+      const result = await service.loadAll();
+
+      expect(result.display).toEqual({ updated: 2, unmatched: 1 });
+    });
+
+    it('skips when display geometry is already loaded, unless forced', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
+
+      const result = await service.loadAll();
+
+      expect(result.display).toEqual({
+        skipped: 'already-populated',
+        updated: 0,
+        unmatched: 0,
+      });
+      expect(mockTigerFetcher.fetchDisplay).not.toHaveBeenCalled();
+    });
+
+    it('re-fetches when forced', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001')],
+        sourceUrl: 'https://maps.example.gov/x/5',
+      });
+      mockDb.$executeRaw.mockResolvedValue(1 as never);
+
+      const result = await service.loadAll({ force: true });
+
+      expect(mockTigerFetcher.fetchDisplay).toHaveBeenCalledTimes(1);
+      expect(result.display?.updated).toBe(1);
+    });
+
+    it('writes nothing for a layer whose display fetch came back empty', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [],
+        sourceUrl: 'https://maps.example.gov/x',
+      });
+
+      const result = await service.loadAll();
+
+      expect(mockDb.$executeRaw).not.toHaveBeenCalled();
+      expect(result.display).toEqual({ updated: 0, unmatched: 0 });
+    });
+
+    it('reports why it skipped when there is no active region', async () => {
+      mockRegistry.getActive.mockReturnValue(undefined);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+
+      const result = await service.loadAll();
+
+      expect(result.display?.skipped).toBe('no-active-plugin');
     });
   });
 });

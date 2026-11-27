@@ -4,7 +4,10 @@ import {
   PluginRegistryService,
   type BoundarySourcesConfig,
 } from '@opuspopuli/region-provider';
-import { TigerFetcher } from './boundary-fetchers/tiger.fetcher';
+import {
+  TigerFetcher,
+  type DisplayRow,
+} from './boundary-fetchers/tiger.fetcher';
 import { GeoportalFetcher } from './boundary-fetchers/geoportal.fetcher';
 import type {
   BoundaryRow,
@@ -33,6 +36,20 @@ const UPSERT_CONCURRENCY = 50;
 // it without circular module dependencies. Re-exported above so callers
 // importing from this module are unaffected.
 
+export type BoundarySkipReason =
+  | 'no-active-plugin'
+  | 'no-boundary-sources'
+  | 'already-populated';
+
+/** Outcome of the display-geometry step (#1475). */
+export interface DisplayLoadResult {
+  skipped?: BoundarySkipReason;
+  /** Jurisdictions whose display geometry was written. */
+  updated: number;
+  /** Display features whose key matched no jurisdiction. */
+  unmatched: number;
+}
+
 /** Outcome of a single loadAll() call. Surfaces enough detail for an
  * operator to tell loaded-vs-skipped, partial-vs-clean, at a glance. */
 export interface BoundaryLoadResult {
@@ -41,7 +58,10 @@ export interface BoundaryLoadResult {
   ok: boolean;
   /** Reason loadAll() short-circuited without fetching. Absent on a real
    * run. */
-  skipped?: 'no-active-plugin' | 'no-boundary-sources' | 'already-populated';
+  skipped?: BoundarySkipReason;
+  /** The display-geometry step, which runs after the boundary step whether
+   * or not that one skipped (#1475). */
+  display?: DisplayLoadResult;
   counts: {
     /** Rows already in jurisdictions before this run. */
     existing: number;
@@ -123,6 +143,13 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * (main.ts boot-time: detached; admin mutation: awaited).
    */
   async loadAll(opts: { force?: boolean } = {}): Promise<BoundaryLoadResult> {
+    const result = await this.loadBoundaries(opts);
+    return { ...result, display: await this.loadDisplay(opts) };
+  }
+
+  private async loadBoundaries(opts: {
+    force?: boolean;
+  }): Promise<BoundaryLoadResult> {
     // Count jurisdictions that actually HAVE a boundary, not jurisdictions
     // that exist (#1107).
     //
@@ -268,24 +295,9 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     | { sources: BoundarySourcesConfig; ctx: RegionContext } {
     const baseCounts = { existing, upserted: 0, failed: 0, missingKey: 0 };
 
-    const plugin = this.pluginRegistry.getActive();
-    if (!plugin) {
-      this.logger.warn(
-        'BoundaryLoader: no active region plugin — skipping load.',
-      );
-      return {
-        skip: { ok: true, skipped: 'no-active-plugin', counts: baseCounts },
-      };
-    }
-
-    const sources = plugin.getBoundarySources?.();
-    if (!sources) {
-      this.logger.debug(
-        `BoundaryLoader: plugin ${plugin.getName()} has no boundarySources — skipping load.`,
-      );
-      return {
-        skip: { ok: true, skipped: 'no-boundary-sources', counts: baseCounts },
-      };
+    const region = this.resolveRegionSources();
+    if ('skip' in region) {
+      return { skip: { ok: true, skipped: region.skip, counts: baseCounts } };
     }
 
     if (existing > 0 && !opts.force) {
@@ -296,6 +308,31 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       return {
         skip: { ok: true, skipped: 'already-populated', counts: baseCounts },
       };
+    }
+    return region;
+  }
+
+  /**
+   * The active region's boundary sources and substitution context, or why
+   * there are none. Shared by the boundary and display steps.
+   */
+  private resolveRegionSources():
+    | { skip: BoundarySkipReason }
+    | { sources: BoundarySourcesConfig; ctx: RegionContext } {
+    const plugin = this.pluginRegistry.getActive();
+    if (!plugin) {
+      this.logger.warn(
+        'BoundaryLoader: no active region plugin — skipping load.',
+      );
+      return { skip: 'no-active-plugin' };
+    }
+
+    const sources = plugin.getBoundarySources?.();
+    if (!sources) {
+      this.logger.debug(
+        `BoundaryLoader: plugin ${plugin.getName()} has no boundarySources — skipping load.`,
+      );
+      return { skip: 'no-boundary-sources' };
     }
 
     // Per-config substitution context. fipsCode + stateCode are sourced
@@ -309,15 +346,83 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
         `BoundaryLoader: plugin ${info.id} declared boundarySources but is missing ` +
           `fipsCode (${info.fipsCode ?? 'unset'}) or stateCode (${info.stateCode ?? 'unset'}) — skipping load.`,
       );
-      return {
-        skip: { ok: true, skipped: 'no-boundary-sources', counts: baseCounts },
-      };
+      return { skip: 'no-boundary-sources' };
     }
 
     return {
       sources,
       ctx: { fipsCode: info.fipsCode, stateCode: info.stateCode },
     };
+  }
+
+  /**
+   * Display geometry (#1475): each layer's configured display source — the
+   * shoreline-clipped version maps are drawn from — written to
+   * `display_boundary` on the rows the boundary step keyed. Never touches
+   * `boundary`, which address-to-district resolution reads.
+   *
+   * Gated on its own count, not the boundary step's, so a node whose
+   * boundaries were loaded long ago still gets display geometry on its next
+   * run without a forced boundary reload.
+   */
+  private async loadDisplay(opts: {
+    force?: boolean;
+  }): Promise<DisplayLoadResult> {
+    const region = this.resolveRegionSources();
+    if ('skip' in region) {
+      return { skipped: region.skip, updated: 0, unmatched: 0 };
+    }
+
+    const withDisplay = await this.db.$queryRaw<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM jurisdictions WHERE display_boundary IS NOT NULL
+    `;
+    if ((withDisplay?.[0]?.count ?? 0) > 0 && !opts.force) {
+      return { skipped: 'already-populated', updated: 0, unmatched: 0 };
+    }
+
+    const groups = [region, ...(await this.collectCountyBoundarySources())];
+    let updated = 0;
+    let unmatched = 0;
+    for (const group of groups) {
+      for (const layer of group.sources.tigerLayers ?? []) {
+        const batch = await this.tigerFetcher.fetchDisplay(layer, group.ctx);
+        if (!batch?.rows.length) continue;
+        const written = await this.writeDisplay(batch.rows);
+        updated += written;
+        unmatched += batch.rows.length - written;
+      }
+    }
+
+    this.logger.log(
+      `BoundaryLoader: display geometry for ${updated} jurisdictions` +
+        (unmatched
+          ? `, ${unmatched} display features matched no jurisdiction`
+          : '') +
+        '.',
+    );
+    return { updated, unmatched };
+  }
+
+  /**
+   * One statement per layer. Repaired on the way in (ST_MakeValid, polygons
+   * only) so the shapes step can clip and measure without tripping on a
+   * self-intersection in the source.
+   */
+  private async writeDisplay(rows: DisplayRow[]): Promise<number> {
+    const payload = JSON.stringify(
+      rows.map((r) => ({ fips: r.fipsCode, geom: r.geometryGeoJSON })),
+    );
+    return this.db.$executeRaw`
+      UPDATE jurisdictions AS j
+      SET display_boundary = ST_Multi(
+            ST_CollectionExtract(
+              ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(r.geom::text), 4326)),
+              3
+            )
+          )::geography
+      FROM json_to_recordset(${payload}::json) AS r(fips text, geom json)
+      WHERE j.fips_code = r.fips
+    `;
   }
 
   /**
