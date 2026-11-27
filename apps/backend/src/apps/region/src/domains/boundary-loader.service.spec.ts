@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ShapesBuilderService } from './shapes/shapes-builder.service';
 import { BoundaryLoaderService, BoundaryRow } from './boundary-loader.service';
 import {
   DbService,
@@ -100,6 +101,7 @@ describe('BoundaryLoaderService', () => {
   let mockRegistry: MockPluginRegistry;
   let mockTigerFetcher: { fetch: jest.Mock; fetchDisplay: jest.Mock };
   let mockGeoportalFetcher: { fetch: jest.Mock };
+  let mockShapes: { build: jest.Mock };
 
   beforeEach(async () => {
     mockDb = createMockDbService();
@@ -112,6 +114,11 @@ describe('BoundaryLoaderService', () => {
       fetchDisplay: jest.fn().mockResolvedValue(null),
     };
     mockGeoportalFetcher = { fetch: jest.fn().mockResolvedValue([]) };
+    mockShapes = {
+      build: jest
+        .fn()
+        .mockResolvedValue({ frames: 0, shapes: 0, incompleteTypes: [] }),
+    };
     // County boundary-source collection (#1136) reads enabled county rows on
     // every load; no counties is the default world for these tests.
     mockDb.regionPlugin.findMany.mockResolvedValue([] as never);
@@ -123,6 +130,7 @@ describe('BoundaryLoaderService', () => {
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: TigerFetcher, useValue: mockTigerFetcher },
         { provide: GeoportalFetcher, useValue: mockGeoportalFetcher },
+        { provide: ShapesBuilderService, useValue: mockShapes },
       ],
     }).compile();
 
@@ -813,6 +821,56 @@ describe('BoundaryLoaderService', () => {
       const result = await service.loadAll();
 
       expect(result.display?.skipped).toBe('no-active-plugin');
+    });
+  });
+
+  describe('map shapes (#1475)', () => {
+    beforeEach(() => {
+      mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
+    });
+
+    it('rebuilds with force when the display step wrote geometry', async () => {
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ count: 0 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [
+          { fipsCode: '99001', geometryGeoJSON: SAMPLE_ROW.geometryGeoJSON },
+        ],
+        sourceUrl: 'https://maps.example.gov/x/5',
+      });
+      mockDb.$executeRaw.mockResolvedValueOnce(1 as never);
+
+      const result = await service.loadAll();
+
+      expect(mockShapes.build).toHaveBeenCalledWith(SAMPLE_SOURCES, [], {
+        force: true,
+      });
+      expect(result.shapes).toEqual({
+        frames: 0,
+        shapes: 0,
+        incompleteTypes: [],
+      });
+    });
+
+    it('asks without force when nothing changed, so the builder decides', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
+
+      await service.loadAll();
+
+      expect(mockShapes.build).toHaveBeenCalledWith(SAMPLE_SOURCES, [], {
+        force: false,
+      });
+    });
+
+    it('does not build without an active region', async () => {
+      mockRegistry.getActive.mockReturnValue(undefined);
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+
+      const result = await service.loadAll();
+
+      expect(mockShapes.build).not.toHaveBeenCalled();
+      expect(result.shapes).toBeUndefined();
     });
   });
 });

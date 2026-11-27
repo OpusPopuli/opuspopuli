@@ -382,7 +382,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
   });
 
   it('returns null for a layer with no display source, without fetching', async () => {
-    const { display: _omit, ...plain } = districtLayer;
+    const plain: TigerLayerConfig = { ...districtLayer, display: undefined };
     await expect(fetcher.fetchDisplay(plain, CTX)).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -414,6 +414,36 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
     // Same filter as the layer's own fetch, and only the key field.
     expect(queryUrl).toContain('where=STATE%3D%2799%27');
     expect(queryUrl).toContain('outFields=GEOID&');
+  });
+
+  it('skips a same-named rendition with no polygons, like a Labels group', async () => {
+    // TIGERweb's generalised services list a "Labels" group first; its
+    // layers share the real ones' names but return geometry: null.
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([
+          { id: 8, name: 'Upper Districts 500K' },
+          { id: 2, name: 'Upper Districts 500K' },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: null },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: square },
+        ]),
+      );
+
+    const batch = await fetcher.fetchDisplay(districtLayer, CTX);
+
+    expect(String(fetchMock.mock.calls[1][0])).toContain(
+      `${DISPLAY_SERVICE}/2/query`,
+    );
+    expect(batch?.sourceUrl).toBe(`${DISPLAY_SERVICE}/8`);
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99001']);
   });
 
   it('drops features with no key or no geometry rather than guessing', async () => {

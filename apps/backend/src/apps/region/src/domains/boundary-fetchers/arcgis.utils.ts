@@ -265,11 +265,24 @@ export function pickLayerIdByName(
   directory: ArcgisServiceDirectory,
   layerName: string,
 ): number | null {
-  const matches = (directory.layers ?? [])
+  const matches = layerIdsByName(directory, layerName);
+  return matches.length === 0 ? null : matches[0];
+}
+
+/**
+ * Every layer bearing exactly this name, lowest index first. Used where the
+ * lowest isn't necessarily usable: TIGERweb's generalised services list a
+ * "Labels" group first, whose layers share their names with the real ones
+ * but carry no polygons (#1475).
+ */
+export function layerIdsByName(
+  directory: ArcgisServiceDirectory,
+  layerName: string,
+): number[] {
+  return (directory.layers ?? [])
     .filter((l) => l.name === layerName)
-    .map((l) => l.id);
-  if (matches.length === 0) return null;
-  return Math.min(...matches);
+    .map((l) => l.id)
+    .sort((a, b) => a - b);
 }
 
 /**

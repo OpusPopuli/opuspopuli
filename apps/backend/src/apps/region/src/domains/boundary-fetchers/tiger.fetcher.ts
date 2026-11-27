@@ -7,10 +7,12 @@ import {
   DEFAULT_FIPS_FIELD,
   fetchPaginatedGeoJSON,
   fetchServiceDirectory,
+  layerIdsByName,
   mapFeaturesToRows,
   pickLayerIdByName,
   substituteVerbatim,
   type BoundaryRow,
+  type GeoJSONFeature,
   type RegionContext,
 } from './arcgis.utils';
 
@@ -132,41 +134,45 @@ export class TigerFetcher {
     const display: DisplayLayerConfig | undefined = layer.display;
     if (!display) return null;
 
-    const id = await this.resolveLayerId(
-      display.url,
-      display.layerName,
-      'TigerFetcher (display)',
-    );
-    if (id === null) return { rows: [], sourceUrl: display.url };
-
-    const sourceUrl = `${display.url}/${id}`;
-    const fipsField = layer.fipsField ?? DEFAULT_FIPS_FIELD;
-    const where = substituteVerbatim(layer.where ?? DEFAULT_WHERE, ctx);
-    const features = await fetchPaginatedGeoJSON(sourceUrl, where, fipsField);
-
-    const rows: DisplayRow[] = [];
-    for (const feature of features) {
-      const key = feature.properties?.[fipsField];
-      if (
-        key === undefined ||
-        key === null ||
-        key === '' ||
-        !feature.geometry
-      ) {
-        continue;
-      }
-      rows.push({
-        fipsCode: `${layer.fipsPrefix ?? ''}${String(key)}`,
-        geometryGeoJSON: feature.geometry,
-      });
-    }
-    if (rows.length === 0) {
-      this.logger.warn(
-        `TigerFetcher (display): 0 usable features from '${display.layerName}' ` +
-          `(where=${where}) — this layer keeps whatever display geometry it had.`,
+    const directory = await fetchServiceDirectory(display.url);
+    const candidates = directory
+      ? layerIdsByName(directory, display.layerName)
+      : [];
+    if (candidates.length === 0) {
+      this.logger.error(
+        `TigerFetcher (display): no layer named '${display.layerName}' in ${display.url}` +
+          (directory ? '' : ' (service directory unreadable)') +
+          ' — display geometry for this layer skipped this load.',
       );
+      return { rows: [], sourceUrl: display.url };
     }
-    return { rows, sourceUrl };
+
+    // Same name, same entity — but some renditions (a "Labels" group) carry
+    // no polygons, so take the first one that actually returns geometry.
+    const where = substituteVerbatim(layer.where ?? DEFAULT_WHERE, ctx);
+    for (const id of candidates) {
+      const sourceUrl = `${display.url}/${id}`;
+      const rows = toDisplayRows(
+        await fetchPaginatedGeoJSON(
+          sourceUrl,
+          where,
+          layer.fipsField ?? DEFAULT_FIPS_FIELD,
+        ),
+        layer,
+      );
+      if (rows.length > 0) {
+        this.logger.log(
+          `TigerFetcher (display): '${display.layerName}' → ${sourceUrl}, ${rows.length} features`,
+        );
+        return { rows, sourceUrl };
+      }
+    }
+
+    this.logger.warn(
+      `TigerFetcher (display): 0 usable features from any '${display.layerName}' ` +
+        `(where=${where}) — this layer keeps whatever display geometry it had.`,
+    );
+    return { rows: [], sourceUrl: display.url };
   }
 
   /**
@@ -231,4 +237,24 @@ export class TigerFetcher {
     this.logger.log(`${label}: '${layerName}' resolved to ${serviceUrl}/${id}`);
     return id;
   }
+}
+
+/** Features keyed like the layer's own rows; no key or no geometry → dropped. */
+function toDisplayRows(
+  features: GeoJSONFeature[],
+  layer: TigerLayerConfig,
+): DisplayRow[] {
+  const fipsField = layer.fipsField ?? DEFAULT_FIPS_FIELD;
+  const rows: DisplayRow[] = [];
+  for (const feature of features) {
+    const key = feature.properties?.[fipsField];
+    if (key === undefined || key === null || key === '' || !feature.geometry) {
+      continue;
+    }
+    rows.push({
+      fipsCode: `${layer.fipsPrefix ?? ''}${String(key)}`,
+      geometryGeoJSON: feature.geometry,
+    });
+  }
+  return rows;
 }

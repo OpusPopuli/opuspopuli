@@ -32,6 +32,7 @@ import { BoundaryLoaderService } from '../../../src/apps/region/src/domains/boun
 import type { BoundaryRow } from '../../../src/apps/region/src/domains/boundary-loader.service';
 import { TigerFetcher } from '../../../src/apps/region/src/domains/boundary-fetchers/tiger.fetcher';
 import { GeoportalFetcher } from '../../../src/apps/region/src/domains/boundary-fetchers/geoportal.fetcher';
+import { ShapesBuilderService } from '../../../src/apps/region/src/domains/shapes/shapes-builder.service';
 import { cleanDatabase, disconnectDatabase, getDbService } from '../utils';
 
 // ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ describe('BoundaryLoaderService — integration (#804)', () => {
   let service: BoundaryLoaderService;
   let db: DbService;
   let mockRegistry: { getActive: jest.Mock };
-  let mockTigerFetcher: { fetch: jest.Mock };
+  let mockTigerFetcher: { fetch: jest.Mock; fetchDisplay: jest.Mock };
   let mockGeoportalFetcher: { fetch: jest.Mock };
 
   beforeAll(async () => {
@@ -147,7 +148,10 @@ describe('BoundaryLoaderService — integration (#804)', () => {
     await cleanDatabase();
 
     mockRegistry = { getActive: jest.fn() };
-    mockTigerFetcher = { fetch: jest.fn().mockResolvedValue([]) };
+    mockTigerFetcher = {
+      fetch: jest.fn().mockResolvedValue([]),
+      fetchDisplay: jest.fn().mockResolvedValue(null),
+    };
     mockGeoportalFetcher = { fetch: jest.fn().mockResolvedValue([]) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -157,6 +161,8 @@ describe('BoundaryLoaderService — integration (#804)', () => {
         { provide: PluginRegistryService, useValue: mockRegistry },
         { provide: TigerFetcher, useValue: mockTigerFetcher },
         { provide: GeoportalFetcher, useValue: mockGeoportalFetcher },
+        // Real builder: these sources name no displayProjection, so it skips.
+        ShapesBuilderService,
       ],
     }).compile();
 

@@ -8,6 +8,10 @@ import {
   TigerFetcher,
   type DisplayRow,
 } from './boundary-fetchers/tiger.fetcher';
+import {
+  ShapesBuilderService,
+  type ShapesBuildResult,
+} from './shapes/shapes-builder.service';
 import { GeoportalFetcher } from './boundary-fetchers/geoportal.fetcher';
 import type {
   BoundaryRow,
@@ -62,6 +66,9 @@ export interface BoundaryLoadResult {
   /** The display-geometry step, which runs after the boundary step whether
    * or not that one skipped (#1475). */
   display?: DisplayLoadResult;
+  /** The map-shapes step, last; rebuilt when either step above changed
+   * anything, or when no shapes exist yet (#1475). */
+  shapes?: ShapesBuildResult;
   counts: {
     /** Rows already in jurisdictions before this run. */
     existing: number;
@@ -106,6 +113,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     private readonly pluginRegistry: PluginRegistryService,
     private readonly tigerFetcher: TigerFetcher,
     private readonly geoportalFetcher: GeoportalFetcher,
+    private readonly shapesBuilder: ShapesBuilderService,
   ) {}
 
   /**
@@ -144,7 +152,29 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    */
   async loadAll(opts: { force?: boolean } = {}): Promise<BoundaryLoadResult> {
     const result = await this.loadBoundaries(opts);
-    return { ...result, display: await this.loadDisplay(opts) };
+    const display = await this.loadDisplay(opts);
+    const changed = result.counts.upserted > 0 || display.updated > 0;
+    const shapes = await this.buildShapes(opts.force === true || changed);
+    return { ...result, display, ...(shapes && { shapes }) };
+  }
+
+  /**
+   * Shapes come from the geometry the two steps above wrote, so they're
+   * rebuilt whenever either changed something (or forced). The builder
+   * also builds when none exist yet, so a node gets its first shapes
+   * without a forced reload.
+   */
+  private async buildShapes(
+    force: boolean,
+  ): Promise<ShapesBuildResult | undefined> {
+    const region = this.resolveRegionSources();
+    if ('skip' in region) return undefined;
+    const counties = await this.collectCountyBoundarySources();
+    return this.shapesBuilder.build(
+      region.sources,
+      counties.map((c) => c.sources),
+      { force },
+    );
   }
 
   private async loadBoundaries(opts: {
