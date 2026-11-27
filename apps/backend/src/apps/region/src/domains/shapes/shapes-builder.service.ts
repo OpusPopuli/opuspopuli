@@ -143,7 +143,7 @@ export class ShapesBuilderService {
       return { result: { ...empty, skipped: 'no-display-layers' } };
     }
 
-    const { complete, incomplete } = await this.completeTypes(drawnTypes);
+    const { complete, incomplete } = await this.completeTypes(refs.layers);
     const skip = (skipped: ShapesBuildResult['skipped']) => ({
       result: { ...empty, incompleteTypes: incomplete, skipped },
     });
@@ -251,21 +251,30 @@ export class ShapesBuilderService {
    * with holes in it.
    */
   private async completeTypes(
-    types: string[],
+    layers: SourceRef[],
   ): Promise<{ complete: string[]; incomplete: string[] }> {
-    // Per row, not by totals: a row with display geometry but no boundary
-    // must not make up for one with a boundary that was never checked. A
-    // row checked and found not covered by its source (display_source set,
-    // no geometry) isn't missing — it just isn't drawn.
+    const types = [...new Set(layers.map((l) => l.jurisdictionType))];
+    // Over the rows each display layer owns — its type and fipsPrefix, as
+    // the loader scopes them — so rows no display layer could ever cover
+    // (another layer's, or ones with no code) can't hold a type back.
+    //
+    // Per row, not by totals: a row with display geometry must not make up
+    // for one that was never checked. A row checked and found not covered
+    // by its source (display_source set, no geometry) isn't missing — it
+    // just isn't drawn.
     const rows = await this.db.$queryRaw<
       { type: string; missing: number; with_display: number }[]
     >`
-      SELECT type::text AS type,
-             count(*) FILTER (WHERE boundary IS NOT NULL AND display_source IS NULL)::int AS missing,
-             count(*) FILTER (WHERE display_boundary IS NOT NULL)::int AS with_display
-        FROM jurisdictions
-       WHERE type::text = ANY(${types}::text[])
-       GROUP BY type
+      SELECT l.type,
+             count(j.id) FILTER (WHERE j.display_source IS NULL)::int AS missing,
+             count(j.id) FILTER (WHERE j.display_boundary IS NOT NULL)::int AS with_display
+        FROM unnest(${layers.map((l) => l.jurisdictionType)}::text[],
+                    ${layers.map((l) => l.fipsPrefix ?? '')}::text[]) AS l(type, prefix)
+        LEFT JOIN jurisdictions j
+          ON j.type::text = l.type
+         AND j.boundary IS NOT NULL
+         AND left(j.fips_code, length(l.prefix)) = l.prefix
+       GROUP BY l.type
     `;
     const complete: string[] = [];
     const incomplete: string[] = [];

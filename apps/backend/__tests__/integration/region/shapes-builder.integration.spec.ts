@@ -355,6 +355,22 @@ UPDATE jurisdictions
     ).toBe(2);
   });
 
+  it('is not held back by rows no display layer owns', async () => {
+    await seedRegion();
+    // A county row with a boundary but no code: no display source can ever
+    // match it, so it must not keep the county layer incomplete.
+    await db.$executeRaw`
+      INSERT INTO jurisdictions (id, name, type, level, state_code, boundary, updated_at)
+      VALUES ('county-x', 'county-x', 'COUNTY'::"JurisdictionType", 'COUNTY'::"JurisdictionLevel", 'ZZ',
+              ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(${polygon(rect(11, 11.5))}::text), 4326))::geography, now())
+    `;
+
+    const result = await builder.build(REGION, COUNTIES);
+
+    expect(result.incompleteTypes).toEqual([]);
+    expect(result.frames).toBe(3);
+  });
+
   it('builds nothing without a display projection', async () => {
     await seedRegion();
     const noProjection: BoundarySourcesConfig = {
