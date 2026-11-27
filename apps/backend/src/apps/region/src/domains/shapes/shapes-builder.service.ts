@@ -360,12 +360,20 @@ export class ShapesBuilderService {
     frames.push(
       frameRow(REGION_FRAME, null, fit, frame.srid, null, frame.fingerprint),
     );
+    const fipsById = new Map(projected.map((p) => [p.id, p.fips_code]));
     for (const [type, features] of Object.entries(simplified)) {
-      const source = layers.find((l) => l.jurisdictionType === type);
-      if (!source) continue;
-      shapes.push(
-        ...toShapeRows(REGION_FRAME, features, fit, source, retrievedAt),
-      );
+      for (const feature of features) {
+        const source = layerSource(
+          type,
+          fipsById.get(String(feature.id)),
+          layers,
+        );
+        if (source) {
+          shapes.push(
+            ...toShapeRows(REGION_FRAME, [feature], fit, source, retrievedAt),
+          );
+        }
+      }
     }
   }
 
@@ -378,12 +386,15 @@ export class ShapesBuilderService {
     frames: FrameRow[],
     shapes: ShapeRow[],
   ): void {
-    const outlineSource = refs.layers.find(
-      (l) => l.jurisdictionType === 'COUNTY',
-    );
-    if (!outlineSource) return;
+    if (!refs.layers.some((l) => l.jurisdictionType === 'COUNTY')) return;
     for (const county of outlines) {
       try {
+        const outlineSource = layerSource(
+          'COUNTY',
+          county.fips_code,
+          refs.layers,
+        );
+        if (!outlineSource) continue;
         this.addCountyFrame(
           county,
           districts,
@@ -515,6 +526,7 @@ function sourceRefs(
       if (layer.display && accept(layer.display.url)) {
         layers.push({
           jurisdictionType: layer.jurisdictionType,
+          fipsPrefix: layer.fipsPrefix,
           name: layer.display.layerName,
           url: layer.display.url,
         });
@@ -554,6 +566,28 @@ function fingerprintOf(
       }),
     )
     .digest('hex');
+}
+
+/**
+ * The configured layer a shape came from: its type, and the longest
+ * fipsPrefix its code starts with. Two layers of one type are told apart by
+ * prefix, just as the boundary loader keys them, so each shape is credited
+ * to its own source.
+ */
+function layerSource(
+  type: string,
+  fipsCode: string | null | undefined,
+  layers: SourceRef[],
+): SourceRef | undefined {
+  return layers
+    .filter(
+      (l) =>
+        l.jurisdictionType === type &&
+        (fipsCode ?? '').startsWith(l.fipsPrefix ?? ''),
+    )
+    .sort(
+      (a, b) => (b.fipsPrefix ?? '').length - (a.fipsPrefix ?? '').length,
+    )[0];
 }
 
 /**

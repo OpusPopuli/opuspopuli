@@ -314,6 +314,38 @@ describe('ShapesBuilderService (#1475)', () => {
     expect(queried).toBe(false);
   });
 
+  it('credits each shape to its own layer when two layers share a type', async () => {
+    const east = {
+      ...DISPLAY,
+      url: 'https://east.example.gov/MapServer',
+      layerName: 'East',
+    };
+    const west = {
+      ...DISPLAY,
+      url: 'https://west.example.gov/MapServer',
+      layerName: 'West',
+    };
+    const region = {
+      ...REGION,
+      tigerLayers: [
+        { ...countyLayer(east), fipsPrefix: '99001' },
+        { ...countyLayer(west), fipsPrefix: '99003' },
+      ],
+    };
+    const { builder, tx } = builderFor(twoCounties());
+
+    await builder.build(region, COUNTIES);
+
+    const shapes = tx.jurisdictionShape.createMany.mock.calls[0][0].data.filter(
+      (s: { frameKey: string }) => s.frameKey === REGION_FRAME,
+    );
+    const nameOf = (id: string) =>
+      shapes.find((s: { jurisdictionId: string }) => s.jurisdictionId === id)
+        .sourceName;
+    expect(nameOf('a')).toBe('East');
+    expect(nameOf('b')).toBe('West');
+  });
+
   it('leaves out a district no configured layer accounts for', async () => {
     const world = twoCounties();
     world.districts.push({

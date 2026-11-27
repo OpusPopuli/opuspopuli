@@ -746,8 +746,11 @@ describe('BoundaryLoaderService', () => {
 
       const call = mockDb.$queryRaw.mock.calls[1];
       expect(sqlOf(call)).toMatch(/display_source IS DISTINCT FROM/);
+      // type, then the layer's fips prefix (twice: length and value), then the source key.
       expect(call.slice(1)).toEqual([
         'COUNTY',
+        '',
+        '',
         `${DISPLAY.url}#${DISPLAY.layerName}`,
       ]);
     });
@@ -816,12 +819,46 @@ describe('BoundaryLoaderService', () => {
         /SET display_boundary = NULL, display_source =/,
       );
       expect(sqlOf(mark)).toMatch(/fips_code <> ALL/);
+      // Only the rows this layer owns: its type and its fips prefix.
+      expect(sqlOf(mark)).toMatch(/left\(fips_code, length\(\?\)\) = \?/);
       expect(mark.slice(1)).toEqual([
         `${DISPLAY.url}#${DISPLAY.layerName}`,
         'COUNTY',
+        '',
+        '',
         ['99001'],
       ]);
       expect(result.display?.uncovered).toBe(1);
+    });
+
+    it("scopes a layer's staleness and coverage to its own fips prefix", async () => {
+      mockRegistry.getActive.mockReturnValue(
+        createMockPlugin({
+          ...DISPLAY_SOURCES,
+          tigerLayers: [
+            { ...DISPLAY_SOURCES.tigerLayers![0], fipsPrefix: 'east-' },
+          ],
+        }),
+      );
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('east-1')],
+        complete: true,
+      });
+      mockDb.$executeRaw.mockResolvedValue(1 as never);
+
+      await service.loadAll();
+
+      expect(mockDb.$queryRaw.mock.calls[1].slice(1)).toEqual([
+        'COUNTY',
+        'east-',
+        'east-',
+        `${DISPLAY.url}#${DISPLAY.layerName}`,
+      ]);
+      expect(mockDb.$executeRaw.mock.calls[1].slice(3, 5)).toEqual([
+        'east-',
+        'east-',
+      ]);
     });
 
     it('infers nothing about coverage from an incomplete fetch', async () => {

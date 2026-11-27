@@ -472,7 +472,11 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     const key = displaySourceKey(display);
     if (
       !opts.force &&
-      !(await this.displayStale(layer.jurisdictionType, key))
+      !(await this.displayStale(
+        layer.jurisdictionType,
+        layer.fipsPrefix ?? '',
+        key,
+      ))
     ) {
       result.current++;
       return;
@@ -486,6 +490,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     if (fetched.complete) {
       result.uncovered += await this.markUncovered(
         layer.jurisdictionType,
+        layer.fipsPrefix ?? '',
         fetched.rows.map((r) => r.fipsCode),
         key,
       );
@@ -493,13 +498,18 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
   }
 
   /**
-   * Rows of this type that a complete fetch of the display source didn't
-   * contain: recorded as checked against it, with no display geometry. They
+   * Rows this layer owns — its type and its fipsPrefix, the same rows its
+   * boundary fetch keys — that a complete fetch of the display source didn't
+   * contain: recorded as checked against it, with no display geometry.
+   * Scoping by prefix keeps two layers of one type from settling each
+   * other's rows. (A row with no fips_code can't be matched by any display
+   * source, so it's never touched here.) They
    * aren't drawn, and they no longer make the layer look stale or
    * incomplete on every run.
    */
   private markUncovered(
     type: string,
+    prefix: string,
     fetchedFips: string[],
     key: string,
   ): Promise<number> {
@@ -508,7 +518,8 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
          SET display_boundary = NULL, display_source = ${key}
        WHERE type::text = ${type}
          AND boundary IS NOT NULL
-         AND (fips_code IS NULL OR fips_code <> ALL(${fetchedFips}::text[]))
+         AND left(fips_code, length(${prefix})) = ${prefix}
+         AND fips_code <> ALL(${fetchedFips}::text[])
     `;
   }
 
@@ -517,12 +528,17 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * never fetched, or fetched from a different one. A row the source
    * doesn't cover is recorded as checked, so it doesn't count.
    */
-  private async displayStale(type: string, key: string): Promise<boolean> {
+  private async displayStale(
+    type: string,
+    prefix: string,
+    key: string,
+  ): Promise<boolean> {
     const rows = await this.db.$queryRaw<{ stale: boolean }[]>`
       SELECT EXISTS (
         SELECT 1 FROM jurisdictions
          WHERE type::text = ${type}
            AND boundary IS NOT NULL
+           AND left(fips_code, length(${prefix})) = ${prefix}
            AND display_source IS DISTINCT FROM ${key}
       ) AS stale
     `;
