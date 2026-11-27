@@ -984,7 +984,7 @@ type ShapeFitModel {
   overlapShare: Float!
 
   """
-  Either passes the tolerance (0.5%): draw the districts with a note that the map is a best effort.
+  Either passes the tolerance (0.5% of the county's area): draw the districts with a note that the map is a best effort.
   """
   bestEffort: Boolean!
 }

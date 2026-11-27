@@ -2,9 +2,9 @@
  * Pure geometry for the shapes step (#1475). Backend only: `topojson-*`
  * never reaches a browser, which receives finished SVG path data.
  *
- * Input geometry is already projected to California Albers (EPSG:3310) and
- * rounded to whole metres by PostGIS, so everything here is planar
- * arithmetic on metres.
+ * Input geometry is already projected by PostGIS to the region config's
+ * `displayProjection` (a projected CRS in metres) and rounded to whole
+ * metres, so everything here is planar arithmetic on metres.
  */
 import type {
   Feature,

@@ -4,7 +4,7 @@ import { createMock } from '@golevelup/ts-jest';
 import { ConfigService } from '@nestjs/config';
 import { DelayedError, Job } from 'bullmq';
 
-import { RegionSyncProcessor } from './region-sync.processor';
+import { RegionSyncProcessor, boundaryErrors } from './region-sync.processor';
 import { RegionDomainService } from 'src/apps/region/src/domains/region.service';
 import { PipelineJobService } from 'src/apps/region/src/domains/pipeline-job.service';
 import { BoundaryLoaderService } from 'src/apps/region/src/domains/boundary-loader.service';
@@ -681,5 +681,41 @@ describe('RegionSyncProcessor', () => {
         'job-123',
       );
     });
+  });
+});
+
+describe('boundaryErrors (#1475)', () => {
+  const counts = { existing: 10, upserted: 0, failed: 0, missingKey: 0 };
+
+  it('is empty for a clean load', () => {
+    expect(
+      boundaryErrors({
+        ok: true,
+        counts,
+        display: { updated: 3, unmatched: 0, current: 1, failedLayers: 0 },
+        shapes: { frames: 2, shapes: 9, incompleteTypes: [] },
+      }),
+    ).toEqual([]);
+  });
+
+  it('reports failed rows, failed display layers, undrawn layers and a failed build', () => {
+    expect(
+      boundaryErrors({
+        ok: false,
+        counts: { ...counts, failed: 2 },
+        display: { updated: 0, unmatched: 0, current: 0, failedLayers: 1 },
+        shapes: {
+          frames: 0,
+          shapes: 0,
+          incompleteTypes: ['COUNTY'],
+          error: 'Cannot fit an empty bbox',
+        },
+      }),
+    ).toEqual([
+      '2 boundary row(s) failed to upsert (existing=10)',
+      '1 display layer(s) failed to load',
+      'map layers not drawn, display geometry incomplete: COUNTY',
+      'map shapes build failed: Cannot fit an empty bbox',
+    ]);
   });
 });

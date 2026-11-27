@@ -3,9 +3,11 @@ import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   PluginRegistryService,
   type BoundarySourcesConfig,
+  type TigerLayerConfig,
 } from '@opuspopuli/region-provider';
 import {
   TigerFetcher,
+  displaySourceKey,
   type DisplayRow,
 } from './boundary-fetchers/tiger.fetcher';
 import {
@@ -52,7 +54,18 @@ export interface DisplayLoadResult {
   updated: number;
   /** Display features whose key matched no jurisdiction. */
   unmatched: number;
+  /** Layers already current, so not fetched. */
+  current: number;
+  /** Layers whose fetch or write threw; the rest still ran. */
+  failedLayers: number;
 }
+
+type SourceGroup = { sources: BoundarySourcesConfig; ctx: RegionContext };
+
+/** The active region's sources, resolved once per load. */
+type RegionGroups =
+  | { skip: BoundarySkipReason }
+  | { region: SourceGroup; counties: SourceGroup[] };
 
 /** Outcome of a single loadAll() call. Surfaces enough detail for an
  * operator to tell loaded-vs-skipped, partial-vs-clean, at a glance. */
@@ -151,35 +164,53 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * (main.ts boot-time: detached; admin mutation: awaited).
    */
   async loadAll(opts: { force?: boolean } = {}): Promise<BoundaryLoadResult> {
-    const result = await this.loadBoundaries(opts);
-    const display = await this.loadDisplay(opts);
+    const groups = await this.resolveGroups();
+    const result = await this.loadBoundaries(opts, groups);
+    if ('skip' in groups) return result;
+
+    const display = await this.loadDisplay(groups, opts);
     const changed = result.counts.upserted > 0 || display.updated > 0;
-    const shapes = await this.buildShapes(opts.force === true || changed);
-    return { ...result, display, ...(shapes && { shapes }) };
+    const shapes = await this.buildShapes(
+      groups,
+      opts.force === true || changed,
+    );
+    return { ...result, display, shapes };
+  }
+
+  /** Region sources and enabled counties' sources, or why there are none. */
+  private async resolveGroups(): Promise<RegionGroups> {
+    const region = this.resolveRegionSources();
+    if ('skip' in region) return region;
+    return { region, counties: await this.collectCountyBoundarySources() };
   }
 
   /**
-   * Shapes come from the geometry the two steps above wrote, so they're
-   * rebuilt whenever either changed something (or forced). The builder
-   * also builds when none exist yet, so a node gets its first shapes
-   * without a forced reload.
+   * Shapes come from the geometry the two steps above wrote. Forced when
+   * either changed something; otherwise the builder rebuilds only if its
+   * inputs' fingerprint moved. A failure is reported, never thrown, so the
+   * boundary and display results above still reach the caller.
    */
   private async buildShapes(
+    groups: { region: SourceGroup; counties: SourceGroup[] },
     force: boolean,
-  ): Promise<ShapesBuildResult | undefined> {
-    const region = this.resolveRegionSources();
-    if ('skip' in region) return undefined;
-    const counties = await this.collectCountyBoundarySources();
-    return this.shapesBuilder.build(
-      region.sources,
-      counties.map((c) => c.sources),
-      { force },
-    );
+  ): Promise<ShapesBuildResult> {
+    try {
+      return await this.shapesBuilder.build(
+        groups.region.sources,
+        groups.counties.map((c) => c.sources),
+        { force },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`BoundaryLoader: shapes build failed (${message}).`);
+      return { frames: 0, shapes: 0, incompleteTypes: [], error: message };
+    }
   }
 
-  private async loadBoundaries(opts: {
-    force?: boolean;
-  }): Promise<BoundaryLoadResult> {
+  private async loadBoundaries(
+    opts: { force?: boolean },
+    groups: RegionGroups,
+  ): Promise<BoundaryLoadResult> {
     // Count jurisdictions that actually HAVE a boundary, not jurisdictions
     // that exist (#1107).
     //
@@ -201,10 +232,10 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       SELECT count(*)::int AS count FROM jurisdictions WHERE boundary IS NOT NULL
     `;
     const existing = withBoundary?.[0]?.count ?? 0;
-    const precheck = this.checkPreconditions(existing, opts);
+    const precheck = this.checkPreconditions(existing, opts, groups);
     if ('skip' in precheck) return precheck.skip;
 
-    const { sources, ctx } = precheck;
+    const { region, counties } = precheck;
 
     // Upsert each source-group as soon as it is fetched, instead of
     // accumulating every row and upserting once at the very end (#1122).
@@ -227,8 +258,8 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     // State-level sources first, then each enabled county's own layers.
     // Counties without boundarySources (57 of 58 today) cost one indexed
     // DB read total via collectCountyBoundarySources().
-    await applyGroup(await this.fetchAll(sources, ctx));
-    for (const county of await this.collectCountyBoundarySources()) {
+    await applyGroup(await this.fetchAll(region.sources, region.ctx));
+    for (const county of counties) {
       // Isolate per county: one county's flaky published endpoint must not
       // sink the whole refresh (or the state group already persisted above).
       // Its rows are already committed by the time the next county runs.
@@ -320,14 +351,13 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
   private checkPreconditions(
     existing: number,
     opts: { force?: boolean },
+    groups: RegionGroups,
   ):
     | { skip: BoundaryLoadResult }
-    | { sources: BoundarySourcesConfig; ctx: RegionContext } {
+    | { region: SourceGroup; counties: SourceGroup[] } {
     const baseCounts = { existing, upserted: 0, failed: 0, missingKey: 0 };
-
-    const region = this.resolveRegionSources();
-    if ('skip' in region) {
-      return { skip: { ok: true, skipped: region.skip, counts: baseCounts } };
+    if ('skip' in groups) {
+      return { skip: { ok: true, skipped: groups.skip, counts: baseCounts } };
     }
 
     if (existing > 0 && !opts.force) {
@@ -339,7 +369,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
         skip: { ok: true, skipped: 'already-populated', counts: baseCounts },
       };
     }
-    return region;
+    return groups;
   }
 
   /**
@@ -391,46 +421,81 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * `display_boundary` on the rows the boundary step keyed. Never touches
    * `boundary`, which address-to-district resolution reads.
    *
-   * Gated on its own count, not the boundary step's, so a node whose
-   * boundaries were loaded long ago still gets display geometry on its next
-   * run without a forced boundary reload.
+   * Layer by layer: a layer is fetched only when a row of its type lacks
+   * display geometry or got it from a different source (or when forced).
+   * So a layer that failed last time is retried, a source changed in config
+   * is picked up, and a node whose boundaries loaded long ago gets display
+   * geometry, all without a full forced reload. One layer failing doesn't
+   * stop the others.
    */
-  private async loadDisplay(opts: {
-    force?: boolean;
-  }): Promise<DisplayLoadResult> {
-    const region = this.resolveRegionSources();
-    if ('skip' in region) {
-      return { skipped: region.skip, updated: 0, unmatched: 0 };
-    }
-
-    const withDisplay = await this.db.$queryRaw<{ count: number }[]>`
-      SELECT count(*)::int AS count FROM jurisdictions WHERE display_boundary IS NOT NULL
-    `;
-    if ((withDisplay?.[0]?.count ?? 0) > 0 && !opts.force) {
-      return { skipped: 'already-populated', updated: 0, unmatched: 0 };
-    }
-
-    const groups = [region, ...(await this.collectCountyBoundarySources())];
-    let updated = 0;
-    let unmatched = 0;
-    for (const group of groups) {
+  private async loadDisplay(
+    groups: { region: SourceGroup; counties: SourceGroup[] },
+    opts: { force?: boolean },
+  ): Promise<DisplayLoadResult> {
+    const result = { updated: 0, unmatched: 0, current: 0, failedLayers: 0 };
+    for (const group of [groups.region, ...groups.counties]) {
       for (const layer of group.sources.tigerLayers ?? []) {
-        const batch = await this.tigerFetcher.fetchDisplay(layer, group.ctx);
-        if (!batch?.rows.length) continue;
-        const written = await this.writeDisplay(batch.rows);
-        updated += written;
-        unmatched += batch.rows.length - written;
+        if (!layer.display) continue;
+        try {
+          await this.loadDisplayLayer(layer, group.ctx, opts, result);
+        } catch (err) {
+          result.failedLayers++;
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `BoundaryLoader: display layer '${layer.display.layerName}' failed (${message}) — continuing.`,
+          );
+        }
       }
     }
 
     this.logger.log(
-      `BoundaryLoader: display geometry for ${updated} jurisdictions` +
-        (unmatched
-          ? `, ${unmatched} display features matched no jurisdiction`
+      `BoundaryLoader: display geometry for ${result.updated} jurisdictions` +
+        `, ${result.current} layer(s) already current` +
+        (result.unmatched
+          ? `, ${result.unmatched} display features matched no jurisdiction`
+          : '') +
+        (result.failedLayers
+          ? `, ${result.failedLayers} layer(s) failed`
           : '') +
         '.',
     );
-    return { updated, unmatched };
+    return result;
+  }
+
+  private async loadDisplayLayer(
+    layer: TigerLayerConfig,
+    ctx: RegionContext,
+    opts: { force?: boolean },
+    result: DisplayLoadResult,
+  ): Promise<void> {
+    const display = layer.display;
+    if (!display) return;
+    const key = displaySourceKey(display);
+    if (
+      !opts.force &&
+      !(await this.displayStale(layer.jurisdictionType, key))
+    ) {
+      result.current++;
+      return;
+    }
+    const rows = await this.tigerFetcher.fetchDisplay(layer, ctx);
+    if (!rows?.length) return;
+    const written = await this.writeDisplay(rows, key);
+    result.updated += written;
+    result.unmatched += rows.length - written;
+  }
+
+  /** Whether any row of this type lacks display geometry from this source. */
+  private async displayStale(type: string, key: string): Promise<boolean> {
+    const rows = await this.db.$queryRaw<{ stale: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM jurisdictions
+         WHERE type::text = ${type}
+           AND boundary IS NOT NULL
+           AND (display_boundary IS NULL OR display_source IS DISTINCT FROM ${key})
+      ) AS stale
+    `;
+    return rows?.[0]?.stale ?? true;
   }
 
   /**
@@ -438,7 +503,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
    * only) so the shapes step can clip and measure without tripping on a
    * self-intersection in the source.
    */
-  private async writeDisplay(rows: DisplayRow[]): Promise<number> {
+  private async writeDisplay(rows: DisplayRow[], key: string): Promise<number> {
     const payload = JSON.stringify(
       rows.map((r) => ({ fips: r.fipsCode, geom: r.geometryGeoJSON })),
     );
@@ -449,7 +514,8 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
               ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(r.geom::text), 4326)),
               3
             )
-          )::geography
+          )::geography,
+          display_source = ${key}
       FROM json_to_recordset(${payload}::json) AS r(fips text, geom json)
       WHERE j.fips_code = r.fips
     `;

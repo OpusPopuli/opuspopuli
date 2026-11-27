@@ -63,6 +63,32 @@ describe('bboxOf', () => {
   });
 });
 
+describe('bboxOf, other geometry types', () => {
+  it('spans a geometry collection and ignores geometry without area', () => {
+    expect(
+      bboxOf([
+        {
+          type: 'GeometryCollection',
+          geometries: [
+            {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [0, 0],
+                  [2, 0],
+                  [2, 2],
+                  [0, 0],
+                ],
+              ],
+            },
+            { type: 'Point', coordinates: [50, 50] },
+          ],
+        },
+      ]),
+    ).toEqual([0, 0, 2, 2]);
+  });
+});
+
 describe('ringToPath', () => {
   it('writes M with implicit line-tos and closes with Z, without repeating the first point', () => {
     expect(

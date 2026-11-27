@@ -1,5 +1,6 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
 import { JurisdictionTypeGQL } from '../../models/jurisdiction.model';
+import { BEST_EFFORT_TOLERANCE } from '../shape-quality';
 
 /**
  * Map shapes (#1475): ready-to-draw SVG path data the region sync built from
@@ -56,8 +57,7 @@ export class ShapeFitModel {
   overlapShare!: number;
 
   @Field(() => Boolean, {
-    description:
-      'Either passes the tolerance (0.5%): draw the districts with a note that the map is a best effort.',
+    description: `Either passes the tolerance (${BEST_EFFORT_TOLERANCE * 100}% of the county's area): draw the districts with a note that the map is a best effort.`,
   })
   bestEffort!: boolean;
 }

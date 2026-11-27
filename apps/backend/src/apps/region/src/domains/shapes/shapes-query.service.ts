@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DbService } from '@opuspopuli/relationaldb-provider';
+import { DbService, Prisma } from '@opuspopuli/relationaldb-provider';
 import type { JurisdictionTypeGQL } from '../models/jurisdiction.model';
 import type {
   CountyShapesModel,
@@ -14,19 +14,10 @@ const SHAPE_INCLUDE = {
   },
 } as const;
 
-interface ShapeRow {
-  jurisdictionId: string;
-  path: string;
-  sourceName: string;
-  sourceUrl: string;
-  retrievedAt: Date;
-  jurisdiction: {
-    id: string;
-    name: string;
-    type: string;
-    fipsCode: string | null;
-  };
-}
+/** A stored shape with the jurisdiction it draws, as Prisma returns it. */
+type ShapeRow = Prisma.JurisdictionShapeGetPayload<{
+  include: typeof SHAPE_INCLUDE;
+}>;
 
 /**
  * Read side of the map shapes (#1475). Public geography only: built from

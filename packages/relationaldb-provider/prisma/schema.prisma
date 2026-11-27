@@ -3451,6 +3451,9 @@ model ShapeFrame {
   overlapShare   Float?              @map("overlap_share")
   bestEffort     Boolean?            @map("best_effort")
   builtAt        DateTime            @default(now()) @map("built_at") @db.Timestamptz
+  /// Hash of the inputs (projection, sources, complete layers), on the
+  /// region frame. A different one means the shapes are rebuilt.
+  fingerprint    String?
   shapes         JurisdictionShape[]
 
   @@map("shape_frames")
@@ -3504,6 +3507,9 @@ model Jurisdiction {
   /// shoreline-clipped cartographic version). Drawn on maps; never used to
   /// place an address in a district — that's `boundary` (#1475).
   displayBoundary Unsupported("geography(MultiPolygon, 4326)")? @map("display_boundary")
+  /// Which display source `displayBoundary` came from (service URL and layer
+  /// name), so a changed source is re-fetched without a full reload.
+  displaySource   String?                                       @map("display_source")
   metadata        Json?
 
   parent            Jurisdiction?      @relation("JurisdictionHierarchy", fields: [parentId], references: [id])

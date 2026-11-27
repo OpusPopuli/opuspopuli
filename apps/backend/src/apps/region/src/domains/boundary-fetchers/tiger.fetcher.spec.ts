@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TigerFetcher } from './tiger.fetcher';
+import { TigerFetcher, displaySourceKey } from './tiger.fetcher';
 import type { TigerLayerConfig } from '@opuspopuli/region-provider';
 import type { RegionContext } from './arcgis.utils';
 
@@ -404,11 +404,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch?.sourceUrl).toBe(`${DISPLAY_SERVICE}/3`);
-    expect(batch?.rows.map((r) => r.fipsCode)).toEqual([
-      'sldu-99001',
-      'sldu-99002',
-    ]);
+    expect(batch?.map((r) => r.fipsCode)).toEqual(['sldu-99001', 'sldu-99002']);
     const queryUrl = String(fetchMock.mock.calls[1][0]);
     expect(queryUrl).toContain(`${DISPLAY_SERVICE}/3/query`);
     // Same filter as the layer's own fetch, and only the key field.
@@ -442,8 +438,49 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
     expect(String(fetchMock.mock.calls[1][0])).toContain(
       `${DISPLAY_SERVICE}/2/query`,
     );
-    expect(batch?.sourceUrl).toBe(`${DISPLAY_SERVICE}/8`);
-    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99001']);
+    expect(String(fetchMock.mock.calls[2][0])).toContain(
+      `${DISPLAY_SERVICE}/8/query`,
+    );
+    expect(batch?.map((r) => r.fipsCode)).toEqual(['sldu-99001']);
+  });
+
+  it('returns nothing when every same-named layer lacks polygons', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([
+          { id: 1, name: 'Upper Districts 500K' },
+          { id: 2, name: 'Upper Districts 500K' },
+        ]),
+      )
+      .mockResolvedValue(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: null },
+        ]),
+      );
+
+    await expect(fetcher.fetchDisplay(districtLayer, CTX)).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('tries at most three same-named layers', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory(
+          [1, 2, 3, 4, 5].map((id) => ({ id, name: 'Upper Districts 500K' })),
+        ),
+      )
+      .mockResolvedValue(mockGeoJSONResponse([]));
+
+    await fetcher.fetchDisplay(districtLayer, CTX);
+
+    // One directory read, then three candidates.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('keys the display source by service and layer name', () => {
+    expect(displaySourceKey({ url: DISPLAY_SERVICE, layerName: 'X' })).toBe(
+      `${DISPLAY_SERVICE}#X`,
+    );
   });
 
   it('drops features with no key or no geometry rather than guessing', async () => {
@@ -462,7 +499,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99004']);
+    expect(batch?.map((r) => r.fipsCode)).toEqual(['sldu-99004']);
   });
 
   it('fails closed when the display layer name is not in the service', async () => {
@@ -472,7 +509,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch).toEqual({ rows: [], sourceUrl: DISPLAY_SERVICE });
+    expect(batch).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -481,6 +518,6 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch?.rows).toEqual([]);
+    expect(batch).toEqual([]);
   });
 });

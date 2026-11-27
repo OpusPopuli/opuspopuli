@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import type { BoundarySourcesConfig } from '@opuspopuli/region-provider';
@@ -25,11 +26,20 @@ export const countyFrameKey = (countyId: string): string =>
 const COUNTY_DISTRICT_TYPES = ['COUNTY_SUPERVISOR_DISTRICT'];
 
 export interface ShapesBuildResult {
-  skipped?: 'no-projection' | 'no-display-layers' | 'up-to-date';
+  skipped?:
+    | 'no-projection'
+    | 'no-display-layers'
+    | 'up-to-date'
+    /** A layer already drawn is now incomplete; the old shapes are kept. */
+    | 'would-drop-built'
+    /** Another service is replacing the shapes right now. */
+    | 'busy';
   frames: number;
   shapes: number;
   /** Types left out because some of their jurisdictions lack display geometry. */
   incompleteTypes: string[];
+  /** Set by the caller when the build threw. */
+  error?: string;
 }
 
 interface ShapeSource {
@@ -61,6 +71,7 @@ interface DistrictRow {
 
 interface FrameRow {
   frameKey: string;
+  fingerprint: string | null;
   jurisdictionId: string | null;
   viewBox: number[];
   projectionSrid: number;
@@ -106,20 +117,54 @@ export class ShapesBuilderService {
     counties: BoundarySourcesConfig[],
     opts: { force?: boolean } = {},
   ): Promise<ShapesBuildResult> {
+    const gate = await this.gate(region, counties, opts);
+    return 'result' in gate ? gate.result : this.buildFrames(gate);
+  }
+
+  /**
+   * Whether to build, and from what. Rebuilds when forced, or when the
+   * fingerprint of the inputs (projection, sources, which layers are
+   * complete) differs from the one the current frames were built from — so
+   * a layer that becomes complete later, or a source changed in config, is
+   * picked up without a forced reload.
+   */
+  private async gate(
+    region: BoundarySourcesConfig,
+    counties: BoundarySourcesConfig[],
+    opts: { force?: boolean },
+  ): Promise<{ result: ShapesBuildResult } | BuildPlan> {
     const empty = { frames: 0, shapes: 0, incompleteTypes: [] };
     const srid = region.displayProjection;
-    if (!srid) return { ...empty, skipped: 'no-projection' };
+    if (!srid) return { result: { ...empty, skipped: 'no-projection' } };
 
-    const refs = sourceRefs([region, ...counties]);
+    const refs = sourceRefs([region, ...counties], this.logger);
     const drawnTypes = [...new Set(refs.layers.map((r) => r.jurisdictionType))];
-    if (drawnTypes.length === 0)
-      return { ...empty, skipped: 'no-display-layers' };
-
-    if (!opts.force && (await this.db.shapeFrame.count()) > 0) {
-      return { ...empty, skipped: 'up-to-date' };
+    if (drawnTypes.length === 0) {
+      return { result: { ...empty, skipped: 'no-display-layers' } };
     }
 
     const { complete, incomplete } = await this.completeTypes(drawnTypes);
+    const skip = (skipped: ShapesBuildResult['skipped']) => ({
+      result: { ...empty, incompleteTypes: incomplete, skipped },
+    });
+    const fingerprint = fingerprintOf(srid, refs, complete);
+    if (!opts.force && (await this.currentFingerprint()) === fingerprint) {
+      return skip('up-to-date');
+    }
+    const lost = await this.drawnTypesAmong(incomplete);
+    if (lost.length) {
+      this.logger.warn(
+        `ShapesBuilder: ${lost.join(', ')} drawn before but now incomplete — ` +
+          'previous shapes kept until display geometry is whole again.',
+      );
+      return skip('would-drop-built');
+    }
+    return { srid, refs, complete, incomplete, fingerprint };
+  }
+
+  private async buildFrames(plan: BuildPlan): Promise<ShapesBuildResult> {
+    const { srid, refs, complete, incomplete, fingerprint } = plan;
+    const empty = { frames: 0, shapes: 0, incompleteTypes: incomplete };
     const projected = complete.length
       ? await this.projectDisplay(complete, srid)
       : [];
@@ -127,17 +172,16 @@ export class ShapesBuilderService {
       this.logger.warn(
         `ShapesBuilder: no complete layer to draw (incomplete: ${incomplete.join(', ') || 'none'}) — previous shapes kept.`,
       );
-      return { ...empty, incompleteTypes: incomplete };
+      return empty;
     }
 
     const retrievedAt = new Date();
     const frames: FrameRow[] = [];
     const shapes: ShapeRow[] = [];
-
     this.addRegionFrame(
       projected,
       refs.layers,
-      srid,
+      { srid, fingerprint },
       retrievedAt,
       frames,
       shapes,
@@ -156,7 +200,12 @@ export class ShapesBuilderService {
       );
     }
 
-    await this.replaceAll(frames, shapes);
+    if (!(await this.replaceAll(frames, shapes))) {
+      this.logger.log(
+        'ShapesBuilder: another service is replacing the shapes — skipped.',
+      );
+      return { ...empty, skipped: 'busy' };
+    }
     this.logger.log(
       `ShapesBuilder: ${frames.length} frames, ${shapes.length} shapes` +
         (incomplete.length
@@ -171,6 +220,26 @@ export class ShapesBuilderService {
     };
   }
 
+  private async currentFingerprint(): Promise<string | null> {
+    const frame = await this.db.shapeFrame.findUnique({
+      where: { frameKey: REGION_FRAME },
+      select: { fingerprint: true },
+    });
+    return frame?.fingerprint ?? null;
+  }
+
+  /** Which of these types the current region frame already draws. */
+  private async drawnTypesAmong(types: string[]): Promise<string[]> {
+    if (types.length === 0) return [];
+    const rows = await this.db.$queryRaw<{ type: string }[]>`
+      SELECT DISTINCT j.type::text AS type
+        FROM jurisdiction_shapes s
+        JOIN jurisdictions j ON j.id = s.jurisdiction_id
+       WHERE s.frame_key = ${REGION_FRAME} AND j.type::text = ANY(${types}::text[])
+    `;
+    return rows.map((r) => r.type);
+  }
+
   /**
    * A type is drawn only when every jurisdiction of it that has a boundary
    * also has display geometry. A half-drawn layer would read as a region
@@ -179,11 +248,13 @@ export class ShapesBuilderService {
   private async completeTypes(
     types: string[],
   ): Promise<{ complete: string[]; incomplete: string[] }> {
+    // Per row, not by totals: a row with display geometry but no boundary
+    // must not make up for one with a boundary and no display geometry.
     const rows = await this.db.$queryRaw<
-      { type: string; with_boundary: number; with_display: number }[]
+      { type: string; missing: number; with_display: number }[]
     >`
       SELECT type::text AS type,
-             count(*) FILTER (WHERE boundary IS NOT NULL)::int AS with_boundary,
+             count(*) FILTER (WHERE boundary IS NOT NULL AND display_boundary IS NULL)::int AS missing,
              count(*) FILTER (WHERE display_boundary IS NOT NULL)::int AS with_display
         FROM jurisdictions
        WHERE type::text = ANY(${types}::text[])
@@ -193,8 +264,7 @@ export class ShapesBuilderService {
     const incomplete: string[] = [];
     for (const type of types) {
       const row = rows.find((r) => r.type === type);
-      const ok =
-        !!row && row.with_display > 0 && row.with_display >= row.with_boundary;
+      const ok = !!row && row.with_display > 0 && row.missing === 0;
       (ok ? complete : incomplete).push(type);
     }
     return { complete, incomplete };
@@ -257,7 +327,7 @@ export class ShapesBuilderService {
   private addRegionFrame(
     projected: ProjectedRow[],
     layers: SourceRef[],
-    srid: number,
+    frame: { srid: number; fingerprint: string },
     retrievedAt: Date,
     frames: FrameRow[],
     shapes: ShapeRow[],
@@ -269,7 +339,9 @@ export class ShapesBuilderService {
       byType[row.type].features.push(toFeature(row));
     }
     const simplified = simplifyTogether(byType, minAreaFor(fit.unit));
-    frames.push(frameRow(REGION_FRAME, null, fit, srid, null));
+    frames.push(
+      frameRow(REGION_FRAME, null, fit, frame.srid, null, frame.fingerprint),
+    );
     for (const [type, features] of Object.entries(simplified)) {
       const source = layers.find((l) => l.jurisdictionType === type);
       if (!source) continue;
@@ -333,29 +405,71 @@ export class ShapesBuilderService {
     }
   }
 
-  /** All frames replaced at once: a failed build leaves the previous shapes. */
-  private async replaceAll(
-    frames: FrameRow[],
-    shapes: ShapeRow[],
-  ): Promise<void> {
-    await this.db.$transaction([
-      this.db.shapeFrame.deleteMany({}),
-      this.db.shapeFrame.createMany({ data: frames }),
-      this.db.jurisdictionShape.createMany({ data: shapes }),
-    ]);
+  /**
+   * All frames replaced at once, so a failed build leaves the previous
+   * shapes. The region service and two workers each run the boundary load
+   * at boot; a transaction-scoped advisory lock lets one replace and the
+   * others skip (they'd write the same thing) rather than collide on the
+   * frame keys.
+   */
+  private replaceAll(frames: FrameRow[], shapes: ShapeRow[]): Promise<boolean> {
+    return this.db.$transaction(
+      async (tx) => {
+        const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+          SELECT pg_try_advisory_xact_lock(hashtext('opuspopuli:shapes-build')) AS locked
+        `;
+        if (!locked) return false;
+        await tx.shapeFrame.deleteMany({});
+        await tx.shapeFrame.createMany({ data: frames });
+        await tx.jurisdictionShape.createMany({ data: shapes });
+        return true;
+      },
+      { timeout: 60_000 },
+    );
+  }
+}
+
+/** What a build is made from, once the gate has passed it. */
+interface BuildPlan {
+  srid: number;
+  refs: { layers: SourceRef[]; districts: SourceRef[] };
+  complete: string[];
+  incomplete: string[];
+  fingerprint: string;
+}
+
+/**
+ * The source URL a reader may be shown, or null. Sources are served to
+ * every visitor and rendered as links, so only HTTPS gets through: a
+ * `javascript:` or malformed URL in a config row is dropped, not served.
+ */
+function publicSourceUrl(url: string): URL | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' ? parsed : null;
+  } catch {
+    return null;
   }
 }
 
 /** Every drawable layer named in config, with where its lines come from. */
-function sourceRefs(groups: BoundarySourcesConfig[]): {
-  layers: SourceRef[];
-  districts: SourceRef[];
-} {
+function sourceRefs(
+  groups: BoundarySourcesConfig[],
+  logger: Logger,
+): { layers: SourceRef[]; districts: SourceRef[] } {
   const layers: SourceRef[] = [];
   const districts: SourceRef[] = [];
+  const accept = (url: string): URL | null => {
+    const parsed = publicSourceUrl(url);
+    if (!parsed)
+      logger.warn(
+        `ShapesBuilder: source '${url}' is not an HTTPS URL — layer left out.`,
+      );
+    return parsed;
+  };
   for (const group of groups) {
     for (const layer of group.tigerLayers ?? []) {
-      if (layer.display) {
+      if (layer.display && accept(layer.display.url)) {
         layers.push({
           jurisdictionType: layer.jurisdictionType,
           name: layer.display.layerName,
@@ -364,17 +478,39 @@ function sourceRefs(groups: BoundarySourcesConfig[]): {
       }
     }
     for (const layer of group.geoportalLayers ?? []) {
-      if (COUNTY_DISTRICT_TYPES.includes(layer.jurisdictionType)) {
+      if (!COUNTY_DISTRICT_TYPES.includes(layer.jurisdictionType)) continue;
+      const parsed = accept(layer.url);
+      if (parsed) {
         districts.push({
           jurisdictionType: layer.jurisdictionType,
           fipsPrefix: layer.fipsPrefix,
-          name: new URL(layer.url).hostname,
+          name: parsed.hostname,
           url: layer.url,
         });
       }
     }
   }
   return { layers, districts };
+}
+
+/** A stable hash of everything a build depends on besides the geometry itself. */
+function fingerprintOf(
+  srid: number,
+  refs: { layers: SourceRef[]; districts: SourceRef[] },
+  complete: string[],
+): string {
+  const key = (r: SourceRef) =>
+    `${r.jurisdictionType}|${r.fipsPrefix ?? ''}|${r.name}|${r.url}`;
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        srid,
+        layers: refs.layers.map(key).sort(),
+        districts: refs.districts.map(key).sort(),
+        complete: [...complete].sort(),
+      }),
+    )
+    .digest('hex');
 }
 
 /**
@@ -411,12 +547,14 @@ function frameRow(
   fit: Fit,
   srid: number,
   fitMeasured: { gap: number; overlap: number } | null,
+  fingerprint: string | null = null,
 ): FrameRow {
   const quality = fitMeasured
     ? shapeQuality(fitMeasured.gap, fitMeasured.overlap)
     : null;
   return {
     frameKey,
+    fingerprint,
     jurisdictionId,
     viewBox: [...fit.viewBox],
     projectionSrid: srid,

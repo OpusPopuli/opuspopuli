@@ -44,11 +44,19 @@ export interface DisplayRow {
   geometryGeoJSON: unknown;
 }
 
-/** A layer's display geometry and where it came from. */
-export interface DisplayBatch {
-  rows: DisplayRow[];
-  /** The resolved layer URL, recorded as the shapes' source. */
-  sourceUrl: string;
+/**
+ * At most this many same-named layers are tried for display geometry. The
+ * real one sits behind a "Labels" twin in TIGERweb's generalised services;
+ * a cap keeps a misconfigured service from multiplying outbound requests.
+ */
+const MAX_DISPLAY_CANDIDATES = 3;
+
+/**
+ * The key a layer's display geometry is recorded under, on each row it
+ * writes: changing either part of the config makes it stale (#1475).
+ */
+export function displaySourceKey(display: DisplayLayerConfig): string {
+  return `${display.url}#${display.layerName}`;
 }
 
 /**
@@ -125,18 +133,22 @@ export class TigerFetcher {
    *
    * Fails closed like the main fetch: an unresolvable name, or a feature
    * with no key, is dropped with a log rather than guessed at. Null when the
-   * layer has no display source.
+   * layer has no display source; empty when it has one but nothing usable
+   * came back.
    */
   async fetchDisplay(
     layer: TigerLayerConfig,
     ctx: RegionContext,
-  ): Promise<DisplayBatch | null> {
+  ): Promise<DisplayRow[] | null> {
     const display: DisplayLayerConfig | undefined = layer.display;
     if (!display) return null;
 
     const directory = await fetchServiceDirectory(display.url);
     const candidates = directory
-      ? layerIdsByName(directory, display.layerName)
+      ? layerIdsByName(directory, display.layerName).slice(
+          0,
+          MAX_DISPLAY_CANDIDATES,
+        )
       : [];
     if (candidates.length === 0) {
       this.logger.error(
@@ -144,7 +156,7 @@ export class TigerFetcher {
           (directory ? '' : ' (service directory unreadable)') +
           ' — display geometry for this layer skipped this load.',
       );
-      return { rows: [], sourceUrl: display.url };
+      return [];
     }
 
     // Same name, same entity — but some renditions (a "Labels" group) carry
@@ -164,7 +176,7 @@ export class TigerFetcher {
         this.logger.log(
           `TigerFetcher (display): '${display.layerName}' → ${sourceUrl}, ${rows.length} features`,
         );
-        return { rows, sourceUrl };
+        return rows;
       }
     }
 
@@ -172,7 +184,7 @@ export class TigerFetcher {
       `TigerFetcher (display): 0 usable features from any '${display.layerName}' ` +
         `(where=${where}) — this layer keeps whatever display geometry it had.`,
     );
-    return { rows: [], sourceUrl: display.url };
+    return [];
   }
 
   /**

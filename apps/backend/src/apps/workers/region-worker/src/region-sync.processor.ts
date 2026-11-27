@@ -23,7 +23,10 @@ import type {
 import { Inject } from '@nestjs/common';
 import { RegionDomainService } from 'src/apps/region/src/domains/region.service';
 import { PipelineJobService } from 'src/apps/region/src/domains/pipeline-job.service';
-import { BoundaryLoaderService } from 'src/apps/region/src/domains/boundary-loader.service';
+import {
+  BoundaryLoaderService,
+  type BoundaryLoadResult,
+} from 'src/apps/region/src/domains/boundary-loader.service';
 import { DataTypeGQL } from 'src/apps/region/src/domains/models/region-info.model';
 import { DataType, type SyncResult } from '@opuspopuli/common';
 import { DataTypeLock, type HeldLock } from './data-type-lock';
@@ -662,7 +665,10 @@ export class RegionSyncProcessor
    * (markSucceeded, poll) reports it exactly like a civic sync:
    *   - itemsCreated  = rows upserted this run
    *   - itemsSkipped  = rows dropped for want of an idempotency key
-   *   - errors        = one line when any row failed to upsert
+   *   - errors        = a line per problem: rows that failed to upsert, and
+   *                     the map steps (#1475) — display layers that failed,
+   *                     map layers left incomplete, a failed shapes build —
+   *                     so a job that drew no map can't report clean.
    * `existing` (prior boundary count) is carried in the log, not the result.
    */
   private async loadBoundaries(
@@ -670,7 +676,7 @@ export class RegionSyncProcessor
     regionId?: string,
   ): Promise<SyncResult[]> {
     const result = await this.boundaryLoader.loadAll({ force });
-    const { existing, upserted, failed, missingKey } = result.counts;
+    const { upserted, failed, missingKey } = result.counts;
 
     let label = regionId ?? 'active';
     try {
@@ -687,14 +693,34 @@ export class RegionSyncProcessor
         itemsCreated: upserted,
         itemsUpdated: 0,
         itemsSkipped: missingKey,
-        errors:
-          failed > 0
-            ? [
-                `${failed} boundary row(s) failed to upsert (existing=${existing})`,
-              ]
-            : [],
+        errors: boundaryErrors(result),
         syncedAt: new Date(),
       },
     ];
   }
+}
+
+/** One line per problem in a boundary load, for the job's `errors`. */
+export function boundaryErrors(result: BoundaryLoadResult): string[] {
+  const { existing, failed } = result.counts;
+  const errors: string[] = [];
+  if (failed > 0) {
+    errors.push(
+      `${failed} boundary row(s) failed to upsert (existing=${existing})`,
+    );
+  }
+  if (result.display?.failedLayers) {
+    errors.push(
+      `${result.display.failedLayers} display layer(s) failed to load`,
+    );
+  }
+  if (result.shapes?.incompleteTypes.length) {
+    errors.push(
+      `map layers not drawn, display geometry incomplete: ${result.shapes.incompleteTypes.join(', ')}`,
+    );
+  }
+  if (result.shapes?.error) {
+    errors.push(`map shapes build failed: ${result.shapes.error}`);
+  }
+  return errors;
 }

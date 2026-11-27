@@ -693,134 +693,180 @@ describe('BoundaryLoaderService', () => {
   });
 
   describe('display geometry (#1475)', () => {
+    const DISPLAY = {
+      url: 'https://maps.example.gov/arcgis/rest/services/Generalized/State_County/MapServer',
+      layerName: 'Counties 500K',
+    };
     const DISPLAY_SOURCES: BoundarySourcesConfig = {
       ocdIdPrefix: 'ocd-division/country:zz',
       displayProjection: 3310,
-      tigerLayers: [
-        {
-          ...SAMPLE_SOURCES.tigerLayers![0],
-          display: {
-            url: 'https://maps.example.gov/arcgis/rest/services/Generalized/State_County/MapServer',
-            layerName: 'Counties 500K',
-          },
-        },
-      ],
+      tigerLayers: [{ ...SAMPLE_SOURCES.tigerLayers![0], display: DISPLAY }],
     };
     const displayRow = (fipsCode: string) => ({
       fipsCode,
       geometryGeoJSON: SAMPLE_ROW.geometryGeoJSON,
     });
-    /** The SQL text of a tagged-template $executeRaw call. */
+    /** The SQL text of a tagged-template call. */
     const sqlOf = (call: unknown[]) => (call[0] as string[]).join('?');
+    /** Boundaries loaded (the boundary step skips), then the layer's staleness. */
+    const boundariesLoadedAndLayer = (stale: boolean) =>
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ stale }]);
 
     beforeEach(() => {
       mockRegistry.getActive.mockReturnValue(createMockPlugin(DISPLAY_SOURCES));
     });
 
-    it('runs even when the boundary step skips, so a loaded node still gets it', async () => {
-      // Boundaries already loaded; no display geometry yet.
-      mockDb.$queryRaw
-        .mockResolvedValueOnce([{ count: 7000 }])
-        .mockResolvedValueOnce([{ count: 0 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
-        rows: [displayRow('99001'), displayRow('99003')],
-        sourceUrl: 'https://maps.example.gov/x/5',
-      });
+    it('fetches a stale layer even when the boundary step skips', async () => {
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
+        displayRow('99001'),
+        displayRow('99003'),
+      ]);
       mockDb.$executeRaw.mockResolvedValueOnce(2 as never);
 
       const result = await service.loadAll();
 
       expect(result.skipped).toBe('already-populated');
       expect(mockTigerFetcher.fetch).not.toHaveBeenCalled();
-      expect(result.display).toEqual({ updated: 2, unmatched: 0 });
+      expect(result.display).toEqual({
+        updated: 2,
+        unmatched: 0,
+        current: 0,
+        failedLayers: 0,
+      });
     });
 
-    it('writes display_boundary only — never the boundary districts are resolved from', async () => {
-      mockDb.$queryRaw
-        .mockResolvedValueOnce([{ count: 7000 }])
-        .mockResolvedValueOnce([{ count: 0 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
-        rows: [displayRow('99001')],
-        sourceUrl: 'https://maps.example.gov/x/5',
+    it('asks whether the layer is missing rows or came from another source', async () => {
+      boundariesLoadedAndLayer(false);
+
+      await service.loadAll();
+
+      const call = mockDb.$queryRaw.mock.calls[1];
+      expect(sqlOf(call)).toMatch(
+        /display_boundary IS NULL OR display_source IS DISTINCT FROM/,
+      );
+      expect(call.slice(1)).toEqual([
+        'COUNTY',
+        `${DISPLAY.url}#${DISPLAY.layerName}`,
+      ]);
+    });
+
+    it('leaves a current layer alone, unless forced', async () => {
+      boundariesLoadedAndLayer(false);
+
+      const result = await service.loadAll();
+
+      expect(mockTigerFetcher.fetchDisplay).not.toHaveBeenCalled();
+      expect(result.display).toEqual({
+        updated: 0,
+        unmatched: 0,
+        current: 1,
+        failedLayers: 0,
       });
+
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
+        displayRow('99001'),
+      ]);
+      mockDb.$executeRaw.mockResolvedValue(1 as never);
+      const forced = await service.loadAll({ force: true });
+      expect(forced.display?.updated).toBe(1);
+    });
+
+    it('writes display_boundary and its source — never the boundary districts are resolved from', async () => {
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
+        displayRow('99001'),
+      ]);
       mockDb.$executeRaw.mockResolvedValueOnce(1 as never);
 
       await service.loadAll();
 
-      const sql = sqlOf(mockDb.$executeRaw.mock.calls[0]);
+      const call = mockDb.$executeRaw.mock.calls[0];
+      const sql = sqlOf(call);
       expect(sql).toContain('SET display_boundary');
+      expect(sql).toContain('display_source =');
       expect(sql).not.toMatch(/SET boundary/);
       expect(sql).toContain('ST_MakeValid');
-      const payload = JSON.parse(mockDb.$executeRaw.mock.calls[0][1] as string);
-      expect(payload).toEqual([
+      // Parameters bind in SQL order: the source key, then the payload.
+      expect(call[1]).toBe(`${DISPLAY.url}#${DISPLAY.layerName}`);
+      expect(JSON.parse(call[2] as string)).toEqual([
         { fips: '99001', geom: SAMPLE_ROW.geometryGeoJSON },
       ]);
     });
 
     it('counts display features that matched no jurisdiction', async () => {
-      mockDb.$queryRaw
-        .mockResolvedValueOnce([{ count: 7000 }])
-        .mockResolvedValueOnce([{ count: 0 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
-        rows: [displayRow('99001'), displayRow('99002'), displayRow('99003')],
-        sourceUrl: 'https://maps.example.gov/x/5',
-      });
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
+        displayRow('99001'),
+        displayRow('99002'),
+        displayRow('99003'),
+      ]);
       mockDb.$executeRaw.mockResolvedValueOnce(2 as never);
 
       const result = await service.loadAll();
 
-      expect(result.display).toEqual({ updated: 2, unmatched: 1 });
-    });
-
-    it('skips when display geometry is already loaded, unless forced', async () => {
-      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
-
-      const result = await service.loadAll();
-
-      expect(result.display).toEqual({
-        skipped: 'already-populated',
-        updated: 0,
-        unmatched: 0,
-      });
-      expect(mockTigerFetcher.fetchDisplay).not.toHaveBeenCalled();
-    });
-
-    it('re-fetches when forced', async () => {
-      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
-        rows: [displayRow('99001')],
-        sourceUrl: 'https://maps.example.gov/x/5',
-      });
-      mockDb.$executeRaw.mockResolvedValue(1 as never);
-
-      const result = await service.loadAll({ force: true });
-
-      expect(mockTigerFetcher.fetchDisplay).toHaveBeenCalledTimes(1);
-      expect(result.display?.updated).toBe(1);
+      expect(result.display?.unmatched).toBe(1);
     });
 
     it('writes nothing for a layer whose display fetch came back empty', async () => {
-      mockDb.$queryRaw
-        .mockResolvedValueOnce([{ count: 7000 }])
-        .mockResolvedValueOnce([{ count: 0 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
-        rows: [],
-        sourceUrl: 'https://maps.example.gov/x',
-      });
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([]);
 
       const result = await service.loadAll();
 
       expect(mockDb.$executeRaw).not.toHaveBeenCalled();
-      expect(result.display).toEqual({ updated: 0, unmatched: 0 });
+      expect(result.display?.updated).toBe(0);
     });
 
-    it('reports why it skipped when there is no active region', async () => {
+    it('carries on past a layer that throws, and still builds shapes', async () => {
+      mockRegistry.getActive.mockReturnValue(
+        createMockPlugin({
+          ...DISPLAY_SOURCES,
+          tigerLayers: [
+            DISPLAY_SOURCES.tigerLayers![0],
+            {
+              ...DISPLAY_SOURCES.tigerLayers![0],
+              jurisdictionType: 'STATE_SENATE_DISTRICT',
+            },
+          ],
+        }),
+      );
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ stale: true }])
+        .mockResolvedValueOnce([{ stale: true }]);
+      mockTigerFetcher.fetchDisplay
+        .mockResolvedValueOnce([displayRow('99001')])
+        .mockResolvedValueOnce([displayRow('99101')]);
+      mockDb.$executeRaw
+        .mockRejectedValueOnce(
+          new Error('ST_GeomFromGeoJSON: bad input') as never,
+        )
+        .mockResolvedValueOnce(1 as never);
+
+      const result = await service.loadAll();
+
+      expect(result.display).toEqual({
+        updated: 1,
+        unmatched: 0,
+        current: 0,
+        failedLayers: 1,
+      });
+      expect(mockShapes.build).toHaveBeenCalled();
+    });
+
+    it('does nothing without an active region', async () => {
       mockRegistry.getActive.mockReturnValue(undefined);
       mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
 
       const result = await service.loadAll();
 
-      expect(result.display?.skipped).toBe('no-active-plugin');
+      expect(result.skipped).toBe('no-active-plugin');
+      expect(result.display).toBeUndefined();
+      expect(mockTigerFetcher.fetchDisplay).not.toHaveBeenCalled();
     });
   });
 
@@ -829,22 +875,27 @@ describe('BoundaryLoaderService', () => {
       mockRegistry.getActive.mockReturnValue(createMockPlugin(SAMPLE_SOURCES));
     });
 
-    it('rebuilds with force when the display step wrote geometry', async () => {
-      mockDb.$queryRaw
-        .mockResolvedValueOnce([{ count: 7000 }])
-        .mockResolvedValueOnce([{ count: 0 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
-        rows: [
-          { fipsCode: '99001', geometryGeoJSON: SAMPLE_ROW.geometryGeoJSON },
-        ],
-        sourceUrl: 'https://maps.example.gov/x/5',
+    it('forces a rebuild when the boundary step wrote rows', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      mockTigerFetcher.fetch.mockResolvedValueOnce([SAMPLE_ROW]);
+      mockDb.jurisdiction.findUnique.mockResolvedValue({
+        id: 'jur-1',
+      } as Jurisdiction);
+
+      await service.loadAll();
+
+      expect(mockShapes.build).toHaveBeenCalledWith(SAMPLE_SOURCES, [], {
+        force: true,
       });
-      mockDb.$executeRaw.mockResolvedValueOnce(1 as never);
+    });
+
+    it('asks without force when nothing changed, so the fingerprint decides', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
 
       const result = await service.loadAll();
 
       expect(mockShapes.build).toHaveBeenCalledWith(SAMPLE_SOURCES, [], {
-        force: true,
+        force: false,
       });
       expect(result.shapes).toEqual({
         frames: 0,
@@ -853,24 +904,25 @@ describe('BoundaryLoaderService', () => {
       });
     });
 
-    it('asks without force when nothing changed, so the builder decides', async () => {
+    it('reports a failed build in the result instead of throwing', async () => {
+      mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
+      mockShapes.build.mockRejectedValueOnce(
+        new Error('Cannot fit an empty bbox'),
+      );
+
+      const result = await service.loadAll();
+
+      expect(result.ok).toBe(true);
+      expect(result.shapes?.error).toBe('Cannot fit an empty bbox');
+    });
+
+    it('reads the region plugins once per load', async () => {
       mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
 
       await service.loadAll();
 
-      expect(mockShapes.build).toHaveBeenCalledWith(SAMPLE_SOURCES, [], {
-        force: false,
-      });
-    });
-
-    it('does not build without an active region', async () => {
-      mockRegistry.getActive.mockReturnValue(undefined);
-      mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
-
-      const result = await service.loadAll();
-
-      expect(mockShapes.build).not.toHaveBeenCalled();
-      expect(result.shapes).toBeUndefined();
+      expect(mockDb.regionPlugin.findMany).toHaveBeenCalledTimes(1);
+      expect(mockRegistry.getActive).toHaveBeenCalledTimes(1);
     });
   });
 });
