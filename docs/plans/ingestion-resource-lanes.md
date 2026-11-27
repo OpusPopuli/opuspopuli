@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Agreed in shape; not started. Delivery: Track 0 patch now (§0), then one major release, v2.0.0 (§10) |
+| **Status** | **Mostly delivered; shipped in `v2.0.0` (2026-11-08).** Track 0, Phase A and Phase B for every data type are merged. **Not done:** S5; the petition-scan OCR part of S6; Phase C1, the per-lane model switch and S7 parallelism above 1; several §3 metrics. S8 was decided against on a measurement. Status checked against the code 2026-11-26 |
 | **Date** | 2026-10-21 (revised the same day after a full review against the code) |
 | **Author** | Rodney Gagnon (with Claude Opus 5.5) |
 | **Driver** | Infra architecture D12 (ingestion throughput is the primary goal); D12.1 per-stage spans |
@@ -13,7 +13,7 @@
 
 | Track | What | Ships as | Why this position |
 |---|---|---|---|
-| **0** | **F2: bills are being deleted** (§5.1) — scope the prune, stop pruning failed bills, add a deletion guard | **Patch release now**, independent of v2.0.0 | Live data loss on every full bills sync, plus a mass deletion at the December session flip. Do not wait for the bundle |
+| ~~**0**~~ | ~~**F2: bills are being deleted** (§5.1) — scope the prune, stop pruning failed bills, add a deletion guard~~ — merged as #1399. No separate patch tag was cut: F2 shipped in `v2.0.0`. The sync-prune alerts are ported to `opuspopuli-node` | **Patch release now**, independent of v2.0.0 | Live data loss on every full bills sync, plus a mass deletion at the December session flip. Do not wait for the bundle |
 | **A** | Foundation: measurement + dashboard (§2), shared helpers, rate limiter, lane queues, per-type jobs (§10.1) | Merged to `main`, inert | Every later change is measured on it; nothing in B may fork it |
 | **B** | Per data type, in order: bills, civics, propositions, representatives, meetings, campaign finance (§10.2) | Merged to `main`, inert | Each type walks skip fixes → attribution → lanes, then is re-measured |
 | **C** | Lane model cutover (§10.3), regeneration, release (§10.4) | `v2.0.0` | A model belongs to a lane, not a data type, so it switches once per lane, after every type on that lane has an eval leg |
@@ -398,18 +398,20 @@ drill-down). `host` is there from the start for §7.
 
 | Metric | Type | Labels |
 |---|---|---|
-| `pipeline_stage_duration_seconds` | histogram, with exemplars | `stage`, `data_type`, `lane`, `model`, `host` |
-| `pipeline_items_total` | counter | `data_type`, `outcome`, `reason`, and one of `phase` (sync tracker) or `stage` (`withStage`) — exactly one writer per item |
-| `pipeline_rows_deleted_total` | counter | `data_type` |
-| `pipeline_phase_aborted_total` | counter | `data_type`, `phase` |
-| `llm_request_duration_seconds` | histogram | `lane`, `model`, `phase` = `load` / `prefill` / `decode` |
-| `llm_tokens_total` | counter | `lane`, `model`, `direction` = `in` / `out` |
+| ~~`pipeline_stage_duration_seconds`~~ | histogram, with exemplars | `stage`, `data_type`, `lane`, `model`, `host` |
+| ~~`pipeline_items_total`~~ | counter | `data_type`, `outcome`, `reason`, and one of `phase` (sync tracker) or `stage` (`withStage`) — exactly one writer per item |
+| ~~`pipeline_rows_deleted_total`~~ | counter | `data_type` |
+| ~~`pipeline_phase_aborted_total`~~ | counter | `data_type`, `phase` |
+| ~~`llm_request_duration_seconds`~~ | histogram | `lane`, `model`, `phase` = `load` / `prefill` / `decode` |
+| ~~`llm_tokens_total`~~ | counter | `lane`, `model`, `direction` = `in` / `out` |
 | `llm_inflight_requests` | gauge | `lane`, `model`, `endpoint`, `path` = `queued` / `interactive` |
-| `lane_wait_seconds` | histogram | `lane`, `priority` |
+| ~~`lane_wait_seconds`~~ | histogram | `lane`, `priority` |
 | `fetch_requests_total` | counter | `target_host`, `status_class` |
 | `fetch_throttle_wait_seconds` | histogram | `target_host` |
-| `lazy_analysis_requests_total` | counter | `data_type`, `result` = `enqueued` / `deduped` / `capped` |
-| `lazy_analysis_ready_seconds` | histogram | `data_type` |
+| ~~`lazy_analysis_requests_total`~~ | counter | `data_type`, `result` = `enqueued` / `deduped` / `capped` |
+| ~~`lazy_analysis_ready_seconds`~~ | histogram | `data_type` |
+
+**Not emitted yet (2026-11-26):** `llm_inflight_requests`, `fetch_requests_total` and `fetch_throttle_wait_seconds`, and queue depth (nothing calls `exportPrometheusMetrics()` yet). The dashboard rows that need them stay empty.
 
 Queue depth comes from BullMQ's own `Queue.exportPrometheusMetrics()`
 (present in the installed 5.76.10, `queue-getters`), served from each
@@ -443,10 +445,12 @@ check against the no-GPL rule first.
 **Alerts** (`observability/prometheus-alerts.yml`, alongside the existing
 `opuspopuli-document-pipeline` group):
 
-- **Bulk deletion.** `pipeline_rows_deleted_total` jumping by more than a
+- ~~**Bulk deletion.** `pipeline_rows_deleted_total` jumping by more than a
   threshold in one sync. That is the signature of F2, and it catches that
   whole class of bug — the F2 guard (§5.1) prevents it, this alert reports
-  it.
+  it.~~ — shipped in #1399 as `SyncBulkDeletion` (7-day sum, catches slow
+  drift too), with `SyncPruneRefused` and `SyncPruneDisabled`, in group
+  `opuspopuli-sync-prune`. Ported to `opuspopuli-node`.
 - **Lane backlog.** Oldest waiting job older than its lane's budget.
 - **Lazy cap reached.** Readers are getting `UNAVAILABLE`.
 - **Repeated aborts.** A data type aborted on consecutive runs.
@@ -551,7 +555,8 @@ lifecycle (F4).
 - **F1 — the weekly forced re-extraction** (K5). Likely a large share of the
   bills sync's wall-clock time; the M4 baseline confirms or refutes it.
 
-- **F2 — bills are being deleted. Track 0: ship as a patch now.**
+- ~~**F2 — bills are being deleted. Track 0: ship as a patch now.**~~ —
+  **merged as #1399**; design and record in `F2-bill-prune-scope.md`.
   `pruneStaleBills` (`region-sync.service.ts:1506-1543`) hard-deletes every
   bill in the region that is not in `syncedExternalIds`. Two failure modes:
   1. **Every full sync, today.** A bill is added to `syncedExternalIds`
@@ -608,7 +613,7 @@ lifecycle (F4).
   / `_llm_digest` columns, mirroring the `aiSummary*` and
   `activitySummary*` sets.
 
-- **F4 — lifecycle booleans go stale.** `isActive`/`isDead` are computed
+- ~~**F4 — lifecycle booleans go stale.**~~ (merged as #1400) `isActive`/`isDead` are computed
   only in the extraction upsert (`:2476-2477`). The summary pass (`:1963`)
   and `stage_backfill` (`:1492`) both write `currentStageId` without
   recomputing them. Today that only mislabels a bill until its next
@@ -819,14 +824,14 @@ bounding GPU access, is exactly the resident-model thrash measured in
 
 | # | Work | Depends on | Notes |
 |---|---|---|---|
-| **S1** | **Per-host rate limiter, in Redis.** Replace the single `extraction:ratelimit` key (`extraction.provider.ts:157`) with `extraction:ratelimit:<host>`, and **retire the in-process `HostThrottle`** (`region-sync.service.ts:382`) onto the same bucket — one per-host policy shared by every process. Keep `rateLimitOverride` | — | Without it, fetch concurrency cannot help: every host serialises on one bucket. Redis-backed because an in-process throttle multiplies the rate a government site sees by the number of processes (§7 H2) |
-| **S7** | **GPU lanes bounded per endpoint, with model affinity.** One queue per Ollama endpoint, named from the lane's resolved URL. Bound with BullMQ `setGlobalConcurrency` (5.76.10), not per-worker `concurrency`, so the bound holds however many processes consume it. **Reserve slots for interactive inference** — RAG, petition analysis and personalised impact call Ollama directly over HTTP and bypass every queue, so lane concurrency = `OLLAMA_NUM_PARALLEL` − interactive reserve. Drain one model before switching while both share the Studio. Set `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS` and keep-alive explicitly in node config | M4 | The queue bound is Phase A; raising parallelism above 1 is quality-gated on the eval harness. Replaces the seven `*_CONCURRENCY` knobs |
-| **S2** | **One sync job per data type.** The scheduler already registers one cron per (region, dataType); make the startup/manual "all types" path enqueue one job per type. Run `region-sync` at concurrency ≥ 2 so bills never holds the only slot. Record `worker_host` on `markRunning` (additive column) and scope `sweepStaleRunning` to this host's rows. `cancelRegionSync` cancels the children of a fanned-out request | S7 | §7 H1 |
-| **S3** | **Pull bill and civics extraction out of their fetch loops.** The fetch loop stores the source version and enqueues the GPU lane with the skip key; fetching continues while the GPU works | S1, S7, K1, K3 | Copy the `minutes-summary` shape. The consecutive-failure abort (`sync-phase-logger.ts`) moves into the lane worker, keyed per parent job, so a broken run still stops |
-| **S4** | **Post-scrape generators onto the analysis lane.** Proposition analysis, bios, committee summaries/descriptions, activity summaries and bill summaries are enqueued per row as rows are upserted, instead of after the whole scrape | S2, S7, K2, K6 | |
-| **S5** | **Extraction-plan derivation and self-heal off the crawl loop.** The detail crawl stalls between fetch #1 and #2 on the plan LLM call (`detail-crawler.service.ts:219, 600`); self-heal runs inline even in async mode (`pipeline.service.ts:552, 600, 887`). Enqueue both | S3 | Mirror the cache-miss contract (`pendingManifestAnalysis`) rather than inventing a new one |
-| **S6** | **CPU lane.** `PdfExtractor`, OCR (Tesseract worker pool, `OMP_THREAD_LIMIT=1` per D12.5), deskew and xenova embedding become a **queue-fed** lane: input is a source-version id, output is stored text. The consumer may run inside the existing worker process for now, using threads internally | M4 shows CPU on the loop | The queue is the boundary, not the thread pool (§7 H3). Petition scan moves OCR off the event loop **without** going async — the user-facing contract stays synchronous |
-| **S8** | Campaign-finance parse/write overlap: parse batch *n+1* while batch *n* writes, with a buffer of 1–2 batches | K4 | Stays inside one job, so the local temp file (`bulk-download.handler.ts:167`) is fine (§7 H4) |
+| ~~**S1**~~ | ~~**Per-host rate limiter, in Redis.** Replace the single `extraction:ratelimit` key (`extraction.provider.ts:157`) with `extraction:ratelimit:<host>`, and **retire the in-process `HostThrottle`** (`region-sync.service.ts:382`) onto the same bucket — one per-host policy shared by every process. Keep `rateLimitOverride`~~ — merged as #1401 (honours region `rateLimit`; both FEC paths now limited) | — | Without it, fetch concurrency cannot help: every host serialises on one bucket. Redis-backed because an in-process throttle multiplies the rate a government site sees by the number of processes (§7 H2) |
+| ~~**S7**~~ | ~~**GPU lanes bounded per endpoint, with model affinity.** One queue per Ollama endpoint, named from the lane's resolved URL. Bound with BullMQ `setGlobalConcurrency` (5.76.10), not per-worker `concurrency`, so the bound holds however many processes consume it. **Reserve slots for interactive inference** — RAG, petition analysis and personalised impact call Ollama directly over HTTP and bypass every queue, so lane concurrency = `OLLAMA_NUM_PARALLEL` − interactive reserve. Drain one model before switching while both share the Studio. Set `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS` and keep-alive explicitly in node config~~ — merged as #1402 (`docs/plans/S7-gpu-lane-queue.md`: no slot reserve needed at one slot; model affinity deferred to Phase C) | M4 | The queue bound is Phase A; raising parallelism above 1 is quality-gated on the eval harness. Replaces the seven `*_CONCURRENCY` knobs |
+| ~~**S2**~~ | **One sync job per data type.** (merged as #1403) The scheduler already registers one cron per (region, dataType); make the startup/manual "all types" path enqueue one job per type. Run `region-sync` at concurrency ≥ 2 so bills never holds the only slot. Record `worker_host` on `markRunning` (additive column) and scope `sweepStaleRunning` to this host's rows. `cancelRegionSync` cancels the children of a fanned-out request | S7 | §7 H1 |
+| ~~**S3**~~ | **Pull bill and civics extraction out of their fetch loops.** (Civics merged as #1407. Bills' page fetch loop was replaced by the Legislature's bulk-export import, #1428) The fetch loop stores the source version and enqueues the GPU lane with the skip key; fetching continues while the GPU works | S1, S7, K1, K3 | Copy the `minutes-summary` shape. The consecutive-failure abort (`sync-phase-logger.ts`) moves into the lane worker, keyed per parent job, so a broken run still stops |
+| ~~**S4**~~ | **Post-scrape generators onto the analysis lane.** (Merged per type in Phase B: propositions #1409, representatives #1413, bill summaries #1430 and #1431) Proposition analysis, bios, committee summaries/descriptions, activity summaries and bill summaries are enqueued per row as rows are upserted, instead of after the whole scrape | S2, S7, K2, K6 | |
+| **S5** | **Not done.** Still inline (`representatives-phase-b.md`). **Extraction-plan derivation and self-heal off the crawl loop.** The detail crawl stalls between fetch #1 and #2 on the plan LLM call (`detail-crawler.service.ts:219, 600`); self-heal runs inline even in async mode (`pipeline.service.ts:552, 600, 887`). Enqueue both | S3 | Mirror the cache-miss contract (`pendingManifestAnalysis`) rather than inventing a new one |
+| **S6** | **Partly done.** Meetings' PDF text moved to the CPU lane in meetings Phase B (#1422, #1423). Petition-scan OCR was not moved; it went to a vision model instead (#1248). **CPU lane.** `PdfExtractor`, OCR (Tesseract worker pool, `OMP_THREAD_LIMIT=1` per D12.5), deskew and xenova embedding become a **queue-fed** lane: input is a source-version id, output is stored text. The consumer may run inside the existing worker process for now, using threads internally | M4 shows CPU on the loop | The queue is the boundary, not the thread pool (§7 H3). Petition scan moves OCR off the event loop **without** going async — the user-facing contract stays synchronous |
+| ~~**S8**~~ | **Decided against on UAT run 5:** after K4, writes no longer dominate (`campaign-finance-phase-b.md`). Campaign-finance parse/write overlap: parse batch *n+1* while batch *n* writes, with a buffer of 1–2 batches | K4 | Stays inside one job, so the local temp file (`bulk-download.handler.ts:167`) is fine (§7 H4) |
 
 **Linkers become a terminal stage.** Once a data type fans out, its linkers
 run when that type's lane jobs for the parent sync have drained, not inline
@@ -842,7 +847,7 @@ the part that only pays off with a second host is deferred to §9.
 | # | Concern | In this plan (now) | Deferred to §9 | Why deferring is safe on one host |
 |---|---|---|---|---|
 | **H1** | `sweepStaleRunning` (`pipeline-job.service.ts:127`) fails *every* `RUNNING` row older than 10 min, whoever owns it | Record `worker_host`; sweep only this host's rows (S2) | Heartbeat column; sweep on expired heartbeat instead of age | One host restarting kills all its own jobs anyway |
-| **H2** | `HostThrottle` is per process, so N processes = N× the rate a site sees | **Fully done now** (S1) | — | Not deferred: S2 already adds a second concurrent sync |
+| ~~**H2**~~ | ~~`HostThrottle` is per process, so N processes = N× the rate a site sees~~ — merged as #1401 | **Fully done now** (S1) | — | Not deferred: S2 already adds a second concurrent sync |
 | **H3** | A thread pool cannot move to another machine | CPU work goes through a queue (S6) | Own `cpu-worker` deployable for the mini (D12.5) | Where the queue's consumer runs is config |
 | **H4** | Bulk downloads land in a local `tmpdir()` | **Rule:** anything crossing a lane boundary references a source-version id or storage key, never a local path | Fetch uploads to the bulk-archive tier (#1277) before enqueueing the parse | S8 keeps fetch and parse in one job |
 | **H5** | Per-worker concurrency multiplies with consumers; Prod and UAT share one GPU through separate Redis | Per-endpoint queues bounded by `setGlobalConcurrency`, with an interactive reserve (S7) | Cross-environment arbitration; per-host model-affinity dispatchers once the models are on different machines | One environment per Redis, one consumer per queue today |
@@ -913,11 +918,12 @@ once. The bundle is the release, not a branch.
 
 In this order:
 
-1. **Gate 0** (M1–M4) and the **dashboard** (§3) — the baseline is taken
-   before anything else changes.
+1. ~~**Gate 0** (M1–M4)~~ and the **dashboard** (§3) — the baseline is taken
+   before anything else changes. Gate 0 is done; the dashboard has rows 1, 2,
+   4 and 8, and the rest wait on metrics later items emit.
 2. **Shared helpers**, consumed by every Phase B PR and never forked:
    - ~~`withStage()` (M1)~~
-   - ~~the skip-key builder (§4 shared rule)~~ — `buildSkipKey`,
+   - ~~the skip-key builder (§4 shared rule)~~ (merged as #1400) — `buildSkipKey`,
      `stableHash`, `laneJobId` in `packages/common/src/utils/skip-key.ts`.
      All four inputs are required (`configHash: null` must be said, not
      omitted), and an unresolved model digest returns `null` — "always run"
@@ -931,11 +937,11 @@ In this order:
      would guess that and be reshaped by its first user. S3's first lane
      copies `minutes-summary`, which is already lane-shaped, so that is the
      consumer to design it against
-   - ~~`writeBillLifecycleFields()` (F4)~~ — see §5.1
-3. **S1** per-host rate limiter.
-4. **S7** queue part: per-endpoint queues, global bound, interactive
-   reserve, priority. Parallelism stays at 1.
-5. **S2** per-type jobs, `worker_host`.
+   - ~~`writeBillLifecycleFields()` (F4)~~ (merged as #1400) — see §5.1
+3. ~~**S1** per-host rate limiter.~~ — merged as #1401. Its `fetch_*` metrics (§3) are not emitted yet.
+4. ~~**S7** queue part: per-endpoint queues, global bound, interactive
+   reserve, priority. Parallelism stays at 1.~~ — merged as #1402 (`docs/plans/S7-gpu-lane-queue.md`: no slot reserve needed at one slot; affinity deferred to Phase C)
+5. ~~**S2** per-type jobs, `worker_host`.~~ — merged as #1403 (`docs/plans/S2-per-type-sync-jobs.md`)
 6. ~~**#1281** model digest pinned in `LlmGeneratorBase`~~ — shipped in
    #1284 (`9a6c9c1d`); the issue itself was never closed. `buildSkipKey`
    refuses the `unknown` digest that `outputProvenance` falls back to.
@@ -958,7 +964,7 @@ Each data type goes through the same steps:
 | 2 | **Civics** | K1, S3 | `getCivicsExtractionPrompt` has no eval leg either; build it here. The held-out gold page stays untuned |
 | 3 | **Propositions** | S4 (analysis); embedding per the embeddings provider choice (#1156) | Re-read the yes/no asymmetry finding (model plan §4.2) in prompt-service before regenerating |
 | 4 | **Representatives** | K2, S4 (bios, committee summaries/descriptions), S5 | `representatives-gold-eval.md` is the gate |
-| 5 | **Meetings / minutes** | S6 (PDF/OCR to the CPU lane) | `minutes-summary` is already lane-shaped — mostly a move. OCR choice per `1234-petition-scan-ocr-eval.md` |
+| 5 | **Meetings / minutes** | S6 (PDF/OCR to the CPU lane) | `minutes-summary` is already lane-shaped — mostly a move. OCR choice settled by #1248 (petition scans moved to a vision model) |
 | 6 | **Campaign finance** | K4, S8 | No LLM. Verify against the raw archive, not `items_extracted` |
 
 Bills goes first because it has the most findings and the longest run.
@@ -967,6 +973,18 @@ Bills goes first because it has the most findings and the longest run.
 propositions, representatives, meetings, campaign finance, then bills —
 the shorter types first, so each lane change is proven on a run measured
 in minutes before it meets the ~48h one.
+
+**Delivered in that order (status 2026-11-26):**
+- **Civics:** #1405 (K1), #1407 (S3) and #1412 (network and DB lanes).
+- **Propositions:** #1408 and #1409; fetch and CPU lanes in #1411.
+- **Representatives:** #1413. S5 still not done.
+- **Meetings:** #1422 and #1423.
+- **Campaign finance:** #1427 (K4). S8 decided against.
+- **Bills:**
+  - #1428: the Legislature's bulk export, which replaced the page crawl;
+  - #1430: K6 summary staleness;
+  - #1431: the §5.2 lazy path (`requestBillSummary`, `BillSummaryStatus`, `coldAfterDays`);
+  - #1432: committee referrals from hearings.
 
 ### 10.3 Phase C1 — lane model cutover
 
@@ -977,7 +995,11 @@ above 1 and re-run the eval harness at the new parallelism. #1233
 (`MIN_VERIFIED_SIMILARITY` uncalibrated per model) must be re-measured for
 any change that touches petition verification.
 
+**Status 2026-11-26: not done.** `v2.0.0` shipped without the cutover. Production runs one model for both lanes: `LLM_MODEL` is nemotron, and `LLM_INGESTION_MODEL` is unset (production cutover plan, Window A). `GPU_LANE_GLOBAL_CONCURRENCY` is unset, so the lane bound stays at 1.
+
 ### 10.4 Phase C2 — the release
+
+**Status 2026-11-26: released as `v2.0.0` on 2026-11-08** (`docs/compliance/releases/v2.0.0-validation.md`). Production took it in the cutover's two maintenance windows (`production-cutover-maintenance-window.md`), and `v2.0.1` followed. Phase C1 was not in it.
 
 A runbook in `docs/runbooks/`, prepared with `/op-release`:
 
