@@ -54,6 +54,9 @@ export interface DisplayLoadResult {
   updated: number;
   /** Display features whose key matched no jurisdiction. */
   unmatched: number;
+  /** Rows the display source doesn't cover (e.g. a water-only district),
+   * recorded as checked so they aren't re-fetched or awaited forever. */
+  uncovered: number;
   /** Layers already current, so not fetched. */
   current: number;
   /** Layers whose fetch or write threw; the rest still ran. */
@@ -432,7 +435,13 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
     groups: { region: SourceGroup; counties: SourceGroup[] },
     opts: { force?: boolean },
   ): Promise<DisplayLoadResult> {
-    const result = { updated: 0, unmatched: 0, current: 0, failedLayers: 0 };
+    const result = {
+      updated: 0,
+      unmatched: 0,
+      uncovered: 0,
+      current: 0,
+      failedLayers: 0,
+    };
     for (const group of [groups.region, ...groups.counties]) {
       for (const layer of group.sources.tigerLayers ?? []) {
         if (!layer.display) continue;
@@ -448,17 +457,7 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       }
     }
 
-    this.logger.log(
-      `BoundaryLoader: display geometry for ${result.updated} jurisdictions` +
-        `, ${result.current} layer(s) already current` +
-        (result.unmatched
-          ? `, ${result.unmatched} display features matched no jurisdiction`
-          : '') +
-        (result.failedLayers
-          ? `, ${result.failedLayers} layer(s) failed`
-          : '') +
-        '.',
-    );
+    this.logger.log(displaySummary(result));
     return result;
   }
 
@@ -478,21 +477,53 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       result.current++;
       return;
     }
-    const rows = await this.tigerFetcher.fetchDisplay(layer, ctx);
-    if (!rows?.length) return;
-    const written = await this.writeDisplay(rows, key);
+    const fetched = await this.tigerFetcher.fetchDisplay(layer, ctx);
+    if (!fetched?.rows.length) return;
+    const written = await this.writeDisplay(fetched.rows, key);
     result.updated += written;
-    result.unmatched += rows.length - written;
+    result.unmatched += fetched.rows.length - written;
+    // Only a complete fetch says anything about what's NOT in the source.
+    if (fetched.complete) {
+      result.uncovered += await this.markUncovered(
+        layer.jurisdictionType,
+        fetched.rows.map((r) => r.fipsCode),
+        key,
+      );
+    }
   }
 
-  /** Whether any row of this type lacks display geometry from this source. */
+  /**
+   * Rows of this type that a complete fetch of the display source didn't
+   * contain: recorded as checked against it, with no display geometry. They
+   * aren't drawn, and they no longer make the layer look stale or
+   * incomplete on every run.
+   */
+  private markUncovered(
+    type: string,
+    fetchedFips: string[],
+    key: string,
+  ): Promise<number> {
+    return this.db.$executeRaw`
+      UPDATE jurisdictions
+         SET display_boundary = NULL, display_source = ${key}
+       WHERE type::text = ${type}
+         AND boundary IS NOT NULL
+         AND (fips_code IS NULL OR fips_code <> ALL(${fetchedFips}::text[]))
+    `;
+  }
+
+  /**
+   * Whether any row of this type hasn't been checked against this source:
+   * never fetched, or fetched from a different one. A row the source
+   * doesn't cover is recorded as checked, so it doesn't count.
+   */
   private async displayStale(type: string, key: string): Promise<boolean> {
     const rows = await this.db.$queryRaw<{ stale: boolean }[]>`
       SELECT EXISTS (
         SELECT 1 FROM jurisdictions
          WHERE type::text = ${type}
            AND boundary IS NOT NULL
-           AND (display_boundary IS NULL OR display_source IS DISTINCT FROM ${key})
+           AND display_source IS DISTINCT FROM ${key}
       ) AS stale
     `;
     return rows?.[0]?.stale ?? true;
@@ -769,4 +800,22 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       WHERE id = ${id}
     `;
   }
+}
+
+/** One log line for the display step, naming only what happened. */
+function displaySummary(result: DisplayLoadResult): string {
+  const parts = [
+    `display geometry for ${result.updated} jurisdictions`,
+    `${result.current} layer(s) already current`,
+  ];
+  if (result.unmatched) {
+    parts.push(`${result.unmatched} display features matched no jurisdiction`);
+  }
+  if (result.uncovered) {
+    parts.push(
+      `${result.uncovered} jurisdiction(s) not covered by their display source`,
+    );
+  }
+  if (result.failedLayers) parts.push(`${result.failedLayers} layer(s) failed`);
+  return `BoundaryLoader: ${parts.join(', ')}.`;
 }

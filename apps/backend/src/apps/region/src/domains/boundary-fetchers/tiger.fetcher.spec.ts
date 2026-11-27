@@ -404,7 +404,10 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch?.map((r) => r.fipsCode)).toEqual(['sldu-99001', 'sldu-99002']);
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual([
+      'sldu-99001',
+      'sldu-99002',
+    ]);
     const queryUrl = String(fetchMock.mock.calls[1][0]);
     expect(queryUrl).toContain(`${DISPLAY_SERVICE}/3/query`);
     // Same filter as the layer's own fetch, and only the key field.
@@ -441,7 +444,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
     expect(String(fetchMock.mock.calls[2][0])).toContain(
       `${DISPLAY_SERVICE}/8/query`,
     );
-    expect(batch?.map((r) => r.fipsCode)).toEqual(['sldu-99001']);
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99001']);
   });
 
   it('returns nothing when every same-named layer lacks polygons', async () => {
@@ -458,7 +461,10 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
         ]),
       );
 
-    await expect(fetcher.fetchDisplay(districtLayer, CTX)).resolves.toEqual([]);
+    await expect(fetcher.fetchDisplay(districtLayer, CTX)).resolves.toEqual({
+      rows: [],
+      complete: false,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -475,6 +481,37 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     // One directory read, then three candidates.
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('says the fetch was complete only when every page came back', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([{ id: 0, name: 'Upper Districts 500K' }]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: square },
+        ]),
+      );
+    await expect(
+      fetcher.fetchDisplay(districtLayer, CTX),
+    ).resolves.toMatchObject({ complete: true });
+
+    // A full first page, then a failing second: rows, but not complete.
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({
+      type: 'Feature',
+      properties: { GEOID: String(99000 + i) },
+      geometry: square,
+    }));
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([{ id: 0, name: 'Upper Districts 500K' }]),
+      )
+      .mockResolvedValueOnce(mockGeoJSONResponse(fullPage))
+      .mockResolvedValueOnce({ ok: false, status: 502 } as Response);
+    const partial = await fetcher.fetchDisplay(districtLayer, CTX);
+    expect(partial?.rows).toHaveLength(1000);
+    expect(partial?.complete).toBe(false);
   });
 
   it('keys the display source by service and layer name', () => {
@@ -499,7 +536,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch?.map((r) => r.fipsCode)).toEqual(['sldu-99004']);
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99004']);
   });
 
   it('fails closed when the display layer name is not in the service', async () => {
@@ -509,7 +546,7 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch).toEqual([]);
+    expect(batch).toEqual({ rows: [], complete: false });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -518,6 +555,6 @@ describe('TigerFetcher.fetchDisplay (#1475)', () => {
 
     const batch = await fetcher.fetchDisplay(districtLayer, CTX);
 
-    expect(batch).toEqual([]);
+    expect(batch).toEqual({ rows: [], complete: false });
   });
 });

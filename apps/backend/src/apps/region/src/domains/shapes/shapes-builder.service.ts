@@ -188,7 +188,12 @@ export class ShapesBuilderService {
     );
     const outlines = projected.filter((p) => p.type === 'COUNTY');
     if (outlines.length) {
-      const districts = await this.clipDistricts(srid);
+      const prefixes = refs.districts
+        .map((r) => r.fipsPrefix)
+        .filter((p): p is string => !!p);
+      const districts = prefixes.length
+        ? await this.clipDistricts(srid, prefixes)
+        : [];
       this.addCountyFrames(
         outlines,
         districts,
@@ -249,12 +254,14 @@ export class ShapesBuilderService {
     types: string[],
   ): Promise<{ complete: string[]; incomplete: string[] }> {
     // Per row, not by totals: a row with display geometry but no boundary
-    // must not make up for one with a boundary and no display geometry.
+    // must not make up for one with a boundary that was never checked. A
+    // row checked and found not covered by its source (display_source set,
+    // no geometry) isn't missing — it just isn't drawn.
     const rows = await this.db.$queryRaw<
       { type: string; missing: number; with_display: number }[]
     >`
       SELECT type::text AS type,
-             count(*) FILTER (WHERE boundary IS NOT NULL AND display_boundary IS NULL)::int AS missing,
+             count(*) FILTER (WHERE boundary IS NOT NULL AND display_source IS NULL)::int AS missing,
              count(*) FILTER (WHERE display_boundary IS NOT NULL)::int AS with_display
         FROM jurisdictions
        WHERE type::text = ANY(${types}::text[])
@@ -279,7 +286,9 @@ export class ShapesBuilderService {
       SELECT id, type::text AS type, fips_code,
              ST_AsGeoJSON(ST_Transform(display_boundary::geometry, ${srid}::int), 0) AS geom
         FROM jurisdictions
-       WHERE type::text = ANY(${types}::text[]) AND display_boundary IS NOT NULL
+       WHERE type::text = ANY(${types}::text[])
+         AND display_boundary IS NOT NULL
+         AND NOT ST_IsEmpty(display_boundary::geometry)
        ORDER BY id
     `;
   }
@@ -290,7 +299,10 @@ export class ShapesBuilderService {
    * shares of the county's area. A district belongs to the county holding
    * its interior point, so nothing depends on how codes are spelled.
    */
-  private clipDistricts(srid: number): Promise<DistrictRow[]> {
+  private clipDistricts(
+    srid: number,
+    prefixes: string[],
+  ): Promise<DistrictRow[]> {
     return this.db.$queryRaw<DistrictRow[]>`
       WITH c AS (
         SELECT id, boundary::geometry AS full_g,
@@ -308,18 +320,24 @@ export class ShapesBuilderService {
           FROM jurisdictions j
           JOIN c ON ST_Covers(c.full_g, ST_PointOnSurface(j.boundary::geometry))
          WHERE j.type::text = ANY(${COUNTY_DISTRICT_TYPES}::text[]) AND j.boundary IS NOT NULL
+           -- Only districts a configured layer accounts for, so one that
+           -- won't be drawn can't skew the county's measured fit.
+           AND EXISTS (
+             SELECT 1 FROM unnest(${prefixes}::text[]) AS p(prefix)
+              WHERE left(j.fips_code, length(p.prefix)) = p.prefix
+           )
       ),
       m AS (
         SELECT county_id, sum(ST_Area(g)) AS total, ST_Area(ST_Union(g)) AS covered
           FROM d GROUP BY county_id
       )
       SELECT d.county_id, d.id, d.fips_code, ST_AsGeoJSON(d.g, 0) AS geom,
-             ((ST_Area(c.g) - m.covered) / ST_Area(c.g))::float8 AS gap,
-             ((m.total - m.covered) / ST_Area(c.g))::float8 AS overlap
+             ((ST_Area(c.g) - m.covered) / NULLIF(ST_Area(c.g), 0))::float8 AS gap,
+             ((m.total - m.covered) / NULLIF(ST_Area(c.g), 0))::float8 AS overlap
         FROM d
         JOIN m USING (county_id)
         JOIN c ON c.id = d.county_id
-       WHERE NOT ST_IsEmpty(d.g)
+       WHERE NOT ST_IsEmpty(d.g) AND ST_Area(c.g) > 0
        ORDER BY d.county_id, d.fips_code
     `;
   }
@@ -365,43 +383,68 @@ export class ShapesBuilderService {
     );
     if (!outlineSource) return;
     for (const county of outlines) {
-      const own = districts.filter(
-        (d) => d.county_id === county.id && districtSource(d, refs.districts),
-      );
-      const key = countyFrameKey(county.id);
-      const fit = fitBbox(bboxOf([geometryOf(county)]));
-      const simplified = simplifyTogether(
-        {
-          outline: collection([toFeature(county)]),
-          districts: collection(own.map(toFeature)),
-        },
-        minAreaFor(fit.unit),
-      );
-      const first = own[0];
-      frames.push(
-        frameRow(
-          key,
-          county.id,
-          fit,
-          srid,
-          first ? { gap: first.gap, overlap: first.overlap } : null,
-        ),
-      );
-      shapes.push(
-        ...toShapeRows(
-          key,
-          simplified.outline,
-          fit,
+      try {
+        this.addCountyFrame(
+          county,
+          districts,
+          refs,
           outlineSource,
+          srid,
           retrievedAt,
-        ),
-      );
-      for (const feature of simplified.districts) {
-        const row = own.find((d) => d.id === feature.id);
-        const source = row && districtSource(row, refs.districts);
-        if (source)
-          shapes.push(...toShapeRows(key, [feature], fit, source, retrievedAt));
+          frames,
+          shapes,
+        );
+      } catch (err) {
+        // One county with a degenerate outline mustn't cost every county
+        // its frame: leave it out and say so.
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `ShapesBuilder: county ${county.fips_code ?? county.id} left out (${message}).`,
+        );
       }
+    }
+  }
+
+  private addCountyFrame(
+    county: ProjectedRow,
+    districts: DistrictRow[],
+    refs: { layers: SourceRef[]; districts: SourceRef[] },
+    outlineSource: SourceRef,
+    srid: number,
+    retrievedAt: Date,
+    frames: FrameRow[],
+    shapes: ShapeRow[],
+  ): void {
+    const own = districts.filter(
+      (d) => d.county_id === county.id && districtSource(d, refs.districts),
+    );
+    const key = countyFrameKey(county.id);
+    const fit = fitBbox(bboxOf([geometryOf(county)]));
+    const simplified = simplifyTogether(
+      {
+        outline: collection([toFeature(county)]),
+        districts: collection(own.map(toFeature)),
+      },
+      minAreaFor(fit.unit),
+    );
+    const first = own[0];
+    frames.push(
+      frameRow(
+        key,
+        county.id,
+        fit,
+        srid,
+        first ? { gap: first.gap, overlap: first.overlap } : null,
+      ),
+    );
+    shapes.push(
+      ...toShapeRows(key, simplified.outline, fit, outlineSource, retrievedAt),
+    );
+    for (const feature of simplified.districts) {
+      const row = own.find((d) => d.id === feature.id);
+      const source = row && districtSource(row, refs.districts);
+      if (source)
+        shapes.push(...toShapeRows(key, [feature], fit, source, retrievedAt));
     }
   }
 

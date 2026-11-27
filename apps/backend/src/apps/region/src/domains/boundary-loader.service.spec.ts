@@ -720,10 +720,10 @@ describe('BoundaryLoaderService', () => {
 
     it('fetches a stale layer even when the boundary step skips', async () => {
       boundariesLoadedAndLayer(true);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
-        displayRow('99001'),
-        displayRow('99003'),
-      ]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001'), displayRow('99003')],
+        complete: false,
+      });
       mockDb.$executeRaw.mockResolvedValueOnce(2 as never);
 
       const result = await service.loadAll();
@@ -733,6 +733,7 @@ describe('BoundaryLoaderService', () => {
       expect(result.display).toEqual({
         updated: 2,
         unmatched: 0,
+        uncovered: 0,
         current: 0,
         failedLayers: 0,
       });
@@ -744,9 +745,7 @@ describe('BoundaryLoaderService', () => {
       await service.loadAll();
 
       const call = mockDb.$queryRaw.mock.calls[1];
-      expect(sqlOf(call)).toMatch(
-        /display_boundary IS NULL OR display_source IS DISTINCT FROM/,
-      );
+      expect(sqlOf(call)).toMatch(/display_source IS DISTINCT FROM/);
       expect(call.slice(1)).toEqual([
         'COUNTY',
         `${DISPLAY.url}#${DISPLAY.layerName}`,
@@ -762,14 +761,16 @@ describe('BoundaryLoaderService', () => {
       expect(result.display).toEqual({
         updated: 0,
         unmatched: 0,
+        uncovered: 0,
         current: 1,
         failedLayers: 0,
       });
 
       mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
-        displayRow('99001'),
-      ]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001')],
+        complete: false,
+      });
       mockDb.$executeRaw.mockResolvedValue(1 as never);
       const forced = await service.loadAll({ force: true });
       expect(forced.display?.updated).toBe(1);
@@ -777,9 +778,10 @@ describe('BoundaryLoaderService', () => {
 
     it('writes display_boundary and its source — never the boundary districts are resolved from', async () => {
       boundariesLoadedAndLayer(true);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
-        displayRow('99001'),
-      ]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001')],
+        complete: false,
+      });
       mockDb.$executeRaw.mockResolvedValueOnce(1 as never);
 
       await service.loadAll();
@@ -797,13 +799,51 @@ describe('BoundaryLoaderService', () => {
       ]);
     });
 
+    it('records rows a complete fetch did not contain as checked, not covered', async () => {
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001')],
+        complete: true,
+      });
+      mockDb.$executeRaw
+        .mockResolvedValueOnce(1 as never)
+        .mockResolvedValueOnce(1 as never);
+
+      const result = await service.loadAll();
+
+      const mark = mockDb.$executeRaw.mock.calls[1];
+      expect(sqlOf(mark)).toMatch(
+        /SET display_boundary = NULL, display_source =/,
+      );
+      expect(sqlOf(mark)).toMatch(/fips_code <> ALL/);
+      expect(mark.slice(1)).toEqual([
+        `${DISPLAY.url}#${DISPLAY.layerName}`,
+        'COUNTY',
+        ['99001'],
+      ]);
+      expect(result.display?.uncovered).toBe(1);
+    });
+
+    it('infers nothing about coverage from an incomplete fetch', async () => {
+      boundariesLoadedAndLayer(true);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001')],
+        complete: false,
+      });
+      mockDb.$executeRaw.mockResolvedValueOnce(1 as never);
+
+      const result = await service.loadAll();
+
+      expect(mockDb.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(result.display?.uncovered).toBe(0);
+    });
+
     it('counts display features that matched no jurisdiction', async () => {
       boundariesLoadedAndLayer(true);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([
-        displayRow('99001'),
-        displayRow('99002'),
-        displayRow('99003'),
-      ]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [displayRow('99001'), displayRow('99002'), displayRow('99003')],
+        complete: false,
+      });
       mockDb.$executeRaw.mockResolvedValueOnce(2 as never);
 
       const result = await service.loadAll();
@@ -813,7 +853,10 @@ describe('BoundaryLoaderService', () => {
 
     it('writes nothing for a layer whose display fetch came back empty', async () => {
       boundariesLoadedAndLayer(true);
-      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce([]);
+      mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
+        rows: [],
+        complete: false,
+      });
 
       const result = await service.loadAll();
 
@@ -839,8 +882,11 @@ describe('BoundaryLoaderService', () => {
         .mockResolvedValueOnce([{ stale: true }])
         .mockResolvedValueOnce([{ stale: true }]);
       mockTigerFetcher.fetchDisplay
-        .mockResolvedValueOnce([displayRow('99001')])
-        .mockResolvedValueOnce([displayRow('99101')]);
+        .mockResolvedValueOnce({ rows: [displayRow('99001')], complete: false })
+        .mockResolvedValueOnce({
+          rows: [displayRow('99101')],
+          complete: false,
+        });
       mockDb.$executeRaw
         .mockRejectedValueOnce(
           new Error('ST_GeomFromGeoJSON: bad input') as never,
@@ -852,6 +898,7 @@ describe('BoundaryLoaderService', () => {
       expect(result.display).toEqual({
         updated: 1,
         unmatched: 0,
+        uncovered: 0,
         current: 0,
         failedLayers: 1,
       });

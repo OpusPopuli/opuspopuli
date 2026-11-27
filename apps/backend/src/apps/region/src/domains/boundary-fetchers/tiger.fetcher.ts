@@ -6,6 +6,7 @@ import type {
 import {
   DEFAULT_FIPS_FIELD,
   fetchPaginatedGeoJSON,
+  fetchPaginatedGeoJSONWithStatus,
   fetchServiceDirectory,
   layerIdsByName,
   mapFeaturesToRows,
@@ -42,6 +43,17 @@ const DEFAULT_WHERE = "STATE='${fipsCode}'";
 export interface DisplayRow {
   fipsCode: string;
   geometryGeoJSON: unknown;
+}
+
+/** A layer's display geometry, and whether every page of it was read. */
+export interface DisplayFetch {
+  rows: DisplayRow[];
+  /**
+   * True only when the fetch read every page without error. Only then may a
+   * row missing from `rows` be taken as "the display source doesn't cover
+   * it", rather than "a page failed".
+   */
+  complete: boolean;
 }
 
 /**
@@ -139,7 +151,7 @@ export class TigerFetcher {
   async fetchDisplay(
     layer: TigerLayerConfig,
     ctx: RegionContext,
-  ): Promise<DisplayRow[] | null> {
+  ): Promise<DisplayFetch | null> {
     const display: DisplayLayerConfig | undefined = layer.display;
     if (!display) return null;
 
@@ -156,7 +168,7 @@ export class TigerFetcher {
           (directory ? '' : ' (service directory unreadable)') +
           ' — display geometry for this layer skipped this load.',
       );
-      return [];
+      return { rows: [], complete: false };
     }
 
     // Same name, same entity — but some renditions (a "Labels" group) carry
@@ -164,19 +176,18 @@ export class TigerFetcher {
     const where = substituteVerbatim(layer.where ?? DEFAULT_WHERE, ctx);
     for (const id of candidates) {
       const sourceUrl = `${display.url}/${id}`;
-      const rows = toDisplayRows(
-        await fetchPaginatedGeoJSON(
-          sourceUrl,
-          where,
-          layer.fipsField ?? DEFAULT_FIPS_FIELD,
-        ),
-        layer,
+      const fetched = await fetchPaginatedGeoJSONWithStatus(
+        sourceUrl,
+        where,
+        layer.fipsField ?? DEFAULT_FIPS_FIELD,
       );
+      const rows = toDisplayRows(fetched.features, layer);
       if (rows.length > 0) {
         this.logger.log(
-          `TigerFetcher (display): '${display.layerName}' → ${sourceUrl}, ${rows.length} features`,
+          `TigerFetcher (display): '${display.layerName}' → ${sourceUrl}, ${rows.length} features` +
+            (fetched.complete ? '' : ' (incomplete: a page failed)'),
         );
-        return rows;
+        return { rows, complete: fetched.complete };
       }
     }
 
@@ -184,7 +195,7 @@ export class TigerFetcher {
       `TigerFetcher (display): 0 usable features from any '${display.layerName}' ` +
         `(where=${where}) — this layer keeps whatever display geometry it had.`,
     );
-    return [];
+    return { rows: [], complete: false };
   }
 
   /**

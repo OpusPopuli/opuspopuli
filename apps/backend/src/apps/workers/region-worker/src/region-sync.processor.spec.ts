@@ -692,7 +692,13 @@ describe('boundaryErrors (#1475)', () => {
       boundaryErrors({
         ok: true,
         counts,
-        display: { updated: 3, unmatched: 0, current: 1, failedLayers: 0 },
+        display: {
+          updated: 3,
+          unmatched: 0,
+          uncovered: 0,
+          current: 1,
+          failedLayers: 0,
+        },
         shapes: { frames: 2, shapes: 9, incompleteTypes: [] },
       }),
     ).toEqual([]);
@@ -703,7 +709,13 @@ describe('boundaryErrors (#1475)', () => {
       boundaryErrors({
         ok: false,
         counts: { ...counts, failed: 2 },
-        display: { updated: 0, unmatched: 0, current: 0, failedLayers: 1 },
+        display: {
+          updated: 0,
+          unmatched: 0,
+          uncovered: 0,
+          current: 0,
+          failedLayers: 1,
+        },
         shapes: {
           frames: 0,
           shapes: 0,

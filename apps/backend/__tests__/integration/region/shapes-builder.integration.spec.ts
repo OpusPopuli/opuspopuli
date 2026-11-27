@@ -112,8 +112,9 @@ describe('ShapesBuilderService — integration (#1475)', () => {
     `;
     if (display) {
       await db.$executeRaw`
-        UPDATE jurisdictions
-           SET display_boundary = ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(${polygon(display)}::text), 4326))::geography
+UPDATE jurisdictions
+           SET display_boundary = ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(${polygon(display)}::text), 4326))::geography,
+               display_source = ${DISPLAY.url}
          WHERE id = ${id}
       `;
     }
@@ -331,6 +332,27 @@ describe('ShapesBuilderService — integration (#1475)', () => {
     expect(
       (await builder.build(REGION, COUNTIES, { force: true })).frames,
     ).toBe(3);
+  });
+
+  it('draws a layer whose uncovered rows were checked, but not the rows themselves', async () => {
+    await seedRegion();
+    // A county the display source was checked for and doesn't cover.
+    await insert('county-w', 'COUNTY', '99007', rect(11, 11.5), null);
+    await db.$executeRaw`UPDATE jurisdictions SET display_source = ${DISPLAY.url} WHERE id = 'county-w'`;
+
+    const result = await builder.build(REGION, COUNTIES);
+
+    expect(result.incompleteTypes).toEqual([]);
+    expect(
+      await db.jurisdictionShape.count({
+        where: { jurisdictionId: 'county-w' },
+      }),
+    ).toBe(0);
+    expect(
+      await db.jurisdictionShape.count({
+        where: { jurisdictionId: 'county-a' },
+      }),
+    ).toBe(2);
   });
 
   it('builds nothing without a display projection', async () => {

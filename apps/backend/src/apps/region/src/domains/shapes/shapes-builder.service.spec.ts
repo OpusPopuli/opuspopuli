@@ -276,6 +276,44 @@ describe('ShapesBuilderService (#1475)', () => {
     expect(sql.some((q) => q.includes('WITH c AS'))).toBe(false);
   });
 
+  it('leaves out one degenerate county instead of failing the build', async () => {
+    const world = twoCounties();
+    world.projected.push({
+      id: 'z',
+      type: 'COUNTY',
+      fips_code: '99099',
+      geom: JSON.stringify({ type: 'Polygon', coordinates: [] }),
+    });
+    const { builder, tx } = builderFor(world);
+
+    const result = await builder.build(REGION, COUNTIES);
+
+    const frames = tx.shapeFrame.createMany.mock.calls[0][0].data;
+    expect(
+      frames.map((f: { jurisdictionId: string | null }) => f.jurisdictionId),
+    ).toEqual(expect.arrayContaining([null, 'a', 'b']));
+    expect(
+      frames.map((f: { jurisdictionId: string | null }) => f.jurisdictionId),
+    ).not.toContain('z');
+    expect(result.frames).toBe(3);
+  });
+
+  it('measures districts only from configured layers, and skips the query without any', async () => {
+    const { builder, db } = builderFor(twoCounties());
+    await builder.build(REGION, COUNTIES);
+    const clip = db.$queryRaw.mock.calls.find((c) =>
+      (c[0] as unknown as string[]).join('?').includes('WITH c AS'),
+    );
+    expect(clip).toContainEqual(['sup-99001-']);
+
+    const none = builderFor(twoCounties());
+    await none.builder.build(REGION, []);
+    const queried = none.db.$queryRaw.mock.calls.some((c) =>
+      (c[0] as unknown as string[]).join('?').includes('WITH c AS'),
+    );
+    expect(queried).toBe(false);
+  });
+
   it('leaves out a district no configured layer accounts for', async () => {
     const world = twoCounties();
     world.districts.push({
