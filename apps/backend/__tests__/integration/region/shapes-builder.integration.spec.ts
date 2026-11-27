@@ -18,6 +18,8 @@ import {
   ShapesBuilderService,
   countyFrameKey,
 } from '../../../src/apps/region/src/domains/shapes/shapes-builder.service';
+import { ShapesQueryService } from '../../../src/apps/region/src/domains/shapes/shapes-query.service';
+import { JurisdictionTypeGQL } from '../../../src/apps/region/src/domains/models/jurisdiction.model';
 import { cleanDatabase, disconnectDatabase, getDbService } from '../utils';
 
 type Ring = Array<[number, number]>;
@@ -91,6 +93,7 @@ const COUNTIES = [
 describe('ShapesBuilderService — integration (#1475)', () => {
   let db: DbService;
   let builder: ShapesBuilderService;
+  let query: ShapesQueryService;
 
   async function insert(
     id: string,
@@ -168,9 +171,14 @@ describe('ShapesBuilderService — integration (#1475)', () => {
   beforeEach(async () => {
     await cleanDatabase();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ShapesBuilderService, { provide: DbService, useValue: db }],
+      providers: [
+        ShapesBuilderService,
+        ShapesQueryService,
+        { provide: DbService, useValue: db },
+      ],
     }).compile();
     builder = module.get(ShapesBuilderService);
+    query = module.get(ShapesQueryService);
   });
 
   afterAll(async () => {
@@ -336,5 +344,66 @@ describe('ShapesBuilderService — integration (#1475)', () => {
       'no-projection',
     );
     expect(await db.shapeFrame.count()).toBe(0);
+  });
+
+  describe('reading them back (ShapesQueryService)', () => {
+    it('returns nothing before the first build', async () => {
+      await seedRegion();
+
+      await expect(
+        query.regionShapes([JurisdictionTypeGQL.COUNTY]),
+      ).resolves.toBeNull();
+      await expect(query.countyShapes('99001')).resolves.toBeNull();
+    });
+
+    it('returns only the requested layers, in the shared frame', async () => {
+      await seedRegion();
+      await builder.build(REGION, COUNTIES);
+
+      const region = await query.regionShapes([JurisdictionTypeGQL.COUNTY]);
+
+      expect(region?.viewBox[2]).toBe(1000);
+      expect(region?.shapes.map((s) => s.fipsCode)).toEqual(['99001', '99003']);
+      expect(region?.shapes[0]).toMatchObject({
+        type: 'COUNTY',
+        source: { name: DISPLAY.layerName, url: DISPLAY.url },
+      });
+      const districts = await query.regionShapes([
+        JurisdictionTypeGQL.COUNTY_SUPERVISOR_DISTRICT,
+      ]);
+      expect(districts?.shapes).toEqual([]);
+    });
+
+    it("returns a county's outline, its districts in order, and the fit", async () => {
+      await seedRegion();
+      await builder.build(REGION, COUNTIES);
+
+      const a = await query.countyShapes('99001');
+
+      expect(a?.outline.jurisdictionId).toBe('county-a');
+      expect(a?.districts.map((d) => d.fipsCode)).toEqual([
+        'sup-99001-1',
+        'sup-99001-2',
+      ]);
+      expect(a?.fit?.bestEffort).toBe(true);
+      expect(a?.districts[0].source.name).toBe('gis.a.example.gov');
+    });
+
+    it('gives a county without districts no fit, and an unknown one null', async () => {
+      await seedRegion();
+      await insert(
+        'county-c',
+        'COUNTY',
+        '99005',
+        rect(11, 11.5),
+        rect(11, 11.5),
+      );
+      await builder.build(REGION, COUNTIES);
+
+      const c = await query.countyShapes('99005');
+      expect(c?.districts).toEqual([]);
+      expect(c?.fit).toBeNull();
+      await expect(query.countyShapes('00000')).resolves.toBeNull();
+    });
   });
 });
