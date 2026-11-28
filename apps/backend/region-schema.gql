@@ -951,6 +951,68 @@ type CountyThresholdModel {
   retrievedAt: DateTime!
 }
 
+"""Where a shape's lines come from: shown beside the map."""
+type ShapeSourceModel {
+  """Layer or publisher name."""
+  name: String!
+  url: String!
+
+  """When the shapes were built from it."""
+  retrievedAt: DateTime!
+}
+
+"""One jurisdiction drawn in a frame."""
+type MapShapeModel {
+  jurisdictionId: ID!
+  fipsCode: String
+  name: String!
+  type: JurisdictionType!
+
+  """SVG path data in the frame's viewBox units: `<path d>`."""
+  path: String!
+  source: ShapeSourceModel!
+}
+
+"""
+How well a county's district plan fits its outline, as shares of the county's area.
+"""
+type ShapeFitModel {
+  """Land no district covers."""
+  gapShare: Float!
+
+  """Land two or more districts both claim."""
+  overlapShare: Float!
+
+  """
+  Either passes the tolerance (0.5% of the county's area): draw the districts with a note that the map is a best effort.
+  """
+  bestEffort: Boolean!
+}
+
+"""Every requested layer, drawn in one shared frame."""
+type RegionShapesModel {
+  """[minX, minY, width, height]."""
+  viewBox: [Int!]!
+  shapes: [MapShapeModel!]!
+}
+
+"""One county's own drawing: its outline and its districts."""
+type CountyShapesModel {
+  fips: String!
+
+  """[minX, minY, width, height]."""
+  viewBox: [Int!]!
+  outline: MapShapeModel!
+
+  """
+  Districts inside the county, clipped to its outline. Empty when none are loaded.
+  """
+  districts: [MapShapeModel!]!
+
+  """Null when the county has no districts to fit."""
+  fit: ShapeFitModel
+}
+
 type Query {
   regionInfo: RegionInfoModel!
 
@@ -1006,6 +1068,24 @@ type Query {
 
   """Districts by id, to restore a location saved on the visitor’s device."""
   jurisdictionsByIds(ids: [ID!]!): [JurisdictionModel!]!
+
+  """
+  Layers of the active region drawn in one frame, as SVG paths. Null before the region sync first builds them.
+  """
+  regionShapes(
+    """
+    Layers to draw together, e.g. [COUNTY] or [COUNTY, STATE_SENATE_DISTRICT].
+    """
+    types: [JurisdictionType!]!
+  ): RegionShapesModel
+
+  """
+  One county's outline and districts, as SVG paths, with how well the districts fit. Null for an unknown county.
+  """
+  countyShapes(
+    """The county's FIPS code."""
+    fips: String!
+  ): CountyShapesModel
 }
 
 """

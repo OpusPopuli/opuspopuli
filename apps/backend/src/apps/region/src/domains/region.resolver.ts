@@ -150,9 +150,8 @@ export class RegionResolver {
    * each figure came from. It must never join to user, signup or activation
    * data (epic #1105, criterion 9).
    *
-   * Geometry is not served here. It is ~60-80KB, identical for every visitor
-   * and changes at most once a decade, so it ships as a static TopoJSON asset
-   * instead of riding on every request.
+   * Geometry is not served here: the map's shapes have their own queries,
+   * `regionShapes` and `countyShapes` (#1475), so this stays small.
    */
   @Public()
   @Query(() => [CountyThresholdModel], {

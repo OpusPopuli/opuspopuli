@@ -303,6 +303,15 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      topojson-client:
+        specifier: ^3.1.0
+        version: 3.1.0
+      topojson-server:
+        specifier: ^3.0.1
+        version: 3.0.1
+      topojson-simplify:
+        specifier: ^3.0.3
+        version: 3.0.3
       uuid:
         specifier: ^11.1.1
         version: 11.1.1
@@ -343,6 +352,9 @@ importers:
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
       '@types/graphql-depth-limit':
         specifier: ^1.1.6
         version: 1.1.6
@@ -370,6 +382,18 @@ importers:
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3
+      '@types/topojson-client':
+        specifier: ^3.1.5
+        version: 3.1.5
+      '@types/topojson-server':
+        specifier: ^3.0.4
+        version: 3.0.4
+      '@types/topojson-simplify':
+        specifier: ^3.0.3
+        version: 3.0.3
+      '@types/topojson-specification':
+        specifier: ^1.0.5
+        version: 1.0.5
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.18.2
         version: 8.57.2(@typescript-eslint/parser@8.57.2(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
@@ -495,7 +519,7 @@ importers:
         version: 8.1.0(maplibre-gl@5.24.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       serwist:
         specifier: ^9.5.3
-        version: 9.5.7(browserslist@4.29.0)(typescript@5.9.3)
+        version: 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
       supercluster:
         specifier: ^8.0.1
         version: 8.0.1
@@ -523,7 +547,7 @@ importers:
         version: 1.58.2
       '@serwist/build':
         specifier: ^9.5.6
-        version: 9.5.7(browserslist@4.29.0)(typescript@5.9.3)
+        version: 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
       '@tailwindcss/postcss':
         specifier: ^4.1.18
         version: 4.2.2
@@ -1067,8 +1091,8 @@ importers:
         specifier: workspace:*
         version: link:../config-provider
       '@opuspopuli/regions':
-        specifier: 1.0.108
-        version: 1.0.108
+        specifier: 1.0.109
+        version: 1.0.109
     devDependencies:
       '@nestjs/common':
         specifier: ^11.1.9
@@ -4210,8 +4234,8 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.1.0
 
-  '@opuspopuli/regions@1.0.108':
-    resolution: {integrity: sha512-kAHKPncE32P8zSU27Xj1zCcj2eiNRwnyX+tgwTkvI4f5svrtN4W/aV2oGMGw2mJQnm0KmiZ5vbM8NQWohQ5w4w==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.108/8480c6ac56116d85449a09cc4e5fbe298212c684}
+  '@opuspopuli/regions@1.0.109':
+    resolution: {integrity: sha512-bNU011svKjD7pzOdGGsCyZhG+kBXMqHFEQPeLnT2AkN6EW3NF931BqZMpKCnnZr3bvAhSXxrwkzOPnV9XGdjBA==, tarball: https://npm.pkg.github.com/download/@opuspopuli/regions/1.0.109/5c54f31c630a4d888fc453e94501fb727074eae3}
     hasBin: true
 
   '@paralleldrive/cuid2@2.3.1':
@@ -5280,6 +5304,18 @@ packages:
 
   '@types/tedious@4.0.14':
     resolution: {integrity: sha512-KHPsfX/FoVbUGbyYvk1q9MMQHLPeRZhRJZdO45Q4YjvFkv4hMNghCWTvy7rdKessBsmtz4euWCWAB6/tVpI1Iw==}
+
+  '@types/topojson-client@3.1.5':
+    resolution: {integrity: sha512-C79rySTyPxnQNNguTZNI1Ct4D7IXgvyAs3p9HPecnl6mNrJ5+UhvGNYcZfpROYV2lMHI48kJPxwR+F9C6c7nmw==}
+
+  '@types/topojson-server@3.0.4':
+    resolution: {integrity: sha512-5+ieK8ePfP+K2VH6Vgs1VCt+fO1U8XZHj0UsF+NktaF0DavAo1q3IvCBXgokk/xmtvoPltSUs6vxuR/zMdOE1g==}
+
+  '@types/topojson-simplify@3.0.3':
+    resolution: {integrity: sha512-sBO5UZ0O2dB0bNwo0vut2yLHhj3neUGi9uL7/ROdm8Gs6dtt4jcB9OGDKr+M2isZwQM2RuzVmifnMZpxj4IGNw==}
+
+  '@types/topojson-specification@1.0.5':
+    resolution: {integrity: sha512-C7KvcQh+C2nr6Y2Ub4YfgvWvWCgP2nOQMtfhlnwsRL4pYmmwzBS7HclGiS87eQfDOU/DLQpX6GEscviaz4yLIQ==}
 
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
@@ -10170,6 +10206,18 @@ packages:
     resolution: {integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==}
     engines: {node: '>=14.16'}
 
+  topojson-client@3.1.0:
+    resolution: {integrity: sha512-605uxS6bcYxGXw9qi62XyrV6Q3xwbndjachmNxu8HWTtVPxZfEJN9fd/SZS1Q54Sn2y0TMyMxFj/cJINqGHrKw==}
+    hasBin: true
+
+  topojson-server@3.0.1:
+    resolution: {integrity: sha512-/VS9j/ffKr2XAOjlZ9CgyyeLmgJ9dMwq6Y0YEON8O7p/tGGk+dCWnrE03zEdu7i4L7YsFZLEPZPzCvcB7lEEXw==}
+    hasBin: true
+
+  topojson-simplify@3.0.3:
+    resolution: {integrity: sha512-V+pBjLVzSQ3+hSOxBiV01OVXgFiCmMO8ia3huxKEyIMTC1ApQHBcdXdOqcQ6U2JJJD31TZduwY6KyF15R8sUgg==}
+    hasBin: true
+
   tough-cookie@5.1.2:
     resolution: {integrity: sha512-FVDYdxtnj0G6Qm/DhNPSb8Ju59ULcup3tuJxkFb5K8Bv2pUXILbf0xZWU8PX8Ov19OXljbUyveOFwRMwkXzO+A==}
     engines: {node: '>=16'}
@@ -14777,7 +14825,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
 
-  '@opuspopuli/regions@1.0.108':
+  '@opuspopuli/regions@1.0.109':
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
@@ -15161,19 +15209,6 @@ snapshots:
     transitivePeerDependencies:
       - browserslist
 
-  '@serwist/build@9.5.7(browserslist@4.29.0)(typescript@5.9.3)':
-    dependencies:
-      '@serwist/utils': 9.5.7(browserslist@4.29.0)
-      common-tags: 1.8.2
-      glob: 10.5.0
-      pretty-bytes: 6.1.1
-      source-map: 0.8.0-beta.0
-      zod: 4.6.7
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - browserslist
-
   '@serwist/next@9.5.7(next@16.4.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(@types/node@25.5.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(webpack@5.105.4(postcss@8.5.23))':
     dependencies:
       '@serwist/build': 9.5.7(browserslist@4.28.8)(typescript@5.9.3)
@@ -15196,10 +15231,6 @@ snapshots:
   '@serwist/utils@9.5.7(browserslist@4.28.8)':
     optionalDependencies:
       browserslist: 4.28.8
-
-  '@serwist/utils@9.5.7(browserslist@4.29.0)':
-    optionalDependencies:
-      browserslist: 4.29.0
 
   '@serwist/webpack-plugin@9.5.7(browserslist@4.28.8)(typescript@5.9.3)(webpack@5.105.4(postcss@8.5.23))':
     dependencies:
@@ -16155,6 +16186,25 @@ snapshots:
   '@types/tedious@4.0.14':
     dependencies:
       '@types/node': 22.19.15
+
+  '@types/topojson-client@3.1.5':
+    dependencies:
+      '@types/geojson': 7946.0.16
+      '@types/topojson-specification': 1.0.5
+
+  '@types/topojson-server@3.0.4':
+    dependencies:
+      '@types/geojson': 7946.0.16
+      '@types/topojson-specification': 1.0.5
+
+  '@types/topojson-simplify@3.0.3':
+    dependencies:
+      '@types/geojson': 7946.0.16
+      '@types/topojson-specification': 1.0.5
+
+  '@types/topojson-specification@1.0.5':
+    dependencies:
+      '@types/geojson': 7946.0.16
 
   '@types/tough-cookie@4.0.5': {}
 
@@ -21312,15 +21362,6 @@ snapshots:
     transitivePeerDependencies:
       - browserslist
 
-  serwist@9.5.7(browserslist@4.29.0)(typescript@5.9.3):
-    dependencies:
-      '@serwist/utils': 9.5.7(browserslist@4.29.0)
-      idb: 8.0.3
-    optionalDependencies:
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - browserslist
-
   set-function-length@1.2.2:
     dependencies:
       define-data-property: 1.1.4
@@ -21892,6 +21933,19 @@ snapshots:
       '@borewit/text-codec': 0.2.1
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
+
+  topojson-client@3.1.0:
+    dependencies:
+      commander: 2.20.3
+
+  topojson-server@3.0.1:
+    dependencies:
+      commander: 2.20.3
+
+  topojson-simplify@3.0.3:
+    dependencies:
+      commander: 2.20.3
+      topojson-client: 3.1.0
 
   tough-cookie@5.1.2:
     dependencies:

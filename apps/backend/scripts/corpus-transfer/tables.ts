@@ -80,6 +80,9 @@ export const CIVIC_TABLES = [
   'jurisdictions',
   'county_thresholds',
   'county_adjacency',
+  // map shapes, built from jurisdictions by the region sync (#1475)
+  'shape_frames',
+  'jurisdiction_shapes',
   'region_plugins',
   ...FINANCE_TABLES,
 ] as const;

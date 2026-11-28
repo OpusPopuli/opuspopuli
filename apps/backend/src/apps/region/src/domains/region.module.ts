@@ -84,6 +84,9 @@ import { RepresentativeFundingService } from './representative-funding.service';
 import { LegislativeCommitteeLinkerService } from './legislative-committee-linker.service';
 import { LegislativeActionLinkerService } from './legislative-action-linker.service';
 import { BoundaryLoaderService } from './boundary-loader.service';
+import { ShapesBuilderService } from './shapes/shapes-builder.service';
+import { ShapesQueryService } from './shapes/shapes-query.service';
+import { ShapesResolver } from './shapes/shapes.resolver';
 import { TigerFetcher } from './boundary-fetchers/tiger.fetcher';
 import { GeoportalFetcher } from './boundary-fetchers/geoportal.fetcher';
 import { LegislativeCommitteeService } from './legislative-committee.service';
@@ -315,6 +318,8 @@ const promptClientAsyncConfig = {
     GeocodingService,
     PublicJurisdictionService,
     PublicJurisdictionResolver,
+    ShapesResolver,
+    ShapesQueryService,
     CommitteeRelevanceCacheLookup,
     LegislativeCommitteeRelevanceFieldResolver,
     LegislativeCommitteeDetailRelevanceFieldResolver,
@@ -352,6 +357,7 @@ const promptClientAsyncConfig = {
     LegislativeCommitteeDescriptionGeneratorService,
     LegislativeActionLinkerService,
     BoundaryLoaderService,
+    ShapesBuilderService,
     TigerFetcher,
     GeoportalFetcher,
     // Alias for injecting the pipeline into RegionDomainService

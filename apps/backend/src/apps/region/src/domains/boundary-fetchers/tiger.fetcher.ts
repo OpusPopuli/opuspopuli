@@ -1,13 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { TigerLayerConfig } from '@opuspopuli/region-provider';
+import type {
+  DisplayLayerConfig,
+  TigerLayerConfig,
+} from '@opuspopuli/region-provider';
 import {
   DEFAULT_FIPS_FIELD,
   fetchPaginatedGeoJSON,
+  fetchPaginatedGeoJSONWithStatus,
   fetchServiceDirectory,
+  layerIdsByName,
   mapFeaturesToRows,
   pickLayerIdByName,
   substituteVerbatim,
   type BoundaryRow,
+  type GeoJSONFeature,
   type RegionContext,
 } from './arcgis.utils';
 
@@ -29,6 +35,41 @@ const TIGER_BASE =
  * TIGER layer exposes. `${fipsCode}` is substituted from RegionContext.
  */
 const DEFAULT_WHERE = "STATE='${fipsCode}'";
+
+/**
+ * One feature of a layer's display geometry, keyed exactly as the layer's
+ * own rows are, so it lands on the same `jurisdictions` row (#1475).
+ */
+export interface DisplayRow {
+  fipsCode: string;
+  geometryGeoJSON: unknown;
+}
+
+/** A layer's display geometry, and whether every page of it was read. */
+export interface DisplayFetch {
+  rows: DisplayRow[];
+  /**
+   * True only when the fetch read every page without error. Only then may a
+   * row missing from `rows` be taken as "the display source doesn't cover
+   * it", rather than "a page failed".
+   */
+  complete: boolean;
+}
+
+/**
+ * At most this many same-named layers are tried for display geometry. The
+ * real one sits behind a "Labels" twin in TIGERweb's generalised services;
+ * a cap keeps a misconfigured service from multiplying outbound requests.
+ */
+const MAX_DISPLAY_CANDIDATES = 3;
+
+/**
+ * The key a layer's display geometry is recorded under, on each row it
+ * writes: changing either part of the config makes it stale (#1475).
+ */
+export function displaySourceKey(display: DisplayLayerConfig): string {
+  return `${display.url}#${display.layerName}`;
+}
 
 /**
  * Generic TIGER/Line layer fetcher. Counties, places, state legislative
@@ -96,6 +137,68 @@ export class TigerFetcher {
   }
 
   /**
+   * Fetch a layer's display geometry: the same features from the layer's
+   * configured display source (typically the shoreline-clipped Census
+   * cartographic version), keyed by the layer's own fipsField and
+   * fipsPrefix. Display-only: nothing here touches `boundary`, which
+   * address-to-district resolution reads (#1475).
+   *
+   * Fails closed like the main fetch: an unresolvable name, or a feature
+   * with no key, is dropped with a log rather than guessed at. Null when the
+   * layer has no display source; empty when it has one but nothing usable
+   * came back.
+   */
+  async fetchDisplay(
+    layer: TigerLayerConfig,
+    ctx: RegionContext,
+  ): Promise<DisplayFetch | null> {
+    const display: DisplayLayerConfig | undefined = layer.display;
+    if (!display) return null;
+
+    const directory = await fetchServiceDirectory(display.url);
+    const candidates = directory
+      ? layerIdsByName(directory, display.layerName).slice(
+          0,
+          MAX_DISPLAY_CANDIDATES,
+        )
+      : [];
+    if (candidates.length === 0) {
+      this.logger.error(
+        `TigerFetcher (display): no layer named '${display.layerName}' in ${display.url}` +
+          (directory ? '' : ' (service directory unreadable)') +
+          ' — display geometry for this layer skipped this load.',
+      );
+      return { rows: [], complete: false };
+    }
+
+    // Same name, same entity — but some renditions (a "Labels" group) carry
+    // no polygons, so take the first one that actually returns geometry.
+    const where = substituteVerbatim(layer.where ?? DEFAULT_WHERE, ctx);
+    for (const id of candidates) {
+      const sourceUrl = `${display.url}/${id}`;
+      const fetched = await fetchPaginatedGeoJSONWithStatus(
+        sourceUrl,
+        where,
+        layer.fipsField ?? DEFAULT_FIPS_FIELD,
+      );
+      const rows = toDisplayRows(fetched.features, layer);
+      if (rows.length > 0) {
+        this.logger.log(
+          `TigerFetcher (display): '${display.layerName}' → ${sourceUrl}, ${rows.length} features` +
+            (fetched.complete ? '' : ' (incomplete: a page failed)'),
+        );
+        return { rows, complete: fetched.complete };
+      }
+    }
+
+    this.logger.warn(
+      `TigerFetcher (display): 0 usable features from any '${display.layerName}' ` +
+        `(where=${where}) — this layer keeps whatever display geometry it had.`,
+    );
+    return { rows: [], complete: false };
+  }
+
+  /**
    * Resolve the config's layer reference to a concrete `service/index` path.
    *
    * With `layerName` set, `layer` is the service root and the index is
@@ -114,32 +217,67 @@ export class TigerFetcher {
   ): Promise<string | null> {
     if (!layer.layerName) return layer.layer;
 
-    const serviceUrl = `${TIGER_BASE}/${layer.layer}`;
+    const id = await this.resolveLayerId(
+      `${TIGER_BASE}/${layer.layer}`,
+      layer.layerName,
+      'TigerFetcher',
+    );
+    return id === null ? null : `${layer.layer}/${id}`;
+  }
+
+  /**
+   * A layer NAME → its current index in an ArcGIS service, or null with an
+   * error naming what the service offers. Never an index fallback: see
+   * pickLayerIdByName.
+   */
+  private async resolveLayerId(
+    serviceUrl: string,
+    layerName: string,
+    label: string,
+  ): Promise<number | null> {
     const directory = await fetchServiceDirectory(serviceUrl);
     if (!directory) {
       this.logger.error(
-        `TigerFetcher: could not read service directory ${layer.layer} — ` +
-          `layer '${layer.layerName}' skipped this load.`,
+        `${label}: could not read service directory ${serviceUrl} — ` +
+          `layer '${layerName}' skipped this load.`,
       );
       return null;
     }
 
-    const id = pickLayerIdByName(directory, layer.layerName);
+    const id = pickLayerIdByName(directory, layerName);
     if (id === null) {
       const available = (directory.layers ?? [])
         .map((l) => `${l.id}:'${l.name}'`)
         .join(', ');
       this.logger.error(
-        `TigerFetcher: no layer named '${layer.layerName}' in ${layer.layer}. ` +
+        `${label}: no layer named '${layerName}' in ${serviceUrl}. ` +
           `A retired vintage (e.g. a new Congress) needs a deliberate config ` +
           `update, never an index fallback. Available: ${available}`,
       );
       return null;
     }
 
-    this.logger.log(
-      `TigerFetcher: '${layer.layerName}' resolved to ${layer.layer}/${id}`,
-    );
-    return `${layer.layer}/${id}`;
+    this.logger.log(`${label}: '${layerName}' resolved to ${serviceUrl}/${id}`);
+    return id;
   }
+}
+
+/** Features keyed like the layer's own rows; no key or no geometry → dropped. */
+function toDisplayRows(
+  features: GeoJSONFeature[],
+  layer: TigerLayerConfig,
+): DisplayRow[] {
+  const fipsField = layer.fipsField ?? DEFAULT_FIPS_FIELD;
+  const rows: DisplayRow[] = [];
+  for (const feature of features) {
+    const key = feature.properties?.[fipsField];
+    if (key === undefined || key === null || key === '' || !feature.geometry) {
+      continue;
+    }
+    rows.push({
+      fipsCode: `${layer.fipsPrefix ?? ''}${String(key)}`,
+      geometryGeoJSON: feature.geometry,
+    });
+  }
+  return rows;
 }

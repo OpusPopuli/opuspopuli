@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TigerFetcher } from './tiger.fetcher';
+import { TigerFetcher, displaySourceKey } from './tiger.fetcher';
 import type { TigerLayerConfig } from '@opuspopuli/region-provider';
 import type { RegionContext } from './arcgis.utils';
 
@@ -337,5 +337,224 @@ describe('TigerFetcher', () => {
       const rows = await fetcher.fetch(layer, CA_CTX, OCD_PREFIX);
       expect(rows).toEqual([]);
     });
+  });
+});
+
+describe('TigerFetcher.fetchDisplay (#1475)', () => {
+  // A made-up region, so nothing here depends on a real one.
+  const CTX: RegionContext = { fipsCode: '99', stateCode: 'ZZ' };
+  const DISPLAY_SERVICE =
+    'https://maps.example.gov/arcgis/rest/services/Generalized/Legislative/MapServer';
+  const directory = (layers: Array<{ id: number; name: string }>) =>
+    ({
+      ok: true,
+      status: 200,
+      json: async () => ({ layers }),
+    }) as unknown as Response;
+  const square = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 0],
+      ],
+    ],
+  };
+  const districtLayer: TigerLayerConfig = {
+    layer: 'Legislative/MapServer',
+    layerName: 'Upper Districts',
+    outFields: 'GEOID,NAME',
+    jurisdictionType: 'STATE_SENATE_DISTRICT',
+    level: 'STATE',
+    nameField: 'NAME',
+    fipsPrefix: 'sldu-',
+    display: { url: DISPLAY_SERVICE, layerName: 'Upper Districts 500K' },
+  };
+
+  let fetcher: TigerFetcher;
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [TigerFetcher],
+    }).compile();
+    fetcher = module.get(TigerFetcher);
+  });
+
+  it('returns null for a layer with no display source, without fetching', async () => {
+    const plain: TigerLayerConfig = { ...districtLayer, display: undefined };
+    await expect(fetcher.fetchDisplay(plain, CTX)).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves the display layer by name and keys features like the layer itself', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([
+          { id: 3, name: 'Upper Districts 500K' },
+          { id: 8, name: 'Upper Districts 500K' },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: square },
+          { type: 'Feature', properties: { GEOID: '99002' }, geometry: square },
+        ]),
+      );
+
+    const batch = await fetcher.fetchDisplay(districtLayer, CTX);
+
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual([
+      'sldu-99001',
+      'sldu-99002',
+    ]);
+    const queryUrl = String(fetchMock.mock.calls[1][0]);
+    expect(queryUrl).toContain(`${DISPLAY_SERVICE}/3/query`);
+    // Same filter as the layer's own fetch, and only the key field.
+    expect(queryUrl).toContain('where=STATE%3D%2799%27');
+    expect(queryUrl).toContain('outFields=GEOID&');
+  });
+
+  it('skips a same-named rendition with no polygons, like a Labels group', async () => {
+    // TIGERweb's generalised services list a "Labels" group first; its
+    // layers share the real ones' names but return geometry: null.
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([
+          { id: 8, name: 'Upper Districts 500K' },
+          { id: 2, name: 'Upper Districts 500K' },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: null },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: square },
+        ]),
+      );
+
+    const batch = await fetcher.fetchDisplay(districtLayer, CTX);
+
+    expect(String(fetchMock.mock.calls[1][0])).toContain(
+      `${DISPLAY_SERVICE}/2/query`,
+    );
+    expect(String(fetchMock.mock.calls[2][0])).toContain(
+      `${DISPLAY_SERVICE}/8/query`,
+    );
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99001']);
+  });
+
+  it('returns nothing when every same-named layer lacks polygons', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([
+          { id: 1, name: 'Upper Districts 500K' },
+          { id: 2, name: 'Upper Districts 500K' },
+        ]),
+      )
+      .mockResolvedValue(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: null },
+        ]),
+      );
+
+    await expect(fetcher.fetchDisplay(districtLayer, CTX)).resolves.toEqual({
+      rows: [],
+      complete: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('tries at most three same-named layers', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory(
+          [1, 2, 3, 4, 5].map((id) => ({ id, name: 'Upper Districts 500K' })),
+        ),
+      )
+      .mockResolvedValue(mockGeoJSONResponse([]));
+
+    await fetcher.fetchDisplay(districtLayer, CTX);
+
+    // One directory read, then three candidates.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('says the fetch was complete only when every page came back', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([{ id: 0, name: 'Upper Districts 500K' }]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '99001' }, geometry: square },
+        ]),
+      );
+    await expect(
+      fetcher.fetchDisplay(districtLayer, CTX),
+    ).resolves.toMatchObject({ complete: true });
+
+    // A full first page, then a failing second: rows, but not complete.
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({
+      type: 'Feature',
+      properties: { GEOID: String(99000 + i) },
+      geometry: square,
+    }));
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([{ id: 0, name: 'Upper Districts 500K' }]),
+      )
+      .mockResolvedValueOnce(mockGeoJSONResponse(fullPage))
+      .mockResolvedValueOnce({ ok: false, status: 502 } as Response);
+    const partial = await fetcher.fetchDisplay(districtLayer, CTX);
+    expect(partial?.rows).toHaveLength(1000);
+    expect(partial?.complete).toBe(false);
+  });
+
+  it('keys the display source by service and layer name', () => {
+    expect(displaySourceKey({ url: DISPLAY_SERVICE, layerName: 'X' })).toBe(
+      `${DISPLAY_SERVICE}#X`,
+    );
+  });
+
+  it('drops features with no key or no geometry rather than guessing', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        directory([{ id: 0, name: 'Upper Districts 500K' }]),
+      )
+      .mockResolvedValueOnce(
+        mockGeoJSONResponse([
+          { type: 'Feature', properties: { GEOID: '' }, geometry: square },
+          { type: 'Feature', properties: {}, geometry: square },
+          { type: 'Feature', properties: { GEOID: '99003' }, geometry: null },
+          { type: 'Feature', properties: { GEOID: '99004' }, geometry: square },
+        ]),
+      );
+
+    const batch = await fetcher.fetchDisplay(districtLayer, CTX);
+
+    expect(batch?.rows.map((r) => r.fipsCode)).toEqual(['sldu-99004']);
+  });
+
+  it('fails closed when the display layer name is not in the service', async () => {
+    fetchMock.mockResolvedValueOnce(
+      directory([{ id: 0, name: 'Upper Districts 5M' }]),
+    );
+
+    const batch = await fetcher.fetchDisplay(districtLayer, CTX);
+
+    expect(batch).toEqual({ rows: [], complete: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the service directory cannot be read', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 } as Response);
+
+    const batch = await fetcher.fetchDisplay(districtLayer, CTX);
+
+    expect(batch).toEqual({ rows: [], complete: false });
   });
 });

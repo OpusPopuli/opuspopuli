@@ -36,9 +36,8 @@ export class CheapestNeighborModel {
  * landing page is that it needs no session, so a field requiring one would
  * either leak or break it.
  *
- * Geometry is deliberately absent. It is ~60-80KB, identical for every
- * visitor and changes at most once a decade, so it ships as a static
- * TopoJSON asset rather than through a query that would re-send it per request.
+ * Geometry is deliberately absent: the map's shapes have their own queries,
+ * `regionShapes` and `countyShapes` (#1475).
  */
 @ObjectType({
   description:

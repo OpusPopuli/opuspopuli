@@ -169,16 +169,37 @@ export async function fetchPaginatedGeoJSON(
     timeoutMs?: number;
   } = {},
 ): Promise<GeoJSONFeature[]> {
+  return (
+    await fetchPaginatedGeoJSONWithStatus(baseUrl, where, outFields, options)
+  ).features;
+}
+
+/**
+ * fetchPaginatedGeoJSON, also saying whether every page was read. A caller
+ * that infers something from a feature's ABSENCE — "this layer doesn't
+ * cover that row" — must only do so when `complete` is true: a page error
+ * or the page cap returns a partial list that looks just like a short one
+ * (#1475).
+ */
+export async function fetchPaginatedGeoJSONWithStatus(
+  baseUrl: string,
+  where: string,
+  outFields: string,
+  options: {
+    pageSize?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<{ features: GeoJSONFeature[]; complete: boolean }> {
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
   } catch {
     // Malformed URL — let the caller log the layer context.
-    return [];
+    return { features: [], complete: false };
   }
   if (isPrivateHost(parsed.hostname)) {
     // SSRF defense: refuse private-network targets. Caller logs the layer.
-    return [];
+    return { features: [], complete: false };
   }
 
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
@@ -212,19 +233,20 @@ export async function fetchPaginatedGeoJSON(
       if (!res.ok) {
         // HTTP error — return what we accumulated, log nothing here (the
         // fetcher class logs with the layer context the caller cares about).
-        return all;
+        return { features: all, complete: false };
       }
       const data = (await res.json()) as GeoJSONFeatureCollection;
       features = data.features ?? [];
     } catch {
-      return all;
+      return { features: all, complete: false };
     }
 
     all.push(...features);
-    if (features.length < pageSize) break;
+    if (features.length < pageSize) return { features: all, complete: true };
     offset += pageSize;
   }
-  return all;
+  // Hit the page cap: whatever is left was never read.
+  return { features: all, complete: false };
 }
 
 /**
@@ -265,11 +287,24 @@ export function pickLayerIdByName(
   directory: ArcgisServiceDirectory,
   layerName: string,
 ): number | null {
-  const matches = (directory.layers ?? [])
+  const matches = layerIdsByName(directory, layerName);
+  return matches.length === 0 ? null : matches[0];
+}
+
+/**
+ * Every layer bearing exactly this name, lowest index first. Used where the
+ * lowest isn't necessarily usable: TIGERweb's generalised services list a
+ * "Labels" group first, whose layers share their names with the real ones
+ * but carry no polygons (#1475).
+ */
+export function layerIdsByName(
+  directory: ArcgisServiceDirectory,
+  layerName: string,
+): number[] {
+  return (directory.layers ?? [])
     .filter((l) => l.name === layerName)
-    .map((l) => l.id);
-  if (matches.length === 0) return null;
-  return Math.min(...matches);
+    .map((l) => l.id)
+    .sort((a, b) => a - b);
 }
 
 /**
