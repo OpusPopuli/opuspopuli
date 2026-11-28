@@ -1260,8 +1260,8 @@ export class RegionResolver {
    * retrievable by polling `regionSyncJob(jobId)` instead of being lost to
    * a 524. County-published boundaries (#1136) are appended last in the
    * batch, so a request-path load truncated them every time — see
-   * opuspopuli#1122. Admin-only; the boot-time loader still runs unauthed
-   * via onApplicationBootstrap (opuspopuli#804).
+   * opuspopuli#1122. Admin-only; the boot-time load still runs unauthed,
+   * from BoundaryBootService in the region service (opuspopuli#804, #1475).
    */
   @Mutation(() => RegionSyncJobModel)
   @UseGuards(AuthGuard)

@@ -218,58 +218,6 @@ describe('BoundaryLoaderService', () => {
     });
   });
 
-  describe('onApplicationBootstrap()', () => {
-    afterEach(() => {
-      delete process.env.FORCE_RELOAD_BOUNDARIES;
-    });
-
-    it('detaches loadAll() in the background and returns synchronously', async () => {
-      // The boot hook MUST return synchronously so Nest's bootstrap
-      // sequence isn't held open by a 1-5 minute boundary fetch.
-      // Mock loadAll so we can observe it was triggered without awaiting.
-      const loadAllSpy = jest.spyOn(service, 'loadAll').mockResolvedValue({
-        ok: true,
-        counts: { existing: 0, upserted: 0, failed: 0, missingKey: 0 },
-      });
-
-      service.onApplicationBootstrap();
-
-      // Synchronous return = no `await` needed; the call is queued.
-      expect(loadAllSpy).toHaveBeenCalledTimes(1);
-      expect(loadAllSpy).toHaveBeenCalledWith();
-      // Yield so the detached promise resolves before the test ends —
-      // otherwise jest's open-handles detector complains.
-      await Promise.resolve();
-    });
-
-    it('catches errors so a thrown loadAll() never crashes Nest bootstrap', async () => {
-      const loggerErrorSpy = jest
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .spyOn((service as any).logger, 'error')
-        .mockImplementation(() => {});
-      jest
-        .spyOn(service, 'loadAll')
-        .mockRejectedValue(new Error('catastrophic'));
-
-      service.onApplicationBootstrap();
-
-      // Yield so the rejection lands in our catch handler.
-      await new Promise((r) => setImmediate(r));
-      expect(loggerErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('catastrophic'),
-      );
-    });
-
-    it('respects FORCE_RELOAD_BOUNDARIES=skip-boot — does not call loadAll', () => {
-      process.env.FORCE_RELOAD_BOUNDARIES = 'skip-boot';
-      const loadAllSpy = jest.spyOn(service, 'loadAll');
-
-      service.onApplicationBootstrap();
-
-      expect(loadAllSpy).not.toHaveBeenCalled();
-    });
-  });
-
   describe('fetcher dispatch', () => {
     it('calls TigerFetcher.fetch once per tigerLayer, GeoportalFetcher.fetch once per geoportalLayer', async () => {
       mockDb.$queryRaw.mockResolvedValue([{ count: 0 }]);
@@ -736,6 +684,7 @@ describe('BoundaryLoaderService', () => {
         uncovered: 0,
         current: 0,
         failedLayers: 0,
+        ambiguousLayers: 0,
       });
     });
 
@@ -767,6 +716,7 @@ describe('BoundaryLoaderService', () => {
         uncovered: 0,
         current: 1,
         failedLayers: 0,
+        ambiguousLayers: 0,
       });
 
       mockDb.$queryRaw.mockResolvedValue([{ count: 7000 }]);
@@ -861,6 +811,33 @@ describe('BoundaryLoaderService', () => {
       ]);
     });
 
+    it('leaves out two layers of one type whose prefixes overlap, and fetches the rest', async () => {
+      const county = DISPLAY_SOURCES.tigerLayers![0];
+      mockRegistry.getActive.mockReturnValue(
+        createMockPlugin({
+          ...DISPLAY_SOURCES,
+          tigerLayers: [
+            county,
+            { ...county, fipsPrefix: 'east-' },
+            {
+              ...county,
+              jurisdictionType: 'STATE_SENATE_DISTRICT',
+              fipsPrefix: 'sldu-',
+            },
+          ],
+        }),
+      );
+      mockDb.$queryRaw
+        .mockResolvedValueOnce([{ count: 7000 }])
+        .mockResolvedValueOnce([{ stale: false }]);
+
+      const result = await service.loadAll();
+
+      expect(result.display?.ambiguousLayers).toBe(2);
+      expect(result.display?.current).toBe(1);
+      expect(mockTigerFetcher.fetchDisplay).not.toHaveBeenCalled();
+    });
+
     it('infers nothing about coverage from an incomplete fetch', async () => {
       boundariesLoadedAndLayer(true);
       mockTigerFetcher.fetchDisplay.mockResolvedValueOnce({
@@ -938,6 +915,7 @@ describe('BoundaryLoaderService', () => {
         uncovered: 0,
         current: 0,
         failedLayers: 1,
+        ambiguousLayers: 0,
       });
       expect(mockShapes.build).toHaveBeenCalled();
     });

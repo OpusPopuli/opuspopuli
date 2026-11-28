@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
-import type { BoundarySourcesConfig } from '@opuspopuli/region-provider';
+import type {
+  BoundarySourcesConfig,
+  GeoportalLayerConfig,
+  TigerLayerConfig,
+} from '@opuspopuli/region-provider';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import {
   bboxOf,
@@ -12,6 +16,7 @@ import {
   type Fit,
 } from './shape-geometry';
 import { shapeQuality } from './shape-quality';
+import { ambiguousDisplayLayers } from './display-layers';
 
 /** The frame every region-wide layer is drawn in. */
 export const REGION_FRAME = 'region';
@@ -520,41 +525,61 @@ function sourceRefs(
   groups: BoundarySourcesConfig[],
   logger: Logger,
 ): { layers: SourceRef[]; districts: SourceRef[] } {
-  const layers: SourceRef[] = [];
-  const districts: SourceRef[] = [];
   const accept = (url: string): URL | null => {
     const parsed = publicSourceUrl(url);
-    if (!parsed)
+    if (!parsed) {
       logger.warn(
         `ShapesBuilder: source '${url}' is not an HTTPS URL — layer left out.`,
       );
+    }
     return parsed;
   };
-  for (const group of groups) {
-    for (const layer of group.tigerLayers ?? []) {
-      if (layer.display && accept(layer.display.url)) {
-        layers.push({
-          jurisdictionType: layer.jurisdictionType,
-          fipsPrefix: layer.fipsPrefix,
-          name: layer.display.layerName,
-          url: layer.display.url,
-        });
-      }
-    }
-    for (const layer of group.geoportalLayers ?? []) {
-      if (!COUNTY_DISTRICT_TYPES.includes(layer.jurisdictionType)) continue;
-      const parsed = accept(layer.url);
-      if (parsed) {
-        districts.push({
-          jurisdictionType: layer.jurisdictionType,
-          fipsPrefix: layer.fipsPrefix,
-          name: parsed.hostname,
-          url: layer.url,
-        });
-      }
-    }
-  }
-  return { layers, districts };
+  const ambiguous = ambiguousDisplayLayers(groups);
+  ambiguous.clashes.forEach((clash) =>
+    logger.warn(`ShapesBuilder: ${clash} — both left out.`),
+  );
+  const tiger = groups.flatMap((g) => g.tigerLayers ?? []);
+  const geoportal = groups.flatMap((g) => g.geoportalLayers ?? []);
+  return {
+    layers: tiger
+      .filter((l) => !ambiguous.layers.has(l))
+      .flatMap((l) => displayRef(l, accept)),
+    districts: geoportal.flatMap((l) => districtRef(l, accept)),
+  };
+}
+
+/** A TIGER layer's display source, if it has an acceptable one. */
+function displayRef(
+  layer: TigerLayerConfig,
+  accept: (url: string) => URL | null,
+): SourceRef[] {
+  if (!layer.display || !accept(layer.display.url)) return [];
+  return [
+    {
+      jurisdictionType: layer.jurisdictionType,
+      fipsPrefix: layer.fipsPrefix,
+      name: layer.display.layerName,
+      url: layer.display.url,
+    },
+  ];
+}
+
+/** A county-district layer's source, if it has an acceptable one. */
+function districtRef(
+  layer: GeoportalLayerConfig,
+  accept: (url: string) => URL | null,
+): SourceRef[] {
+  if (!COUNTY_DISTRICT_TYPES.includes(layer.jurisdictionType)) return [];
+  const parsed = accept(layer.url);
+  if (!parsed) return [];
+  return [
+    {
+      jurisdictionType: layer.jurisdictionType,
+      fipsPrefix: layer.fipsPrefix,
+      name: parsed.hostname,
+      url: layer.url,
+    },
+  ];
 }
 
 /** A stable hash of everything a build depends on besides the geometry itself. */

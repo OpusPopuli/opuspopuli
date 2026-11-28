@@ -17,6 +17,7 @@ import depthLimit from 'graphql-depth-limit';
 import { createQueryComplexityPlugin } from 'src/common/graphql/query-complexity.plugin';
 
 import { RegionDomainModule } from './domains/region.module';
+import { BoundaryBootService } from './boundary-boot.service';
 
 import configuration from 'src/config';
 import relationaldbConfig from 'src/config/relationaldb.config';
@@ -95,7 +96,9 @@ import { SecretsModule } from '@opuspopuli/secrets-provider';
     }),
     MetricsModule.forRoot({ serviceName: 'region-service' }),
   ],
-  providers: SHARED_PROVIDERS,
+  // The boot-time boundary load runs here, in the region service only —
+  // not in the workers that also import RegionDomainModule (#1475).
+  providers: [...SHARED_PROVIDERS, BoundaryBootService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
