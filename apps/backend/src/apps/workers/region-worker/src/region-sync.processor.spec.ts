@@ -698,6 +698,7 @@ describe('boundaryErrors (#1475)', () => {
           uncovered: 0,
           current: 1,
           failedLayers: 0,
+          ambiguousLayers: 0,
         },
         shapes: { frames: 2, shapes: 9, incompleteTypes: [] },
       }),
@@ -715,6 +716,7 @@ describe('boundaryErrors (#1475)', () => {
           uncovered: 0,
           current: 0,
           failedLayers: 1,
+          ambiguousLayers: 2,
         },
         shapes: {
           frames: 0,
@@ -725,6 +727,7 @@ describe('boundaryErrors (#1475)', () => {
       }),
     ).toEqual([
       '2 boundary row(s) failed to upsert (existing=10)',
+      '2 display layer(s) left out: another layer of their type claims the same rows (fipsPrefix)',
       '1 display layer(s) failed to load',
       'map layers not drawn, display geometry incomplete: COUNTY',
       'map shapes build failed: Cannot fit an empty bbox',

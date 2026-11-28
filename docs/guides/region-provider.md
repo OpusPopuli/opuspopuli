@@ -59,7 +59,7 @@ The platform uses **declarative region plugins** — JSON configuration that des
 │  │   └── onModuleInit: read local stateCode → resolve federal      │
 │  │       placeholders → load federal plugin → load local plugin     │
 │  ├── BoundaryLoaderService (#804)                                   │
-│  │   ├── onApplicationBootstrap: detached loadAll()                │
+│  │   ├── loadAll(): boundaries → display geometry → map shapes   │
 │  │   ├── TigerFetcher: Census TIGER MapServer GeoJSON               │
 │  │   ├── GeoportalFetcher: arbitrary ArcGIS FeatureServer           │
 │  │   └── upsert → jurisdictions (PostGIS geography column)          │
@@ -272,27 +272,31 @@ Both fetchers paginate via `resultOffset`/`resultRecordCount`, return GeoJSON Fe
 
 Two trigger paths:
 
-1. **Boot-time auto-load** — `BoundaryLoaderService.onApplicationBootstrap()` fires `loadAll()` in the background once Nest finishes wiring providers. Skips when jurisdictions are already populated (idempotent). Never blocks the health check; per-row failures are logged but never thrown.
-2. **Admin mutation** — `refreshBoundaries(force: Boolean): BoundaryLoadResult` triggers a fresh load on demand. Use `force: true` to override the skip-when-populated guard (after redistricting or when TIGER publishes a new vintage).
+1. **Boot-time auto-load** — `BoundaryBootService` (registered in the region service's app module only, not in the workers that also import `RegionDomainModule`) fires `loadAll()` in the background once Nest finishes wiring providers. Skips when jurisdictions are already populated (idempotent). Never blocks the health check; per-row failures are logged but never thrown.
+2. **Admin mutation** — `refreshBoundaries(force: Boolean): RegionSyncJob!` enqueues a `boundaries` job on the region-sync queue, which the region worker runs, and returns the job. Poll `regionSyncJob(jobId)` for the outcome. Use `force: true` to override the skip-when-populated guard (after redistricting or when TIGER publishes a new vintage).
 
 ```graphql
 mutation {
   refreshBoundaries(force: false) {
-    ok
-    skipped
-    counts {
-      existing
-      upserted
-      failed
-      missingKey
-    }
+    jobId
+    status
+  }
+}
+
+query {
+  regionSyncJob(jobId: "…") {
+    status
+    errorMessage
+    results { itemsCreated itemsSkipped errors }
   }
 }
 ```
 
+After the boundary step, `loadAll()` also loads each layer's **display geometry** (a layer's optional `display` source in config, for maps only) and rebuilds the **map shapes** when their inputs changed (#1475). Two display layers of one type must have distinct, non-overlapping `fipsPrefix`es; overlapping ones are left out and reported.
+
 ### Disable boot-time load
 
-Set `FORCE_RELOAD_BOUNDARIES=skip-boot` in the region service environment to bypass the boot-time fetch. The admin mutation still works. Useful in integration tests where the boot fetch would otherwise hit real TIGER/Geoportal URLs.
+Set `FORCE_RELOAD_BOUNDARIES=skip-boot` in the region service environment to bypass the boot-time fetch (only the region service runs it). The admin mutation still works. Useful in integration tests where the boot fetch would otherwise hit real TIGER/Geoportal URLs.
 
 ### Schema
 

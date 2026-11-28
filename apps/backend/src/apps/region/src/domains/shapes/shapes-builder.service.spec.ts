@@ -346,6 +346,20 @@ describe('ShapesBuilderService (#1475)', () => {
     expect(nameOf('b')).toBe('West');
   });
 
+  it('draws no layer whose type has overlapping display layers', async () => {
+    const { builder } = builderFor(twoCounties());
+
+    const result = await builder.build(
+      {
+        ...REGION,
+        tigerLayers: [countyLayer(), { ...countyLayer(), fipsPrefix: '99' }],
+      },
+      COUNTIES,
+    );
+
+    expect(result.skipped).toBe('no-display-layers');
+  });
+
   it('leaves out a district no configured layer accounts for', async () => {
     const world = twoCounties();
     world.districts.push({

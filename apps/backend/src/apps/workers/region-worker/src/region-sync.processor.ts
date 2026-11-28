@@ -709,6 +709,11 @@ export function boundaryErrors(result: BoundaryLoadResult): string[] {
       `${failed} boundary row(s) failed to upsert (existing=${existing})`,
     );
   }
+  if (result.display?.ambiguousLayers) {
+    errors.push(
+      `${result.display.ambiguousLayers} display layer(s) left out: another layer of their type claims the same rows (fipsPrefix)`,
+    );
+  }
   if (result.display?.failedLayers) {
     errors.push(
       `${result.display.failedLayers} display layer(s) failed to load`,

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '@opuspopuli/relationaldb-provider';
 import {
   PluginRegistryService,
@@ -10,6 +10,7 @@ import {
   displaySourceKey,
   type DisplayRow,
 } from './boundary-fetchers/tiger.fetcher';
+import { ambiguousDisplayLayers } from './shapes/display-layers';
 import {
   ShapesBuilderService,
   type ShapesBuildResult,
@@ -61,6 +62,9 @@ export interface DisplayLoadResult {
   current: number;
   /** Layers whose fetch or write threw; the rest still ran. */
   failedLayers: number;
+  /** Layers left out because another display layer of their type claims
+   * the same rows (overlapping fipsPrefix). A config error. */
+  ambiguousLayers: number;
 }
 
 type SourceGroup = { sources: BoundarySourcesConfig; ctx: RegionContext };
@@ -105,8 +109,9 @@ export interface BoundaryLoadResult {
  *
  * Design (opuspopuli#804, paired with opuspopuli-regions#51):
  *  - Idempotent: skip-when-populated unless `force: true` is passed (via
- *    the admin refreshBoundaries mutation). The boot hook can be disabled
- *    entirely with `FORCE_RELOAD_BOUNDARIES=skip-boot` — useful for tests.
+ *    the admin refreshBoundaries mutation). The boot-time run lives in
+ *    BoundaryBootService, in the region service only (#1475), and can be
+ *    disabled with `FORCE_RELOAD_BOUNDARIES=skip-boot` — useful for tests.
  *  - Non-fatal: per-row errors logged + counted, never thrown. The boot-time
  *    caller treats this as a detached background task.
  *  - Boot-time partial loads are recoverable: if the region service crashes
@@ -121,7 +126,7 @@ export interface BoundaryLoadResult {
  *    + persistence layer only. Pure unit-testable surface.
  */
 @Injectable()
-export class BoundaryLoaderService implements OnApplicationBootstrap {
+export class BoundaryLoaderService {
   private readonly logger = new Logger(BoundaryLoaderService.name);
 
   constructor(
@@ -133,38 +138,10 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
   ) {}
 
   /**
-   * Boot-time hook: fire `loadAll()` in the background after Nest finishes
-   * wiring providers. Never await — health checks shouldn't block on a
-   * 1–5 minute boundary fetch. Never throw — startup failures here would
-   * brick the whole region service; the loader's own per-row try/catch
-   * and skip-when-populated logic make this safe to invoke unconditionally.
-   *
-   * Disable via FORCE_RELOAD_BOUNDARIES=skip-boot (boot-time only; admin
-   * mutation still works). This is mostly useful in integration tests
-   * where the boot fetch would hit real TIGER/Geoportal URLs.
-   */
-  onApplicationBootstrap(): void {
-    if (process.env.FORCE_RELOAD_BOUNDARIES === 'skip-boot') {
-      this.logger.log(
-        'BoundaryLoader: FORCE_RELOAD_BOUNDARIES=skip-boot — bypassing boot-time load.',
-      );
-      return;
-    }
-    // Detached call — drop the result. Catches any unexpected rejection so
-    // bootstrap doesn't crash; loadAll's own per-row try/catch and skip
-    // paths make this a defense-in-depth handler.
-    this.loadAll().catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `BoundaryLoader: boot-time load threw (this should never happen — loadAll catches per-row errors internally): ${message}`,
-      );
-    });
-  }
-
-  /**
    * Load all boundary geometries for the active region.
    * Caller is responsible for choosing detached-vs-awaited semantics
-   * (main.ts boot-time: detached; admin mutation: awaited).
+   * (BoundaryBootService in the region service: detached; admin mutation
+   * and the worker's `boundaries` job: awaited).
    */
   async loadAll(opts: { force?: boolean } = {}): Promise<BoundaryLoadResult> {
     const groups = await this.resolveGroups();
@@ -441,24 +418,48 @@ export class BoundaryLoaderService implements OnApplicationBootstrap {
       uncovered: 0,
       current: 0,
       failedLayers: 0,
+      ambiguousLayers: 0,
     };
+    const ambiguous = ambiguousDisplayLayers([
+      groups.region.sources,
+      ...groups.counties.map((c) => c.sources),
+    ]);
+    ambiguous.clashes.forEach((clash) =>
+      this.logger.error(
+        `BoundaryLoader: ${clash} — both left out; give each a distinct fipsPrefix.`,
+      ),
+    );
     for (const group of [groups.region, ...groups.counties]) {
       for (const layer of group.sources.tigerLayers ?? []) {
         if (!layer.display) continue;
-        try {
-          await this.loadDisplayLayer(layer, group.ctx, opts, result);
-        } catch (err) {
-          result.failedLayers++;
-          const message = err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            `BoundaryLoader: display layer '${layer.display.layerName}' failed (${message}) — continuing.`,
-          );
+        if (ambiguous.layers.has(layer)) {
+          result.ambiguousLayers++;
+        } else {
+          await this.tryDisplayLayer(layer, group.ctx, opts, result);
         }
       }
     }
 
     this.logger.log(displaySummary(result));
     return result;
+  }
+
+  /** One layer, its failure counted and logged rather than thrown. */
+  private async tryDisplayLayer(
+    layer: TigerLayerConfig,
+    ctx: RegionContext,
+    opts: { force?: boolean },
+    result: DisplayLoadResult,
+  ): Promise<void> {
+    try {
+      await this.loadDisplayLayer(layer, ctx, opts, result);
+    } catch (err) {
+      result.failedLayers++;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `BoundaryLoader: display layer '${layer.display?.layerName}' failed (${message}) — continuing.`,
+      );
+    }
   }
 
   private async loadDisplayLayer(
@@ -833,5 +834,8 @@ function displaySummary(result: DisplayLoadResult): string {
     );
   }
   if (result.failedLayers) parts.push(`${result.failedLayers} layer(s) failed`);
+  if (result.ambiguousLayers) {
+    parts.push(`${result.ambiguousLayers} layer(s) left out as ambiguous`);
+  }
   return `BoundaryLoader: ${parts.join(', ')}.`;
 }
